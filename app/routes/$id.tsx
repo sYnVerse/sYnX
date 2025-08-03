@@ -52,10 +52,10 @@ export default function () {
   const { todos } = useLoaderData<typeof loader>();
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-8 px-4">
-      <div className="max-w-md mx-auto">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 py-8 px-4 flex flex-col">
+      <div className="max-w-md mx-auto flex-1">
         <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-8">
-          Todo List
+          To-Do List
         </h1>
 
         <Form method="post" className="mb-8 flex gap-2">
@@ -114,6 +114,20 @@ export default function () {
           ))}
         </ul>
       </div>
+      
+      <footer className="max-w-md mx-auto mt-8 text-center">
+        <p className="text-gray-600 dark:text-gray-400 text-sm">
+          Powered by{" "}
+          <a
+            href="https://christran.io"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-500 hover:text-blue-600 underline"
+          >
+            ChrisTran.io
+          </a>
+        </p>
+      </footer>
     </div>
   );
 }
