@@ -41,6 +41,22 @@ describe("TodoManager", () => {
       });
       expect(todo.id).toBeDefined();
       expect(todo.createdAt).toBeTypeOf("number");
+      expect(todo.priority).toBe("medium");
+
+      const storedTodos = await manager.list();
+      expect(storedTodos).toEqual([todo]);
+    });
+
+    it("creates a todo with custom priority", async () => {
+      const todo = await manager.create("High priority todo", "high");
+
+      expect(todo).toMatchObject({
+        text: "High priority todo",
+        completed: false,
+        priority: "high",
+      });
+      expect(todo.id).toBeDefined();
+      expect(todo.createdAt).toBeTypeOf("number");
 
       const storedTodos = await manager.list();
       expect(storedTodos).toEqual([todo]);
@@ -76,6 +92,33 @@ describe("TodoManager", () => {
 
       const storedTodos = await manager.list();
       expect(storedTodos).toEqual([todo2]);
+    });
+  });
+
+  describe("updatePriority()", () => {
+    it("updates the priority of a todo", async () => {
+      const todo = await manager.create("Test todo");
+      expect(todo.priority).toBe("medium");
+
+      const updated = await manager.updatePriority(todo.id, "high");
+      expect(updated.priority).toBe("high");
+
+      const storedTodos = await manager.list();
+      expect(storedTodos[0].priority).toBe("high");
+    });
+  });
+
+  describe("clearCompleted()", () => {
+    it("removes all completed todos", async () => {
+      const todo1 = await manager.create("Active todo");
+      const todo2 = await manager.create("Completed todo");
+      await manager.toggle(todo2.id);
+
+      await manager.clearCompleted();
+
+      const storedTodos = await manager.list();
+      expect(storedTodos).toHaveLength(1);
+      expect(storedTodos[0].id).toBe(todo1.id);
     });
   });
 });

@@ -1,8 +1,9 @@
-interface Todo {
+export interface Todo {
   id: string;
   text: string;
   completed: boolean;
   createdAt: number;
+  priority: "low" | "medium" | "high";
 }
 
 /**
@@ -39,19 +40,21 @@ export class TodoManager {
   /**
    * Creates a new todo item
    * @param text - The text content of the todo item
+   * @param priority - The priority level of the todo item (defaults to "medium")
    * @returns Promise containing the newly created Todo item
    */
-  async create(text: string): Promise<Todo> {
+  async create(text: string, priority: "low" | "medium" | "high" = "medium"): Promise<Todo> {
     const newTodo: Todo = {
       id: crypto.randomUUID(),
       text,
       completed: false,
       createdAt: Date.now(),
+      priority,
     };
     const todos = await this.list();
     todos.push(newTodo);
     await this.kv.put(this.todosKey, JSON.stringify(todos), {
-      expirationTtl: 300,
+      expirationTtl: 86400,
     });
     return newTodo;
   }
@@ -70,7 +73,7 @@ export class TodoManager {
     }
     todos[todoIndex].completed = !todos[todoIndex].completed;
     await this.kv.put(this.todosKey, JSON.stringify(todos), {
-      expirationTtl: 300,
+      expirationTtl: 86400,
     });
     return todos[todoIndex];
   }
@@ -84,7 +87,39 @@ export class TodoManager {
     const todos = await this.list();
     const newTodos = todos.filter((todo) => todo.id !== id);
     await this.kv.put(this.todosKey, JSON.stringify(newTodos), {
-      expirationTtl: 300,
+      expirationTtl: 86400,
+    });
+  }
+
+  /**
+   * Updates the priority of a todo item
+   * @param id - The unique identifier of the todo item to update
+   * @param priority - The new priority level
+   * @returns Promise containing the updated Todo item
+   * @throws Error if the todo item with the specified ID is not found
+   */
+  async updatePriority(id: string, priority: "low" | "medium" | "high"): Promise<Todo> {
+    const todos = await this.list();
+    const todoIndex = todos.findIndex((todo) => todo.id === id);
+    if (todoIndex === -1) {
+      throw new Error(`Todo with id ${id} not found`);
+    }
+    todos[todoIndex].priority = priority;
+    await this.kv.put(this.todosKey, JSON.stringify(todos), {
+      expirationTtl: 86400,
+    });
+    return todos[todoIndex];
+  }
+
+  /**
+   * Removes all completed todos from storage
+   * @returns Promise that resolves when the operation is complete
+   */
+  async clearCompleted(): Promise<void> {
+    const todos = await this.list();
+    const activeTodos = todos.filter((todo) => !todo.completed);
+    await this.kv.put(this.todosKey, JSON.stringify(activeTodos), {
+      expirationTtl: 86400,
     });
   }
 }
