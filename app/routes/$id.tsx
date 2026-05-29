@@ -487,6 +487,8 @@ export default function TodoPage() {
   const [listToDelete, setListToDelete] = useState<{ id: string; name: string } | null>(null);
   const [listToRename, setListToRename] = useState<{ id: string; name: string } | null>(null);
   const [renameInput, setRenameInput] = useState("");
+  const [isCreateListOpen, setIsCreateListOpen] = useState(false);
+  const [newListInput, setNewListInput] = useState("");
 
   // Inline List Title Edit State (Main Panel Header)
   const activeListMeta = lists.find((l: any) => l.id === activeListId);
@@ -583,7 +585,7 @@ export default function TodoPage() {
       </div>
 
       {/* ── Mobile Header Bar ─────────────────────────────── */}
-      <header className="md:hidden flex items-center justify-between px-4 py-3 bg-slate-900/60 backdrop-blur-lg border-b border-white/[0.06] relative z-20">
+      <header className="md:hidden flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-white/[0.06] relative z-20">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-violet-500 flex items-center justify-center shadow-lg">
             <svg className="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
@@ -608,7 +610,7 @@ export default function TodoPage() {
 
       {/* ── Sidebar Component (Desktop and Mobile drawer) ──── */}
       <aside
-        className={`fixed md:sticky top-0 left-0 bottom-0 z-35 md:z-10 w-[280px] bg-slate-900/40 backdrop-blur-xl md:backdrop-blur-none border-r border-white/[0.08] p-5 flex flex-col justify-between transition-transform duration-300 md:transform-none
+        className={`fixed md:sticky top-0 left-0 bottom-0 z-35 md:z-10 w-[280px] bg-slate-900 border-r border-white/[0.08] p-5 flex flex-col justify-between transition-transform duration-300 md:transform-none
           ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
         <div className="flex-1 flex flex-col min-h-0">
@@ -622,32 +624,25 @@ export default function TodoPage() {
             <span className="font-extrabold text-xl bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent tracking-tight font-display">TaskFlow</span>
           </div>
 
-          {/* New List Form */}
-          <div className="mb-4">
-            <listFetcher.Form method="post">
-              <input type="hidden" name="intent" value="createList" />
-              <div className="relative">
-                <input
-                  ref={listNameInputRef}
-                  type="text"
-                  name="listName"
-                  placeholder="Create new list..."
-                  required
-                  autoComplete="off"
-                  className="w-full text-xs rounded-xl bg-white/[0.03] hover:bg-white/[0.05] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2.5 pr-8 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 transition-all duration-200"
-                />
-                <button
-                  type="submit"
-                  disabled={isCreatingList}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-400 transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                  </svg>
-                </button>
-              </div>
-            </listFetcher.Form>
-          </div>
+          {/* Add List Button */}
+          <button
+            onClick={() => setIsCreateListOpen(true)}
+            className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-600/15 hover:bg-indigo-600/25 border border-indigo-500/25 hover:border-indigo-500/35 rounded-xl py-2.5 transition-all duration-200 mb-4 cursor-pointer"
+          >
+            <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            New List
+          </button>
+          {isCreatingList && (
+            <div className="text-[10px] text-slate-555 flex items-center gap-1.5 px-1 mb-4">
+              <svg className="w-3.5 h-3.5 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Creating list...
+            </div>
+          )}
 
           {/* Lists Section */}
           <div className="flex-1 flex flex-col min-h-0">
@@ -725,20 +720,31 @@ export default function TodoPage() {
               {email.split("@")[0].substring(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold text-slate-355 truncate">{email}</p>
-              <span className="text-[9px] text-slate-550 font-medium">Synced Profile</span>
+              <p className="text-xs font-semibold text-slate-300 truncate">{email}</p>
+              <span className="text-[9px] text-slate-500 font-medium">Synced Profile</span>
             </div>
           </div>
-          <button
-            onClick={() => setIsProfileOpen(true)}
-            className="text-slate-400 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-white/[0.04] border border-transparent hover:border-white/5 transition-all duration-200"
-            title="Profile & statistics"
-          >
-            <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={() => setIsProfileOpen(true)}
+              className="text-slate-400 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-white/[0.04] border border-transparent hover:border-white/5 transition-all duration-200 cursor-pointer"
+              title="Profile & statistics"
+            >
+              <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+            <a
+              href="/logout"
+              className="text-slate-400 hover:text-rose-450 p-1.5 rounded-lg hover:bg-rose-500/10 border border-transparent hover:border-rose-550/20 transition-all duration-200 cursor-pointer"
+              title="Sign Out"
+            >
+              <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+            </a>
+          </div>
         </div>
       </aside>
 
@@ -1097,6 +1103,63 @@ export default function TodoPage() {
                 className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-xl shadow-lg transition-all duration-200"
               >
                 Delete List
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create List Dialog Modal ──────────────────────── */}
+      {isCreateListOpen && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
+            <h3 className="text-base font-bold text-slate-200 mb-3 font-display">Create New List</h3>
+            <input
+              type="text"
+              value={newListInput}
+              onChange={(e) => setNewListInput(e.target.value)}
+              className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 transition-all duration-200 mb-5"
+              placeholder="Enter list name (e.g., Shopping, Work)..."
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  if (newListInput.trim()) {
+                    listFetcher.submit(
+                      { intent: "createList", listName: newListInput.trim() } as any,
+                      { method: "post" }
+                    );
+                  }
+                  setNewListInput("");
+                  setIsCreateListOpen(false);
+                }
+              }}
+            />
+            <div className="flex gap-2.5 justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setNewListInput("");
+                  setIsCreateListOpen(false);
+                }}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-455 hover:text-slate-250 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-xl transition-all duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (newListInput.trim()) {
+                    listFetcher.submit(
+                      { intent: "createList", listName: newListInput.trim() } as any,
+                      { method: "post" }
+                    );
+                  }
+                  setNewListInput("");
+                  setIsCreateListOpen(false);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl shadow-lg transition-all duration-200"
+              >
+                Create List
               </button>
             </div>
           </div>
