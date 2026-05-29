@@ -30,9 +30,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta
           name="description"
-          content="A beautiful, collaborative to-do list you can share with anyone. Create tasks, set priorities, and stay productive together."
+          content="sYnX: Sync your tasks. Execute your day. A beautiful, collaborative to-do list dashboard to stay productive together."
         />
-        <title>To-Do List | ChrisTran.io</title>
+        <title>sYnX | Sync your tasks. Execute your day.</title>
         <Meta />
         <Links />
       </head>

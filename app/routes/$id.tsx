@@ -571,7 +571,7 @@ export default function TodoPage() {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lists, null, 2));
     const downloadAnchor = document.createElement("a");
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `taskflow_backup_${userId}.json`);
+    downloadAnchor.setAttribute("download", `synx_backup_${userId}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
@@ -612,7 +612,7 @@ export default function TodoPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
             </svg>
           </div>
-          <span className="font-extrabold text-lg text-slate-200 tracking-tight font-display">TaskFlow</span>
+          <span className="font-extrabold text-lg text-slate-200 tracking-tight font-display">sYnX</span>
         </div>
         <button
           onClick={() => setIsSidebarOpen((o) => !o)}
@@ -649,7 +649,7 @@ export default function TodoPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
               </svg>
             </div>
-            <span className="font-extrabold text-xl bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent tracking-tight font-display">TaskFlow</span>
+            <span className="font-extrabold text-xl bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent tracking-tight font-display">sYnX</span>
           </div>
 
           {/* Add List Button */}
@@ -985,7 +985,7 @@ export default function TodoPage() {
         {/* Footer */}
         <footer className="mt-12 pt-6 border-t border-white/[0.04] text-center max-w-lg mx-auto w-full">
           <p className="text-slate-650 text-[11px] font-medium">
-            TaskFlow App • Syncs with secure auth server
+            sYnX • Sync your tasks. Execute your day.
           </p>
         </footer>
       </main>
