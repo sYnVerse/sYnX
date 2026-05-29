@@ -6,37 +6,50 @@ import {
 import { useLoaderData, useFetcher } from "@remix-run/react";
 import { TodoManager, type Todo } from "~/to-do-manager";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { requireUser } from "~/auth.server";
+import { getOptionalUser } from "~/auth.server";
 
 export const loader = async ({ request, params, context }: LoaderFunctionArgs) => {
-  const { userId, email } = await requireUser(request, context.cloudflare.env);
+  const { userId, email, isLoggedIn, guestId, isNewGuest } = await getOptionalUser(request, context.cloudflare.env);
   const kv = context.cloudflare.env.TO_DO_LIST;
+
+  const headers = new Headers();
+  if (isNewGuest && guestId) {
+    headers.append("Set-Cookie", `guest_session=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+  }
 
   // Load lists
   let lists: any = await kv.get(`user:${userId}:lists`, "json");
 
   // Migration logic
   if (!lists) {
-    // Check if legacy tasks exist under userId
-    const legacyManager = new TodoManager(kv, userId);
-    const legacyTodos = await legacyManager.list();
+    // Check if legacy tasks exist under userId (only if logged in)
+    let legacyTodos: any = [];
+    if (isLoggedIn) {
+      const legacyManager = new TodoManager(kv, userId);
+      legacyTodos = await legacyManager.list();
+    }
     const defaultListId = crypto.randomUUID();
+    const options = isLoggedIn ? {} : { expirationTtl: 86400 };
 
     if (legacyTodos && legacyTodos.length > 0) {
       // Migrate legacy tasks
       lists = [{ id: defaultListId, name: "My Tasks", createdAt: Date.now() }];
-      await kv.put(`user:${userId}:lists`, JSON.stringify(lists));
-      await kv.put(`list:${defaultListId}:meta`, JSON.stringify({ id: defaultListId, name: "My Tasks", ownerId: userId, createdAt: Date.now() }));
-      await kv.put(`list:${defaultListId}:todos`, JSON.stringify(legacyTodos));
+      await kv.put(`user:${userId}:lists`, JSON.stringify(lists), options);
+      await kv.put(`list:${defaultListId}:meta`, JSON.stringify({ id: defaultListId, name: "My Tasks", ownerId: userId, createdAt: Date.now() }), options);
+      await kv.put(`list:${defaultListId}:todos`, JSON.stringify(legacyTodos), options);
       
       // Delete legacy key to avoid re-migration
       await kv.delete(userId);
     } else {
       // Setup a fresh default list
       lists = [{ id: defaultListId, name: "My Tasks", createdAt: Date.now() }];
-      await kv.put(`user:${userId}:lists`, JSON.stringify(lists));
-      await kv.put(`list:${defaultListId}:meta`, JSON.stringify({ id: defaultListId, name: "My Tasks", ownerId: userId, createdAt: Date.now() }));
-      await kv.put(`list:${defaultListId}:todos`, JSON.stringify([]));
+      await kv.put(`user:${userId}:lists`, JSON.stringify(lists), options);
+      await kv.put(`list:${defaultListId}:meta`, JSON.stringify({ id: defaultListId, name: "My Tasks", ownerId: userId, createdAt: Date.now() }), options);
+      await kv.put(`list:${defaultListId}:todos`, JSON.stringify([]), options);
+    }
+
+    if (isNewGuest && guestId) {
+      return redirect(`/${defaultListId}`, { headers });
     }
     return redirect(`/${defaultListId}`);
   }
@@ -47,22 +60,23 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
   if (!activeListExists) {
     // Redirect to the first list
     if (lists.length > 0) {
-      return redirect(`/${lists[0].id}`);
+      return redirect(`/${lists[0].id}`, { headers: isNewGuest && guestId ? headers : undefined });
     } else {
       // Fallback if lists array is empty
       const defaultListId = crypto.randomUUID();
       lists = [{ id: defaultListId, name: "My Tasks", createdAt: Date.now() }];
-      await kv.put(`user:${userId}:lists`, JSON.stringify(lists));
-      await kv.put(`list:${defaultListId}:meta`, JSON.stringify({ id: defaultListId, name: "My Tasks", ownerId: userId, createdAt: Date.now() }));
-      await kv.put(`list:${defaultListId}:todos`, JSON.stringify([]));
-      return redirect(`/${defaultListId}`);
+      const options = isLoggedIn ? {} : { expirationTtl: 86400 };
+      await kv.put(`user:${userId}:lists`, JSON.stringify(lists), options);
+      await kv.put(`list:${defaultListId}:meta`, JSON.stringify({ id: defaultListId, name: "My Tasks", ownerId: userId, createdAt: Date.now() }), options);
+      await kv.put(`list:${defaultListId}:todos`, JSON.stringify([]), options);
+      return redirect(`/${defaultListId}`, { headers: isNewGuest && guestId ? headers : undefined });
     }
   }
 
   // Load todos for all lists to get detailed stats and active list's todos
   const listsWithTodos = await Promise.all(
     lists.map(async (list: any) => {
-      const manager = new TodoManager(kv, `list:${list.id}:todos`);
+      const manager = new TodoManager(kv, `list:${list.id}:todos`, isLoggedIn ? undefined : 86400);
       const todos = await manager.list();
       return { ...list, todos };
     })
@@ -79,9 +93,10 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     completedTasks += item.todos.filter((t: any) => t.completed).length;
   }
 
-  return {
+  const responsePayload = {
     userId,
     email,
+    isLoggedIn,
     lists: listsWithTodos,
     activeListId,
     todos,
@@ -91,10 +106,16 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
       completedTasks
     }
   };
+
+  if (isNewGuest && guestId) {
+    return Response.json(responsePayload, { headers });
+  }
+
+  return responsePayload;
 };
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  const { userId } = await requireUser(request, context.cloudflare.env);
+  const { userId, isLoggedIn } = await getOptionalUser(request, context.cloudflare.env);
   const kv = context.cloudflare.env.TO_DO_LIST;
   const activeListId = params.id as string;
 
@@ -110,6 +131,9 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
   }
 
+  const options = isLoggedIn ? {} : { expirationTtl: 86400 };
+  const todoManager = new TodoManager(kv, `list:${activeListId}:todos`, isLoggedIn ? undefined : 86400);
+
   switch (intent) {
     case "create": {
       const text = formData.get("text");
@@ -118,21 +142,18 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       if (typeof text !== "string" || !text)
         return Response.json({ error: "Invalid text" }, { status: 400 });
       
-      const todoManager = new TodoManager(kv, `list:${activeListId}:todos`);
       await todoManager.create(text, priority);
       return { success: true };
     }
 
     case "toggle": {
       const id = formData.get("id") as string;
-      const todoManager = new TodoManager(kv, `list:${activeListId}:todos`);
       await todoManager.toggle(id);
       return { success: true };
     }
 
     case "delete": {
       const id = formData.get("id") as string;
-      const todoManager = new TodoManager(kv, `list:${activeListId}:todos`);
       await todoManager.delete(id);
       return { success: true };
     }
@@ -140,13 +161,11 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     case "updatePriority": {
       const id = formData.get("id") as string;
       const priority = formData.get("priority") as "low" | "medium" | "high";
-      const todoManager = new TodoManager(kv, `list:${activeListId}:todos`);
       await todoManager.updatePriority(id, priority);
       return { success: true };
     }
 
     case "clearCompleted": {
-      const todoManager = new TodoManager(kv, `list:${activeListId}:todos`);
       await todoManager.clearCompleted();
       return { success: true };
     }
@@ -158,9 +177,9 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       }
       const newListId = crypto.randomUUID();
       const newLists = [...lists, { id: newListId, name: listName.trim(), createdAt: Date.now() }];
-      await kv.put(`user:${userId}:lists`, JSON.stringify(newLists));
-      await kv.put(`list:${newListId}:meta`, JSON.stringify({ id: newListId, name: listName.trim(), ownerId: userId, createdAt: Date.now() }));
-      await kv.put(`list:${newListId}:todos`, JSON.stringify([]));
+      await kv.put(`user:${userId}:lists`, JSON.stringify(newLists), options);
+      await kv.put(`list:${newListId}:meta`, JSON.stringify({ id: newListId, name: listName.trim(), ownerId: userId, createdAt: Date.now() }), options);
+      await kv.put(`list:${newListId}:todos`, JSON.stringify([]), options);
       return redirect(`/${newListId}`);
     }
 
@@ -176,8 +195,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         }
         return l;
       });
-      await kv.put(`user:${userId}:lists`, JSON.stringify(newLists));
-      await kv.put(`list:${listId}:meta`, JSON.stringify({ id: listId, name: newName.trim(), ownerId: userId, createdAt: Date.now() }));
+      await kv.put(`user:${userId}:lists`, JSON.stringify(newLists), options);
+      await kv.put(`list:${listId}:meta`, JSON.stringify({ id: listId, name: newName.trim(), ownerId: userId, createdAt: Date.now() }), options);
       return { success: true };
     }
 
@@ -185,7 +204,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const listId = formData.get("listId") as string;
       // Filter out the deleted list
       const newLists = lists.filter((l: any) => l.id !== listId);
-      await kv.put(`user:${userId}:lists`, JSON.stringify(newLists));
+      await kv.put(`user:${userId}:lists`, JSON.stringify(newLists), options);
       // Delete list data
       await kv.delete(`list:${listId}:meta`);
       await kv.delete(`list:${listId}:todos`);
@@ -469,7 +488,7 @@ function TodoItem({ todo }: { todo: Todo }) {
 }
 
 export default function TodoPage() {
-  const { userId, email, lists, activeListId, todos, stats } = useLoaderData<typeof loader>();
+  const { userId, email, isLoggedIn, lists, activeListId, todos, stats } = useLoaderData<typeof loader>();
   const createFetcher = useFetcher();
   const clearFetcher = useFetcher();
   const listFetcher = useFetcher();
@@ -714,37 +733,68 @@ export default function TodoPage() {
         </div>
 
         {/* User profile bottom widget */}
-        <div className="border-t border-white/[0.06] pt-4 mt-4 flex items-center justify-between gap-3 relative z-10">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center text-indigo-300 font-bold text-xs flex-shrink-0 shadow-inner select-none">
-              {email.split("@")[0].substring(0, 2).toUpperCase()}
+        <div className="border-t border-white/[0.06] pt-4 mt-4 relative z-10">
+          {isLoggedIn ? (
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-center text-indigo-300 font-bold text-xs flex-shrink-0 shadow-inner select-none">
+                  {email.split("@")[0].substring(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-300 truncate">{email}</p>
+                  <span className="text-[9px] text-slate-500 font-medium">Synced Profile</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => setIsProfileOpen(true)}
+                  className="text-slate-455 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-white/[0.04] border border-transparent hover:border-white/5 transition-all duration-200 cursor-pointer"
+                  title="Profile & statistics"
+                >
+                  <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31(2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </button>
+                <a
+                  href="/logout"
+                  className="text-slate-455 hover:text-rose-450 p-1.5 rounded-lg hover:bg-rose-500/10 border border-transparent hover:border-rose-550/20 transition-all duration-200 cursor-pointer"
+                  title="Sign Out"
+                >
+                  <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </a>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-slate-300 truncate">{email}</p>
-              <span className="text-[9px] text-slate-500 font-medium">Synced Profile</span>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 px-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="text-[10px] text-amber-450 font-bold uppercase tracking-wider">Unsaved Guest</span>
+                </div>
+                <button
+                  onClick={() => setIsProfileOpen(true)}
+                  className="text-slate-455 hover:text-indigo-400 p-1 rounded-lg hover:bg-white/[0.04] transition-all duration-200 cursor-pointer"
+                  title="Guest Statistics"
+                >
+                  <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+                  </svg>
+                </button>
+              </div>
+              <a
+                href="/login"
+                className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-white bg-gradient-to-r from-indigo-500 to-violet-550 hover:from-indigo-455 hover:to-violet-500 rounded-xl py-2.5 transition-all duration-200 cursor-pointer shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 active:scale-98"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Sign In to Save Lists
+              </a>
             </div>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
-            <button
-              onClick={() => setIsProfileOpen(true)}
-              className="text-slate-400 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-white/[0.04] border border-transparent hover:border-white/5 transition-all duration-200 cursor-pointer"
-              title="Profile & statistics"
-            >
-              <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-            <a
-              href="/logout"
-              className="text-slate-400 hover:text-rose-450 p-1.5 rounded-lg hover:bg-rose-500/10 border border-transparent hover:border-rose-550/20 transition-all duration-200 cursor-pointer"
-              title="Sign Out"
-            >
-              <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-            </a>
-          </div>
+          )}
         </div>
       </aside>
 
@@ -1006,18 +1056,33 @@ export default function TodoPage() {
                 <span className="text-[10px] text-slate-500">Download</span>
               </button>
 
-              <a
-                href="/logout"
-                className="w-full flex items-center justify-between text-xs font-semibold text-rose-400 hover:text-rose-350 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-3 transition-all duration-200"
-              >
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                  Sign Out
-                </span>
-                <span className="text-[10px] text-rose-400/80">End Session</span>
-              </a>
+              {isLoggedIn ? (
+                <a
+                  href="/logout"
+                  className="w-full flex items-center justify-between text-xs font-semibold text-rose-450 hover:text-rose-350 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Sign Out
+                  </span>
+                  <span className="text-[10px] text-rose-400/80">End Session</span>
+                </a>
+              ) : (
+                <a
+                  href="/login"
+                  className="w-full flex items-center justify-between text-xs font-semibold text-indigo-300 hover:text-indigo-200 bg-indigo-500/10 hover:bg-indigo-500/15 border border-indigo-500/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Sign In to Save Indefinitely
+                  </span>
+                  <span className="text-[10px] text-indigo-400/80">Persist Data</span>
+                </a>
+              )}
             </div>
           </div>
         </div>
