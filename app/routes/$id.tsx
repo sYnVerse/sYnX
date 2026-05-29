@@ -452,7 +452,7 @@ function TodoItem({ todo }: { todo: Todo }) {
       <span
         className={`flex-1 text-sm transition-all duration-200 ${
           optimisticCompleted
-            ? "line-through text-slate-550 italic opacity-50"
+            ? "line-through text-slate-500 italic opacity-50"
             : "text-slate-200"
         }`}
       >
@@ -653,7 +653,7 @@ export default function TodoPage() {
           </div>
 
           {isCreatingList && (
-            <div className="text-[10px] text-slate-555 flex items-center gap-1.5 px-1 mb-4">
+            <div className="text-[10px] text-slate-500 flex items-center gap-1.5 px-1 mb-4">
               <svg className="w-3.5 h-3.5 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -668,7 +668,7 @@ export default function TodoPage() {
               <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">My Lists</h3>
               <button
                 onClick={() => setIsCreateListOpen(true)}
-                className="text-slate-500 hover:text-indigo-450 p-1 rounded-md hover:bg-white/[0.04] transition-all duration-200 cursor-pointer"
+                className="text-slate-500 hover:text-indigo-400 p-1 rounded-md hover:bg-white/[0.04] transition-all duration-200 cursor-pointer"
                 title="Create new list"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
@@ -695,7 +695,7 @@ export default function TodoPage() {
                       onClick={() => setIsSidebarOpen(false)}
                       className="flex items-center gap-2.5 flex-1 min-w-0"
                     >
-                      <svg className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-indigo-400" : "text-slate-650"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <svg className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-indigo-400" : "text-slate-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <span className="text-xs font-semibold truncate">{list.name}</span>
@@ -703,7 +703,7 @@ export default function TodoPage() {
 
                     <div className="flex items-center gap-1.5">
                       {remainingCount > 0 && (
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-indigo-500/20 text-indigo-300" : "bg-white/5 text-slate-550"}`}>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-indigo-500/20 text-indigo-300" : "bg-white/5 text-slate-400"}`}>
                           {remainingCount}
                         </span>
                       )}
@@ -758,17 +758,17 @@ export default function TodoPage() {
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   onClick={() => setIsProfileOpen(true)}
-                  className="text-slate-455 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-white/[0.04] border border-transparent hover:border-white/5 transition-all duration-200 cursor-pointer"
+                  className="text-slate-400 hover:text-indigo-400 p-1.5 rounded-lg hover:bg-white/[0.04] border border-transparent hover:border-white/5 transition-all duration-200 cursor-pointer"
                   title="Profile & statistics"
                 >
                   <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31(2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </button>
                 <a
                   href="/logout"
-                  className="text-slate-455 hover:text-rose-450 p-1.5 rounded-lg hover:bg-rose-500/10 border border-transparent hover:border-rose-550/20 transition-all duration-200 cursor-pointer"
+                  className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all duration-200 cursor-pointer"
                   title="Sign Out"
                 >
                   <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -782,11 +782,11 @@ export default function TodoPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 px-1">
                   <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                  <span className="text-[10px] text-amber-450 font-bold uppercase tracking-wider">Unsaved Guest</span>
+                  <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">Unsaved Guest</span>
                 </div>
                 <button
                   onClick={() => setIsProfileOpen(true)}
-                  className="text-slate-455 hover:text-indigo-400 p-1 rounded-lg hover:bg-white/[0.04] transition-all duration-200 cursor-pointer"
+                  className="text-slate-400 hover:text-indigo-400 p-1 rounded-lg hover:bg-white/[0.04] transition-all duration-200 cursor-pointer"
                   title="Guest Statistics"
                 >
                   <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -796,7 +796,7 @@ export default function TodoPage() {
               </div>
               <a
                 href="/login"
-                className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-white bg-gradient-to-r from-indigo-500 to-violet-550 hover:from-indigo-455 hover:to-violet-500 rounded-xl py-2.5 transition-all duration-200 cursor-pointer shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 active:scale-98"
+                className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-white bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-500 hover:to-violet-600 rounded-xl py-2.5 transition-all duration-200 cursor-pointer shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 active:scale-98"
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -906,7 +906,7 @@ export default function TodoPage() {
                 name="intent"
                 value="create"
                 disabled={isCreating}
-                className="rounded-xl bg-gradient-to-r from-indigo-500 to-violet-550 hover:from-indigo-400 hover:to-violet-450 text-white font-semibold px-5 py-3 text-sm shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/25 transition-all duration-200 disabled:opacity-50 cursor-pointer active:scale-98 flex items-center justify-center min-w-[70px]"
+                className="rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-400 hover:to-violet-500 text-white font-semibold px-5 py-3 text-sm shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/25 transition-all duration-200 disabled:opacity-50 cursor-pointer active:scale-98 flex items-center justify-center min-w-[70px]"
               >
                 {isCreating ? (
                   <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -932,7 +932,7 @@ export default function TodoPage() {
                 onClick={() => setFilter(f.key)}
                 className={`text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer
                   ${filter === f.key
-                    ? "bg-indigo-650/20 text-indigo-300 shadow-sm"
+                    ? "bg-indigo-600/20 text-indigo-300 shadow-sm"
                     : "text-slate-500 hover:text-slate-350"
                   }`}
               >
@@ -972,7 +972,7 @@ export default function TodoPage() {
         {filteredTodos.length === 0 && totalTodos === 0 ? (
           <EmptyState />
         ) : filteredTodos.length === 0 ? (
-          <div className="text-center py-12 text-slate-550 text-xs">
+          <div className="text-center py-12 text-slate-500 text-xs">
             No {filter === "active" ? "active" : "completed"} tasks in this list.
           </div>
         ) : (
@@ -985,7 +985,7 @@ export default function TodoPage() {
 
         {/* Footer */}
         <footer className="mt-12 pt-6 border-t border-white/[0.04] text-center max-w-lg mx-auto w-full">
-          <p className="text-slate-650 text-[11px] font-medium">
+          <p className="text-slate-500 text-[11px] font-medium">
             sYnX • Sync your tasks. Execute your day.
           </p>
         </footer>
@@ -1009,13 +1009,13 @@ export default function TodoPage() {
 
             {/* Profile Detail */}
             <div className="flex flex-col items-center text-center mb-6">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-violet-550 flex items-center justify-center text-white font-extrabold text-xl shadow-xl shadow-indigo-500/10 mb-3 border border-white/10 relative">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-indigo-500 to-violet-600 flex items-center justify-center text-white font-extrabold text-xl shadow-xl shadow-indigo-500/10 mb-3 border border-white/10 relative">
                 {email.split("@")[0].substring(0, 2).toUpperCase()}
                 <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full" />
               </div>
               <h3 className="text-base font-bold text-slate-200 font-display">{email}</h3>
               <div className="flex items-center gap-1.5 mt-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2.5 py-1">
-                <span className="text-[10px] font-mono text-slate-450 select-all">User ID: {userId}</span>
+                <span className="text-[10px] font-mono text-slate-400 select-all">User ID: {userId}</span>
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(userId);
@@ -1069,7 +1069,7 @@ export default function TodoPage() {
               {isLoggedIn ? (
                 <a
                   href="/logout"
-                  className="w-full flex items-center justify-between text-xs font-semibold text-rose-450 hover:text-rose-350 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
+                  className="w-full flex items-center justify-between text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
                 >
                   <span className="flex items-center gap-2">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -1126,7 +1126,7 @@ export default function TodoPage() {
               <button
                 type="button"
                 onClick={() => setListToRename(null)}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-450 hover:text-slate-250 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-xl transition-all duration-200"
+                className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-xl transition-all duration-200"
               >
                 Cancel
               </button>
@@ -1155,14 +1155,14 @@ export default function TodoPage() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
             <h3 className="text-base font-bold text-slate-200 mb-2 font-display">Delete this list?</h3>
-            <p className="text-xs text-slate-450 mb-5">
+            <p className="text-xs text-slate-400 mb-5">
               Are you sure you want to delete <span className="text-rose-400 font-semibold">"{listToDelete.name}"</span>? This will permanently delete all tasks inside this list. This action is irreversible.
             </p>
             <div className="flex gap-2.5 justify-end">
               <button
                 type="button"
                 onClick={() => setListToDelete(null)}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-450 hover:text-slate-250 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-xl transition-all duration-200"
+                className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-xl transition-all duration-200"
               >
                 Cancel
               </button>
@@ -1216,7 +1216,7 @@ export default function TodoPage() {
                   setNewListInput("");
                   setIsCreateListOpen(false);
                 }}
-                className="px-3.5 py-2 text-xs font-semibold text-slate-455 hover:text-slate-250 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-xl transition-all duration-200"
+                className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-xl transition-all duration-200"
               >
                 Cancel
               </button>
