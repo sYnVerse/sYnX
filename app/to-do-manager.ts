@@ -23,6 +23,7 @@ export class TodoManager {
   constructor(
     private kv: KVNamespace,
     private todosKey: string = "todos",
+    private expirationTtl?: number,
   ) {}
 
   /**
@@ -53,9 +54,8 @@ export class TodoManager {
     };
     const todos = await this.list();
     todos.push(newTodo);
-    await this.kv.put(this.todosKey, JSON.stringify(todos), {
-      expirationTtl: 86400,
-    });
+    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
+    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
     return newTodo;
   }
 
@@ -72,9 +72,8 @@ export class TodoManager {
       throw new Error(`Todo with id ${id} not found`);
     }
     todos[todoIndex].completed = !todos[todoIndex].completed;
-    await this.kv.put(this.todosKey, JSON.stringify(todos), {
-      expirationTtl: 86400,
-    });
+    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
+    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
     return todos[todoIndex];
   }
 
@@ -86,9 +85,8 @@ export class TodoManager {
   async delete(id: string): Promise<void> {
     const todos = await this.list();
     const newTodos = todos.filter((todo) => todo.id !== id);
-    await this.kv.put(this.todosKey, JSON.stringify(newTodos), {
-      expirationTtl: 86400,
-    });
+    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
+    await this.kv.put(this.todosKey, JSON.stringify(newTodos), options);
   }
 
   /**
@@ -105,9 +103,8 @@ export class TodoManager {
       throw new Error(`Todo with id ${id} not found`);
     }
     todos[todoIndex].priority = priority;
-    await this.kv.put(this.todosKey, JSON.stringify(todos), {
-      expirationTtl: 86400,
-    });
+    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
+    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
     return todos[todoIndex];
   }
 
@@ -118,8 +115,7 @@ export class TodoManager {
   async clearCompleted(): Promise<void> {
     const todos = await this.list();
     const activeTodos = todos.filter((todo) => !todo.completed);
-    await this.kv.put(this.todosKey, JSON.stringify(activeTodos), {
-      expirationTtl: 86400,
-    });
+    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
+    await this.kv.put(this.todosKey, JSON.stringify(activeTodos), options);
   }
 }

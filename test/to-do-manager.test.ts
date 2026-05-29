@@ -121,4 +121,15 @@ describe("TodoManager", () => {
       expect(storedTodos[0].id).toBe(todo1.id);
     });
   });
+
+  describe("expirationTtl", () => {
+    it("can be instantiated with an expiration TTL", async () => {
+      const expiringManager = new TodoManager(kv, "expiring_todos", 86400);
+      const todo = await expiringManager.create("Expiring task");
+      expect(todo.text).toBe("Expiring task");
+
+      const stored = await expiringManager.list();
+      expect(stored).toHaveLength(1);
+    });
+  });
 });
