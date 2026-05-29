@@ -1,21 +1,31 @@
 import {
   type LoaderFunctionArgs,
   type ActionFunctionArgs,
+  redirect,
 } from "@remix-run/cloudflare";
 import { useLoaderData, useFetcher, useParams } from "@remix-run/react";
 import { TodoManager } from "~/to-do-manager";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { requireUser } from "~/auth.server";
 
-export const loader = async ({ params, context }: LoaderFunctionArgs) => {
+export const loader = async ({ request, params, context }: LoaderFunctionArgs) => {
+  const { userId, email } = await requireUser(request, context.cloudflare.env);
+  if (params.id !== userId) {
+    return redirect(`/${userId}`);
+  }
   const todoManager = new TodoManager(
     context.cloudflare.env.TO_DO_LIST,
     params.id,
   );
   const todos = await todoManager.list();
-  return { todos };
+  return { todos, email };
 };
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
+  const { userId } = await requireUser(request, context.cloudflare.env);
+  if (params.id !== userId) {
+    return redirect(`/${userId}`);
+  }
   const todoManager = new TodoManager(
     context.cloudflare.env.TO_DO_LIST,
     params.id,
@@ -400,7 +410,7 @@ function TodoItem({ todo }: { todo: Todo }) {
 
 // ─── Main Component ───────────────────────────────────────────
 export default function TodoPage() {
-  const { todos } = useLoaderData<typeof loader>();
+  const { todos, email } = useLoaderData<typeof loader>();
   const params = useParams();
   const createFetcher = useFetcher();
   const clearFetcher = useFetcher();
@@ -468,20 +478,33 @@ export default function TodoPage() {
         <div className="max-w-lg mx-auto w-full flex-1 flex flex-col">
           {/* ── Header ──────────────────────────────────────── */}
           <header className="mb-8">
-            <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center justify-between mb-2">
               <h1
                 className="text-3xl sm:text-4xl font-extrabold bg-gradient-to-r from-indigo-300 via-violet-300 to-fuchsia-300 bg-clip-text text-transparent"
                 style={{ fontFamily: "Outfit, sans-serif" }}
               >
                 To-Do List
               </h1>
-              <ProgressRing completed={completedCount} total={totalTodos} />
+              <div className="flex items-center gap-4">
+                <a
+                  href="/logout"
+                  className="text-xs font-semibold text-slate-400 hover:text-rose-400 transition-colors border border-white/5 hover:border-rose-500/20 px-3 py-1.5 rounded-xl bg-white/5"
+                >
+                  Sign Out
+                </a>
+                <ProgressRing completed={completedCount} total={totalTodos} />
+              </div>
             </div>
-            <p className="text-slate-500 text-sm">
-              {activeCount === 0 && totalTodos > 0
-                ? "🎉 All tasks completed!"
-                : `${activeCount} task${activeCount !== 1 ? "s" : ""} remaining`}
-            </p>
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <p>
+                {activeCount === 0 && totalTodos > 0
+                  ? "🎉 All tasks completed!"
+                  : `${activeCount} task${activeCount !== 1 ? "s" : ""} remaining`}
+              </p>
+              <p className="opacity-80">
+                Logged in as: <span className="text-indigo-400 font-medium">{email}</span>
+              </p>
+            </div>
           </header>
 
           {/* ── Create form ─────────────────────────────────── */}

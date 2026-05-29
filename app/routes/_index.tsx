@@ -1,11 +1,11 @@
-import { redirect } from "@remix-run/react";
-import { nanoid } from "nanoid";
+import { type LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
+import { requireUser } from "~/auth.server";
 
-export const loader = () => {
-  const id = nanoid();
-  return redirect(`/${id}`);
+export const loader = async ({ request, context }: LoaderFunctionArgs) => {
+  const { userId } = await requireUser(request, context.cloudflare.env);
+  return redirect(`/${userId}`);
 };
 
 export default function Index() {
-  return <div>'Whatever you put here will not be shown'</div>;
+  return null;
 }
