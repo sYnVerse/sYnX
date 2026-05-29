@@ -10,12 +10,17 @@ export const subjects = createSubjects({
   }) as any,
 });
 
+let clientCache: ReturnType<typeof createClient> | null = null;
+
 export function getAuthClient(request: Request, env: any) {
-  const issuer = env.OPENAUTH_ISSUER || "https://auth.christran.io";
-  return createClient({
-    clientID: "to-do-list",
-    issuer,
-  });
+  if (!clientCache) {
+    const issuer = env.OPENAUTH_ISSUER || "https://auth.christran.io";
+    clientCache = createClient({
+      clientID: "to-do-list",
+      issuer,
+    });
+  }
+  return clientCache;
 }
 
 export async function requireUser(request: Request, env: any) {
