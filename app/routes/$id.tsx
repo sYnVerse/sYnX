@@ -638,7 +638,7 @@ export default function TodoPage() {
 
       {/* ── Sidebar Component (Desktop and Mobile drawer) ──── */}
       <aside
-        className={`fixed md:sticky top-0 left-0 bottom-0 z-35 md:z-10 w-[280px] bg-slate-900 border-r border-white/[0.08] p-5 flex flex-col justify-between transition-transform duration-300 md:transform-none shadow-2xl md:shadow-none
+        className={`fixed md:sticky top-0 left-0 bottom-0 z-40 md:z-10 w-[280px] bg-slate-900 border-r border-white/[0.08] p-5 flex flex-col justify-between transition-transform duration-300 md:transform-none shadow-2xl md:shadow-none
           ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
         <div className="flex-1 flex flex-col min-h-0">
