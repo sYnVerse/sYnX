@@ -652,16 +652,6 @@ export default function TodoPage() {
             <span className="font-extrabold text-xl bg-gradient-to-r from-white to-slate-300 bg-clip-text text-transparent tracking-tight font-display">sYnX</span>
           </div>
 
-          {/* Add List Button */}
-          <button
-            onClick={() => setIsCreateListOpen(true)}
-            className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-indigo-300 hover:text-white bg-indigo-600/15 hover:bg-indigo-600/25 border border-indigo-500/25 hover:border-indigo-500/35 rounded-xl py-2.5 transition-all duration-200 mb-4 cursor-pointer"
-          >
-            <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            New List
-          </button>
           {isCreatingList && (
             <div className="text-[10px] text-slate-555 flex items-center gap-1.5 px-1 mb-4">
               <svg className="w-3.5 h-3.5 animate-spin text-indigo-400" fill="none" viewBox="0 0 24 24">
@@ -674,7 +664,18 @@ export default function TodoPage() {
 
           {/* Lists Section */}
           <div className="flex-1 flex flex-col min-h-0">
-            <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2 px-1">My Lists</h3>
+            <div className="flex items-center justify-between mb-2 px-1">
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">My Lists</h3>
+              <button
+                onClick={() => setIsCreateListOpen(true)}
+                className="text-slate-500 hover:text-indigo-450 p-1 rounded-md hover:bg-white/[0.04] transition-all duration-200 cursor-pointer"
+                title="Create new list"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+            </div>
             <nav className="space-y-1 overflow-y-auto flex-1 pr-1 scrollbar-thin">
               {lists.map((list: any) => {
                 const isActive = list.id === activeListId;
