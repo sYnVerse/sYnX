@@ -2,6 +2,7 @@ import {
   type LoaderFunctionArgs,
   type ActionFunctionArgs,
   redirect,
+  json,
 } from "@remix-run/cloudflare";
 import { useLoaderData, useFetcher } from "@remix-run/react";
 import { TodoManager, type Todo } from "~/to-do-manager";
@@ -108,10 +109,10 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
   };
 
   if (isNewGuest && guestId) {
-    return Response.json(responsePayload, { headers });
+    return json(responsePayload, { headers });
   }
 
-  return responsePayload;
+  return json(responsePayload);
 };
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
