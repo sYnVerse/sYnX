@@ -10,17 +10,50 @@ export const subjects = createSubjects({
   }) as any,
 });
 
-let clientCache: ReturnType<typeof createClient> | null = null;
+const clients = new Map<string, ReturnType<typeof createClient>>();
+
+function getClientID(request: Request, env: any, defaultClientID: string): string {
+  const url = new URL(request.url);
+  if (env && env.CLIENT_ID_MAP) {
+    try {
+      const map = typeof env.CLIENT_ID_MAP === "string"
+        ? JSON.parse(env.CLIENT_ID_MAP)
+        : env.CLIENT_ID_MAP;
+      if (map && typeof map === "object") {
+        if (map[url.hostname]) {
+          return map[url.hostname];
+        }
+        for (const [key, value] of Object.entries(map)) {
+          if (url.hostname.includes(key)) {
+            return value as string;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Failed to parse CLIENT_ID_MAP:", e);
+    }
+  }
+
+  // Fallbacks
+  if (defaultClientID === "to-do-list") {
+    return url.hostname.includes("synx") ? "synx" : "to-do-list";
+  }
+  return defaultClientID;
+}
 
 export function getAuthClient(request: Request, env: any) {
-  if (!clientCache) {
-    const issuer = env.OPENAUTH_ISSUER || "https://auth.christran.io";
-    clientCache = createClient({
-      clientID: "to-do-list",
+  const clientID = getClientID(request, env, "to-do-list");
+  const issuer = env.OPENAUTH_ISSUER || "https://auth.christran.io";
+  const cacheKey = `${clientID}:${issuer}`;
+  let client = clients.get(cacheKey);
+  if (!client) {
+    client = createClient({
+      clientID,
       issuer,
     });
+    clients.set(cacheKey, client);
   }
-  return clientCache;
+  return client;
 }
 
 export async function requireUser(request: Request, env: any) {
