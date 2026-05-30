@@ -17,10 +17,7 @@ export default {
         context: {
           cloudflare: {
             cf: request.cf,
-            ctx: {
-              waitUntil: ctx.waitUntil.bind(ctx),
-              passThroughOnException: ctx.passThroughOnException.bind(ctx),
-            },
+            ctx,
             caches,
             env,
           },
