@@ -61,6 +61,22 @@ describe("TodoManager", () => {
       const storedTodos = await manager.list();
       expect(storedTodos).toEqual([todo]);
     });
+
+    it("creates a todo with custom reminderAt", async () => {
+      const reminderTime = Date.now() + 60000;
+      const todo = await manager.create("Reminder todo", "medium", reminderTime);
+
+      expect(todo).toMatchObject({
+        text: "Reminder todo",
+        completed: false,
+        priority: "medium",
+        reminderAt: reminderTime,
+        reminderSent: false,
+      });
+
+      const storedTodos = await manager.list();
+      expect(storedTodos).toEqual([todo]);
+    });
   });
 
   describe("toggle()", () => {
@@ -105,6 +121,50 @@ describe("TodoManager", () => {
 
       const storedTodos = await manager.list();
       expect(storedTodos[0].priority).toBe("high");
+    });
+  });
+
+  describe("updateReminder()", () => {
+    it("updates the reminder of a todo", async () => {
+      const todo = await manager.create("Test todo");
+      expect(todo.reminderAt).toBeUndefined();
+
+      const reminderTime = Date.now() + 120000;
+      const updated = await manager.updateReminder(todo.id, reminderTime);
+      expect(updated.reminderAt).toBe(reminderTime);
+      expect(updated.reminderSent).toBe(false);
+
+      const storedTodos = await manager.list();
+      expect(storedTodos[0].reminderAt).toBe(reminderTime);
+      expect(storedTodos[0].reminderSent).toBe(false);
+    });
+
+    it("clears the reminder of a todo", async () => {
+      const reminderTime = Date.now() + 120000;
+      const todo = await manager.create("Test todo", "medium", reminderTime);
+      expect(todo.reminderAt).toBe(reminderTime);
+
+      const updated = await manager.updateReminder(todo.id, undefined);
+      expect(updated.reminderAt).toBeUndefined();
+      expect(updated.reminderSent).toBeUndefined();
+
+      const storedTodos = await manager.list();
+      expect(storedTodos[0].reminderAt).toBeUndefined();
+      expect(storedTodos[0].reminderSent).toBeUndefined();
+    });
+  });
+
+  describe("markReminderSent()", () => {
+    it("marks the reminder of a todo as sent", async () => {
+      const reminderTime = Date.now() + 120000;
+      const todo = await manager.create("Test todo", "medium", reminderTime);
+      expect(todo.reminderSent).toBe(false);
+
+      const updated = await manager.markReminderSent(todo.id);
+      expect(updated.reminderSent).toBe(true);
+
+      const storedTodos = await manager.list();
+      expect(storedTodos[0].reminderSent).toBe(true);
     });
   });
 

@@ -4,6 +4,8 @@ export interface Todo {
   completed: boolean;
   createdAt: number;
   priority: "low" | "medium" | "high";
+  reminderAt?: number;
+  reminderSent?: boolean;
 }
 
 /**
@@ -44,13 +46,19 @@ export class TodoManager {
    * @param priority - The priority level of the todo item (defaults to "medium")
    * @returns Promise containing the newly created Todo item
    */
-  async create(text: string, priority: "low" | "medium" | "high" = "medium"): Promise<Todo> {
+  async create(
+    text: string,
+    priority: "low" | "medium" | "high" = "medium",
+    reminderAt?: number,
+  ): Promise<Todo> {
     const newTodo: Todo = {
       id: crypto.randomUUID(),
       text,
       completed: false,
       createdAt: Date.now(),
       priority,
+      reminderAt,
+      reminderSent: reminderAt ? false : undefined,
     };
     const todos = await this.list();
     todos.push(newTodo);
@@ -103,6 +111,44 @@ export class TodoManager {
       throw new Error(`Todo with id ${id} not found`);
     }
     todos[todoIndex].priority = priority;
+    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
+    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
+    return todos[todoIndex];
+  }
+
+  /**
+   * Updates the reminder timestamp of a todo item
+   * @param id - The unique identifier of the todo item to update
+   * @param reminderAt - The new reminder timestamp (in ms), or undefined to clear
+   * @returns Promise containing the updated Todo item
+   * @throws Error if the todo item with the specified ID is not found
+   */
+  async updateReminder(id: string, reminderAt?: number): Promise<Todo> {
+    const todos = await this.list();
+    const todoIndex = todos.findIndex((todo) => todo.id === id);
+    if (todoIndex === -1) {
+      throw new Error(`Todo with id ${id} not found`);
+    }
+    todos[todoIndex].reminderAt = reminderAt;
+    todos[todoIndex].reminderSent = reminderAt ? false : undefined;
+    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
+    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
+    return todos[todoIndex];
+  }
+
+  /**
+   * Marks a reminder as sent
+   * @param id - The unique identifier of the todo item
+   * @returns Promise containing the updated Todo item
+   * @throws Error if the todo item with the specified ID is not found
+   */
+  async markReminderSent(id: string): Promise<Todo> {
+    const todos = await this.list();
+    const todoIndex = todos.findIndex((todo) => todo.id === id);
+    if (todoIndex === -1) {
+      throw new Error(`Todo with id ${id} not found`);
+    }
+    todos[todoIndex].reminderSent = true;
     const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
     await this.kv.put(this.todosKey, JSON.stringify(todos), options);
     return todos[todoIndex];
