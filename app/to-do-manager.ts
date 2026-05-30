@@ -165,3 +165,80 @@ export class TodoManager {
     await this.kv.put(this.todosKey, JSON.stringify(activeTodos), options);
   }
 }
+
+export interface UserSettings {
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  phoneNumber: string;
+  discordWebhookUrl: string;
+}
+
+export interface PendingReminder {
+  id: string; // todoId
+  listId: string;
+  userId: string;
+  text: string;
+  reminderAt: number;
+  email?: string;
+  phoneNumber?: string;
+  discordWebhookUrl?: string;
+}
+
+export class PendingRemindersManager {
+  constructor(private kv: KVNamespace) {}
+
+  async list(): Promise<PendingReminder[]> {
+    const list = await this.kv.get("reminders:pending", "json");
+    return (list || []) as PendingReminder[];
+  }
+
+  async syncReminder(
+    todoId: string,
+    listId: string,
+    userId: string,
+    text: string,
+    reminderAt: number,
+    userEmail?: string
+  ): Promise<void> {
+    const queue = await this.list();
+    
+    // Fetch user settings
+    const settings = await this.kv.get(`user:${userId}:settings`, "json") as UserSettings | null;
+    const isGuest = userId.startsWith("guest_");
+    const emailEnabled = !isGuest && (settings?.emailEnabled ?? false);
+    const smsEnabled = !isGuest && (settings?.smsEnabled ?? false);
+    const phoneNumber = settings?.phoneNumber || "";
+    const discordWebhookUrl = settings?.discordWebhookUrl || "";
+
+    const newReminder: PendingReminder = {
+      id: todoId,
+      listId,
+      userId,
+      text,
+      reminderAt,
+    };
+
+    if (emailEnabled && userEmail) {
+      newReminder.email = userEmail;
+    }
+    if (smsEnabled && phoneNumber) {
+      newReminder.phoneNumber = phoneNumber;
+    }
+    if (discordWebhookUrl) {
+      newReminder.discordWebhookUrl = discordWebhookUrl;
+    }
+
+    // Filter out existing and add new
+    const filtered = queue.filter(r => r.id !== todoId);
+    filtered.push(newReminder);
+    filtered.sort((a, b) => a.reminderAt - b.reminderAt);
+
+    await this.kv.put("reminders:pending", JSON.stringify(filtered));
+  }
+
+  async removeReminder(todoId: string): Promise<void> {
+    const queue = await this.list();
+    const filtered = queue.filter(r => r.id !== todoId);
+    await this.kv.put("reminders:pending", JSON.stringify(filtered));
+  }
+}

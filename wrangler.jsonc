@@ -16,5 +16,10 @@
       "binding": "TO_DO_LIST",
       "id": "ff57cf7e39654fcfb2f4d418726900f8"
     }
-  ]
+  ],
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  }
 }

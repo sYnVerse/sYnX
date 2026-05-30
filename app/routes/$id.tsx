@@ -5,7 +5,7 @@ import {
   json,
 } from "@remix-run/cloudflare";
 import { useLoaderData, useFetcher } from "@remix-run/react";
-import { TodoManager, type Todo } from "~/to-do-manager";
+import { TodoManager, type Todo, PendingRemindersManager, type UserSettings } from "~/to-do-manager";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getOptionalUser } from "~/auth.server";
 
@@ -94,10 +94,25 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     completedTasks += item.todos.filter((t: any) => t.completed).length;
   }
 
+  // Load settings
+  let settings = {
+    emailEnabled: false,
+    smsEnabled: false,
+    phoneNumber: "",
+    discordWebhookUrl: ""
+  };
+  if (userId) {
+    const settingsVal = await kv.get(`user:${userId}:settings`, "json");
+    if (settingsVal) {
+      settings = settingsVal as any;
+    }
+  }
+
   const responsePayload = {
     userId,
     email,
     isLoggedIn,
+    settings,
     lists: listsWithTodos,
     activeListId,
     todos,
@@ -116,7 +131,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
 };
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  const { userId, isLoggedIn } = await getOptionalUser(request, context.cloudflare.env);
+  const { userId, email, isLoggedIn } = await getOptionalUser(request, context.cloudflare.env);
   const kv = context.cloudflare.env.TO_DO_LIST;
   const activeListId = params.id as string;
 
@@ -146,19 +161,31 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       if (typeof text !== "string" || !text)
         return Response.json({ error: "Invalid text" }, { status: 400 });
       
-      await todoManager.create(text, priority, reminderAt);
+      const newTodo = await todoManager.create(text, priority, reminderAt);
+      if (reminderAt) {
+        const queueManager = new PendingRemindersManager(kv);
+        await queueManager.syncReminder(newTodo.id, activeListId, userId, text, reminderAt, email);
+      }
       return { success: true };
     }
 
     case "toggle": {
       const id = formData.get("id") as string;
-      await todoManager.toggle(id);
+      const toggled = await todoManager.toggle(id);
+      const queueManager = new PendingRemindersManager(kv);
+      if (toggled.completed) {
+        await queueManager.removeReminder(id);
+      } else if (toggled.reminderAt && !toggled.reminderSent) {
+        await queueManager.syncReminder(id, activeListId, userId, toggled.text, toggled.reminderAt, email);
+      }
       return { success: true };
     }
 
     case "delete": {
       const id = formData.get("id") as string;
       await todoManager.delete(id);
+      const queueManager = new PendingRemindersManager(kv);
+      await queueManager.removeReminder(id);
       return { success: true };
     }
 
@@ -173,13 +200,55 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const id = formData.get("id") as string;
       const reminderAtVal = formData.get("reminderAt");
       const reminderAt = reminderAtVal ? Number(reminderAtVal) : undefined;
-      await todoManager.updateReminder(id, reminderAt);
+      const updated = await todoManager.updateReminder(id, reminderAt);
+      
+      const queueManager = new PendingRemindersManager(kv);
+      if (reminderAt) {
+        await queueManager.syncReminder(id, activeListId, userId, updated.text, reminderAt, email);
+      } else {
+        await queueManager.removeReminder(id);
+      }
       return { success: true };
     }
 
     case "markReminderSent": {
       const id = formData.get("id") as string;
       await todoManager.markReminderSent(id);
+      const queueManager = new PendingRemindersManager(kv);
+      await queueManager.removeReminder(id);
+      return { success: true };
+    }
+
+    case "updateSettings": {
+      const emailEnabled = isLoggedIn && formData.get("emailEnabled") === "true";
+      const smsEnabled = isLoggedIn && formData.get("smsEnabled") === "true";
+      const phoneNumber = isLoggedIn ? ((formData.get("phoneNumber") as string) || "") : "";
+      const discordWebhookUrl = (formData.get("discordWebhookUrl") as string) || "";
+
+      const settings: UserSettings = {
+        emailEnabled,
+        smsEnabled,
+        phoneNumber: phoneNumber.trim(),
+        discordWebhookUrl: discordWebhookUrl.trim(),
+      };
+
+      await kv.put(`user:${userId}:settings`, JSON.stringify(settings));
+
+      const queueManager = new PendingRemindersManager(kv);
+      const queue = await queueManager.list();
+      const userReminders = queue.filter(r => r.userId === userId);
+      
+      for (const reminder of userReminders) {
+        await queueManager.syncReminder(
+          reminder.id,
+          reminder.listId,
+          reminder.userId,
+          reminder.text,
+          reminder.reminderAt,
+          email
+        );
+      }
+
       return { success: true };
     }
 
@@ -726,10 +795,11 @@ function TodoItem({ todo }: { todo: Todo }) {
 }
 
 export default function TodoPage() {
-  const { userId, email, isLoggedIn, lists, activeListId, todos, stats } = useLoaderData<typeof loader>();
+  const { userId, email, isLoggedIn, settings, lists, activeListId, todos, stats } = useLoaderData<typeof loader>();
   const createFetcher = useFetcher();
   const clearFetcher = useFetcher();
   const listFetcher = useFetcher();
+  const settingsFetcher = useFetcher();
   
   const inputRef = useRef<HTMLInputElement>(null);
   const listNameInputRef = useRef<HTMLInputElement>(null);
@@ -739,6 +809,31 @@ export default function TodoPage() {
   const [toast, setToast] = useState({ message: "", visible: false });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  // Strips "+1" prefix if present to display only 10 digits in input
+  const getDisplayPhone = (phone?: string) => {
+    if (!phone) return "";
+    const cleaned = phone.trim().replace(/\D/g, "");
+    if (cleaned.length === 11 && cleaned.startsWith("1")) {
+      return cleaned.substring(1);
+    }
+    return cleaned;
+  };
+
+  // Notification settings modal states
+  const [emailEnabled, setEmailEnabled] = useState(settings?.emailEnabled ?? false);
+  const [smsEnabled, setSmsEnabled] = useState(settings?.smsEnabled ?? false);
+  const [phoneInput, setPhoneInput] = useState(getDisplayPhone(settings?.phoneNumber));
+  const [discordEnabled, setDiscordEnabled] = useState(!!settings?.discordWebhookUrl);
+  const [discordInput, setDiscordInput] = useState(settings?.discordWebhookUrl ?? "");
+
+  useEffect(() => {
+    setEmailEnabled(settings?.emailEnabled ?? false);
+    setSmsEnabled(settings?.smsEnabled ?? false);
+    setPhoneInput(getDisplayPhone(settings?.phoneNumber));
+    setDiscordEnabled(!!settings?.discordWebhookUrl);
+    setDiscordInput(settings?.discordWebhookUrl ?? "");
+  }, [settings]);
 
   // Reminder States for Creation Form
   const [reminderMode, setReminderMode] = useState<"none" | "duration" | "specific">("none");
@@ -1516,6 +1611,139 @@ export default function TodoPage() {
                 <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Done</div>
               </div>
             </div>
+
+            {/* Notification Settings */}
+            {userId && (
+              <div className="mb-6">
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Notification Channels</h4>
+                <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-4 flex flex-col gap-4 text-xs">
+                  {/* Email Channel */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <p className="font-semibold text-slate-300">Email Notifications</p>
+                        {!isLoggedIn && (
+                          <span className="text-[8px] bg-slate-800 text-slate-400 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider select-none">
+                            Sign In Required
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-slate-500">
+                        {isLoggedIn ? `Receive alerts at ${email}` : "Get alerts sent to your email"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!isLoggedIn}
+                      onClick={() => setEmailEnabled(!emailEnabled)}
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none relative disabled:opacity-50 disabled:cursor-not-allowed
+                        ${emailEnabled && isLoggedIn ? "bg-indigo-600" : "bg-slate-800"}`}
+                    >
+                      <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200
+                        ${emailEnabled && isLoggedIn ? "translate-x-4" : "translate-x-0"}`} />
+                    </button>
+                  </div>
+
+                  <hr className="border-white/[0.04]" />
+
+                  {/* SMS Channel */}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <p className="font-semibold text-slate-300">SMS Notifications</p>
+                          {!isLoggedIn && (
+                            <span className="text-[8px] bg-slate-800 text-slate-400 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider select-none">
+                              Sign In Required
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500">Receive text alerts</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={!isLoggedIn}
+                        onClick={() => setSmsEnabled(!smsEnabled)}
+                        className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none relative disabled:opacity-50 disabled:cursor-not-allowed
+                          ${smsEnabled && isLoggedIn ? "bg-indigo-600" : "bg-slate-800"}`}
+                      >
+                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200
+                          ${smsEnabled && isLoggedIn ? "translate-x-4" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+                    {smsEnabled && isLoggedIn && (
+                      <div className="flex rounded-lg bg-slate-950 border border-white/[0.08] overflow-hidden focus-within:ring-1 focus-within:ring-indigo-500/50">
+                        <span className="bg-white/[0.04] text-slate-400 px-3 py-2 text-xs border-r border-white/[0.08] select-none flex items-center">
+                          +1
+                        </span>
+                        <input
+                          type="tel"
+                          placeholder="10-digit number"
+                          value={phoneInput}
+                          onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, "").substring(0, 10))}
+                          className="w-full text-xs bg-transparent text-slate-350 px-3 py-2 focus:outline-none"
+                          required
+                          pattern="[0-9]{10}"
+                          maxLength={10}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <hr className="border-white/[0.04]" />
+
+                  {/* Discord Channel */}
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-300">Discord Webhook</p>
+                        <p className="text-[10px] text-slate-500">Alert in your Discord channel</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setDiscordEnabled(!discordEnabled)}
+                        className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none relative
+                          ${discordEnabled ? "bg-indigo-600" : "bg-slate-800"}`}
+                      >
+                        <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200
+                          ${discordEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+                    {discordEnabled && (
+                      <input
+                        type="url"
+                        placeholder="https://discord.com/api/webhooks/..."
+                        value={discordInput}
+                        onChange={(e) => setDiscordInput(e.target.value)}
+                        className="w-full text-xs rounded-lg bg-slate-950 border border-white/[0.08] text-slate-355 px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                      />
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cleanPhone = phoneInput.replace(/\D/g, "");
+                      if (smsEnabled && cleanPhone.length !== 10) {
+                        showToast("⚠️ Phone number must be exactly 10 digits!");
+                        return;
+                      }
+                      settingsFetcher.submit({
+                        intent: "updateSettings",
+                        emailEnabled: emailEnabled ? "true" : "false",
+                        smsEnabled: smsEnabled ? "true" : "false",
+                        phoneNumber: smsEnabled ? `+1${cleanPhone}` : "",
+                        discordWebhookUrl: discordEnabled ? discordInput : "",
+                      }, { method: "post" });
+                      showToast("✓ Saved Preferences!");
+                    }}
+                    className="w-full mt-2 text-center text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl py-2.5 transition-all cursor-pointer shadow-md active:scale-[0.98]"
+                  >
+                    Save Preferences
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Controls */}
             <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Options</h4>
