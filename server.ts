@@ -31,20 +31,49 @@ export default {
   },
 
   async scheduled(event, env: any, ctx) {
-    const kv = env.TO_DO_LIST;
+    const db = env.DB;
     const now = Date.now();
 
-    const queue = (await kv.get("reminders:pending", "json") || []) as PendingReminder[];
-    if (queue.length === 0) return;
+    // 1. Clean up expired guest lists and their todos (via SQLite CASCADE deletion)
+    try {
+      await db.prepare("DELETE FROM lists WHERE expiration_ttl IS NOT NULL AND (created_at + (expiration_ttl * 1000)) <= ?").bind(now).run();
+    } catch (e) {
+      console.error("Failed to delete expired guest lists:", e);
+    }
 
-    const dueReminders = queue.filter(r => r.reminderAt <= now);
+    // 2. Fetch due reminders with user settings and emails
+    let dueReminders: any[] = [];
+    try {
+      const { results } = await db.prepare(`
+        SELECT 
+          t.id, t.list_id as listId, t.text, t.reminder_at as reminderAt,
+          l.owner_id as userId,
+          s.email, s.email_enabled as emailEnabled, s.sms_enabled as smsEnabled, 
+          s.phone_number as phoneNumber, s.discord_webhook_url as discordWebhookUrl
+        FROM todos t
+        JOIN lists l ON t.list_id = l.id
+        LEFT JOIN user_settings s ON l.owner_id = s.user_id
+        WHERE t.completed = 0 
+          AND t.reminder_at IS NOT NULL 
+          AND (t.reminder_sent IS NULL OR t.reminder_sent = 0)
+          AND t.reminder_at <= ?
+      `).bind(now).all();
+      dueReminders = results || [];
+    } catch (e) {
+      console.error("Failed to query due reminders:", e);
+      return;
+    }
+
     if (dueReminders.length === 0) return;
 
     for (const reminder of dueReminders) {
       const promises: Promise<any>[] = [];
 
+      const emailEnabled = Boolean(reminder.emailEnabled);
+      const smsEnabled = Boolean(reminder.smsEnabled);
+
       // Email (Resend)
-      if (reminder.email && env.RESEND_API_KEY) {
+      if (reminder.email && emailEnabled && env.RESEND_API_KEY) {
         promises.push(
           fetch("https://api.resend.com/emails", {
             method: "POST",
@@ -65,7 +94,7 @@ export default {
       }
 
       // SMS (Twilio)
-      if (reminder.phoneNumber && env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER) {
+      if (reminder.phoneNumber && smsEnabled && env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER) {
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`;
         const auth = btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`);
         const formData = new URLSearchParams();
@@ -108,16 +137,12 @@ export default {
         ctx.waitUntil(Promise.all(promises));
       }
 
-      const listKey = `list:${reminder.listId}:todos`;
-      const todos = (await kv.get(listKey, "json") || []) as any[];
-      const todoIdx = todos.findIndex((t: any) => t.id === reminder.id);
-      if (todoIdx !== -1) {
-        todos[todoIdx].reminderSent = true;
-        await kv.put(listKey, JSON.stringify(todos));
+      // Mark reminder as sent in the database
+      try {
+        await db.prepare("UPDATE todos SET reminder_sent = 1 WHERE id = ?").bind(reminder.id).run();
+      } catch (e) {
+        console.error("Failed to mark reminder sent:", e);
       }
     }
-
-    const updatedQueue = queue.filter(r => r.reminderAt > now);
-    await kv.put("reminders:pending", JSON.stringify(updatedQueue));
   }
 } satisfies ExportedHandler<Env>;

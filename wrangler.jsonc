@@ -11,10 +11,11 @@
   "observability": {
     "enabled": true
   },
-  "kv_namespaces": [
+  "d1_databases": [
     {
-      "binding": "TO_DO_LIST",
-      "id": "ff57cf7e39654fcfb2f4d418726900f8"
+      "binding": "DB",
+      "database_name": "to-do-list-db",
+      "database_id": "00000000-0000-0000-0000-000000000000"
     }
   ],
   "triggers": {

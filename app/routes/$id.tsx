@@ -5,48 +5,49 @@ import {
   json,
 } from "@remix-run/cloudflare";
 import { useLoaderData, useFetcher } from "@remix-run/react";
-import { TodoManager, type Todo, PendingRemindersManager, type UserSettings } from "~/to-do-manager";
+import { TodoManager, type Todo, type UserSettings } from "~/to-do-manager";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getOptionalUser } from "~/auth.server";
 
 export const loader = async ({ request, params, context }: LoaderFunctionArgs) => {
   const { userId, email, isLoggedIn, guestId, isNewGuest } = await getOptionalUser(request, context.cloudflare.env);
-  const kv = context.cloudflare.env.TO_DO_LIST;
+  const db = context.cloudflare.env.DB;
 
   const headers = new Headers();
   if (isNewGuest && guestId) {
     headers.append("Set-Cookie", `guest_session=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
   }
 
-  // Load lists
-  let lists: any = await kv.get(`user:${userId}:lists`, "json");
-
-  // Migration logic
-  if (!lists) {
-    // Check if legacy tasks exist under userId (only if logged in)
-    let legacyTodos: any = [];
-    if (isLoggedIn) {
-      const legacyManager = new TodoManager(kv, userId);
-      legacyTodos = await legacyManager.list();
+  // Auto-sync user email in settings if logged in
+  if (isLoggedIn && email) {
+    try {
+      await db.prepare(
+        `INSERT INTO user_settings (user_id, email) VALUES (?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET email = excluded.email`
+      ).bind(userId, email).run();
+    } catch (e) {
+      console.error("Failed to sync user email in settings:", e);
     }
-    const defaultListId = crypto.randomUUID();
-    const options = isLoggedIn ? {} : { expirationTtl: 86400 };
+  }
 
-    if (legacyTodos && legacyTodos.length > 0) {
-      // Migrate legacy tasks
-      lists = [{ id: defaultListId, name: "My Tasks", createdAt: Date.now() }];
-      await kv.put(`user:${userId}:lists`, JSON.stringify(lists), options);
-      await kv.put(`list:${defaultListId}:meta`, JSON.stringify({ id: defaultListId, name: "My Tasks", ownerId: userId, createdAt: Date.now() }), options);
-      await kv.put(`list:${defaultListId}:todos`, JSON.stringify(legacyTodos), options);
-      
-      // Delete legacy key to avoid re-migration
-      await kv.delete(userId);
-    } else {
-      // Setup a fresh default list
-      lists = [{ id: defaultListId, name: "My Tasks", createdAt: Date.now() }];
-      await kv.put(`user:${userId}:lists`, JSON.stringify(lists), options);
-      await kv.put(`list:${defaultListId}:meta`, JSON.stringify({ id: defaultListId, name: "My Tasks", ownerId: userId, createdAt: Date.now() }), options);
-      await kv.put(`list:${defaultListId}:todos`, JSON.stringify([]), options);
+  // Load lists
+  let lists: any[] = [];
+  try {
+    const { results: listRows } = await db.prepare("SELECT * FROM lists WHERE owner_id = ? ORDER BY created_at ASC").bind(userId).all();
+    lists = listRows || [];
+  } catch (e) {
+    console.error("Failed to load lists:", e);
+  }
+
+  // Default setup if no lists exist
+  if (lists.length === 0) {
+    const defaultListId = crypto.randomUUID();
+    try {
+      await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, ?)")
+        .bind(defaultListId, "My Tasks", userId, Date.now(), isLoggedIn ? null : 86400)
+        .run();
+    } catch (e) {
+      console.error("Failed to create default list:", e);
     }
 
     if (isNewGuest && guestId) {
@@ -63,25 +64,49 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     if (lists.length > 0) {
       return redirect(`/${lists[0].id}`, { headers: isNewGuest && guestId ? headers : undefined });
     } else {
-      // Fallback if lists array is empty
       const defaultListId = crypto.randomUUID();
-      lists = [{ id: defaultListId, name: "My Tasks", createdAt: Date.now() }];
-      const options = isLoggedIn ? {} : { expirationTtl: 86400 };
-      await kv.put(`user:${userId}:lists`, JSON.stringify(lists), options);
-      await kv.put(`list:${defaultListId}:meta`, JSON.stringify({ id: defaultListId, name: "My Tasks", ownerId: userId, createdAt: Date.now() }), options);
-      await kv.put(`list:${defaultListId}:todos`, JSON.stringify([]), options);
+      try {
+        await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, ?)")
+          .bind(defaultListId, "My Tasks", userId, Date.now(), isLoggedIn ? null : 86400)
+          .run();
+      } catch (e) {
+        console.error("Failed to create fallback list:", e);
+      }
       return redirect(`/${defaultListId}`, { headers: isNewGuest && guestId ? headers : undefined });
     }
   }
 
-  // Load todos for all lists to get detailed stats and active list's todos
-  const listsWithTodos = await Promise.all(
-    lists.map(async (list: any) => {
-      const manager = new TodoManager(kv, `list:${list.id}:todos`, isLoggedIn ? undefined : 86400);
-      const todos = await manager.list();
-      return { ...list, todos };
-    })
-  );
+  // Load all todos for the user's lists in a single join query
+  let allTodos: any[] = [];
+  try {
+    const { results } = await db.prepare(`
+      SELECT t.* FROM todos t
+      JOIN lists l ON t.list_id = l.id
+      WHERE l.owner_id = ?
+    `).bind(userId).all();
+    allTodos = results || [];
+  } catch (e) {
+    console.error("Failed to query todos:", e);
+  }
+
+  const listsWithTodos = lists.map((list: any) => {
+    const listTodos = allTodos
+      .filter((t: any) => t.list_id === list.id)
+      .map((t: any) => ({
+        id: t.id,
+        text: t.text,
+        completed: Boolean(t.completed),
+        createdAt: Number(t.created_at),
+        priority: t.priority as "low" | "medium" | "high",
+        reminderAt: t.reminder_at ? Number(t.reminder_at) : undefined,
+        reminderSent: t.reminder_sent !== null ? Boolean(t.reminder_sent) : undefined,
+      }))
+      .sort((a: any, b: any) => b.createdAt - a.createdAt);
+    return {
+      ...list,
+      todos: listTodos,
+    };
+  });
 
   const activeList = listsWithTodos.find((l: any) => l.id === activeListId);
   const todos = activeList ? activeList.todos : [];
@@ -102,9 +127,18 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     discordWebhookUrl: ""
   };
   if (userId) {
-    const settingsVal = await kv.get(`user:${userId}:settings`, "json");
-    if (settingsVal) {
-      settings = settingsVal as any;
+    try {
+      const settingsVal = await db.prepare("SELECT * FROM user_settings WHERE user_id = ?").bind(userId).first<any>();
+      if (settingsVal) {
+        settings = {
+          emailEnabled: Boolean(settingsVal.email_enabled),
+          smsEnabled: Boolean(settingsVal.sms_enabled),
+          phoneNumber: settingsVal.phone_number || "",
+          discordWebhookUrl: settingsVal.discord_webhook_url || ""
+        };
+      }
+    } catch (e) {
+      console.error("Failed to load settings:", e);
     }
   }
 
@@ -132,12 +166,19 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
   const { userId, email, isLoggedIn } = await getOptionalUser(request, context.cloudflare.env);
-  const kv = context.cloudflare.env.TO_DO_LIST;
+  const db = context.cloudflare.env.DB;
   const activeListId = params.id as string;
 
   // Check list ownership
-  const lists: any = await kv.get(`user:${userId}:lists`, "json") || [];
-  const hasOwnership = lists.some((l: any) => l.id === activeListId);
+  let hasOwnership = false;
+  if (activeListId) {
+    try {
+      const hasOwnershipRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(activeListId, userId).first();
+      hasOwnership = !!hasOwnershipRow;
+    } catch (e) {
+      console.error("Failed to verify list ownership:", e);
+    }
+  }
 
   const formData = await request.formData();
   const intent = formData.get("intent");
@@ -147,8 +188,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
   }
 
-  const options = isLoggedIn ? {} : { expirationTtl: 86400 };
-  const todoManager = new TodoManager(kv, `list:${activeListId}:todos`, isLoggedIn ? undefined : 86400);
+  const todoManager = new TodoManager(db, activeListId);
 
   switch (intent) {
     case "create": {
@@ -161,31 +201,19 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       if (typeof text !== "string" || !text)
         return Response.json({ error: "Invalid text" }, { status: 400 });
       
-      const newTodo = await todoManager.create(text, priority, reminderAt);
-      if (reminderAt) {
-        const queueManager = new PendingRemindersManager(kv);
-        await queueManager.syncReminder(newTodo.id, activeListId, userId, text, reminderAt, email);
-      }
+      await todoManager.create(text, priority, reminderAt);
       return { success: true };
     }
 
     case "toggle": {
       const id = formData.get("id") as string;
-      const toggled = await todoManager.toggle(id);
-      const queueManager = new PendingRemindersManager(kv);
-      if (toggled.completed) {
-        await queueManager.removeReminder(id);
-      } else if (toggled.reminderAt && !toggled.reminderSent) {
-        await queueManager.syncReminder(id, activeListId, userId, toggled.text, toggled.reminderAt, email);
-      }
+      await todoManager.toggle(id);
       return { success: true };
     }
 
     case "delete": {
       const id = formData.get("id") as string;
       await todoManager.delete(id);
-      const queueManager = new PendingRemindersManager(kv);
-      await queueManager.removeReminder(id);
       return { success: true };
     }
 
@@ -200,22 +228,13 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const id = formData.get("id") as string;
       const reminderAtVal = formData.get("reminderAt");
       const reminderAt = reminderAtVal ? Number(reminderAtVal) : undefined;
-      const updated = await todoManager.updateReminder(id, reminderAt);
-      
-      const queueManager = new PendingRemindersManager(kv);
-      if (reminderAt) {
-        await queueManager.syncReminder(id, activeListId, userId, updated.text, reminderAt, email);
-      } else {
-        await queueManager.removeReminder(id);
-      }
+      await todoManager.updateReminder(id, reminderAt);
       return { success: true };
     }
 
     case "markReminderSent": {
       const id = formData.get("id") as string;
       await todoManager.markReminderSent(id);
-      const queueManager = new PendingRemindersManager(kv);
-      await queueManager.removeReminder(id);
       return { success: true };
     }
 
@@ -225,28 +244,24 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const phoneNumber = isLoggedIn ? ((formData.get("phoneNumber") as string) || "") : "";
       const discordWebhookUrl = (formData.get("discordWebhookUrl") as string) || "";
 
-      const settings: UserSettings = {
-        emailEnabled,
-        smsEnabled,
-        phoneNumber: phoneNumber.trim(),
-        discordWebhookUrl: discordWebhookUrl.trim(),
-      };
-
-      await kv.put(`user:${userId}:settings`, JSON.stringify(settings));
-
-      const queueManager = new PendingRemindersManager(kv);
-      const queue = await queueManager.list();
-      const userReminders = queue.filter(r => r.userId === userId);
-      
-      for (const reminder of userReminders) {
-        await queueManager.syncReminder(
-          reminder.id,
-          reminder.listId,
-          reminder.userId,
-          reminder.text,
-          reminder.reminderAt,
-          email
-        );
+      try {
+        await db.prepare(
+          `INSERT INTO user_settings (user_id, email_enabled, sms_enabled, phone_number, discord_webhook_url)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(user_id) DO UPDATE SET
+             email_enabled = excluded.email_enabled,
+             sms_enabled = excluded.sms_enabled,
+             phone_number = excluded.phone_number,
+             discord_webhook_url = excluded.discord_webhook_url`
+        ).bind(
+          userId,
+          emailEnabled ? 1 : 0,
+          smsEnabled ? 1 : 0,
+          phoneNumber.trim(),
+          discordWebhookUrl.trim()
+        ).run();
+      } catch (e) {
+        console.error("Failed to update settings in database:", e);
       }
 
       return { success: true };
@@ -263,10 +278,13 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         return Response.json({ error: "Invalid list name" }, { status: 400 });
       }
       const newListId = crypto.randomUUID();
-      const newLists = [...lists, { id: newListId, name: listName.trim(), createdAt: Date.now() }];
-      await kv.put(`user:${userId}:lists`, JSON.stringify(newLists), options);
-      await kv.put(`list:${newListId}:meta`, JSON.stringify({ id: newListId, name: listName.trim(), ownerId: userId, createdAt: Date.now() }), options);
-      await kv.put(`list:${newListId}:todos`, JSON.stringify([]), options);
+      try {
+        await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, ?)")
+          .bind(newListId, listName.trim(), userId, Date.now(), isLoggedIn ? null : 86400)
+          .run();
+      } catch (e) {
+        console.error("Failed to create list:", e);
+      }
       return redirect(`/${newListId}`);
     }
 
@@ -276,30 +294,32 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       if (typeof newName !== "string" || !newName.trim()) {
         return Response.json({ error: "Invalid list name" }, { status: 400 });
       }
-      const newLists = lists.map((l: any) => {
-        if (l.id === listId) {
-          return { ...l, name: newName.trim() };
-        }
-        return l;
-      });
-      await kv.put(`user:${userId}:lists`, JSON.stringify(newLists), options);
-      await kv.put(`list:${listId}:meta`, JSON.stringify({ id: listId, name: newName.trim(), ownerId: userId, createdAt: Date.now() }), options);
+      try {
+        await db.prepare("UPDATE lists SET name = ? WHERE id = ?").bind(newName.trim(), listId).run();
+      } catch (e) {
+        console.error("Failed to rename list:", e);
+      }
       return { success: true };
     }
 
     case "deleteList": {
       const listId = formData.get("listId") as string;
-      // Filter out the deleted list
-      const newLists = lists.filter((l: any) => l.id !== listId);
-      await kv.put(`user:${userId}:lists`, JSON.stringify(newLists), options);
-      // Delete list data
-      await kv.delete(`list:${listId}:meta`);
-      await kv.delete(`list:${listId}:todos`);
+      try {
+        await db.prepare("DELETE FROM lists WHERE id = ?").bind(listId).run();
+      } catch (e) {
+        console.error("Failed to delete list:", e);
+      }
 
       if (activeListId === listId) {
-        if (newLists.length > 0) {
-          return redirect(`/${newLists[0].id}`);
-        } else {
+        try {
+          const firstList = await db.prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1").bind(userId).first<any>();
+          if (firstList) {
+            return redirect(`/${firstList.id}`);
+          } else {
+            return redirect("/");
+          }
+        } catch (e) {
+          console.error("Failed to find fallback list:", e);
           return redirect("/");
         }
       }

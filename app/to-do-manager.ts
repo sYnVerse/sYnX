@@ -8,164 +8,6 @@ export interface Todo {
   reminderSent?: boolean;
 }
 
-/**
- * TodoManager handles all interactions with the Todos KV store.
- * This class provides CRUD operations for managing todo items in Cloudflare KV storage.
- *
- * By separating all of the logic for interacting with the KV store from the
- * rest of the Remix application, we can easily test the logic in isolation
- * using [Cloudflare's vitest integration](https://developers.cloudflare.com/workers/testing/vitest-integration/)
- */
-export class TodoManager {
-  /**
-   * Creates a new TodoManager instance
-   * @param kv - The Cloudflare KV namespace instance to use for storage
-   * @param todosKey - The key under which todos will be stored in KV (defaults to "todos")
-   */
-  constructor(
-    private kv: KVNamespace,
-    private todosKey: string = "todos",
-    private expirationTtl?: number,
-  ) {}
-
-  /**
-   * Retrieves all todos from storage
-   * @returns Promise containing an array of Todo items, sorted by creation date (newest first)
-   */
-  async list(): Promise<Todo[]> {
-    const todos = await this.kv.get(this.todosKey, "json");
-    if (Array.isArray(todos)) {
-      todos.sort((a: Todo, b: Todo) => b.createdAt - a.createdAt);
-    }
-    return (todos || []) as Todo[];
-  }
-
-  /**
-   * Creates a new todo item
-   * @param text - The text content of the todo item
-   * @param priority - The priority level of the todo item (defaults to "medium")
-   * @returns Promise containing the newly created Todo item
-   */
-  async create(
-    text: string,
-    priority: "low" | "medium" | "high" = "medium",
-    reminderAt?: number,
-  ): Promise<Todo> {
-    const newTodo: Todo = {
-      id: crypto.randomUUID(),
-      text,
-      completed: false,
-      createdAt: Date.now(),
-      priority,
-      reminderAt,
-      reminderSent: reminderAt ? false : undefined,
-    };
-    const todos = await this.list();
-    todos.push(newTodo);
-    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
-    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
-    return newTodo;
-  }
-
-  /**
-   * Toggles the completed status of a todo item
-   * @param id - The unique identifier of the todo item to toggle
-   * @returns Promise containing the updated Todo item
-   * @throws Error if the todo item with the specified ID is not found
-   */
-  async toggle(id: string): Promise<Todo> {
-    const todos = await this.list();
-    const todoIndex = todos.findIndex((todo) => todo.id === id);
-    if (todoIndex === -1) {
-      throw new Error(`Todo with id ${id} not found`);
-    }
-    todos[todoIndex].completed = !todos[todoIndex].completed;
-    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
-    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
-    return todos[todoIndex];
-  }
-
-  /**
-   * Deletes a todo item
-   * @param id - The unique identifier of the todo item to delete
-   * @returns Promise that resolves when the deletion is complete
-   */
-  async delete(id: string): Promise<void> {
-    const todos = await this.list();
-    const newTodos = todos.filter((todo) => todo.id !== id);
-    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
-    await this.kv.put(this.todosKey, JSON.stringify(newTodos), options);
-  }
-
-  /**
-   * Updates the priority of a todo item
-   * @param id - The unique identifier of the todo item to update
-   * @param priority - The new priority level
-   * @returns Promise containing the updated Todo item
-   * @throws Error if the todo item with the specified ID is not found
-   */
-  async updatePriority(id: string, priority: "low" | "medium" | "high"): Promise<Todo> {
-    const todos = await this.list();
-    const todoIndex = todos.findIndex((todo) => todo.id === id);
-    if (todoIndex === -1) {
-      throw new Error(`Todo with id ${id} not found`);
-    }
-    todos[todoIndex].priority = priority;
-    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
-    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
-    return todos[todoIndex];
-  }
-
-  /**
-   * Updates the reminder timestamp of a todo item
-   * @param id - The unique identifier of the todo item to update
-   * @param reminderAt - The new reminder timestamp (in ms), or undefined to clear
-   * @returns Promise containing the updated Todo item
-   * @throws Error if the todo item with the specified ID is not found
-   */
-  async updateReminder(id: string, reminderAt?: number): Promise<Todo> {
-    const todos = await this.list();
-    const todoIndex = todos.findIndex((todo) => todo.id === id);
-    if (todoIndex === -1) {
-      throw new Error(`Todo with id ${id} not found`);
-    }
-    todos[todoIndex].reminderAt = reminderAt;
-    todos[todoIndex].reminderSent = reminderAt ? false : undefined;
-    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
-    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
-    return todos[todoIndex];
-  }
-
-  /**
-   * Marks a reminder as sent
-   * @param id - The unique identifier of the todo item
-   * @returns Promise containing the updated Todo item
-   * @throws Error if the todo item with the specified ID is not found
-   */
-  async markReminderSent(id: string): Promise<Todo> {
-    const todos = await this.list();
-    const todoIndex = todos.findIndex((todo) => todo.id === id);
-    if (todoIndex === -1) {
-      throw new Error(`Todo with id ${id} not found`);
-    }
-    todos[todoIndex].reminderSent = true;
-    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
-    await this.kv.put(this.todosKey, JSON.stringify(todos), options);
-    return todos[todoIndex];
-  }
-
-  /**
-   * Removes all completed todos from storage
-   * @returns Promise that resolves when the operation is complete
-   */
-  async clearCompleted(): Promise<void> {
-    const todos = await this.list();
-    const activeTodos = todos.filter((todo) => !todo.completed);
-    const options = this.expirationTtl ? { expirationTtl: this.expirationTtl } : {};
-    await this.kv.put(this.todosKey, JSON.stringify(activeTodos), options);
-  }
-}
-
 export interface UserSettings {
   emailEnabled: boolean;
   smsEnabled: boolean;
@@ -184,61 +26,195 @@ export interface PendingReminder {
   discordWebhookUrl?: string;
 }
 
-export class PendingRemindersManager {
-  constructor(private kv: KVNamespace) {}
+/**
+ * TodoManager handles all interactions with the Todos D1 database.
+ * This class provides CRUD operations for managing todo items in SQLite storage.
+ */
+export class TodoManager {
+  /**
+   * Creates a new TodoManager instance
+   * @param db - The Cloudflare D1 database instance
+   * @param listId - The list ID under which todos will be stored
+   * @param expirationTtl - Ignored in D1 database (handled by lists table expiration)
+   */
+  constructor(
+    private db: D1Database,
+    private listId: string,
+    private expirationTtl?: number,
+  ) {}
 
-  async list(): Promise<PendingReminder[]> {
-    const list = await this.kv.get("reminders:pending", "json");
-    return (list || []) as PendingReminder[];
+  /**
+   * Retrieves all todos from storage
+   * @returns Promise containing an array of Todo items, sorted by creation date (newest first)
+   */
+  async list(): Promise<Todo[]> {
+    const { results } = await this.db
+      .prepare("SELECT * FROM todos WHERE list_id = ? ORDER BY created_at DESC")
+      .bind(this.listId)
+      .all<any>();
+    return results.map((t) => ({
+      id: t.id,
+      text: t.text,
+      completed: Boolean(t.completed),
+      createdAt: Number(t.created_at),
+      priority: t.priority as "low" | "medium" | "high",
+      reminderAt: t.reminder_at ? Number(t.reminder_at) : undefined,
+      reminderSent: t.reminder_sent !== null ? Boolean(t.reminder_sent) : undefined,
+    }));
   }
 
-  async syncReminder(
-    todoId: string,
-    listId: string,
-    userId: string,
+  /**
+   * Creates a new todo item
+   * @param text - The text content of the todo item
+   * @param priority - The priority level of the todo item (defaults to "medium")
+   * @param reminderAt - Optional reminder timestamp (in ms)
+   * @returns Promise containing the newly created Todo item
+   */
+  async create(
     text: string,
-    reminderAt: number,
-    userEmail?: string
-  ): Promise<void> {
-    const queue = await this.list();
-    
-    // Fetch user settings
-    const settings = await this.kv.get(`user:${userId}:settings`, "json") as UserSettings | null;
-    const isGuest = userId.startsWith("guest_");
-    const emailEnabled = !isGuest && (settings?.emailEnabled ?? false);
-    const smsEnabled = !isGuest && (settings?.smsEnabled ?? false);
-    const phoneNumber = settings?.phoneNumber || "";
-    const discordWebhookUrl = settings?.discordWebhookUrl || "";
-
-    const newReminder: PendingReminder = {
-      id: todoId,
-      listId,
-      userId,
+    priority: "low" | "medium" | "high" = "medium",
+    reminderAt?: number,
+  ): Promise<Todo> {
+    const id = crypto.randomUUID();
+    const createdAt = Date.now();
+    await this.db
+      .prepare(
+        "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+      )
+      .bind(
+        id,
+        this.listId,
+        text,
+        0,
+        createdAt,
+        priority,
+        reminderAt ?? null,
+        reminderAt ? 0 : null
+      )
+      .run();
+    return {
+      id,
       text,
+      completed: false,
+      createdAt,
+      priority,
       reminderAt,
+      reminderSent: reminderAt ? false : undefined,
     };
-
-    if (emailEnabled && userEmail) {
-      newReminder.email = userEmail;
-    }
-    if (smsEnabled && phoneNumber) {
-      newReminder.phoneNumber = phoneNumber;
-    }
-    if (discordWebhookUrl) {
-      newReminder.discordWebhookUrl = discordWebhookUrl;
-    }
-
-    // Filter out existing and add new
-    const filtered = queue.filter(r => r.id !== todoId);
-    filtered.push(newReminder);
-    filtered.sort((a, b) => a.reminderAt - b.reminderAt);
-
-    await this.kv.put("reminders:pending", JSON.stringify(filtered));
   }
 
-  async removeReminder(todoId: string): Promise<void> {
-    const queue = await this.list();
-    const filtered = queue.filter(r => r.id !== todoId);
-    await this.kv.put("reminders:pending", JSON.stringify(filtered));
+  /**
+   * Toggles the completed status of a todo item
+   * @param id - The unique identifier of the todo item to toggle
+   * @returns Promise containing the updated Todo item
+   * @throws Error if the todo item with the specified ID is not found
+   */
+  async toggle(id: string): Promise<Todo> {
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ?").bind(id).first<any>();
+    if (!todo) {
+      throw new Error(`Todo with id ${id} not found`);
+    }
+    const newCompleted = todo.completed ? 0 : 1;
+    await this.db.prepare("UPDATE todos SET completed = ? WHERE id = ?").bind(newCompleted, id).run();
+    return {
+      id: todo.id,
+      text: todo.text,
+      completed: Boolean(newCompleted),
+      createdAt: Number(todo.created_at),
+      priority: todo.priority as "low" | "medium" | "high",
+      reminderAt: todo.reminder_at ? Number(todo.reminder_at) : undefined,
+      reminderSent: todo.reminder_sent !== null ? Boolean(todo.reminder_sent) : undefined,
+    };
+  }
+
+  /**
+   * Deletes a todo item
+   * @param id - The unique identifier of the todo item to delete
+   * @returns Promise that resolves when the deletion is complete
+   */
+  async delete(id: string): Promise<void> {
+    await this.db.prepare("DELETE FROM todos WHERE id = ?").bind(id).run();
+  }
+
+  /**
+   * Updates the priority of a todo item
+   * @param id - The unique identifier of the todo item to update
+   * @param priority - The new priority level
+   * @returns Promise containing the updated Todo item
+   * @throws Error if the todo item with the specified ID is not found
+   */
+  async updatePriority(id: string, priority: "low" | "medium" | "high"): Promise<Todo> {
+    await this.db.prepare("UPDATE todos SET priority = ? WHERE id = ?").bind(priority, id).run();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ?").bind(id).first<any>();
+    if (!todo) {
+      throw new Error(`Todo with id ${id} not found`);
+    }
+    return {
+      id: todo.id,
+      text: todo.text,
+      completed: Boolean(todo.completed),
+      createdAt: Number(todo.created_at),
+      priority: todo.priority as "low" | "medium" | "high",
+      reminderAt: todo.reminder_at ? Number(todo.reminder_at) : undefined,
+      reminderSent: todo.reminder_sent !== null ? Boolean(todo.reminder_sent) : undefined,
+    };
+  }
+
+  /**
+   * Updates the reminder timestamp of a todo item
+   * @param id - The unique identifier of the todo item to update
+   * @param reminderAt - The new reminder timestamp (in ms), or undefined to clear
+   * @returns Promise containing the updated Todo item
+   * @throws Error if the todo item with the specified ID is not found
+   */
+  async updateReminder(id: string, reminderAt?: number): Promise<Todo> {
+    await this.db
+      .prepare("UPDATE todos SET reminder_at = ?, reminder_sent = ? WHERE id = ?")
+      .bind(reminderAt ?? null, reminderAt ? 0 : null, id)
+      .run();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ?").bind(id).first<any>();
+    if (!todo) {
+      throw new Error(`Todo with id ${id} not found`);
+    }
+    return {
+      id: todo.id,
+      text: todo.text,
+      completed: Boolean(todo.completed),
+      createdAt: Number(todo.created_at),
+      priority: todo.priority as "low" | "medium" | "high",
+      reminderAt: todo.reminder_at ? Number(todo.reminder_at) : undefined,
+      reminderSent: todo.reminder_sent !== null ? Boolean(todo.reminder_sent) : undefined,
+    };
+  }
+
+  /**
+   * Marks a reminder as sent
+   * @param id - The unique identifier of the todo item
+   * @returns Promise containing the updated Todo item
+   * @throws Error if the todo item with the specified ID is not found
+   */
+  async markReminderSent(id: string): Promise<Todo> {
+    await this.db.prepare("UPDATE todos SET reminder_sent = 1 WHERE id = ?").bind(id).run();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ?").bind(id).first<any>();
+    if (!todo) {
+      throw new Error(`Todo with id ${id} not found`);
+    }
+    return {
+      id: todo.id,
+      text: todo.text,
+      completed: Boolean(todo.completed),
+      createdAt: Number(todo.created_at),
+      priority: todo.priority as "low" | "medium" | "high",
+      reminderAt: todo.reminder_at ? Number(todo.reminder_at) : undefined,
+      reminderSent: Boolean(todo.reminder_sent),
+    };
+  }
+
+  /**
+   * Removes all completed todos from storage
+   * @returns Promise that resolves when the operation is complete
+   */
+  async clearCompleted(): Promise<void> {
+    await this.db.prepare("DELETE FROM todos WHERE list_id = ? AND completed = 1").bind(this.listId).run();
   }
 }

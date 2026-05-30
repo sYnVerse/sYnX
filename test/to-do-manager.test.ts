@@ -3,16 +3,45 @@ import { TodoManager } from "../app/to-do-manager";
 import { env } from "cloudflare:test";
 
 describe("TodoManager", () => {
-  let kv: KVNamespace;
+  let db: D1Database;
   let manager: TodoManager;
+  const listId = "test-list-id";
 
-  beforeEach(() => {
-    kv = env.TO_DO_LIST;
-    manager = new TodoManager(kv);
+  beforeEach(async () => {
+    db = env.DB;
+    // Create tables in test D1 database
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS lists (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        owner_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        expiration_ttl INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS todos (
+        id TEXT PRIMARY KEY,
+        list_id TEXT NOT NULL,
+        text TEXT NOT NULL,
+        completed INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        priority TEXT DEFAULT 'medium',
+        reminder_at INTEGER,
+        reminder_sent INTEGER DEFAULT 0,
+        FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE
+      );
+    `);
+
+    // Setup a mock list
+    await db.prepare("INSERT OR IGNORE INTO lists (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)")
+      .bind(listId, "Test List", "test-user", Date.now())
+      .run();
+
+    manager = new TodoManager(db, listId);
   });
 
   afterEach(async () => {
-    await kv.delete("todos");
+    await db.exec("DELETE FROM todos");
+    await db.exec("DELETE FROM lists");
   });
 
   describe("list()", () => {
@@ -184,7 +213,10 @@ describe("TodoManager", () => {
 
   describe("expirationTtl", () => {
     it("can be instantiated with an expiration TTL", async () => {
-      const expiringManager = new TodoManager(kv, "expiring_todos", 86400);
+      await db.prepare("INSERT OR IGNORE INTO lists (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)")
+        .bind("expiring_todos", "Expiring List", "test-user", Date.now())
+        .run();
+      const expiringManager = new TodoManager(db, "expiring_todos", 86400);
       const todo = await expiringManager.create("Expiring task");
       expect(todo.text).toBe("Expiring task");
 
