@@ -987,7 +987,7 @@ export default function TodoPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col md:grid md:grid-cols-[280px_1fr] relative overflow-hidden font-sans">
+    <div className="min-h-screen md:h-screen bg-slate-950 flex flex-col md:grid md:grid-cols-[280px_1fr] relative overflow-hidden font-sans">
       
       {/* ── Ambient Gradient Blobs ─────────────────────────── */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -1201,7 +1201,7 @@ export default function TodoPage() {
       </aside>
 
       {/* ── Main Area ─────────────────────────────────────── */}
-      <main className="relative z-10 flex flex-col py-6 px-4 sm:px-6 md:px-8 max-w-2xl mx-auto w-full md:max-w-none">
+      <main className="relative z-10 flex flex-col py-6 px-4 sm:px-6 md:px-8 max-w-2xl mx-auto w-full md:max-w-none md:h-screen md:overflow-hidden">
         
         {/* Header (Active list title + Progress) */}
         <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/[0.04] pb-6">
@@ -1531,22 +1531,24 @@ export default function TodoPage() {
         </div>
 
         {/* Todo List Area */}
-        {filteredTodos.length === 0 && totalTodos === 0 ? (
-          <EmptyState />
-        ) : filteredTodos.length === 0 ? (
-          <div className="text-center py-12 text-slate-500 text-xs">
-            No {filter === "active" ? "active" : "completed"} tasks in this list.
-          </div>
-        ) : (
-          <ul className="space-y-2 flex-1 min-h-[300px]">
-            {filteredTodos.map((todo) => (
-              <TodoItem key={todo.id} todo={todo} />
-            ))}
-          </ul>
-        )}
+        <div className="flex-1 min-h-0 mb-6 flex flex-col">
+          {filteredTodos.length === 0 && totalTodos === 0 ? (
+            <EmptyState />
+          ) : filteredTodos.length === 0 ? (
+            <div className="text-center py-12 text-slate-500 text-xs">
+              No {filter === "active" ? "active" : "completed"} tasks in this list.
+            </div>
+          ) : (
+            <ul className="space-y-2 flex-1 overflow-y-auto pr-1 scrollbar-thin">
+              {filteredTodos.map((todo) => (
+                <TodoItem key={todo.id} todo={todo} />
+              ))}
+            </ul>
+          )}
+        </div>
 
         {/* Footer */}
-        <footer className="mt-12 pt-6 border-t border-white/[0.04] text-center max-w-lg mx-auto w-full">
+        <footer className="mt-auto pt-6 border-t border-white/[0.04] text-center max-w-lg mx-auto w-full">
           <p className="text-slate-500 text-[11px] font-medium">
             sYnX • Sync your tasks. Execute your day.
           </p>
