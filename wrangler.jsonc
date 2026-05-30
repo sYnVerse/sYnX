@@ -14,8 +14,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "to-do-list-db",
-      "database_id": "00000000-0000-0000-0000-000000000000"
+      "database_name": "synx-db",
+      "database_id": "0201d5b3-1df0-4dfe-a47c-22bb1dd9f878"
     }
   ],
   "triggers": {
