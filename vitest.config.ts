@@ -8,10 +8,10 @@ export default defineConfig({
       wrangler: { configPath: "./wrangler.jsonc" },
     }),
   ],
-  poolOptions: {
-    singleWorker: true,
-  },
   test: {
     include: ["test/**/*.test.ts"],
+    poolOptions: {
+      singleWorker: true,
+    },
   } as any,
 });
