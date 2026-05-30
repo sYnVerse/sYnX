@@ -835,6 +835,25 @@ export default function TodoPage() {
     setDiscordInput(settings?.discordWebhookUrl ?? "");
   }, [settings]);
 
+  // Handle escape key to close modals
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsProfileOpen(false);
+        setListToRename(null);
+        setListToDelete(null);
+        setIsCreateListOpen(false);
+      }
+    };
+    const isAnyModalOpen = isProfileOpen || !!listToRename || !!listToDelete || isCreateListOpen;
+    if (isAnyModalOpen) {
+      document.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isProfileOpen, listToRename, listToDelete, isCreateListOpen]);
+
   // Reminder States for Creation Form
   const [reminderMode, setReminderMode] = useState<"none" | "duration" | "specific">("none");
   const [reminderDuration, setReminderDuration] = useState<number>(5);
