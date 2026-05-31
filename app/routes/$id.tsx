@@ -869,9 +869,6 @@ export default function TodoPage() {
   const [showReminderPanel, setShowReminderPanel] = useState(false);
 
   // Web Notification loop
-  const markSentFetcher = useFetcher();
-  const notifiedIds = useRef<Set<string>>(new Set());
-
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
 
@@ -879,15 +876,19 @@ export default function TodoPage() {
       const now = Date.now();
       const activeTodos = lists.flatMap((list: any) => list.todos || []) as Todo[];
 
+      const notifiedStr = sessionStorage.getItem("synx_notified_ids") || "[]";
+      const notifiedSet = new Set<string>(JSON.parse(notifiedStr));
+
       activeTodos.forEach((todo) => {
         if (
           !todo.completed &&
           todo.reminderAt &&
           !todo.reminderSent &&
           todo.reminderAt <= now &&
-          !notifiedIds.current.has(todo.id)
+          !notifiedSet.has(todo.id)
         ) {
-          notifiedIds.current.add(todo.id);
+          notifiedSet.add(todo.id);
+          sessionStorage.setItem("synx_notified_ids", JSON.stringify(Array.from(notifiedSet)));
 
           if (Notification.permission === "granted") {
             try {
@@ -903,11 +904,6 @@ export default function TodoPage() {
               console.error("Failed to trigger Notification API:", err);
             }
           }
-
-          markSentFetcher.submit(
-            { intent: "markReminderSent", id: todo.id },
-            { method: "post" }
-          );
         }
       });
     };
@@ -915,7 +911,7 @@ export default function TodoPage() {
     checkReminders();
     const interval = setInterval(checkReminders, 10000);
     return () => clearInterval(interval);
-  }, [lists, markSentFetcher]);
+  }, [lists]);
   
   // Custom modals state
   const [listToDelete, setListToDelete] = useState<{ id: string; name: string } | null>(null);
