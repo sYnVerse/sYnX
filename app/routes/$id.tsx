@@ -1605,14 +1605,25 @@ export default function TodoPage() {
           <p className="text-slate-500 text-[11px] font-medium">
             sYnX • Sync your tasks. Execute your day.
           </p>
-          <a
-            href="https://christran.io/privacy"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-slate-600 hover:text-indigo-400 text-[10px] transition-colors duration-200"
-          >
-            Privacy Policy
-          </a>
+          <div className="flex gap-2 text-[10px] text-slate-600">
+            <a
+              href="https://christran.io/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-indigo-400 transition-colors duration-200"
+            >
+              Privacy Policy
+            </a>
+            <span>•</span>
+            <a
+              href="https://christran.io/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-indigo-400 transition-colors duration-200"
+            >
+              Terms of Service
+            </a>
+          </div>
         </footer>
       </main>
 
