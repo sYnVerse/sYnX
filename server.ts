@@ -94,7 +94,7 @@ export default {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                from: "sYnX Reminders <onboarding@resend.dev>",
+                from: "sYnX Reminders <no-reply@synx.christran.io>",
                 to: [reminder.email],
                 subject: "sYnX Task Reminder",
                 html: `<strong>sYnX Reminder:</strong><p>${reminder.text}</p>`,
@@ -142,7 +142,7 @@ export default {
                     "Content-Type": "application/json",
                   },
                   body: JSON.stringify({
-                    from: "sYnX Reminders <onboarding@resend.dev>",
+                    from: "sYnX Reminders <no-reply@synx.christran.io>",
                     to: [gatewayEmail],
                     subject: "sYnX Reminder",
                     text: `[sYnX Reminder] Task: ${reminder.text}`,
