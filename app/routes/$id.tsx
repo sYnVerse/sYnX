@@ -852,6 +852,7 @@ export default function TodoPage() {
   const [phoneCarrier, setPhoneCarrier] = useState(settings?.phoneCarrier ?? "");
   const [discordEnabled, setDiscordEnabled] = useState(!!settings?.discordWebhookUrl);
   const [discordInput, setDiscordInput] = useState(settings?.discordWebhookUrl ?? "");
+  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
 
   useEffect(() => {
     setEmailEnabled(settings?.emailEnabled ?? false);
@@ -861,6 +862,16 @@ export default function TodoPage() {
     setDiscordEnabled(!!settings?.discordWebhookUrl);
     setDiscordInput(settings?.discordWebhookUrl ?? "");
   }, [settings]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      if ("Notification" in window) {
+        setBrowserNotificationPermission(Notification.permission);
+      } else {
+        setBrowserNotificationPermission("unsupported");
+      }
+    }
+  }, [isProfileOpen]);
 
   // Reminder States for Creation Form
   const [reminderMode, setReminderMode] = useState<"none" | "duration" | "specific">("none");
