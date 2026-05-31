@@ -1601,10 +1601,18 @@ export default function TodoPage() {
         </div>
 
         {/* Footer */}
-        <footer className="mt-auto pt-6 border-t border-white/[0.04] text-center max-w-lg mx-auto w-full">
+        <footer className="mt-auto pt-6 border-t border-white/[0.04] text-center max-w-lg mx-auto w-full flex flex-col items-center gap-1">
           <p className="text-slate-500 text-[11px] font-medium">
             sYnX • Sync your tasks. Execute your day.
           </p>
+          <a
+            href="https://christran.io/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-slate-600 hover:text-indigo-400 text-[10px] transition-colors duration-200"
+          >
+            Privacy Policy
+          </a>
         </footer>
       </main>
 
