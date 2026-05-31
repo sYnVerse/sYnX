@@ -24,7 +24,7 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
     // Set the cookie with the access token
     return redirect("/", {
       headers: {
-        "Set-Cookie": `auth_session=${encodeURIComponent(access)}; ${domain}`, // 30 days
+        "Set-Cookie": `todo_auth_session=${encodeURIComponent(access)}; ${domain}`, // 30 days
       },
     });
   } catch (error) {
