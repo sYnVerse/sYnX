@@ -65,6 +65,14 @@ export function getCookieDomain(requestUrl: string): string {
   return "";
 }
 
+export function getCookieAttributes(requestUrl: string, maxAge: number = 0): string {
+  const url = new URL(requestUrl);
+  const domain = getCookieDomain(requestUrl);
+  const domainAttr = domain ? `; Domain=${domain}` : "";
+  const secureAttr = url.protocol === "https:" ? "; Secure" : "";
+  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${domainAttr}${secureAttr}`;
+}
+
 export async function requireUser(request: Request, env: any) {
   const cookieHeader = request.headers.get("Cookie") || "";
   const match = cookieHeader.match(/auth_session=([^;]+)/);
@@ -78,11 +86,9 @@ export async function requireUser(request: Request, env: any) {
   try {
     const verified = await client.verify(subjects as any, token);
     if (verified.err) {
-      const domain = getCookieDomain(request.url);
-      const domainAttr = domain ? `; Domain=${domain}` : "";
       throw redirect("/login", {
         headers: {
-          "Set-Cookie": `auth_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${domainAttr}`,
+          "Set-Cookie": `auth_session=; ${getCookieAttributes(request.url, 0)}`,
         },
       });
     }
@@ -94,12 +100,10 @@ export async function requireUser(request: Request, env: any) {
     };
   } catch (error) {
     console.error("Token verification failed:", error);
-    const domain = getCookieDomain(request.url);
-    const domainAttr = domain ? `; Domain=${domain}` : "";
     // Clear cookie and redirect to login
     throw redirect("/login", {
       headers: {
-        "Set-Cookie": `auth_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${domainAttr}`,
+        "Set-Cookie": `auth_session=; ${getCookieAttributes(request.url, 0)}`,
       },
     });
   }

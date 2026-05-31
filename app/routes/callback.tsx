@@ -1,5 +1,5 @@
 import { LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
-import { getAuthClient, getCookieDomain } from "~/auth.server";
+import { getAuthClient, getCookieAttributes } from "~/auth.server";
 
 export const loader = async ({ request, context }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
@@ -19,13 +19,12 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
     }
 
     const { access } = exchanged.tokens;
-    const domain = getCookieDomain(request.url);
-    const domainAttr = domain ? `; Domain=${domain}` : "";
+    const domain = getCookieAttributes(request.url, 2592000);
 
     // Set the cookie with the access token
     return redirect("/", {
       headers: {
-        "Set-Cookie": `auth_session=${encodeURIComponent(access)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000${domainAttr}`, // 30 days
+        "Set-Cookie": `auth_session=${encodeURIComponent(access)}; ${domain}`, // 30 days
       },
     });
   } catch (error) {
