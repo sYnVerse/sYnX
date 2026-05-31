@@ -97,7 +97,7 @@ export default {
                 from: "sYnX Reminders <no-reply@synx.christran.io>",
                 to: [reminder.email],
                 subject: "sYnX Task Reminder",
-                html: `<strong>sYnX Reminder:</strong><p>${reminder.text}</p>`,
+                html: `<p>${reminder.text}</p>`,
               }),
             }).then(res => {
               if (!res.ok) {
@@ -144,7 +144,7 @@ export default {
                   body: JSON.stringify({
                     from: "sYnX Reminders <no-reply@synx.christran.io>",
                     to: [gatewayEmail],
-                    subject: "sYnX Reminder",
+                    subject: "",
                     text: `[sYnX Reminder] Task: ${reminder.text}`,
                   }),
                 }).then(res => {
