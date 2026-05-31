@@ -124,6 +124,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     emailEnabled: false,
     smsEnabled: false,
     phoneNumber: "",
+    phoneCarrier: "",
     discordWebhookUrl: ""
   };
   if (userId) {
@@ -134,6 +135,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
           emailEnabled: Boolean(settingsVal.email_enabled),
           smsEnabled: Boolean(settingsVal.sms_enabled),
           phoneNumber: settingsVal.phone_number || "",
+          phoneCarrier: settingsVal.phone_carrier || "",
           discordWebhookUrl: settingsVal.discord_webhook_url || ""
         };
       }
@@ -242,22 +244,25 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const emailEnabled = isLoggedIn && formData.get("emailEnabled") === "true";
       const smsEnabled = isLoggedIn && formData.get("smsEnabled") === "true";
       const phoneNumber = isLoggedIn ? ((formData.get("phoneNumber") as string) || "") : "";
+      const phoneCarrier = isLoggedIn ? ((formData.get("phoneCarrier") as string) || "") : "";
       const discordWebhookUrl = (formData.get("discordWebhookUrl") as string) || "";
 
       try {
         await db.prepare(
-          `INSERT INTO user_settings (user_id, email_enabled, sms_enabled, phone_number, discord_webhook_url)
-           VALUES (?, ?, ?, ?, ?)
+          `INSERT INTO user_settings (user_id, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url)
+           VALUES (?, ?, ?, ?, ?, ?)
            ON CONFLICT(user_id) DO UPDATE SET
              email_enabled = excluded.email_enabled,
              sms_enabled = excluded.sms_enabled,
              phone_number = excluded.phone_number,
+             phone_carrier = excluded.phone_carrier,
              discord_webhook_url = excluded.discord_webhook_url`
         ).bind(
           userId,
           emailEnabled ? 1 : 0,
           smsEnabled ? 1 : 0,
           phoneNumber.trim(),
+          phoneCarrier.trim(),
           discordWebhookUrl.trim()
         ).run();
       } catch (e) {
@@ -844,6 +849,7 @@ export default function TodoPage() {
   const [emailEnabled, setEmailEnabled] = useState(settings?.emailEnabled ?? false);
   const [smsEnabled, setSmsEnabled] = useState(settings?.smsEnabled ?? false);
   const [phoneInput, setPhoneInput] = useState(getDisplayPhone(settings?.phoneNumber));
+  const [phoneCarrier, setPhoneCarrier] = useState(settings?.phoneCarrier ?? "");
   const [discordEnabled, setDiscordEnabled] = useState(!!settings?.discordWebhookUrl);
   const [discordInput, setDiscordInput] = useState(settings?.discordWebhookUrl ?? "");
 
@@ -851,6 +857,7 @@ export default function TodoPage() {
     setEmailEnabled(settings?.emailEnabled ?? false);
     setSmsEnabled(settings?.smsEnabled ?? false);
     setPhoneInput(getDisplayPhone(settings?.phoneNumber));
+    setPhoneCarrier(settings?.phoneCarrier ?? "");
     setDiscordEnabled(!!settings?.discordWebhookUrl);
     setDiscordInput(settings?.discordWebhookUrl ?? "");
   }, [settings]);
@@ -1719,20 +1726,39 @@ export default function TodoPage() {
                       </button>
                     </div>
                     {smsEnabled && isLoggedIn && (
-                      <div className="flex rounded-lg bg-slate-950 border border-white/[0.08] overflow-hidden focus-within:ring-1 focus-within:ring-indigo-500/50">
-                        <span className="bg-white/[0.04] text-slate-400 px-3 py-2 text-xs border-r border-white/[0.08] select-none flex items-center">
-                          +1
-                        </span>
-                        <input
-                          type="tel"
-                          placeholder="10-digit number"
-                          value={phoneInput}
-                          onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, "").substring(0, 10))}
-                          className="w-full text-xs bg-transparent text-slate-350 px-3 py-2 focus:outline-none"
-                          required
-                          pattern="[0-9]{10}"
-                          maxLength={10}
-                        />
+                      <div className="flex flex-col gap-2">
+                        <div className="flex rounded-lg bg-slate-950 border border-white/[0.08] overflow-hidden focus-within:ring-1 focus-within:ring-indigo-500/50">
+                          <span className="bg-white/[0.04] text-slate-400 px-3 py-2 text-xs border-r border-white/[0.08] select-none flex items-center">
+                            +1
+                          </span>
+                          <input
+                            type="tel"
+                            placeholder="10-digit number"
+                            value={phoneInput}
+                            onChange={(e) => setPhoneInput(e.target.value.replace(/\D/g, "").substring(0, 10))}
+                            className="w-full text-xs bg-transparent text-slate-350 px-3 py-2 focus:outline-none"
+                            required
+                            pattern="[0-9]{10}"
+                            maxLength={10}
+                          />
+                        </div>
+                        <div>
+                          <select
+                            value={phoneCarrier}
+                            onChange={(e) => setPhoneCarrier(e.target.value)}
+                            className="w-full rounded-lg bg-slate-950 border border-white/[0.08] text-slate-400 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 appearance-none bg-slate-950"
+                          >
+                            <option value="">-- Mobile Carrier (Optional / Twilio) --</option>
+                            <option value="verizon">Verizon</option>
+                            <option value="att">AT&T</option>
+                            <option value="tmobile">T-Mobile</option>
+                            <option value="sprint">Sprint</option>
+                            <option value="googlefi">Google Fi</option>
+                            <option value="boost">Boost Mobile</option>
+                            <option value="cricket">Cricket Wireless</option>
+                            <option value="uscellular">US Cellular</option>
+                          </select>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1780,6 +1806,7 @@ export default function TodoPage() {
                         emailEnabled: emailEnabled ? "true" : "false",
                         smsEnabled: smsEnabled ? "true" : "false",
                         phoneNumber: smsEnabled ? `+1${cleanPhone}` : "",
+                        phoneCarrier: smsEnabled ? phoneCarrier : "",
                         discordWebhookUrl: discordEnabled ? discordInput : "",
                       }, { method: "post" });
                       showToast("✓ Saved Preferences!");

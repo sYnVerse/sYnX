@@ -12,6 +12,7 @@ export interface UserSettings {
   emailEnabled: boolean;
   smsEnabled: boolean;
   phoneNumber: string;
+  phoneCarrier: string;
   discordWebhookUrl: string;
 }
 
@@ -23,6 +24,7 @@ export interface PendingReminder {
   reminderAt: number;
   email?: string;
   phoneNumber?: string;
+  phoneCarrier?: string;
   discordWebhookUrl?: string;
 }
 

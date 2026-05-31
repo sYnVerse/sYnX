@@ -49,7 +49,7 @@ export default {
           t.id, t.list_id as listId, t.text, t.reminder_at as reminderAt,
           l.owner_id as userId,
           s.email, s.email_enabled as emailEnabled, s.sms_enabled as smsEnabled, 
-          s.phone_number as phoneNumber, s.discord_webhook_url as discordWebhookUrl
+          s.phone_number as phoneNumber, s.phone_carrier as phoneCarrier, s.discord_webhook_url as discordWebhookUrl
         FROM todos t
         JOIN lists l ON t.list_id = l.id
         LEFT JOIN user_settings s ON l.owner_id = s.user_id
@@ -93,27 +93,67 @@ export default {
         );
       }
 
-      // SMS (Twilio)
-      if (reminder.phoneNumber && smsEnabled && env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER) {
-        const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`;
-        const auth = btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`);
-        const formData = new URLSearchParams();
-        formData.append("To", reminder.phoneNumber);
-        formData.append("From", env.TWILIO_FROM_NUMBER);
-        formData.append("Body", `[sYnX Reminder] Task: ${reminder.text}`);
+      // SMS (Twilio or Carrier-specific Email-to-Text Gateway)
+      if (reminder.phoneNumber && smsEnabled) {
+        if (reminder.phoneCarrier && env.RESEND_API_KEY) {
+          const carrierDomains: Record<string, string> = {
+            verizon: "vtext.com",
+            att: "txt.att.net",
+            tmobile: "tmomail.net",
+            sprint: "messaging.sprintpcs.com",
+            boost: "myboostmobile.com",
+            cricket: "sms.cricketwireless.net",
+            uscellular: "email.uscc.net",
+            googlefi: "msg.fi.google.com",
+          };
 
-        promises.push(
-          fetch(twilioUrl, {
-            method: "POST",
-            headers: {
-              "Authorization": `Basic ${auth}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: formData.toString(),
-          }).then(res => {
-            if (!res.ok) console.error("Twilio SMS failed:", res.statusText);
-          }).catch(err => console.error("Twilio fetch error:", err))
-        );
+          const domain = carrierDomains[reminder.phoneCarrier.toLowerCase()];
+          if (domain) {
+            const cleanPhone = reminder.phoneNumber.replace(/\D/g, "");
+            const displayPhone = cleanPhone.length > 10 ? cleanPhone.substring(cleanPhone.length - 10) : cleanPhone;
+            const gatewayEmail = `${displayPhone}@${domain}`;
+
+            promises.push(
+              fetch("https://api.resend.com/emails", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  from: "sYnX Reminders <onboarding@resend.dev>",
+                  to: [gatewayEmail],
+                  subject: "sYnX Reminder",
+                  text: `[sYnX Reminder] Task: ${reminder.text}`,
+                }),
+              }).then(res => {
+                if (!res.ok) console.error("Email-to-Text SMS failed:", res.statusText);
+              }).catch(err => console.error("Email-to-Text fetch error:", err))
+            );
+          } else {
+            console.error(`Unknown carrier: ${reminder.phoneCarrier}`);
+          }
+        } else if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER) {
+          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`;
+          const auth = btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`);
+          const formData = new URLSearchParams();
+          formData.append("To", reminder.phoneNumber);
+          formData.append("From", env.TWILIO_FROM_NUMBER);
+          formData.append("Body", `[sYnX Reminder] Task: ${reminder.text}`);
+
+          promises.push(
+            fetch(twilioUrl, {
+              method: "POST",
+              headers: {
+                "Authorization": `Basic ${auth}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: formData.toString(),
+            }).then(res => {
+              if (!res.ok) console.error("Twilio SMS failed:", res.statusText);
+            }).catch(err => console.error("Twilio fetch error:", err))
+          );
+        }
       }
 
       // Discord Webhook

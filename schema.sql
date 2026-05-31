@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   email_enabled INTEGER DEFAULT 0,
   sms_enabled INTEGER DEFAULT 0,
   phone_number TEXT DEFAULT '',
+  phone_carrier TEXT DEFAULT '',
   discord_webhook_url TEXT DEFAULT ''
 );
 
