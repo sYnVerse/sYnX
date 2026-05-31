@@ -8,7 +8,7 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
   if (local) {
     return redirect("/", {
       headers: {
-        "Set-Cookie": `todo_auth_session=; ${getCookieAttributes(request.url, 0)}`,
+        "Set-Cookie": `synx_auth_session=; ${getCookieAttributes(request.url, 0)}`,
       },
     });
   }

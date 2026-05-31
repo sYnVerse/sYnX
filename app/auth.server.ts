@@ -80,7 +80,7 @@ export function getCookieAttributes(requestUrl: string, maxAge: number = 0): str
 
 export async function requireUser(request: Request, env: any) {
   const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.match(/todo_auth_session=([^;]+)/);
+  const match = cookieHeader.match(/synx_auth_session=([^;]+)/);
   const token = match ? decodeURIComponent(match[1]) : null;
 
   if (!token) {
@@ -93,7 +93,7 @@ export async function requireUser(request: Request, env: any) {
     if (verified.err) {
       throw redirect("/login", {
         headers: {
-          "Set-Cookie": `todo_auth_session=; ${getCookieAttributes(request.url, 0)}`,
+          "Set-Cookie": `synx_auth_session=; ${getCookieAttributes(request.url, 0)}`,
         },
       });
     }
@@ -108,7 +108,7 @@ export async function requireUser(request: Request, env: any) {
     // Clear cookie and redirect to login
     throw redirect("/login", {
       headers: {
-        "Set-Cookie": `todo_auth_session=; ${getCookieAttributes(request.url, 0)}`,
+        "Set-Cookie": `synx_auth_session=; ${getCookieAttributes(request.url, 0)}`,
       },
     });
   }
@@ -116,7 +116,7 @@ export async function requireUser(request: Request, env: any) {
 
 export async function getOptionalUser(request: Request, env: any) {
   const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.match(/todo_auth_session=([^;]+)/);
+  const match = cookieHeader.match(/synx_auth_session=([^;]+)/);
   const token = match ? decodeURIComponent(match[1]) : null;
 
   if (token) {
