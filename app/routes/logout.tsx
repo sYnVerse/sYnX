@@ -1,7 +1,11 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
+import { ActionFunctionArgs, redirect } from "@remix-run/cloudflare";
 import { getCookieAttributes, getAuthSettings } from "~/auth.server";
 
-export const loader = async ({ request, context }: LoaderFunctionArgs) => {
+export const action = async ({ request, context }: ActionFunctionArgs) => {
+  if (request.method !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
   const url = new URL(request.url);
   const local = url.searchParams.get("local") === "true";
 
@@ -19,6 +23,10 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
   const centralLogoutUrl = `${issuer}/logout?client_id=${clientID}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
   return redirect(centralLogoutUrl);
+};
+
+export const loader = async () => {
+  return redirect("/");
 };
 
 export default function Logout() {

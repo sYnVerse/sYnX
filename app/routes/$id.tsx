@@ -245,7 +245,15 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const smsEnabled = isLoggedIn && formData.get("smsEnabled") === "true";
       const phoneNumber = isLoggedIn ? ((formData.get("phoneNumber") as string) || "") : "";
       const phoneCarrier = isLoggedIn ? ((formData.get("phoneCarrier") as string) || "") : "";
-      const discordWebhookUrl = (formData.get("discordWebhookUrl") as string) || "";
+      const discordWebhookUrlRaw = (formData.get("discordWebhookUrl") as string) || "";
+      const discordWebhookUrl = discordWebhookUrlRaw.trim();
+
+      if (discordWebhookUrl) {
+        const DISCORD_WEBHOOK_REGEX = /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
+        if (!DISCORD_WEBHOOK_REGEX.test(discordWebhookUrl)) {
+          return Response.json({ error: "Invalid Discord Webhook URL format" }, { status: 400 });
+        }
+      }
 
       try {
         await db.prepare(
@@ -263,7 +271,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
           smsEnabled ? 1 : 0,
           phoneNumber.trim(),
           phoneCarrier.trim(),
-          discordWebhookUrl.trim()
+          discordWebhookUrl
         ).run();
       } catch (e) {
         console.error("Failed to update settings in database:", e);
@@ -299,6 +307,10 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       if (typeof newName !== "string" || !newName.trim()) {
         return Response.json({ error: "Invalid list name" }, { status: 400 });
       }
+      const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
+      if (!ownRow) {
+        return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
+      }
       try {
         await db.prepare("UPDATE lists SET name = ? WHERE id = ?").bind(newName.trim(), listId).run();
       } catch (e) {
@@ -309,6 +321,10 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "deleteList": {
       const listId = formData.get("listId") as string;
+      const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
+      if (!ownRow) {
+        return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
+      }
       try {
         await db.prepare("DELETE FROM lists WHERE id = ?").bind(listId).run();
       } catch (e) {
@@ -1272,15 +1288,17 @@ export default function TodoPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </button>
-                <a
-                  href="/logout"
-                  className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all duration-200 cursor-pointer"
-                  title="Sign Out"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                  </svg>
-                </a>
+                <form action="/logout" method="post" className="inline">
+                  <button
+                    type="submit"
+                    className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all duration-200 cursor-pointer bg-transparent"
+                    title="Sign Out"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                  </button>
+                </form>
               </div>
             </div>
           ) : (
@@ -1923,18 +1941,20 @@ export default function TodoPage() {
               </button>
 
               {isLoggedIn ? (
-                <a
-                  href="/logout"
-                  className="w-full flex items-center justify-between text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
-                >
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                    Sign Out
-                  </span>
-                  <span className="text-[10px] text-rose-400/80">End Session</span>
-                </a>
+                <form action="/logout" method="post" className="w-full">
+                  <button
+                    type="submit"
+                    className="w-full flex items-center justify-between text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      Sign Out
+                    </span>
+                    <span className="text-[10px] text-rose-400/80">End Session</span>
+                  </button>
+                </form>
               ) : (
                 <a
                   href="/login"

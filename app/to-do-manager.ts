@@ -112,12 +112,12 @@ export class TodoManager {
    * @throws Error if the todo item with the specified ID is not found
    */
   async toggle(id: string): Promise<Todo> {
-    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ?").bind(id).first<any>();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
     if (!todo) {
-      throw new Error(`Todo with id ${id} not found`);
+      throw new Error(`Todo with id ${id} not found in this list`);
     }
     const newCompleted = todo.completed ? 0 : 1;
-    await this.db.prepare("UPDATE todos SET completed = ? WHERE id = ?").bind(newCompleted, id).run();
+    await this.db.prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?").bind(newCompleted, id, this.listId).run();
     return {
       id: todo.id,
       text: todo.text,
@@ -135,7 +135,7 @@ export class TodoManager {
    * @returns Promise that resolves when the deletion is complete
    */
   async delete(id: string): Promise<void> {
-    await this.db.prepare("DELETE FROM todos WHERE id = ?").bind(id).run();
+    await this.db.prepare("DELETE FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).run();
   }
 
   /**
@@ -146,10 +146,10 @@ export class TodoManager {
    * @throws Error if the todo item with the specified ID is not found
    */
   async updatePriority(id: string, priority: "low" | "medium" | "high"): Promise<Todo> {
-    await this.db.prepare("UPDATE todos SET priority = ? WHERE id = ?").bind(priority, id).run();
-    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ?").bind(id).first<any>();
+    await this.db.prepare("UPDATE todos SET priority = ? WHERE id = ? AND list_id = ?").bind(priority, id, this.listId).run();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
     if (!todo) {
-      throw new Error(`Todo with id ${id} not found`);
+      throw new Error(`Todo with id ${id} not found in this list`);
     }
     return {
       id: todo.id,
@@ -171,12 +171,12 @@ export class TodoManager {
    */
   async updateReminder(id: string, reminderAt?: number): Promise<Todo> {
     await this.db
-      .prepare("UPDATE todos SET reminder_at = ?, reminder_sent = ? WHERE id = ?")
-      .bind(reminderAt ?? null, reminderAt ? 0 : null, id)
+      .prepare("UPDATE todos SET reminder_at = ?, reminder_sent = ? WHERE id = ? AND list_id = ?")
+      .bind(reminderAt ?? null, reminderAt ? 0 : null, id, this.listId)
       .run();
-    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ?").bind(id).first<any>();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
     if (!todo) {
-      throw new Error(`Todo with id ${id} not found`);
+      throw new Error(`Todo with id ${id} not found in this list`);
     }
     return {
       id: todo.id,
@@ -196,10 +196,10 @@ export class TodoManager {
    * @throws Error if the todo item with the specified ID is not found
    */
   async markReminderSent(id: string): Promise<Todo> {
-    await this.db.prepare("UPDATE todos SET reminder_sent = 1 WHERE id = ?").bind(id).run();
-    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ?").bind(id).first<any>();
+    await this.db.prepare("UPDATE todos SET reminder_sent = 1 WHERE id = ? AND list_id = ?").bind(id, this.listId).run();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
     if (!todo) {
-      throw new Error(`Todo with id ${id} not found`);
+      throw new Error(`Todo with id ${id} not found in this list`);
     }
     return {
       id: todo.id,
