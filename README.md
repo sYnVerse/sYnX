@@ -1,44 +1,71 @@
-# To-Do List App
-
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/to-do-list-kv-template)
+# sYnX To-Do List App
 
 ![To-Do List Template Preview](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/923473bc-a285-487c-93db-e0ddea3d3700/public)
 
-<!-- dash-content-start -->
+Manage your to-do list with [Cloudflare Workers Assets](https://developers.cloudflare.com/workers/static-assets/) + [Remix](https://remix.run/) + [Cloudflare D1 Database](https://developers.cloudflare.com/d1/).
 
-Manage your to-do list with [Cloudflare Workers Assets](https://developers.cloudflare.com/workers/static-assets/) + [Remix](https://remix.run/) + [Cloudflare Workers KV](https://developers.cloudflare.com/kv/).
+---
 
-## How It Works
+## Key Features
 
-This is a simple to-do list app that allows you to add, remove, and mark tasks as complete. The project is a Cloudflare Workers Assets application built with Remix. It uses Cloudflare Workers KV to store the to do list items. The [Remix Vite Plugin](https://remix.run/docs/en/main/guides/vite#vite) has a Cloudflare Dev Proxy that enables you to use [Bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/) provided by the Cloudflare Developer Platform.
+*   **Public & Collaborative List Sharing**: Share your task list as Private, View-Only, or Collaborative (Public edit access for team coordination).
+*   **One-Level Nested Subtasks**: Break down tasks into subtask checklists.
+*   **Recurring Tasks**: Automate repeating chores with Daily, Weekly, and Monthly recurrence periods (automatically updates reminder timestamps).
+*   **Search & Sorting Options**: Instantly filter tasks by search term and sort by Priority, Due Date, Alphabetical, or Date Created.
+*   **Theme Customizer**: Toggle between Midnight Indigo (default), Emerald Forest, Sunset Rose, and Cyberpunk Neon dark themes.
+*   **Confetti Celebration**: Responsive CSS/JS confetti particles celebrate when you clear the last remaining task.
+*   **Smart Web Notifications**: Local browser pushes and synced email/SMS/Discord notification integrations for task reminders.
 
-> [!IMPORTANT]
-> When using C3 to create this project, select "no" when it asks if you want to deploy. You need to follow this project's [setup steps](https://github.com/cloudflare/templates/tree/main/to-do-list-kv-template#setup-steps) before deploying.
+---
 
-<!-- dash-content-end -->
+## Database Migration Setup
+
+This project uses a Cloudflare D1 SQLite database. Run the following SQL queries on your D1 database to add the required columns:
+
+```sql
+-- 1. Add share_mode to lists
+ALTER TABLE lists ADD COLUMN share_mode TEXT DEFAULT 'private';
+
+-- 2. Add parent_id to todos
+ALTER TABLE todos ADD COLUMN parent_id TEXT REFERENCES todos(id) ON DELETE CASCADE;
+
+-- 3. Add recurrence to todos
+ALTER TABLE todos ADD COLUMN recurrence TEXT DEFAULT 'none';
+```
+
+### Apply Locally
+To run these migrations on your local wrangler dev environment, execute:
+```bash
+npx wrangler d1 execute synx-db --local --command "ALTER TABLE lists ADD COLUMN share_mode TEXT DEFAULT 'private';"
+npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN parent_id TEXT REFERENCES todos(id) ON DELETE CASCADE;"
+npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN recurrence TEXT DEFAULT 'none';"
+```
+
+---
 
 ## Getting Started
 
-Outside of this repo, you can start a new project with this template using [C3](https://developers.cloudflare.com/pages/get-started/c3/) (the `create-cloudflare` CLI):
+1.  **Install the dependencies**:
+    ```bash
+    npm install
+    ```
 
-```bash
-npm create cloudflare@latest -- --template=cloudflare/templates/to-do-list-kv-template
-```
+2.  **Generate D1 Database and Wrangler bindings types**:
+    ```bash
+    npm run cf-typegen
+    ```
 
-A live public deployment of this template is available at [https://to-do-list-kv-template.templates.workers.dev](https://to-do-list-kv-template.templates.workers.dev)
+3.  **Run Dev server**:
+    ```bash
+    npm run dev
+    ```
 
-## Setup Steps
+4.  **Run Tests**:
+    ```bash
+    npm run test -- --run
+    ```
 
-1. Install the project dependencies with a package manager of your choice:
-   ```bash
-   npm install
-   ```
-2. Create a [kv namespace](https://developers.cloudflare.com/kv/get-started/) with a binding named "TO_DO_LIST":
-   ```bash
-   npx wrangler kv namespace create TO_DO_LIST
-   ```
-   ...and update the `kv_namespaces` -> `id` field in `wrangler.json` with the new namespace ID.
-3. Deploy the project!
-   ```bash
-   npx wrangler deploy
-   ```
+5.  **Build production version**:
+    ```bash
+    npm run build
+    ```
