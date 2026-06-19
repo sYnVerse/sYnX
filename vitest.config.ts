@@ -5,6 +5,7 @@ import { cloudflareTest } from "@cloudflare/vitest-pool-workers";
 export default defineConfig({
   plugins: [
     cloudflareTest({
+      main: "./test/dummy-worker.ts",
       wrangler: { configPath: "./wrangler.jsonc" },
     }),
   ],
