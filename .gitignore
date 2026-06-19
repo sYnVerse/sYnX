@@ -6,3 +6,10 @@ node_modules
 .dev.vars
 
 .wrangler
+
+*.sql
+.sql
+vitest
+.vitest
+vitest.config.ts
+test/
