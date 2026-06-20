@@ -24,6 +24,7 @@ export default {
         ],
       },
       colors: {
+        "slate-350": "#b2c1d3",
         themeBg: "var(--bg-main)",
         themeSidebar: "var(--bg-sidebar)",
         themeCard: "var(--bg-card)",

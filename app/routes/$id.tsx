@@ -674,9 +674,9 @@ function ReminderPicker({ todo }: { todo: Todo }) {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4 select-none">
+    <div className="flex flex-col items-center justify-center py-8 sm:py-16 px-4 select-none flex-1">
       <svg
-        className="w-28 h-28 mb-4 opacity-40 text-indigo-400"
+        className="w-20 h-20 sm:w-28 sm:h-28 mb-4 opacity-40 text-indigo-400"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -2101,7 +2101,9 @@ export default function TodoPage() {
         {/* Todo List Area */}
         <div className="flex-1 min-h-0 mb-6 flex flex-col">
           {visibleParents.length === 0 && totalCount === 0 ? (
-            <EmptyState />
+            <div className="flex-1 overflow-y-auto scrollbar-thin flex flex-col justify-center">
+              <EmptyState />
+            </div>
           ) : visibleParents.length === 0 ? (
             <div className="text-center py-12 text-slate-500 text-xs">
               No {filter === "active" ? "active" : "completed"} tasks in this list.
