@@ -22,7 +22,7 @@
     "@openauthjs/openauth": "^0.4.3",
     "@remix-run/cloudflare": "^2.17.4",
     "@remix-run/react": "^2.17.4",
-    "@remix-run/server-runtime": "^2.17.4",
+    "@remix-run/server-runtime": "^2.17.5",
     "valibot": "^1.0.0-beta.9",
     "isbot": "5.1.26",
     "nanoid": "5.1.5",
