@@ -1,4 +1,4 @@
-import { ActionFunctionArgs, redirect } from "@remix-run/cloudflare";
+import { ActionFunctionArgs, LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
 import { getCookieAttributes, getAuthSettings } from "~/auth.server";
 
 export const action = async ({ request, context }: ActionFunctionArgs) => {
@@ -25,7 +25,18 @@ export const action = async ({ request, context }: ActionFunctionArgs) => {
   return redirect(centralLogoutUrl);
 };
 
-export const loader = async () => {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+  const local = url.searchParams.get("local") === "true";
+
+  if (local) {
+    return redirect("/", {
+      headers: {
+        "Set-Cookie": `synx_auth_session=; ${getCookieAttributes(request.url, 0)}`,
+      },
+    });
+  }
+
   return redirect("/");
 };
 
