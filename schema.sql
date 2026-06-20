@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS lists (
   name TEXT NOT NULL,
   owner_id TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  expiration_ttl INTEGER
+  expiration_ttl INTEGER,
+  share_mode TEXT DEFAULT 'private'
 );
 
 CREATE TABLE IF NOT EXISTS todos (
@@ -25,5 +26,8 @@ CREATE TABLE IF NOT EXISTS todos (
   priority TEXT DEFAULT 'medium',
   reminder_at INTEGER,
   reminder_sent INTEGER DEFAULT 0,
-  FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE
+  parent_id TEXT DEFAULT NULL,
+  recurrence TEXT DEFAULT 'none',
+  FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE,
+  FOREIGN KEY(parent_id) REFERENCES todos(id) ON DELETE CASCADE
 );
