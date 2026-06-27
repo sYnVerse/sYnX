@@ -3,7 +3,7 @@ export interface Todo {
   text: string;
   completed: boolean;
   createdAt: number;
-  priority: "low" | "medium" | "high";
+  priority: "low" | "medium" | "high" | "none";
   reminderAt?: number;
   reminderSent?: boolean;
   parentId?: string;
@@ -19,33 +19,46 @@ export interface UserSettings {
 }
 
 export interface PendingReminder {
-  id: string; // todoId
+  id: string;
   listId: string;
-  userId: string;
   text: string;
   reminderAt: number;
+  userId: string;
   email?: string;
+  emailEnabled?: boolean;
+  smsEnabled?: boolean;
   phoneNumber?: string;
   phoneCarrier?: string;
   discordWebhookUrl?: string;
 }
 
-/**
- * TodoManager handles all interactions with the Todos D1 database.
- * This class provides CRUD operations for managing todo items in SQLite storage.
- */
 export class TodoManager {
+  private db: D1Database;
+  private listId: string;
+  private expirationTtl?: number;
+
+  constructor(db: D1Database, listId: string, expirationTtl?: number) {
+    this.db = db;
+    this.listId = listId;
+    this.expirationTtl = expirationTtl;
+  }
+
   /**
-   * Creates a new TodoManager instance
-   * @param db - The Cloudflare D1 database instance
-   * @param listId - The list ID under which todos will be stored
-   * @param expirationTtl - Ignored in D1 database (handled by lists table expiration)
+   * Helper to map DB row to Todo object
    */
-  constructor(
-    private db: D1Database,
-    private listId: string,
-    private expirationTtl?: number,
-  ) {}
+  private mapRow(t: any): Todo {
+    return {
+      id: t.id,
+      text: t.text,
+      completed: Boolean(t.completed),
+      createdAt: Number(t.created_at),
+      priority: (t.priority || "none") as "low" | "medium" | "high" | "none",
+      reminderAt: t.reminder_at ? Number(t.reminder_at) : undefined,
+      reminderSent: t.reminder_sent !== null ? Boolean(t.reminder_sent) : undefined,
+      parentId: t.parent_id || undefined,
+      recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
+    };
+  }
 
   /**
    * Retrieves all todos from storage
@@ -56,23 +69,13 @@ export class TodoManager {
       .prepare("SELECT * FROM todos WHERE list_id = ? ORDER BY created_at DESC")
       .bind(this.listId)
       .all<any>();
-    return results.map((t) => ({
-      id: t.id,
-      text: t.text,
-      completed: Boolean(t.completed),
-      createdAt: Number(t.created_at),
-      priority: t.priority as "low" | "medium" | "high",
-      reminderAt: t.reminder_at ? Number(t.reminder_at) : undefined,
-      reminderSent: t.reminder_sent !== null ? Boolean(t.reminder_sent) : undefined,
-      parentId: t.parent_id || undefined,
-      recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
-    }));
+    return results.map((t) => this.mapRow(t));
   }
 
   /**
    * Creates a new todo item
    * @param text - The text content of the todo item
-   * @param priority - The priority level of the todo item (defaults to "medium")
+   * @param priority - The priority level of the todo item (defaults to "none")
    * @param reminderAt - Optional reminder timestamp (in ms)
    * @param parentId - Optional parent todo ID for subtasks
    * @param recurrence - Optional recurrence setting (defaults to "none")
@@ -80,7 +83,7 @@ export class TodoManager {
    */
   async create(
     text: string,
-    priority: "low" | "medium" | "high" = "medium",
+    priority: "low" | "medium" | "high" | "none" = "none",
     reminderAt?: number,
     parentId?: string,
     recurrence: "none" | "daily" | "weekly" | "monthly" = "none",
@@ -97,7 +100,7 @@ export class TodoManager {
         text,
         0,
         createdAt,
-        priority,
+        priority === "none" ? null : priority,
         reminderAt ?? null,
         reminderAt ? 0 : null,
         parentId ?? null,
@@ -130,17 +133,8 @@ export class TodoManager {
     }
     const newCompleted = todo.completed ? 0 : 1;
     await this.db.prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?").bind(newCompleted, id, this.listId).run();
-    return {
-      id: todo.id,
-      text: todo.text,
-      completed: Boolean(newCompleted),
-      createdAt: Number(todo.created_at),
-      priority: todo.priority as "low" | "medium" | "high",
-      reminderAt: todo.reminder_at ? Number(todo.reminder_at) : undefined,
-      reminderSent: todo.reminder_sent !== null ? Boolean(todo.reminder_sent) : undefined,
-      parentId: todo.parent_id || undefined,
-      recurrence: (todo.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
-    };
+    const updated = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
+    return this.mapRow(updated);
   }
 
   /**
@@ -159,23 +153,29 @@ export class TodoManager {
    * @returns Promise containing the updated Todo item
    * @throws Error if the todo item with the specified ID is not found
    */
-  async updatePriority(id: string, priority: "low" | "medium" | "high"): Promise<Todo> {
-    await this.db.prepare("UPDATE todos SET priority = ? WHERE id = ? AND list_id = ?").bind(priority, id, this.listId).run();
+  async updatePriority(id: string, priority: "low" | "medium" | "high" | "none"): Promise<Todo> {
+    await this.db.prepare("UPDATE todos SET priority = ? WHERE id = ? AND list_id = ?").bind(priority === "none" ? null : priority, id, this.listId).run();
     const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
-    return {
-      id: todo.id,
-      text: todo.text,
-      completed: Boolean(todo.completed),
-      createdAt: Number(todo.created_at),
-      priority: todo.priority as "low" | "medium" | "high",
-      reminderAt: todo.reminder_at ? Number(todo.reminder_at) : undefined,
-      reminderSent: todo.reminder_sent !== null ? Boolean(todo.reminder_sent) : undefined,
-      parentId: todo.parent_id || undefined,
-      recurrence: (todo.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
-    };
+    return this.mapRow(todo);
+  }
+
+  /**
+   * Updates the text of a todo item
+   * @param id - The unique identifier of the todo item to update
+   * @param text - The new text content
+   * @returns Promise containing the updated Todo item
+   * @throws Error if the todo item with the specified ID is not found
+   */
+  async updateText(id: string, text: string): Promise<Todo> {
+    await this.db.prepare("UPDATE todos SET text = ? WHERE id = ? AND list_id = ?").bind(text, id, this.listId).run();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
+    if (!todo) {
+      throw new Error(`Todo with id ${id} not found in this list`);
+    }
+    return this.mapRow(todo);
   }
 
   /**
@@ -194,17 +194,7 @@ export class TodoManager {
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
-    return {
-      id: todo.id,
-      text: todo.text,
-      completed: Boolean(todo.completed),
-      createdAt: Number(todo.created_at),
-      priority: todo.priority as "low" | "medium" | "high",
-      reminderAt: todo.reminder_at ? Number(todo.reminder_at) : undefined,
-      reminderSent: todo.reminder_sent !== null ? Boolean(todo.reminder_sent) : undefined,
-      parentId: todo.parent_id || undefined,
-      recurrence: (todo.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
-    };
+    return this.mapRow(todo);
   }
 
   /**
@@ -219,17 +209,7 @@ export class TodoManager {
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
-    return {
-      id: todo.id,
-      text: todo.text,
-      completed: Boolean(todo.completed),
-      createdAt: Number(todo.created_at),
-      priority: todo.priority as "low" | "medium" | "high",
-      reminderAt: todo.reminder_at ? Number(todo.reminder_at) : undefined,
-      reminderSent: Boolean(todo.reminder_sent),
-      parentId: todo.parent_id || undefined,
-      recurrence: (todo.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
-    };
+    return this.mapRow(todo);
   }
 
   /**
@@ -245,17 +225,7 @@ export class TodoManager {
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
-    return {
-      id: todo.id,
-      text: todo.text,
-      completed: Boolean(todo.completed),
-      createdAt: Number(todo.created_at),
-      priority: todo.priority as "low" | "medium" | "high",
-      reminderAt: todo.reminder_at ? Number(todo.reminder_at) : undefined,
-      reminderSent: todo.reminder_sent !== null ? Boolean(todo.reminder_sent) : undefined,
-      parentId: todo.parent_id || undefined,
-      recurrence: (todo.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
-    };
+    return this.mapRow(todo);
   }
 
   /**

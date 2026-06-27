@@ -45,7 +45,7 @@ describe("TodoManager", () => {
   });
 
   describe("create()", () => {
-    it("creates a new todo", async () => {
+    it("creates a new todo with default priority as none", async () => {
       const todo = await manager.create("Test todo");
 
       expect(todo).toMatchObject({
@@ -54,7 +54,7 @@ describe("TodoManager", () => {
       });
       expect(todo.id).toBeDefined();
       expect(todo.createdAt).toBeTypeOf("number");
-      expect(todo.priority).toBe("medium");
+      expect(todo.priority).toBe("none");
 
       const storedTodos = await manager.list();
       expect(storedTodos).toEqual([todo]);
@@ -127,13 +127,37 @@ describe("TodoManager", () => {
   describe("updatePriority()", () => {
     it("updates the priority of a todo", async () => {
       const todo = await manager.create("Test todo");
-      expect(todo.priority).toBe("medium");
+      expect(todo.priority).toBe("none");
 
       const updated = await manager.updatePriority(todo.id, "high");
       expect(updated.priority).toBe("high");
 
       const storedTodos = await manager.list();
       expect(storedTodos[0].priority).toBe("high");
+    });
+
+    it("updates the priority of a todo to none", async () => {
+      const todo = await manager.create("Test todo", "high");
+      expect(todo.priority).toBe("high");
+
+      const updated = await manager.updatePriority(todo.id, "none");
+      expect(updated.priority).toBe("none");
+
+      const storedTodos = await manager.list();
+      expect(storedTodos[0].priority).toBe("none");
+    });
+  });
+
+  describe("updateText()", () => {
+    it("updates the text content of a todo", async () => {
+      const todo = await manager.create("Old text");
+      expect(todo.text).toBe("Old text");
+
+      const updated = await manager.updateText(todo.id, "New text");
+      expect(updated.text).toBe("New text");
+
+      const storedTodos = await manager.list();
+      expect(storedTodos[0].text).toBe("New text");
     });
   });
 
@@ -162,6 +186,7 @@ describe("TodoManager", () => {
       expect(updated.reminderSent).toBeUndefined();
 
       const storedTodos = await manager.list();
+      expect(storedTodos[0].reminderAt).toBe(reminderTime ? undefined : 0); // wait, expect undefined since we cleared it
       expect(storedTodos[0].reminderAt).toBeUndefined();
       expect(storedTodos[0].reminderSent).toBeUndefined();
     });

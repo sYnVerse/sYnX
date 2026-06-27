@@ -113,7 +113,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
         text: t.text,
         completed: Boolean(t.completed),
         createdAt: Number(t.created_at),
-        priority: t.priority as "low" | "medium" | "high",
+        priority: (t.priority || "none") as "low" | "medium" | "high" | "none",
         reminderAt: t.reminder_at ? Number(t.reminder_at) : undefined,
         reminderSent: t.reminder_sent !== null ? Boolean(t.reminder_sent) : undefined,
         parentId: t.parent_id || undefined,
@@ -218,7 +218,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     case "create": {
       const text = formData.get("text");
       const priority =
-        (formData.get("priority") as "low" | "medium" | "high") || "medium";
+        (formData.get("priority") as "low" | "medium" | "high" | "none") || "none";
       const reminderAtVal = formData.get("reminderAt");
       const reminderAt = reminderAtVal ? Number(reminderAtVal) : undefined;
       const parentId = (formData.get("parentId") as string) || undefined;
@@ -272,8 +272,18 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "updatePriority": {
       const id = formData.get("id") as string;
-      const priority = formData.get("priority") as "low" | "medium" | "high";
+      const priority = formData.get("priority") as "low" | "medium" | "high" | "none";
       await todoManager.updatePriority(id, priority);
+      return { success: true };
+    }
+
+    case "updateText": {
+      const id = formData.get("id") as string;
+      const text = formData.get("text") as string;
+      if (typeof text !== "string" || !text.trim()) {
+        return Response.json({ error: "Invalid text" }, { status: 400 });
+      }
+      await todoManager.updateText(id, text.trim());
       return { success: true };
     }
 
@@ -450,6 +460,14 @@ const priorityConfig = {
     border: "border-emerald-500/30",
     ring: "ring-emerald-500/40",
     dot: "bg-emerald-400",
+  },
+  none: {
+    label: "None",
+    color: "text-slate-400",
+    bg: "bg-slate-500/10",
+    border: "border-slate-500/20",
+    ring: "ring-slate-500/30",
+    dot: "bg-slate-400",
   },
 };
 
@@ -763,7 +781,7 @@ function PriorityPicker({
   currentPriority,
   todoId,
 }: {
-  currentPriority: "low" | "medium" | "high";
+  currentPriority: "low" | "medium" | "high" | "none";
   todoId: string;
 }) {
   const fetcher = useFetcher();
@@ -771,7 +789,7 @@ function PriorityPicker({
   const ref = useRef<HTMLDivElement>(null);
 
   const optimisticPriority =
-    fetcher.formData?.get("priority") as "low" | "medium" | "high" | null;
+    fetcher.formData?.get("priority") as "low" | "medium" | "high" | "none" | null;
   const displayPriority = optimisticPriority || currentPriority;
   const cfg = priorityConfig[displayPriority];
 
@@ -798,7 +816,7 @@ function PriorityPicker({
 
       {open && (
         <div className="absolute right-0 top-full mt-1 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl py-1 min-w-[90px]">
-          {(["high", "medium", "low"] as const).map((p) => {
+          {(["high", "medium", "low", "none"] as const).map((p) => {
             const c = priorityConfig[p];
             return (
               <button
@@ -905,10 +923,15 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
   const toggleFetcher = useFetcher();
   const deleteFetcher = useFetcher();
   const subtaskFetcher = useFetcher();
+  const editFetcher = useFetcher();
 
   const [showAddSubtask, setShowAddSubtask] = useState(false);
   const [subtaskText, setSubtaskText] = useState("");
   const subtaskInputRef = useRef<HTMLInputElement>(null);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(todo.text);
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   const isToggling = toggleFetcher.formData?.get("intent") === "toggle";
   const isDeleting = deleteFetcher.formData?.get("intent") === "delete";
@@ -920,6 +943,17 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
     }
   }, [showAddSubtask]);
 
+  useEffect(() => {
+    if (isEditing && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [isEditing]);
+
+  useEffect(() => {
+    setEditText(todo.text);
+  }, [todo.text]);
+
   if (isDeleting) return null;
 
   const handleAddSubtask = (e: React.FormEvent) => {
@@ -930,12 +964,37 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
         intent: "create",
         text: subtaskText.trim(),
         parentId: todo.id,
-        priority: "medium",
+        priority: "none",
       },
       { method: "post" }
     );
     setSubtaskText("");
     setShowAddSubtask(false);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editText.trim()) return;
+    if (editText.trim() === todo.text) {
+      setIsEditing(false);
+      return;
+    }
+    editFetcher.submit(
+      {
+        intent: "updateText",
+        id: todo.id,
+        text: editText.trim(),
+      },
+      { method: "post" }
+    );
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      setEditText(todo.text);
+      setIsEditing(false);
+    }
   };
 
   return (
@@ -977,17 +1036,53 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </button>
         </toggleFetcher.Form>
 
-        <span
-          className={`flex-1 transition-all duration-200 ${
-            isSubtask ? "text-xs text-slate-350" : "text-sm text-slate-200"
-          } ${
-            optimisticCompleted
-              ? "line-through text-slate-500 italic opacity-50"
-              : ""
-          }`}
-        >
-          {todo.text}
-        </span>
+        {isEditing ? (
+          <form onSubmit={handleEditSubmit} className="flex-1 flex items-center gap-2">
+            <input
+              ref={editInputRef}
+              type="text"
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className={`w-full rounded-md bg-white/[0.04] border border-white/[0.1] text-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 ${
+                isSubtask ? "text-xs" : "text-sm"
+              }`}
+            />
+            <button
+              type="submit"
+              className="text-[10px] bg-themeAccentFrom hover:bg-themeAccentTo text-white px-2 py-1 rounded font-semibold cursor-pointer"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditText(todo.text);
+                setIsEditing(false);
+              }}
+              className="text-[10px] text-slate-500 hover:text-slate-350 px-1 py-1 cursor-pointer"
+            >
+              Cancel
+            </button>
+          </form>
+        ) : (
+          <span
+            className={`flex-1 transition-all duration-200 cursor-pointer hover:text-white ${
+              isSubtask ? "text-xs text-slate-350" : "text-sm text-slate-200"
+            } ${
+              optimisticCompleted
+                ? "line-through text-slate-500 italic opacity-50"
+                : ""
+            }`}
+            onDoubleClick={() => {
+              if (!optimisticCompleted) {
+                setIsEditing(true);
+              }
+            }}
+          >
+            {todo.text}
+          </span>
+        )}
 
         {/* Recurrence Indicator (for parent tasks only) */}
         {!isSubtask && todo.recurrence && todo.recurrence !== "none" && (
@@ -996,7 +1091,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </span>
         )}
 
-        <PriorityPicker currentPriority={todo.priority || "medium"} todoId={todo.id} />
+        <PriorityPicker currentPriority={todo.priority || "none"} todoId={todo.id} />
         {!optimisticCompleted && !isSubtask && <ReminderPicker todo={todo} />}
 
         {/* Recurrence Picker dropdown (only for parent tasks) */}
@@ -1014,6 +1109,30 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+        )}
+
+        {!optimisticCompleted && !isEditing && (
+          <button
+            type="button"
+            onClick={() => setIsEditing(true)}
+            className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-themeAccentText transition-all duration-200 p-1 rounded-lg hover:bg-white/[0.04] cursor-pointer"
+            title="Edit task"
+            aria-label="Edit task"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+              />
             </svg>
           </button>
         )}
@@ -1094,7 +1213,7 @@ export default function TodoPage() {
   const listNameInputRef = useRef<HTMLInputElement>(null);
   
   const [filter, setFilter] = useState<Filter>("all");
-  const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">("medium");
+  const [newPriority, setNewPriority] = useState<"low" | "medium" | "high" | "none">("none");
   const [toast, setToast] = useState({ message: "", visible: false });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -1369,9 +1488,9 @@ export default function TodoPage() {
   // 3. Sort tasks
   const sortedTodos = [...searchedTodos].sort((a, b) => {
     if (sortBy === "priority") {
-      const pMap = { high: 3, medium: 2, low: 1 };
-      const aVal = pMap[a.priority] || 2;
-      const bVal = pMap[b.priority] || 2;
+      const pMap = { high: 3, medium: 2, low: 1, none: 0 };
+      const aVal = a.priority ? (pMap[a.priority] ?? 0) : 0;
+      const bVal = b.priority ? (pMap[b.priority] ?? 0) : 0;
       return bVal - aVal;
     }
     if (sortBy === "reminder") {
@@ -1402,6 +1521,11 @@ export default function TodoPage() {
     }
     return acc;
   }, {} as Record<string, Todo[]>);
+
+  // Sort subtasks chronologically (oldest first)
+  for (const parentId in subtasksMap) {
+    subtasksMap[parentId].sort((a, b) => a.createdAt - b.createdAt);
+  }
 
   const totalCount = optimisticTodos.filter(t => !t.parentId).length;
   const completedCount = optimisticTodos.filter(t => !t.parentId && t.completed).length;
@@ -1817,9 +1941,10 @@ export default function TodoPage() {
                 <select
                   name="priority"
                   value={newPriority}
-                  onChange={(e) => setNewPriority(e.target.value as "low" | "medium" | "high")}
+                  onChange={(e) => setNewPriority(e.target.value as "low" | "medium" | "high" | "none")}
                   className="h-full w-full rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-350 text-xs px-3 py-3 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 cursor-pointer appearance-none bg-slate-900 pr-6"
                 >
+                  <option value="none">⚪ No Priority</option>
                   <option value="low">🟢 Low Priority</option>
                   <option value="medium">🟡 Medium Priority</option>
                   <option value="high">🔴 High Priority</option>

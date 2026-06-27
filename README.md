@@ -9,7 +9,9 @@ Manage your to-do list with [Cloudflare Workers Assets](https://developers.cloud
 ## Key Features
 
 *   **Public & Collaborative List Sharing**: Share your task list as Private, View-Only, or Collaborative (Public edit access for team coordination).
+*   **Inline Task Editing**: Quickly update tasks inline using the Edit (pencil) button or by double-clicking the task text.
 *   **One-Level Nested Subtasks**: Break down tasks into subtask checklists.
+*   **Flexible Priority Levels**: Select between Low, Medium, High, or No Priority (none) to organize tasks. Unprioritized tasks rank logically at the bottom during priority sorting.
 *   **Recurring Tasks**: Automate repeating chores with Daily, Weekly, and Monthly recurrence periods (automatically updates reminder timestamps).
 *   **Search & Sorting Options**: Instantly filter tasks by search term and sort by Priority, Due Date, Alphabetical, or Date Created.
 *   **Theme Customizer**: Toggle between Midnight Indigo (default), Emerald Forest, Sunset Rose, and Cyberpunk Neon dark themes.
