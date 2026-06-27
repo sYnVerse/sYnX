@@ -13,3 +13,8 @@ vitest
 .vitest
 vitest.config.ts
 test/
+
+# Graphify
+graphify-out/cost.json
+graphify-out/cache
+graphify-out/*-*/

@@ -1,0 +1,125 @@
+{
+  "nodes": [
+    {
+      "id": "github_dependabot_npm_updates",
+      "label": "Dependabot NPM Package Updates",
+      "file_type": "document",
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\.github\\dependabot.yml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_synx_todo_list",
+      "label": "sYnX To-Do List App",
+      "file_type": "document",
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_cloudflare_d1_database",
+      "label": "Cloudflare D1 Database",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_remix_framework",
+      "label": "Remix Framework",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_cloudflare_workers_assets",
+      "label": "Cloudflare Workers Assets",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme_database_migration",
+      "label": "Database Migration Setup",
+      "file_type": "concept",
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "readme_synx_todo_list",
+      "target": "readme_cloudflare_d1_database",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_synx_todo_list",
+      "target": "readme_remix_framework",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_synx_todo_list",
+      "target": "readme_cloudflare_workers_assets",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_database_migration",
+      "target": "readme_cloudflare_d1_database",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme_database_migration",
+      "target": "readme_synx_todo_list",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Users\\chris\\Documents\\GitHub\\to-do-list\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

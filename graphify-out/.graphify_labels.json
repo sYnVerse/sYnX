@@ -1,0 +1,19 @@
+{
+  "0": "Todo View and Components",
+  "1": "User Authentication",
+  "2": "TypeScript Configuration",
+  "3": "Project Settings and Metadata",
+  "4": "Development Dependencies",
+  "5": "Remix and Vite Server Setup",
+  "6": "TodoManager Core Logic",
+  "7": "Package Scripts",
+  "8": "Production Dependencies",
+  "9": "Documentation Concepts",
+  "10": "App Root Component",
+  "11": "Worker Configuration Types",
+  "12": "Client Entry Point",
+  "13": "ESLint Configuration",
+  "14": "GitHub Dependabot Config",
+  "15": "PostCSS Configuration",
+  "16": "Tailwind CSS Configuration"
+}
