@@ -1,0 +1,8 @@
+---
+description: Global behavior guidelines to optimize context and performance
+globs: *
+alwaysApply: true
+---
+- NO ASSUMPTIONS: Do not scan the entire codebase or run broad repository searches unless explicitly requested via `@codebase` or required for a cross-cutting change.
+- LOCAL CONTEXT FIRST: Rely exclusively on files currently open in the editor or explicitly targeted.
+- If information about an unlinked file is missing, ask the user directly instead of searching blindly.
