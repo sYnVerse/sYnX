@@ -1,16 +1,16 @@
-# Graph Report - to-do-list  (2026-06-26)
+# Graph Report - to-do-list  (2026-07-15)
 
 ## Corpus Check
-- 20 files · ~14,187 words
+- 22 files · ~14,740 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 160 nodes · 184 edges · 17 communities (14 shown, 3 thin omitted)
+- 162 nodes · 191 edges · 18 communities (14 shown, 4 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `32d8df8e`
+- Built from commit: `fa9d2cac`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -27,10 +27,11 @@
 - [[_COMMUNITY_Documentation Concepts|Documentation Concepts]]
 - [[_COMMUNITY_Worker Configuration Types|Worker Configuration Types]]
 - [[_COMMUNITY_GitHub Dependabot Config|GitHub Dependabot Config]]
+- [[_COMMUNITY_Community 17|Community 17]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `compilerOptions` - 16 edges
-2. `TodoManager` - 13 edges
+2. `TodoManager` - 15 edges
 3. `scripts` - 11 edges
 4. `getAuthClient()` - 8 edges
 5. `getCookieAttributes()` - 8 edges
@@ -55,7 +56,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (17 total, 3 thin omitted)
+## Communities (18 total, 4 thin omitted)
 
 ### Community 0 - "Todo View and Components"
 Cohesion: 0.11
@@ -86,29 +87,29 @@ Cohesion: 0.18
 Nodes (11): scripts, build, cf-typegen, check, deploy, dev, lint, preview (+3 more)
 
 ### Community 8 - "Production Dependencies"
-Cohesion: 0.20
-Nodes (10): dependencies, isbot, nanoid, @openauthjs/openauth, react, react-dom, @remix-run/cloudflare, @remix-run/react (+2 more)
+Cohesion: 0.25
+Nodes (8): dependencies, isbot, @openauthjs/openauth, react, react-dom, @remix-run/cloudflare, @remix-run/react, valibot
 
 ### Community 9 - "Documentation Concepts"
 Cohesion: 0.25
 Nodes (8): Apply Locally, Cloudflare D1 Database, Cloudflare Workers Assets, Database Migration Setup, Getting Started, Key Features, Remix Framework, sYnX To-Do List App
 
 ## Knowledge Gaps
-- **79 isolated node(s):** `subjects`, `clients`, `Filter`, `priorityConfig`, `GetLoadContextArgs` (+74 more)
+- **78 isolated node(s):** `subjects`, `clients`, `Filter`, `priorityConfig`, `GetLoadContextArgs` (+73 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `devDependencies` connect `Development Dependencies` to `Project Settings and Metadata`?**
-  _High betweenness centrality (0.059) - this node is a cross-community bridge._
+  _High betweenness centrality (0.055) - this node is a cross-community bridge._
 - **Why does `TodoManager` connect `TodoManager Core Logic` to `Todo View and Components`?**
-  _High betweenness centrality (0.047) - this node is a cross-community bridge._
+  _High betweenness centrality (0.055) - this node is a cross-community bridge._
 - **Why does `scripts` connect `Package Scripts` to `Project Settings and Metadata`?**
-  _High betweenness centrality (0.039) - this node is a cross-community bridge._
+  _High betweenness centrality (0.037) - this node is a cross-community bridge._
 - **What connects `subjects`, `clients`, `Filter` to the rest of the system?**
-  _79 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _78 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Todo View and Components` be split into smaller, more focused modules?**
   _Cohesion score 0.11462450592885376 - nodes in this community are weakly interconnected._
 - **Should `TypeScript Configuration` be split into smaller, more focused modules?**

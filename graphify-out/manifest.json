@@ -25,9 +25,9 @@
     "semantic_hash": "f9fbbcc5cc453fc8b1a95b5fc41130aa"
   },
   "app/routes/$id.tsx": {
-    "mtime": 1781919135.4332662,
-    "ast_hash": "8560dd26d34194a2ab0c17e5e2d8c6ef",
-    "semantic_hash": "8560dd26d34194a2ab0c17e5e2d8c6ef"
+    "mtime": 1782543908.2504785,
+    "ast_hash": "023d633dbb97235eef9fdcb34c1ecb6f",
+    "semantic_hash": ""
   },
   "app/routes/_index.tsx": {
     "mtime": 1780174464.0239284,
@@ -50,9 +50,9 @@
     "semantic_hash": "04a6daf93b6e2156d46d1620d854b66c"
   },
   "app/to-do-manager.ts": {
-    "mtime": 1781840244.7063768,
-    "ast_hash": "cd034a6f1eccd645f502b03e404ad404",
-    "semantic_hash": "cd034a6f1eccd645f502b03e404ad404"
+    "mtime": 1782543946.3599954,
+    "ast_hash": "d48694ccd2e193934ced9012ccfde3bb",
+    "semantic_hash": ""
   },
   "load-context.ts": {
     "mtime": 1779938371.8574996,
@@ -60,9 +60,9 @@
     "semantic_hash": "23cadbfa041cff16e775e6bb2025ba06"
   },
   "package.json": {
-    "mtime": 1781987861.8736432,
-    "ast_hash": "66b2b7b34880de5c887b9db8f6ba76d7",
-    "semantic_hash": "66b2b7b34880de5c887b9db8f6ba76d7"
+    "mtime": 1784161758.61564,
+    "ast_hash": "b26dd6fb0fc3f0863cf8af17e0986600",
+    "semantic_hash": ""
   },
   "postcss.config.js": {
     "mtime": 1779938371.8641675,
@@ -100,8 +100,18 @@
     "semantic_hash": "e88fe69cc3dea88f3b301895f96004fb"
   },
   "README.md": {
-    "mtime": 1781844355.4954903,
-    "ast_hash": "1440d44c3309a07c0996f851b3983f18",
-    "semantic_hash": "1440d44c3309a07c0996f851b3983f18"
+    "mtime": 1782544032.4106386,
+    "ast_hash": "f7b4de4b5e9013fdff209236c4e24ce4",
+    "semantic_hash": ""
+  },
+  ".claude/settings.json": {
+    "mtime": 1782543919.218401,
+    "ast_hash": "7bf81dca0376bde3a32244b82bc7cbc0",
+    "semantic_hash": ""
+  },
+  "CLAUDE.md": {
+    "mtime": 1782543919.218401,
+    "ast_hash": "8a6643a420fdad6bfb583523bc6cef16",
+    "semantic_hash": ""
   }
 }
