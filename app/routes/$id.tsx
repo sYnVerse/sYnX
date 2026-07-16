@@ -7,6 +7,7 @@ import {
 import { useLoaderData, useFetcher } from "@remix-run/react";
 import { TodoManager, type Todo, type UserSettings } from "~/to-do-manager";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
 
 export const loader = async ({ request, params, context }: LoaderFunctionArgs) => {
@@ -1218,6 +1219,20 @@ export default function TodoPage() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+
+  useEffect(() => {
+    const savedViewMode = localStorage.getItem("synx_view_mode");
+    if (savedViewMode === "list" || savedViewMode === "calendar") {
+      setViewMode(savedViewMode);
+    }
+  }, []);
+
+  const changeViewMode = (mode: "list" | "calendar") => {
+    setViewMode(mode);
+    localStorage.setItem("synx_view_mode", mode);
+  };
+
   // UX additions: theme, search, sort, share popup
   const [theme, setTheme] = useState("midnight");
   const [searchQuery, setSearchQuery] = useState("");
@@ -2112,25 +2127,53 @@ export default function TodoPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            {/* Filter buttons */}
-            <div className="flex gap-1 bg-white/[0.02] border border-white/[0.04] rounded-xl p-1 self-start">
-              {filterButtons.map((f) => (
+            <div className="flex flex-wrap gap-3 items-center">
+              {/* Filter buttons */}
+              <div className="flex gap-1 bg-white/[0.02] border border-white/[0.04] rounded-xl p-1 self-start">
+                {filterButtons.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setFilter(f.key)}
+                    className={`text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer
+                      ${filter === f.key
+                        ? "bg-themeAccentBg text-themeAccentText shadow-sm"
+                        : "text-slate-500 hover:text-slate-350"
+                      }`}
+                  >
+                    {f.label}
+                    <span className="ml-1.5 opacity-50 font-bold">
+                      {f.key === "all" ? totalCount : f.key === "active" ? activeCount : completedCount}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* View switcher */}
+              <div className="flex gap-1 bg-white/[0.02] border border-white/[0.04] rounded-xl p-1 self-start">
                 <button
-                  key={f.key}
                   type="button"
-                  onClick={() => setFilter(f.key)}
+                  onClick={() => changeViewMode("list")}
                   className={`text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer
-                    ${filter === f.key
+                    ${viewMode === "list"
                       ? "bg-themeAccentBg text-themeAccentText shadow-sm"
                       : "text-slate-500 hover:text-slate-350"
                     }`}
                 >
-                  {f.label}
-                  <span className="ml-1.5 opacity-50 font-bold">
-                    {f.key === "all" ? totalCount : f.key === "active" ? activeCount : completedCount}
-                  </span>
+                  📝 List
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => changeViewMode("calendar")}
+                  className={`text-xs font-semibold px-3.5 py-1.5 rounded-lg transition-all duration-200 cursor-pointer
+                    ${viewMode === "calendar"
+                      ? "bg-themeAccentBg text-themeAccentText shadow-sm"
+                      : "text-slate-500 hover:text-slate-350"
+                    }`}
+                >
+                  📅 Calendar
+                </button>
+              </div>
             </div>
 
             {/* Action buttons (Clear completed, Share Popover) */}
@@ -2225,7 +2268,9 @@ export default function TodoPage() {
 
         {/* Todo List Area */}
         <div className="flex-1 min-h-0 mb-6 flex flex-col">
-          {visibleParents.length === 0 && totalCount === 0 ? (
+          {viewMode === "calendar" ? (
+            <CalendarView todos={optimisticTodos} activeListId={activeListId || ""} />
+          ) : visibleParents.length === 0 && totalCount === 0 ? (
             <div className="flex-1 overflow-y-auto scrollbar-thin flex flex-col justify-center">
               <EmptyState />
             </div>
