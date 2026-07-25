@@ -24,8 +24,8 @@
     "@remix-run/react": "^2.17.5",
     "valibot": "^1.4.2",
     "isbot": "5.2.1",
-    "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.16.10",
