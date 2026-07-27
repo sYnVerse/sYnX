@@ -57,7 +57,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
           arrowColor: "#6366f1",
           monthTextColor: "#f8fafc",
         }}
-        onDayPress={(day) => setSelectedDate(day.dateString)}
+        onDayPress={(day: any) => setSelectedDate(day.dateString)}
         markedDates={markedDates}
       />
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator, Platform, StatusBar } from "react-native";
 import { TasksScreen } from "../screens/TasksScreen";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { ListsScreen } from "../screens/ListsScreen";
@@ -152,6 +152,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#0f172a",
+    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight || 24) + 12 : 12,
   },
   content: {
     flex: 1,

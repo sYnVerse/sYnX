@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Switch, TextInput, TouchableOpacity, ScrollView } from "react-native";
+import * as SecureStore from "expo-secure-store";
 import { useAuth } from "../context/AuthContext";
-import { apiClient } from "../api/client";
+import { apiClient, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
 import { registerForPushNotificationsAsync } from "../services/notifications";
 
 export const SettingsScreen: React.FC = () => {
@@ -26,6 +27,15 @@ export const SettingsScreen: React.FC = () => {
         }
       } catch (e) {
         console.error("Failed to load settings", e);
+      }
+
+      try {
+        const token = await SecureStore.getItemAsync(DEVICE_PUSH_TOKEN_KEY);
+        if (token) {
+          setPushStatus("Registered!");
+        }
+      } catch (e) {
+        console.error("Failed to read stored push token", e);
       }
     }
     loadSettings();
