@@ -1,15 +1,58 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView } from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator } from "react-native";
 import { TasksScreen } from "../screens/TasksScreen";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { ListsScreen } from "../screens/ListsScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { useAuth } from "../context/AuthContext";
+import { apiClient } from "../api/client";
+
+async function fetchOrCreateActiveListId(): Promise<string> {
+  const res = await apiClient.get("/api/v1/lists");
+  const lists = (res.data.lists || []) as { id: string }[];
+  if (lists.length > 0) {
+    return lists[0].id;
+  }
+
+  const created = await apiClient.post("/api/v1/lists", { name: "My Tasks" });
+  const newId = created.data?.list?.id as string | undefined;
+  if (!newId) {
+    throw new Error("Could not create a default list.");
+  }
+  return newId;
+}
 
 export const BottomTabNavigator: React.FC = () => {
   const { token, login, isLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<"tasks" | "calendar" | "lists" | "settings">("tasks");
-  const [activeListId, setActiveListId] = useState<string>("default");
+  const [activeListId, setActiveListId] = useState<string | null>(null);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+
+  const resolveActiveList = useCallback(async () => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      const id = await fetchOrCreateActiveListId();
+      setActiveListId(id);
+    } catch (e: any) {
+      console.error("Failed to resolve active list", e);
+      setActiveListId(null);
+      setListError(e.response?.data?.error || e.message || "Failed to load your lists.");
+    } finally {
+      setListLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!token) {
+      setActiveListId(null);
+      setListError(null);
+      setListLoading(false);
+      return;
+    }
+    resolveActiveList();
+  }, [token, resolveActiveList]);
 
   if (isLoading) {
     return (
@@ -28,6 +71,26 @@ export const BottomTabNavigator: React.FC = () => {
           <Text style={styles.loginBtnText}>Sign In with OpenAuth</Text>
         </TouchableOpacity>
       </SafeAreaView>
+    );
+  }
+
+  if (listLoading || !activeListId) {
+    return (
+      <View style={styles.centered}>
+        {listError ? (
+          <>
+            <Text style={styles.subtitle}>{listError}</Text>
+            <TouchableOpacity style={styles.loginBtn} onPress={resolveActiveList}>
+              <Text style={styles.loginBtnText}>Retry</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <ActivityIndicator color="#6366f1" size="large" />
+            <Text style={[styles.loadingText, { marginTop: 12 }]}>Loading your lists...</Text>
+          </>
+        )}
+      </View>
     );
   }
 
