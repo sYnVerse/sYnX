@@ -1,0 +1,85 @@
+import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
+import { verifyBearerToken } from "../auth.server";
+
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const env = context.cloudflare.env;
+  const db = env.DB as D1Database;
+  const user = await verifyBearerToken(request, env);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const row = await db.prepare("SELECT * FROM user_settings WHERE user_id = ?").bind(user.userId).first<any>();
+
+  const settings = {
+    userId: user.userId,
+    email: user.email,
+    emailEnabled: row ? Boolean(row.email_enabled) : false,
+    smsEnabled: row ? Boolean(row.sms_enabled) : false,
+    phoneNumber: row ? row.phone_number || "" : "",
+    phoneCarrier: row ? row.phone_carrier || "" : "",
+    discordWebhookUrl: row ? row.discord_webhook_url || "" : "",
+  };
+
+  return Response.json({ success: true, settings });
+}
+
+export async function action({ request, context }: ActionFunctionArgs) {
+  if (request.method !== "PUT") {
+    return Response.json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  const env = context.cloudflare.env;
+  const db = env.DB as D1Database;
+  const user = await verifyBearerToken(request, env);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const body = (await request.json()) as any;
+    const emailEnabled = Boolean(body.emailEnabled);
+    const smsEnabled = Boolean(body.smsEnabled);
+    const phoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber.trim() : "";
+    const phoneCarrier = typeof body.phoneCarrier === "string" ? body.phoneCarrier.trim() : "";
+    const discordWebhookUrl = typeof body.discordWebhookUrl === "string" ? body.discordWebhookUrl.trim() : "";
+
+    if (discordWebhookUrl) {
+      const DISCORD_WEBHOOK_REGEX = /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
+      if (!DISCORD_WEBHOOK_REGEX.test(discordWebhookUrl)) {
+        return Response.json({ error: "Invalid Discord Webhook URL format" }, { status: 400 });
+      }
+    }
+
+    await db
+      .prepare(
+        `INSERT INTO user_settings (user_id, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+           email_enabled = excluded.email_enabled,
+           sms_enabled = excluded.sms_enabled,
+           phone_number = excluded.phone_number,
+           phone_carrier = excluded.phone_carrier,
+           discord_webhook_url = excluded.discord_webhook_url`
+      )
+      .bind(user.userId, emailEnabled ? 1 : 0, smsEnabled ? 1 : 0, phoneNumber, phoneCarrier, discordWebhookUrl)
+      .run();
+
+    return Response.json({
+      success: true,
+      settings: {
+        userId: user.userId,
+        email: user.email,
+        emailEnabled,
+        smsEnabled,
+        phoneNumber,
+        phoneCarrier,
+        discordWebhookUrl,
+      },
+    });
+  } catch (err: any) {
+    return Response.json({ error: err.message || "Invalid settings payload" }, { status: 400 });
+  }
+}
