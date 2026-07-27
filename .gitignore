@@ -18,3 +18,7 @@ test/
 graphify-out/cost.json
 graphify-out/cache
 graphify-out/*-*/
+# Mobile / Expo
+mobile/google-services.json
+mobile/node_modules/
+mobile/.expo/

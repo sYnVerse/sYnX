@@ -5,6 +5,7 @@ import * as build from "./build/server";
 import { getLoadContext } from "./load-context";
 
 import { type PendingReminder } from "./app/to-do-manager";
+import { sendFCMPushNotification } from "./app/fcm.server";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
@@ -206,6 +207,33 @@ export default {
             if (!res.ok) console.error("Discord Webhook failed:", res.statusText);
           }).catch(err => console.error("Discord fetch error:", err))
         );
+      }
+
+      // Mobile FCM Push Notifications
+      try {
+        const queryRes = await db
+          .prepare("SELECT token FROM device_tokens WHERE user_id = ?")
+          .bind(reminder.userId)
+          .all();
+        const tokens = (queryRes.results || []) as { token: string }[];
+
+        if (tokens.length > 0) {
+          for (const device of tokens) {
+            promises.push(
+              sendFCMPushNotification(
+                device.token,
+                {
+                  title: "sYnX Task Reminder",
+                  body: reminder.text,
+                  data: { todoId: reminder.id, listId: reminder.listId },
+                },
+                env
+              )
+            );
+          }
+        }
+      } catch (fcmErr) {
+        console.error("[Cron] Failed to fetch or dispatch FCM device tokens:", fcmErr);
       }
 
       if (promises.length > 0) {

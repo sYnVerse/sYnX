@@ -234,35 +234,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "toggle": {
       const id = formData.get("id") as string;
-      const todo = await db.prepare("SELECT * FROM todos WHERE id = ?").bind(id).first<any>();
-      if (!todo) {
-        return Response.json({ error: "Todo not found" }, { status: 404 });
-      }
-      
-      const willBeCompleted = !todo.completed;
-      if (willBeCompleted && todo.recurrence && todo.recurrence !== "none") {
-        const currentReminder = todo.reminder_at ? Number(todo.reminder_at) : Date.now();
-        let nextReminder = currentReminder;
-        const oneDay = 24 * 60 * 60 * 1000;
-        if (todo.recurrence === "daily") {
-          nextReminder = currentReminder + oneDay;
-        } else if (todo.recurrence === "weekly") {
-          nextReminder = currentReminder + 7 * oneDay;
-        } else if (todo.recurrence === "monthly") {
-          const date = new Date(currentReminder);
-          date.setMonth(date.getMonth() + 1);
-          nextReminder = date.getTime();
-        }
-        
-        await db.prepare(
-          "UPDATE todos SET reminder_at = ?, reminder_sent = 0, completed = 0 WHERE id = ?"
-        ).bind(nextReminder, id).run();
-        
-        return { success: true, rescheduled: true };
-      } else {
-        await todoManager.toggle(id);
-        return { success: true };
-      }
+      await todoManager.toggle(id);
+      return { success: true };
     }
 
     case "delete": {
