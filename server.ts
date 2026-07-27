@@ -37,15 +37,7 @@ export default {
 
     console.log(`[Cron] Scheduled job started at ${new Date(now).toISOString()}`);
 
-    // 1. Clean up expired guest lists and their todos (via SQLite CASCADE deletion)
-    try {
-      const cleanResult = await db.prepare("DELETE FROM lists WHERE expiration_ttl IS NOT NULL AND (created_at + (expiration_ttl * 1000)) <= ?").bind(now).run();
-      console.log(`[Cron] Expired list cleanup executed. Changes: ${cleanResult.meta.changes}`);
-    } catch (e) {
-      console.error("[Cron] Failed to delete expired guest lists:", e);
-    }
-
-    // 2. Fetch due reminders with user settings and emails
+    // Fetch due reminders with user settings and emails
     let dueReminders: any[] = [];
     try {
       const { results } = await db.prepare(`
