@@ -4,11 +4,68 @@ import {
   redirect,
   json,
 } from "@remix-run/cloudflare";
-import { useLoaderData, useFetcher } from "@remix-run/react";
+import { useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
 import { TodoManager, type Todo, type UserSettings } from "~/to-do-manager";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
 import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
+
+export const GUEST_STORAGE_KEY = "synx_guest_lists";
+
+export interface GuestList {
+  id: string;
+  name: string;
+  owner_id: string;
+  created_at: number;
+  share_mode?: string;
+  todos: Todo[];
+}
+
+export const GuestContext = createContext<{
+  isLoggedIn: boolean;
+  onGuestAction: (intent: string, payload: any) => void;
+}>({
+  isLoggedIn: false,
+  onGuestAction: () => {},
+});
+
+export function loadGuestListsFromStorage(guestId: string): GuestList[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(GUEST_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load guest lists from localStorage:", e);
+  }
+  const defaultList: GuestList = {
+    id: guestId || "guest_default",
+    name: "My Tasks",
+    owner_id: guestId || "guest",
+    created_at: Date.now(),
+    share_mode: "private",
+    todos: [],
+  };
+  const initial = [defaultList];
+  try {
+    localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(initial));
+  } catch (e) {}
+  return initial;
+}
+
+export function saveGuestListsToStorage(guestLists: GuestList[]) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(guestLists));
+  } catch (e) {
+    console.error("Failed to save guest lists to localStorage:", e);
+  }
+}
+
 
 export const loader = async ({ request, params, context }: LoaderFunctionArgs) => {
   const { userId, email, isLoggedIn, guestId, isNewGuest } = await getOptionalUser(request, context.cloudflare.env);
@@ -31,67 +88,66 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     }
   }
 
-  // Load lists
   let lists: any[] = [];
-  try {
-    const { results: listRows } = await db.prepare("SELECT * FROM lists WHERE owner_id = ? ORDER BY created_at ASC").bind(userId).all();
-    lists = listRows || [];
-  } catch (e) {
-    console.error("Failed to load lists:", e);
-  }
-
-  // Verify that the requested list exists in user's lists, or is shared
   const activeListId = params.id;
-  let activeListExists = lists.some((l: any) => l.id === activeListId);
-  let sharedList: any = null;
+  let activeListExists = false;
 
-  if (!activeListExists && activeListId) {
+  if (isLoggedIn) {
+    // Load lists from D1 for logged-in user
     try {
-      sharedList = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(activeListId).first<any>();
-      if (sharedList && sharedList.share_mode && sharedList.share_mode !== "private") {
-        lists.push(sharedList);
-        activeListExists = true;
+      const { results: listRows } = await db.prepare("SELECT * FROM lists WHERE owner_id = ? ORDER BY created_at ASC").bind(userId).all();
+      lists = listRows || [];
+    } catch (e) {
+      console.error("Failed to load lists:", e);
+    }
+
+    activeListExists = lists.some((l: any) => l.id === activeListId);
+
+    if (!activeListExists && activeListId) {
+      try {
+        const sharedList = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(activeListId).first<any>();
+        if (sharedList && sharedList.share_mode && sharedList.share_mode !== "private") {
+          lists.push(sharedList);
+          activeListExists = true;
+        }
+      } catch (e) {
+        console.error("Failed to query shared list:", e);
       }
-    } catch (e) {
-      console.error("Failed to query shared list:", e);
-    }
-  }
-
-  // Default setup if no lists exist
-  if (lists.length === 0) {
-    const defaultListId = crypto.randomUUID();
-    try {
-      await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, ?)")
-        .bind(defaultListId, "My Tasks", userId, Date.now(), isLoggedIn ? null : 86400)
-        .run();
-    } catch (e) {
-      console.error("Failed to create default list:", e);
     }
 
-    if (isNewGuest && guestId) {
-      return redirect(`/${defaultListId}`, { headers });
-    }
-    return redirect(`/${defaultListId}`);
-  }
-
-  if (!activeListExists) {
-    // Redirect to the first list
-    if (lists.length > 0) {
-      return redirect(`/${lists[0].id}`, { headers: isNewGuest && guestId ? headers : undefined });
-    } else {
+    // Default setup if no lists exist for logged-in user
+    if (lists.length === 0) {
       const defaultListId = crypto.randomUUID();
       try {
         await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, ?)")
-          .bind(defaultListId, "My Tasks", userId, Date.now(), isLoggedIn ? null : 86400)
+          .bind(defaultListId, "My Tasks", userId, Date.now(), null)
           .run();
       } catch (e) {
-        console.error("Failed to create fallback list:", e);
+        console.error("Failed to create default list:", e);
       }
-      return redirect(`/${defaultListId}`, { headers: isNewGuest && guestId ? headers : undefined });
+      return redirect(`/${defaultListId}`);
+    }
+
+    if (!activeListExists && lists.length > 0) {
+      return redirect(`/${lists[0].id}`);
+    }
+  } else {
+    // Guest user (isLoggedIn === false): DO NOT touch D1 for personal guest lists!
+    // Check if params.id matches a shared list from D1
+    if (activeListId) {
+      try {
+        const sharedList = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(activeListId).first<any>();
+        if (sharedList && sharedList.share_mode && sharedList.share_mode !== "private") {
+          lists.push(sharedList);
+          activeListExists = true;
+        }
+      } catch (e) {
+        console.error("Failed to query shared list for guest:", e);
+      }
     }
   }
 
-  // Load all todos for the lists we are displaying
+  // Load all todos for any lists loaded from D1 (logged in user or shared list)
   let allTodos: any[] = [];
   const listIds = lists.map((l: any) => l.id);
   if (listIds.length > 0) {
@@ -146,7 +202,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     phoneCarrier: "",
     discordWebhookUrl: ""
   };
-  if (userId) {
+  if (userId && isLoggedIn) {
     try {
       const settingsVal = await db.prepare("SELECT * FROM user_settings WHERE user_id = ?").bind(userId).first<any>();
       if (settingsVal) {
@@ -169,7 +225,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     isLoggedIn,
     settings,
     lists: listsWithTodos,
-    activeListId,
+    activeListId: activeListId || userId,
     todos,
     stats: {
       totalLists,
@@ -190,7 +246,50 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   const db = context.cloudflare.env.DB;
   const activeListId = params.id as string;
 
-  // Check list ownership or collaborative access
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  if (intent === "migrateGuestLists") {
+    if (isLoggedIn) {
+      const rawLists = formData.get("guestLists") as string;
+      if (rawLists) {
+        try {
+          const guestLists = JSON.parse(rawLists);
+          for (const gList of guestLists) {
+            const newListId = crypto.randomUUID();
+            await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, NULL)")
+              .bind(newListId, gList.name || "My Tasks", userId, gList.created_at || Date.now())
+              .run();
+            
+            if (Array.isArray(gList.todos)) {
+              for (const todo of gList.todos) {
+                const todoId = crypto.randomUUID();
+                await db.prepare(
+                  "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, parent_id, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                ).bind(
+                  todoId,
+                  newListId,
+                  todo.text,
+                  todo.completed ? 1 : 0,
+                  todo.createdAt || Date.now(),
+                  todo.priority && todo.priority !== "none" ? todo.priority : null,
+                  todo.reminderAt ?? null,
+                  todo.reminderSent ? 1 : (todo.reminderAt ? 0 : null),
+                  todo.parentId ?? null,
+                  todo.recurrence || "none"
+                ).run();
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Failed to migrate guest lists to D1:", e);
+        }
+      }
+    }
+    return json({ success: true });
+  }
+
+  // Check list ownership or collaborative access in D1
   let hasOwnership = false;
   let isCollaborative = false;
   if (activeListId) {
@@ -205,8 +304,10 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     }
   }
 
-  const formData = await request.formData();
-  const intent = formData.get("intent");
+  // For guest users operating on guest lists (not shared D1 lists), return success without D1 mutation
+  if (!isLoggedIn && !isCollaborative) {
+    return json({ success: true, guestLocalStorage: true });
+  }
 
   // For non-list creation actions, verify ownership or collaborative access of the active list
   if (intent !== "createList" && !hasOwnership && !isCollaborative) {
@@ -479,6 +580,7 @@ async function requestNotificationPermission() {
 }
 
 function ReminderPicker({ todo }: { todo: Todo }) {
+  const { isLoggedIn, onGuestAction } = useContext(GuestContext);
   const fetcher = useFetcher();
   const [open, setOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
@@ -514,11 +616,15 @@ function ReminderPicker({ todo }: { todo: Todo }) {
 
   const setDuration = async (minutes: number) => {
     await handleRequestPermission();
+    const timeMs = Date.now() + minutes * 60 * 1000;
+    if (!isLoggedIn) {
+      onGuestAction("updateReminder", { id: todo.id, reminderAt: timeMs });
+    }
     fetcher.submit(
       {
         intent: "updateReminder",
         id: todo.id,
-        reminderAt: (Date.now() + minutes * 60 * 1000).toString(),
+        reminderAt: timeMs.toString(),
       },
       { method: "post" }
     );
@@ -526,6 +632,9 @@ function ReminderPicker({ todo }: { todo: Todo }) {
   };
 
   const clearReminder = () => {
+    if (!isLoggedIn) {
+      onGuestAction("updateReminder", { id: todo.id, reminderAt: undefined });
+    }
     fetcher.submit(
       {
         intent: "updateReminder",
@@ -542,6 +651,9 @@ function ReminderPicker({ todo }: { todo: Todo }) {
     if (!customTime) return;
     await handleRequestPermission();
     const timeMs = new Date(customTime).getTime();
+    if (!isLoggedIn) {
+      onGuestAction("updateReminder", { id: todo.id, reminderAt: timeMs });
+    }
     fetcher.submit(
       {
         intent: "updateReminder",
@@ -758,6 +870,7 @@ function PriorityPicker({
   currentPriority: "low" | "medium" | "high" | "none";
   todoId: string;
 }) {
+  const { isLoggedIn, onGuestAction } = useContext(GuestContext);
   const fetcher = useFetcher();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -798,6 +911,9 @@ function PriorityPicker({
                 type="button"
                 className={`w-full text-left px-3 py-1.5 text-xs font-medium flex items-center gap-2 transition-colors hover:bg-white/[0.04] ${c.color}`}
                 onClick={() => {
+                  if (!isLoggedIn) {
+                    onGuestAction("updatePriority", { id: todoId, priority: p });
+                  }
                   fetcher.submit(
                     { intent: "updatePriority", id: todoId, priority: p },
                     { method: "post" },
@@ -823,6 +939,7 @@ function RecurrencePicker({
   currentRecurrence: "none" | "daily" | "weekly" | "monthly";
   todoId: string;
 }) {
+  const { isLoggedIn, onGuestAction } = useContext(GuestContext);
   const fetcher = useFetcher();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -875,6 +992,9 @@ function RecurrencePicker({
                 type="button"
                 className="w-full text-left px-3 py-1.5 text-xs font-medium flex items-center gap-2 transition-colors hover:bg-white/[0.04] text-slate-300"
                 onClick={() => {
+                  if (!isLoggedIn) {
+                    onGuestAction("updateRecurrence", { id: todoId, recurrence: r });
+                  }
                   fetcher.submit(
                     { intent: "updateRecurrence", id: todoId, recurrence: r },
                     { method: "post" },
@@ -894,6 +1014,7 @@ function RecurrencePicker({
 }
 
 function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subtasks?: Todo[]; isSubtask?: boolean }) {
+  const { isLoggedIn, onGuestAction } = useContext(GuestContext);
   const toggleFetcher = useFetcher();
   const deleteFetcher = useFetcher();
   const subtaskFetcher = useFetcher();
@@ -933,6 +1054,9 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
   const handleAddSubtask = (e: React.FormEvent) => {
     e.preventDefault();
     if (!subtaskText.trim()) return;
+    if (!isLoggedIn) {
+      onGuestAction("create", { text: subtaskText.trim(), parentId: todo.id, priority: "none" });
+    }
     subtaskFetcher.submit(
       {
         intent: "create",
@@ -952,6 +1076,9 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
     if (editText.trim() === todo.text) {
       setIsEditing(false);
       return;
+    }
+    if (!isLoggedIn) {
+      onGuestAction("updateText", { id: todo.id, text: editText.trim() });
     }
     editFetcher.submit(
       {
@@ -981,7 +1108,15 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           }
           ${optimisticCompleted ? "opacity-60" : "opacity-100"}`}
       >
-        <toggleFetcher.Form method="post" className="flex-shrink-0">
+        <toggleFetcher.Form
+          method="post"
+          className="flex-shrink-0"
+          onSubmit={() => {
+            if (!isLoggedIn) {
+              onGuestAction("toggle", { id: todo.id });
+            }
+          }}
+        >
           <input type="hidden" name="id" value={todo.id} />
           <input type="hidden" name="intent" value="toggle" />
           <button
@@ -1111,7 +1246,14 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </button>
         )}
 
-        <deleteFetcher.Form method="post">
+        <deleteFetcher.Form
+          method="post"
+          onSubmit={() => {
+            if (!isLoggedIn) {
+              onGuestAction("delete", { id: todo.id });
+            }
+          }}
+        >
           <input type="hidden" name="id" value={todo.id} />
           <input type="hidden" name="intent" value="delete" />
           <button
@@ -1177,11 +1319,205 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
 }
 
 export default function TodoPage() {
-  const { userId, email, isLoggedIn, settings, lists, activeListId, todos, stats } = useLoaderData<typeof loader>();
+  const { userId, email, isLoggedIn, settings, lists: serverLists, activeListId, todos: serverTodos, stats } = useLoaderData<typeof loader>();
+  const navigate = useNavigate();
   const createFetcher = useFetcher();
   const clearFetcher = useFetcher();
   const listFetcher = useFetcher();
   const settingsFetcher = useFetcher();
+  
+  const [guestLists, setGuestLists] = useState<GuestList[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isLoggedIn) {
+      const loaded = loadGuestListsFromStorage(userId);
+      setGuestLists(loaded);
+    } else {
+      const raw = localStorage.getItem(GUEST_STORAGE_KEY);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const form = new FormData();
+            form.append("intent", "migrateGuestLists");
+            form.append("guestLists", raw);
+            listFetcher.submit(form, { method: "post" });
+            localStorage.removeItem(GUEST_STORAGE_KEY);
+          }
+        } catch (e) {
+          console.error("Failed to migrate guest lists:", e);
+        }
+      }
+    }
+  }, [isLoggedIn, userId]);
+
+  const isSharedServerList = serverLists.some((l: any) => l.id === activeListId && l.owner_id !== userId);
+  const lists = isLoggedIn || isSharedServerList ? serverLists : guestLists;
+  const activeListMeta = lists.find((l: any) => l.id === activeListId) || lists[0];
+  const effectiveActiveListId = activeListMeta ? activeListMeta.id : activeListId;
+  const todos: Todo[] = activeListMeta ? activeListMeta.todos || [] : [];
+
+  const handleGuestAction = useCallback((intent: string, payload: any) => {
+    if (isLoggedIn || isSharedServerList) return;
+    setGuestLists((prevLists) => {
+      let targetListId = payload.listId || effectiveActiveListId;
+      let targetList = prevLists.find((l) => l.id === targetListId);
+      if (!targetList && prevLists.length > 0) {
+        targetList = prevLists[0];
+        targetListId = targetList.id;
+      }
+
+      let updatedLists = [...prevLists];
+
+      switch (intent) {
+        case "create": {
+          const newTodo: Todo = {
+            id: crypto.randomUUID(),
+            text: payload.text,
+            completed: false,
+            createdAt: Date.now(),
+            priority: payload.priority || "none",
+            reminderAt: payload.reminderAt ? Number(payload.reminderAt) : undefined,
+            reminderSent: payload.reminderAt ? false : undefined,
+            parentId: payload.parentId || undefined,
+            recurrence: payload.recurrence || "none",
+          };
+          if (prevLists.length === 0) {
+            const defaultList: GuestList = {
+              id: targetListId || userId || "guest_default",
+              name: "My Tasks",
+              owner_id: userId,
+              created_at: Date.now(),
+              share_mode: "private",
+              todos: [newTodo],
+            };
+            updatedLists = [defaultList];
+          } else {
+            updatedLists = prevLists.map((l) =>
+              l.id === targetListId ? { ...l, todos: [newTodo, ...l.todos] } : l
+            );
+          }
+          break;
+        }
+        case "toggle": {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            const updatedTodos = l.todos.map((t) => {
+              if (t.id !== payload.id) return t;
+              const willBeCompleted = !t.completed;
+              if (willBeCompleted && t.recurrence && t.recurrence !== "none") {
+                const currentReminder = t.reminderAt || Date.now();
+                const oneDay = 24 * 60 * 60 * 1000;
+                let nextReminder = currentReminder;
+                if (t.recurrence === "daily") nextReminder += oneDay;
+                else if (t.recurrence === "weekly") nextReminder += 7 * oneDay;
+                else if (t.recurrence === "monthly") {
+                  const d = new Date(currentReminder);
+                  d.setMonth(d.getMonth() + 1);
+                  nextReminder = d.getTime();
+                }
+                return { ...t, completed: false, reminderAt: nextReminder, reminderSent: false };
+              }
+              return { ...t, completed: willBeCompleted };
+            });
+            return { ...l, todos: updatedTodos };
+          });
+          break;
+        }
+        case "delete": {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            return {
+              ...l,
+              todos: l.todos.filter((t) => t.id !== payload.id && t.parentId !== payload.id),
+            };
+          });
+          break;
+        }
+        case "updatePriority": {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            return {
+              ...l,
+              todos: l.todos.map((t) => (t.id === payload.id ? { ...t, priority: payload.priority } : t)),
+            };
+          });
+          break;
+        }
+        case "updateText": {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            return {
+              ...l,
+              todos: l.todos.map((t) => (t.id === payload.id ? { ...t, text: payload.text } : t)),
+            };
+          });
+          break;
+        }
+        case "updateReminder": {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            return {
+              ...l,
+              todos: l.todos.map((t) =>
+                t.id === payload.id
+                  ? {
+                      ...t,
+                      reminderAt: payload.reminderAt ? Number(payload.reminderAt) : undefined,
+                      reminderSent: payload.reminderAt ? false : undefined,
+                    }
+                  : t
+              ),
+            };
+          });
+          break;
+        }
+        case "updateRecurrence": {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            return {
+              ...l,
+              todos: l.todos.map((t) => (t.id === payload.id ? { ...t, recurrence: payload.recurrence } : t)),
+            };
+          });
+          break;
+        }
+        case "clearCompleted": {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            return { ...l, todos: l.todos.filter((t) => !t.completed) };
+          });
+          break;
+        }
+        case "createList": {
+          const newList: GuestList = {
+            id: payload.id || crypto.randomUUID(),
+            name: payload.name,
+            owner_id: userId,
+            created_at: Date.now(),
+            share_mode: "private",
+            todos: [],
+          };
+          updatedLists = [...prevLists, newList];
+          break;
+        }
+        case "renameList": {
+          updatedLists = prevLists.map((l) =>
+            l.id === payload.listId ? { ...l, name: payload.newName } : l
+          );
+          break;
+        }
+        case "deleteList": {
+          updatedLists = prevLists.filter((l) => l.id !== payload.listId);
+          break;
+        }
+      }
+
+      saveGuestListsToStorage(updatedLists);
+      return updatedLists;
+    });
+  }, [isLoggedIn, isSharedServerList, effectiveActiveListId, userId]);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const listNameInputRef = useRef<HTMLInputElement>(null);
@@ -1352,7 +1688,6 @@ export default function TodoPage() {
   }, [isProfileOpen, listToRename, listToDelete, isCreateListOpen]);
 
   // Inline List Title Edit State (Main Panel Header)
-  const activeListMeta = lists.find((l: any) => l.id === activeListId);
   const activeListName = activeListMeta?.name || "My Tasks";
   const activeListShareMode = activeListMeta?.share_mode || "private";
   const isOwner = activeListMeta ? activeListMeta.owner_id === userId : false;
@@ -1578,7 +1913,8 @@ export default function TodoPage() {
   }, [completedCount, totalCount]);
 
   return (
-    <div className="min-h-screen md:h-screen bg-themeBg text-slate-100 flex flex-col md:grid md:grid-cols-[280px_1fr] relative overflow-hidden font-sans">
+    <GuestContext.Provider value={{ isLoggedIn, onGuestAction: handleGuestAction }}>
+      <div className="min-h-screen md:h-screen bg-themeBg text-slate-100 flex flex-col md:grid md:grid-cols-[280px_1fr] relative overflow-hidden font-sans">
       
       {/* Confetti Celebration */}
       {showConfetti && (
@@ -1894,8 +2230,8 @@ export default function TodoPage() {
           method="post"
           className="mb-6"
           onSubmit={(e) => {
+            let timeMs = 0;
             if (reminderMode !== "none") {
-              let timeMs = 0;
               if (reminderMode === "duration") {
                 timeMs = Date.now() + reminderDuration * 60 * 1000;
               } else if (reminderMode === "specific" && reminderDateTime) {
@@ -1907,6 +2243,17 @@ export default function TodoPage() {
                   hiddenInput.value = timeMs.toString();
                 }
               }
+            }
+            const formEl = e.currentTarget;
+            const textInput = formEl.querySelector('input[name="text"]') as HTMLInputElement;
+            const textVal = textInput ? textInput.value : "";
+            if (!isLoggedIn && !isSharedServerList && textVal.trim()) {
+              handleGuestAction("create", {
+                text: textVal.trim(),
+                priority: newPriority,
+                reminderAt: timeMs > 0 ? timeMs : undefined,
+                recurrence: "none"
+              });
             }
           }}
         >
@@ -2152,7 +2499,14 @@ export default function TodoPage() {
             {/* Action buttons (Clear completed, Share Popover) */}
             <div className="flex gap-3 items-center self-end sm:self-auto">
               {completedCount > 0 && (
-                <clearFetcher.Form method="post">
+                <clearFetcher.Form
+                  method="post"
+                  onSubmit={() => {
+                    if (!isLoggedIn && !isSharedServerList) {
+                      handleGuestAction("clearCompleted", {});
+                    }
+                  }}
+                >
                   <input type="hidden" name="intent" value="clearCompleted" />
                   <button
                     type="submit"
@@ -2608,10 +2962,14 @@ export default function TodoPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   if (renameInput.trim()) {
-                    listFetcher.submit(
-                      { intent: "renameList", listId: listToRename.id, newName: renameInput.trim() },
-                      { method: "post" }
-                    );
+                    if (!isLoggedIn && !isSharedServerList) {
+                      handleGuestAction("renameList", { listId: listToRename.id, newName: renameInput.trim() });
+                    } else {
+                      listFetcher.submit(
+                        { intent: "renameList", listId: listToRename.id, newName: renameInput.trim() },
+                        { method: "post" }
+                      );
+                    }
                   }
                   setListToRename(null);
                 }
@@ -2629,10 +2987,14 @@ export default function TodoPage() {
                 type="button"
                 onClick={() => {
                   if (renameInput.trim()) {
-                    listFetcher.submit(
-                      { intent: "renameList", listId: listToRename.id, newName: renameInput.trim() },
-                      { method: "post" }
-                    );
+                    if (!isLoggedIn && !isSharedServerList) {
+                      handleGuestAction("renameList", { listId: listToRename.id, newName: renameInput.trim() });
+                    } else {
+                      listFetcher.submit(
+                        { intent: "renameList", listId: listToRename.id, newName: renameInput.trim() },
+                        { method: "post" }
+                      );
+                    }
                   }
                   setListToRename(null);
                 }}
@@ -2664,10 +3026,20 @@ export default function TodoPage() {
               <button
                 type="button"
                 onClick={() => {
-                  listFetcher.submit(
-                    { intent: "deleteList", listId: listToDelete.id },
-                    { method: "post" }
-                  );
+                  if (!isLoggedIn && !isSharedServerList) {
+                    handleGuestAction("deleteList", { listId: listToDelete.id });
+                    const remaining = guestLists.filter((l) => l.id !== listToDelete.id);
+                    if (remaining.length > 0) {
+                      navigate(`/${remaining[0].id}`);
+                    } else {
+                      navigate(`/${userId}`);
+                    }
+                  } else {
+                    listFetcher.submit(
+                      { intent: "deleteList", listId: listToDelete.id },
+                      { method: "post" }
+                    );
+                  }
                   setListToDelete(null);
                 }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-xl shadow-lg transition-all duration-200"
@@ -2694,13 +3066,24 @@ export default function TodoPage() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   if (newListInput.trim()) {
-                    listFetcher.submit(
-                      { intent: "createList", listName: newListInput.trim() } as any,
-                      { method: "post" }
-                    );
+                    if (!isLoggedIn) {
+                      const newId = crypto.randomUUID();
+                      handleGuestAction("createList", { id: newId, name: newListInput.trim() });
+                      setNewListInput("");
+                      setIsCreateListOpen(false);
+                      navigate(`/${newId}`);
+                    } else {
+                      listFetcher.submit(
+                        { intent: "createList", listName: newListInput.trim() } as any,
+                        { method: "post" }
+                      );
+                      setNewListInput("");
+                      setIsCreateListOpen(false);
+                    }
+                  } else {
+                    setNewListInput("");
+                    setIsCreateListOpen(false);
                   }
-                  setNewListInput("");
-                  setIsCreateListOpen(false);
                 }
               }}
             />
@@ -2719,13 +3102,24 @@ export default function TodoPage() {
                 type="button"
                 onClick={() => {
                   if (newListInput.trim()) {
-                    listFetcher.submit(
-                      { intent: "createList", listName: newListInput.trim() } as any,
-                      { method: "post" }
-                    );
+                    if (!isLoggedIn) {
+                      const newId = crypto.randomUUID();
+                      handleGuestAction("createList", { id: newId, name: newListInput.trim() });
+                      setNewListInput("");
+                      setIsCreateListOpen(false);
+                      navigate(`/${newId}`);
+                    } else {
+                      listFetcher.submit(
+                        { intent: "createList", listName: newListInput.trim() } as any,
+                        { method: "post" }
+                      );
+                      setNewListInput("");
+                      setIsCreateListOpen(false);
+                    }
+                  } else {
+                    setNewListInput("");
+                    setIsCreateListOpen(false);
                   }
-                  setNewListInput("");
-                  setIsCreateListOpen(false);
                 }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-xl shadow-lg transition-all duration-200"
               >
@@ -2739,5 +3133,6 @@ export default function TodoPage() {
       {/* Toast Notification */}
       <Toast message={toast.message} visible={toast.visible} />
     </div>
+    </GuestContext.Provider>
   );
 }
