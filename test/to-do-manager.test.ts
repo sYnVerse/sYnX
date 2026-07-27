@@ -263,5 +263,27 @@ describe("TodoManager", () => {
       const stored = await manager.list();
       expect(stored[0].recurrence).toBe("daily");
     });
+
+    it("reschedules reminderAt on toggle when recurrence is daily", async () => {
+      const now = Date.now();
+      const todo = await manager.create("Daily task", "none", now, undefined, "daily");
+      expect(todo.completed).toBe(false);
+      expect(todo.recurrence).toBe("daily");
+
+      const toggled = await manager.toggle(todo.id);
+      expect(toggled.completed).toBe(false);
+      expect(toggled.reminderAt).toBe(now + 24 * 60 * 60 * 1000);
+      expect(toggled.reminderSent).toBe(false);
+    });
+
+    it("reschedules reminderAt on toggle when recurrence is weekly", async () => {
+      const now = Date.now();
+      const todo = await manager.create("Weekly task", "none", now, undefined, "weekly");
+      const toggled = await manager.toggle(todo.id);
+
+      expect(toggled.completed).toBe(false);
+      expect(toggled.reminderAt).toBe(now + 7 * 24 * 60 * 60 * 1000);
+      expect(toggled.reminderSent).toBe(false);
+    });
   });
 });

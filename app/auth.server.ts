@@ -155,3 +155,35 @@ export async function getOptionalUser(request: Request, env: any) {
     isNewGuest,
   };
 }
+
+export async function verifyBearerToken(request: Request, env: any) {
+  const authHeader = request.headers.get("Authorization") || "";
+  let token: string | null = null;
+  if (authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7).trim();
+  }
+
+  if (!token) {
+    const cookieHeader = request.headers.get("Cookie") || "";
+    const match = cookieHeader.match(/synx_auth_session=([^;]+)/);
+    token = match ? decodeURIComponent(match[1]) : null;
+  }
+
+  if (!token) return null;
+
+  const client = getAuthClient(request, env);
+  try {
+    const verified = await client.verify(subjects as any, token);
+    if (verified.err) return null;
+    const properties = (verified.subject as any).properties;
+    return {
+      userId: properties.id as string,
+      email: properties.email as string,
+      token,
+    };
+  } catch (error) {
+    console.error("Bearer token verification error:", error);
+    return null;
+  }
+}
+

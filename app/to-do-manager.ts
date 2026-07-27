@@ -131,8 +131,34 @@ export class TodoManager {
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
-    const newCompleted = todo.completed ? 0 : 1;
-    await this.db.prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?").bind(newCompleted, id, this.listId).run();
+
+    const willBeCompleted = !todo.completed;
+    if (willBeCompleted && todo.recurrence && todo.recurrence !== "none") {
+      const currentReminder = todo.reminder_at ? Number(todo.reminder_at) : Date.now();
+      let nextReminder = currentReminder;
+      const oneDay = 24 * 60 * 60 * 1000;
+      if (todo.recurrence === "daily") {
+        nextReminder = currentReminder + oneDay;
+      } else if (todo.recurrence === "weekly") {
+        nextReminder = currentReminder + 7 * oneDay;
+      } else if (todo.recurrence === "monthly") {
+        const date = new Date(currentReminder);
+        date.setMonth(date.getMonth() + 1);
+        nextReminder = date.getTime();
+      }
+
+      await this.db
+        .prepare("UPDATE todos SET reminder_at = ?, reminder_sent = 0, completed = 0 WHERE id = ? AND list_id = ?")
+        .bind(nextReminder, id, this.listId)
+        .run();
+    } else {
+      const newCompleted = willBeCompleted ? 1 : 0;
+      await this.db
+        .prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?")
+        .bind(newCompleted, id, this.listId)
+        .run();
+    }
+
     const updated = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
     return this.mapRow(updated);
   }
