@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.christran.synx",
+      "sha256_cert_fingerprints": [
+        "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C",
+        "93:B6:BA:58:6F:04:19:D6:7A:B6:3F:8A:28:B6:F4:60:86:14:DF:4B:B2:16:32:BF:E2:B2:BF:7D:6D:E7:BE:1C"
+      ]
+    }
+  }
+]
