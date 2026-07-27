@@ -1,6 +1,7 @@
 import * as Notifications from "expo-notifications";
+import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import { apiClient } from "../api/client";
+import { apiClient, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -42,6 +43,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
         token,
         platform: Platform.OS,
       });
+      await SecureStore.setItemAsync(DEVICE_PUSH_TOKEN_KEY, token);
       return token;
     }
   } catch (e) {

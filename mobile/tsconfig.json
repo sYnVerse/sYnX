@@ -5,7 +5,13 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
+      "@shared": ["../shared/index.ts"],
       "@shared/*": ["../shared/*"]
     }
-  }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "../shared/**/*.ts"
+  ]
 }

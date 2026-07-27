@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import * as WebBrowser from "expo-web-browser";
 import * as SecureStore from "expo-secure-store";
-import { makeRedirectUri, useAuthRequest } from "expo-auth-session";
-import { apiClient, TOKEN_KEY, API_BASE_URL } from "../api/client";
+import { useAuthRequest } from "expo-auth-session";
+import { apiClient, TOKEN_KEY, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -119,13 +119,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      const currentToken = token || (await SecureStore.getItemAsync(TOKEN_KEY));
-      if (currentToken) {
+      // Unregister the FCM/device push token (not the OAuth access token)
+      const devicePushToken = await SecureStore.getItemAsync(DEVICE_PUSH_TOKEN_KEY);
+      if (devicePushToken) {
         try {
-          await apiClient.delete("/api/v1/devices", { data: { token: currentToken } });
+          await apiClient.delete("/api/v1/devices", { data: { token: devicePushToken } });
         } catch (e) {
           // ignore network error on logout
         }
+        await SecureStore.deleteItemAsync(DEVICE_PUSH_TOKEN_KEY);
       }
       await SecureStore.deleteItemAsync(TOKEN_KEY);
       setToken(null);

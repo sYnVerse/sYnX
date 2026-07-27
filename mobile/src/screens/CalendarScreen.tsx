@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList } from "react-native";
 import { Calendar } from "react-native-calendars";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
-import { TodoItem } from "../../shared";
+import { TodoItem } from "../../../shared";
 
 export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const [selectedDate, setSelectedDate] = useState<string>(

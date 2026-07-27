@@ -84,4 +84,23 @@ describe("REST API Authorization & Share Modes", () => {
     expect(access.canEdit).toBe(true);
     expect(access.isOwner).toBe(false);
   });
+
+  it("does not treat other users' public lists as owned when querying by owner_id only", async () => {
+    await db
+      .prepare("INSERT INTO lists (id, name, owner_id, created_at, share_mode) VALUES (?, ?, ?, ?, ?)")
+      .bind("owned-list", "Mine", ownerId, Date.now(), "private")
+      .run();
+    await db
+      .prepare("INSERT INTO lists (id, name, owner_id, created_at, share_mode) VALUES (?, ?, ?, ?, ?)")
+      .bind("public-other", "Someone Public", otherUserId, Date.now(), "public_edit")
+      .run();
+
+    const { results } = await db
+      .prepare(`SELECT * FROM lists WHERE owner_id = ? ORDER BY created_at DESC`)
+      .bind(ownerId)
+      .all<any>();
+
+    expect(results.map((r) => r.id)).toEqual(["owned-list"]);
+    expect(results.map((r) => r.id)).not.toContain("public-other");
+  });
 });

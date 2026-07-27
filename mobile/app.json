@@ -22,6 +22,7 @@
         "backgroundColor": "#0f172a"
       },
       "package": "io.christran.synx",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "POST_NOTIFICATIONS",
@@ -36,10 +37,6 @@
               "scheme": "https",
               "host": "synx.christran.io",
               "pathPrefix": "/mobile/callback"
-            },
-            {
-              "scheme": "https",
-              "host": "synx.christran.io"
             }
           ],
           "category": [
@@ -50,7 +47,6 @@
       ]
     },
     "plugins": [
-      "expo-router",
       "expo-secure-store",
       "expo-web-browser",
       [

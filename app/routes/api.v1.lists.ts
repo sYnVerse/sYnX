@@ -12,10 +12,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Only return lists the user owns. Shared lists are opened by explicit list ID
+  // (deep link / known URL), matching web behavior — never enumerate all public lists.
   const { results } = await db
     .prepare(
       `SELECT * FROM lists 
-       WHERE owner_id = ? OR share_mode IN ('public_read', 'public_edit') 
+       WHERE owner_id = ? 
        ORDER BY created_at DESC`
     )
     .bind(user.userId)

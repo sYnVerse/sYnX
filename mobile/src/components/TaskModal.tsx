@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
-import { PriorityLevel, RecurrencePattern } from "../../shared";
+import { PriorityLevel, RecurrencePattern } from "../../../shared";
 
 interface TaskModalProps {
   visible: boolean;
