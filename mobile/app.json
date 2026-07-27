@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "sYnX To-Do",
-    "slug": "synx-todolist",
+    "slug": "synx",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -57,8 +57,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "synx-android-app"
+        "projectId": "cf164c52-5a77-472a-9120-768ab5499a2d"
       }
-    }
+    },
+    "owner": "chris-tran"
   }
 }
