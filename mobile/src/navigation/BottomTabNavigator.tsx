@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator, Platform, StatusBar } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ActivityIndicator, Platform, StatusBar, Alert } from "react-native";
 import { TasksScreen } from "../screens/TasksScreen";
 import { CalendarScreen } from "../screens/CalendarScreen";
 import { ListsScreen } from "../screens/ListsScreen";
@@ -28,6 +28,43 @@ export const BottomTabNavigator: React.FC = () => {
   const [activeListId, setActiveListId] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const [settingsDirty, setSettingsDirty] = useState(false);
+  const [settingsActions, setSettingsActions] = useState<{ save: () => Promise<boolean>; reset: () => void } | null>(null);
+
+  const handleTabSwitch = (targetTab: "tasks" | "calendar" | "lists" | "settings") => {
+    if (activeTab === targetTab) return;
+    if (activeTab === "settings" && settingsDirty && settingsActions) {
+      Alert.alert(
+        "Unsaved Settings",
+        "You have unsaved notification setting changes. Would you like to save or discard your changes?",
+        [
+          {
+            text: "Cancel",
+            style: "cancel",
+          },
+          {
+            text: "Discard",
+            style: "destructive",
+            onPress: () => {
+              settingsActions.reset();
+              setActiveTab(targetTab);
+            },
+          },
+          {
+            text: "Save",
+            onPress: async () => {
+              const saved = await settingsActions.save();
+              if (saved) {
+                setActiveTab(targetTab);
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      setActiveTab(targetTab);
+    }
+  };
 
   const resolveActiveList = useCallback(async () => {
     setListLoading(true);
@@ -104,17 +141,22 @@ export const BottomTabNavigator: React.FC = () => {
             activeListId={activeListId}
             onSelectList={(id) => {
               setActiveListId(id);
-              setActiveTab("tasks");
+              handleTabSwitch("tasks");
             }}
           />
         )}
-        {activeTab === "settings" && <SettingsScreen />}
+        {activeTab === "settings" && (
+          <SettingsScreen
+            onDirtyChange={setSettingsDirty}
+            onRegisterActions={setSettingsActions}
+          />
+        )}
       </View>
 
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={[styles.tabItem, activeTab === "tasks" && styles.tabItemActive]}
-          onPress={() => setActiveTab("tasks")}
+          onPress={() => handleTabSwitch("tasks")}
         >
           <Text style={styles.tabIcon}>📋</Text>
           <Text style={[styles.tabLabel, activeTab === "tasks" && styles.tabLabelActive]}>Tasks</Text>
@@ -122,7 +164,7 @@ export const BottomTabNavigator: React.FC = () => {
 
         <TouchableOpacity
           style={[styles.tabItem, activeTab === "calendar" && styles.tabItemActive]}
-          onPress={() => setActiveTab("calendar")}
+          onPress={() => handleTabSwitch("calendar")}
         >
           <Text style={styles.tabIcon}>📅</Text>
           <Text style={[styles.tabLabel, activeTab === "calendar" && styles.tabLabelActive]}>Calendar</Text>
@@ -130,7 +172,7 @@ export const BottomTabNavigator: React.FC = () => {
 
         <TouchableOpacity
           style={[styles.tabItem, activeTab === "lists" && styles.tabItemActive]}
-          onPress={() => setActiveTab("lists")}
+          onPress={() => handleTabSwitch("lists")}
         >
           <Text style={styles.tabIcon}>📁</Text>
           <Text style={[styles.tabLabel, activeTab === "lists" && styles.tabLabelActive]}>Lists</Text>
@@ -138,7 +180,7 @@ export const BottomTabNavigator: React.FC = () => {
 
         <TouchableOpacity
           style={[styles.tabItem, activeTab === "settings" && styles.tabItemActive]}
-          onPress={() => setActiveTab("settings")}
+          onPress={() => handleTabSwitch("settings")}
         >
           <Text style={styles.tabIcon}>⚙️</Text>
           <Text style={[styles.tabLabel, activeTab === "settings" && styles.tabLabelActive]}>Settings</Text>

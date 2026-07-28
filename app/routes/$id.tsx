@@ -1610,6 +1610,67 @@ export default function TodoPage() {
   const [discordEnabled, setDiscordEnabled] = useState(!!settings?.discordWebhookUrl);
   const [discordInput, setDiscordInput] = useState(settings?.discordWebhookUrl ?? "");
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
+
+  const initialEmailEnabled = settings?.emailEnabled ?? false;
+  const initialSmsEnabled = settings?.smsEnabled ?? false;
+  const initialPhoneInput = getDisplayPhone(settings?.phoneNumber);
+  const initialPhoneCarrier = settings?.phoneCarrier ?? "";
+  const initialDiscordEnabled = !!settings?.discordWebhookUrl;
+  const initialDiscordInput = settings?.discordWebhookUrl ?? "";
+
+  const isSettingsDirty =
+    emailEnabled !== initialEmailEnabled ||
+    smsEnabled !== initialSmsEnabled ||
+    phoneInput !== initialPhoneInput ||
+    phoneCarrier !== initialPhoneCarrier ||
+    discordEnabled !== initialDiscordEnabled ||
+    discordInput !== initialDiscordInput;
+
+  const resetSettings = () => {
+    setEmailEnabled(initialEmailEnabled);
+    setSmsEnabled(initialSmsEnabled);
+    setPhoneInput(initialPhoneInput);
+    setPhoneCarrier(initialPhoneCarrier);
+    setDiscordEnabled(initialDiscordEnabled);
+    setDiscordInput(initialDiscordInput);
+  };
+
+  const handleSaveSettings = () => {
+    const cleanPhone = phoneInput.replace(/\D/g, "");
+    if (smsEnabled && cleanPhone.length !== 10) {
+      showToast("⚠️ Phone number must be exactly 10 digits!");
+      return false;
+    }
+    settingsFetcher.submit({
+      intent: "updateSettings",
+      emailEnabled: emailEnabled ? "true" : "false",
+      smsEnabled: smsEnabled ? "true" : "false",
+      phoneNumber: smsEnabled ? `+1${cleanPhone}` : "",
+      phoneCarrier: smsEnabled ? phoneCarrier : "",
+      discordWebhookUrl: discordEnabled ? discordInput : "",
+    }, { method: "post" });
+    showToast("✓ Saved Preferences!");
+    return true;
+  };
+
+  const requestCloseProfile = () => {
+    if (isSettingsDirty) {
+      setShowUnsavedPrompt(true);
+    } else {
+      setIsProfileOpen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isProfileOpen || !isSettingsDirty) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isProfileOpen, isSettingsDirty]);
 
   useEffect(() => {
     setEmailEnabled(settings?.emailEnabled ?? false);
@@ -1692,20 +1753,25 @@ export default function TodoPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setIsProfileOpen(false);
-        setListToRename(null);
-        setListToDelete(null);
-        setIsCreateListOpen(false);
+        if (showUnsavedPrompt) {
+          setShowUnsavedPrompt(false);
+        } else if (isProfileOpen) {
+          requestCloseProfile();
+        } else {
+          setListToRename(null);
+          setListToDelete(null);
+          setIsCreateListOpen(false);
+        }
       }
     };
-    const isAnyModalOpen = isProfileOpen || !!listToRename || !!listToDelete || isCreateListOpen;
+    const isAnyModalOpen = isProfileOpen || !!listToRename || !!listToDelete || isCreateListOpen || showUnsavedPrompt;
     if (isAnyModalOpen) {
       document.addEventListener("keydown", handleKeyDown);
     }
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isProfileOpen, listToRename, listToDelete, isCreateListOpen]);
+  }, [isProfileOpen, listToRename, listToDelete, isCreateListOpen, showUnsavedPrompt, isSettingsDirty]);
 
   // Inline List Title Edit State (Main Panel Header)
   const activeListName = activeListMeta?.name || "My Tasks";
@@ -2677,7 +2743,7 @@ export default function TodoPage() {
       {/* ── Profile and Statistics Modal ─────────────────── */}
       {isProfileOpen && (
         <div
-          onClick={() => setIsProfileOpen(false)}
+          onClick={requestCloseProfile}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex justify-center overflow-y-auto p-4 transition-all duration-300 cursor-pointer"
         >
           <div
@@ -2688,8 +2754,8 @@ export default function TodoPage() {
             <div className="absolute -top-24 -right-24 w-48 h-48 bg-themeAccentFrom/10 rounded-full blur-3xl pointer-events-none" />
 
             <button
-              onClick={() => setIsProfileOpen(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors bg-transparent"
+              onClick={requestCloseProfile}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors bg-transparent cursor-pointer"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -2961,6 +3027,51 @@ export default function TodoPage() {
                   <span className="text-[10px] text-themeAccentText/85">Persist Data</span>
                 </a>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Unsaved Settings Prompt Modal ────────────────────── */}
+      {showUnsavedPrompt && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[60] flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 className="text-base font-bold text-slate-100 font-display mb-2">Unsaved Notification Settings</h3>
+            <p className="text-xs text-slate-400 mb-6">
+              You have unsaved changes to your notification preferences. Would you like to save or discard your changes before exiting?
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowUnsavedPrompt(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 bg-white/[0.05] hover:bg-white/[0.1] transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  resetSettings();
+                  setShowUnsavedPrompt(false);
+                  setIsProfileOpen(false);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-rose-300 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 transition-colors cursor-pointer"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const saved = handleSaveSettings();
+                  if (saved) {
+                    setShowUnsavedPrompt(false);
+                    setIsProfileOpen(false);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo shadow-md transition-colors cursor-pointer"
+              >
+                Save Changes
+              </button>
             </div>
           </div>
         </div>
