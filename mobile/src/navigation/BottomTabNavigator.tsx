@@ -102,10 +102,10 @@ export const BottomTabNavigator: React.FC = () => {
   if (!token) {
     return (
       <SafeAreaView style={styles.centered}>
-        <Text style={styles.title}>sYnX To-Do</Text>
-        <Text style={styles.subtitle}>Sign in to access your task lists across web and Android</Text>
+        <Text style={styles.title}>sYnX</Text>
+        <Text style={styles.subtitle}>Sync your tasks. Execute your day.</Text>
         <TouchableOpacity style={styles.loginBtn} onPress={login}>
-          <Text style={styles.loginBtnText}>Sign In with OpenAuth</Text>
+          <Text style={styles.loginBtnText}>Sign In with sYnID</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
