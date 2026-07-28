@@ -4,3 +4,5 @@ dist/
 google-services.json
 *.apk
 *.aab
+credentials.json
+credentials/
