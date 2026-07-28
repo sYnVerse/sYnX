@@ -6,6 +6,8 @@ import { apiClient, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
   }),
@@ -62,7 +64,10 @@ export async function scheduleLocalNotification(id: string, title: string, body:
       body,
       sound: true,
     },
-    trigger: new Date(triggerTimestamp),
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: new Date(triggerTimestamp),
+    },
   });
 }
 
