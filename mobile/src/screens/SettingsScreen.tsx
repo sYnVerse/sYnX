@@ -5,8 +5,21 @@ import { useAuth } from "../context/AuthContext";
 import { apiClient, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
 import { registerForPushNotificationsAsync } from "../services/notifications";
 
-export const SettingsScreen: React.FC = () => {
+interface SettingsScreenProps {
+  onDirtyChange?: (isDirty: boolean) => void;
+  onRegisterActions?: (actions: { save: () => Promise<boolean>; reset: () => void } | null) => void;
+}
+
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, onRegisterActions }) => {
   const { logout } = useAuth();
+  const [initialSettings, setInitialSettings] = useState<{
+    emailEnabled: boolean;
+    smsEnabled: boolean;
+    phoneNumber: string;
+    phoneCarrier: string;
+    discordWebhookUrl: string;
+  } | null>(null);
+
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [smsEnabled, setSmsEnabled] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -19,11 +32,20 @@ export const SettingsScreen: React.FC = () => {
       try {
         const res = await apiClient.get("/api/v1/settings");
         if (res.data.settings) {
-          setEmailEnabled(res.data.settings.emailEnabled);
-          setSmsEnabled(res.data.settings.smsEnabled);
-          setPhoneNumber(res.data.settings.phoneNumber);
-          setPhoneCarrier(res.data.settings.phoneCarrier);
-          setDiscordWebhookUrl(res.data.settings.discordWebhookUrl);
+          const loaded = {
+            emailEnabled: Boolean(res.data.settings.emailEnabled),
+            smsEnabled: Boolean(res.data.settings.smsEnabled),
+            phoneNumber: res.data.settings.phoneNumber || "",
+            phoneCarrier: res.data.settings.phoneCarrier || "",
+            discordWebhookUrl: res.data.settings.discordWebhookUrl || "",
+          };
+          setInitialSettings(loaded);
+          setEmailEnabled(loaded.emailEnabled);
+          setSmsEnabled(loaded.smsEnabled);
+          setPhoneNumber(loaded.phoneNumber);
+          setPhoneCarrier(loaded.phoneCarrier);
+          setDiscordWebhookUrl(loaded.discordWebhookUrl);
+          onDirtyChange?.(false);
         }
       } catch (e) {
         console.error("Failed to load settings", e);
@@ -41,7 +63,19 @@ export const SettingsScreen: React.FC = () => {
     loadSettings();
   }, []);
 
-  const handleSave = async () => {
+  useEffect(() => {
+    if (!initialSettings) return;
+    const isDirty =
+      emailEnabled !== initialSettings.emailEnabled ||
+      smsEnabled !== initialSettings.smsEnabled ||
+      phoneNumber !== initialSettings.phoneNumber ||
+      phoneCarrier !== initialSettings.phoneCarrier ||
+      discordWebhookUrl !== initialSettings.discordWebhookUrl;
+
+    onDirtyChange?.(isDirty);
+  }, [emailEnabled, smsEnabled, phoneNumber, phoneCarrier, discordWebhookUrl, initialSettings]);
+
+  const handleSave = async (): Promise<boolean> => {
     try {
       await apiClient.put("/api/v1/settings", {
         emailEnabled,
@@ -50,11 +84,36 @@ export const SettingsScreen: React.FC = () => {
         phoneCarrier,
         discordWebhookUrl,
       });
+      const updated = { emailEnabled, smsEnabled, phoneNumber, phoneCarrier, discordWebhookUrl };
+      setInitialSettings(updated);
+      onDirtyChange?.(false);
       alert("Settings saved successfully!");
+      return true;
     } catch (e: any) {
       alert(e.response?.data?.error || "Failed to save settings");
+      return false;
     }
   };
+
+  const resetSettings = () => {
+    if (initialSettings) {
+      setEmailEnabled(initialSettings.emailEnabled);
+      setSmsEnabled(initialSettings.smsEnabled);
+      setPhoneNumber(initialSettings.phoneNumber);
+      setPhoneCarrier(initialSettings.phoneCarrier);
+      setDiscordWebhookUrl(initialSettings.discordWebhookUrl);
+      onDirtyChange?.(false);
+    }
+  };
+
+  useEffect(() => {
+    if (onRegisterActions) {
+      onRegisterActions({ save: handleSave, reset: resetSettings });
+    }
+    return () => {
+      onRegisterActions?.(null);
+    };
+  }, [emailEnabled, smsEnabled, phoneNumber, phoneCarrier, discordWebhookUrl, initialSettings]);
 
   const handleRegisterPush = async () => {
     const token = await registerForPushNotificationsAsync();
