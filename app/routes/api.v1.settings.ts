@@ -40,8 +40,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   try {
     const body = (await request.json()) as any;
-    const emailEnabled = Boolean(body.emailEnabled);
-    const smsEnabled = Boolean(body.smsEnabled);
+    const parseBool = (v: any) => v === true || v === "true" || v === 1;
+    const emailEnabled = parseBool(body.emailEnabled);
+    const smsEnabled = parseBool(body.smsEnabled);
     const phoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber.trim() : "";
     const phoneCarrier = typeof body.phoneCarrier === "string" ? body.phoneCarrier.trim() : "";
     const discordWebhookUrl = typeof body.discordWebhookUrl === "string" ? body.discordWebhookUrl.trim() : "";

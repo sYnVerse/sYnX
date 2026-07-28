@@ -33,16 +33,11 @@ function getClientID(request: Request, env: any, defaultClientID: string): strin
       console.error("Failed to parse CLIENT_ID_MAP:", e);
     }
   }
-
-  // Fallbacks
-  if (defaultClientID === "to-do-list") {
-    return url.hostname.includes("synx") ? "synx" : "to-do-list";
-  }
   return defaultClientID;
 }
 
 export function getAuthSettings(request: Request, env: any) {
-  const clientID = getClientID(request, env, "to-do-list");
+  const clientID = getClientID(request, env, "synx");
   const issuer = (env && env.OPENAUTH_ISSUER) || "https://auth.christran.io";
   return { clientID, issuer };
 }

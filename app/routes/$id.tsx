@@ -293,6 +293,52 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     return json({ success: true });
   }
 
+  if (intent === "updateSettings") {
+    if (!isLoggedIn) {
+      return Response.json({ error: "Sign in required to configure notification settings" }, { status: 401 });
+    }
+
+    const emailEnabled = formData.get("emailEnabled") === "true";
+    const smsEnabled = formData.get("smsEnabled") === "true";
+    const phoneNumber = (formData.get("phoneNumber") as string) || "";
+    const phoneCarrier = (formData.get("phoneCarrier") as string) || "";
+    const discordWebhookUrlRaw = (formData.get("discordWebhookUrl") as string) || "";
+    const discordWebhookUrl = discordWebhookUrlRaw.trim();
+
+    if (discordWebhookUrl) {
+      const DISCORD_WEBHOOK_REGEX = /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
+      if (!DISCORD_WEBHOOK_REGEX.test(discordWebhookUrl)) {
+        return Response.json({ error: "Invalid Discord Webhook URL format" }, { status: 400 });
+      }
+    }
+
+    try {
+      await db.prepare(
+        `INSERT INTO user_settings (user_id, email, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET
+           email = excluded.email,
+           email_enabled = excluded.email_enabled,
+           sms_enabled = excluded.sms_enabled,
+           phone_number = excluded.phone_number,
+           phone_carrier = excluded.phone_carrier,
+           discord_webhook_url = excluded.discord_webhook_url`
+      ).bind(
+        userId,
+        email || "",
+        emailEnabled ? 1 : 0,
+        smsEnabled ? 1 : 0,
+        phoneNumber.trim(),
+        phoneCarrier.trim(),
+        discordWebhookUrl
+      ).run();
+    } catch (e) {
+      console.error("Failed to update settings in database:", e);
+    }
+
+    return json({ success: true });
+  }
+
   // Check list ownership or collaborative access in D1
   let hasOwnership = false;
   let isCollaborative = false;
@@ -398,46 +444,6 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
       }
       await db.prepare("UPDATE lists SET share_mode = ? WHERE id = ?").bind(shareMode, listId).run();
-      return { success: true };
-    }
-
-    case "updateSettings": {
-      const emailEnabled = isLoggedIn && formData.get("emailEnabled") === "true";
-      const smsEnabled = isLoggedIn && formData.get("smsEnabled") === "true";
-      const phoneNumber = isLoggedIn ? ((formData.get("phoneNumber") as string) || "") : "";
-      const phoneCarrier = isLoggedIn ? ((formData.get("phoneCarrier") as string) || "") : "";
-      const discordWebhookUrlRaw = (formData.get("discordWebhookUrl") as string) || "";
-      const discordWebhookUrl = discordWebhookUrlRaw.trim();
-
-      if (discordWebhookUrl) {
-        const DISCORD_WEBHOOK_REGEX = /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
-        if (!DISCORD_WEBHOOK_REGEX.test(discordWebhookUrl)) {
-          return Response.json({ error: "Invalid Discord Webhook URL format" }, { status: 400 });
-        }
-      }
-
-      try {
-        await db.prepare(
-          `INSERT INTO user_settings (user_id, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url)
-           VALUES (?, ?, ?, ?, ?, ?)
-           ON CONFLICT(user_id) DO UPDATE SET
-             email_enabled = excluded.email_enabled,
-             sms_enabled = excluded.sms_enabled,
-             phone_number = excluded.phone_number,
-             phone_carrier = excluded.phone_carrier,
-             discord_webhook_url = excluded.discord_webhook_url`
-        ).bind(
-          userId,
-          emailEnabled ? 1 : 0,
-          smsEnabled ? 1 : 0,
-          phoneNumber.trim(),
-          phoneCarrier.trim(),
-          discordWebhookUrl
-        ).run();
-      } catch (e) {
-        console.error("Failed to update settings in database:", e);
-      }
-
       return { success: true };
     }
 
@@ -2759,34 +2765,26 @@ export default function TodoPage() {
             </div>
 
             {/* Notification Settings */}
-            {userId && (
-              <div className="mb-6">
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Notification Channels</h4>
+            <div className="mb-6">
+              <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Notification Channels</h4>
+              {isLoggedIn ? (
                 <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-4 flex flex-col gap-4 text-xs">
                   {/* Email Channel */}
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="flex items-center gap-1.5">
-                        <p className="font-semibold text-slate-300">Email Notifications</p>
-                        {!isLoggedIn && (
-                          <span className="text-[8px] bg-slate-800 text-slate-400 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider select-none">
-                            Sign In Required
-                          </span>
-                        )}
-                      </div>
+                      <p className="font-semibold text-slate-300">Email Notifications</p>
                       <p className="text-[10px] text-slate-500">
-                        {isLoggedIn ? `Receive alerts at ${email}` : "Get alerts sent to your email"}
+                        Receive alerts at {email}
                       </p>
                     </div>
                     <button
                       type="button"
-                      disabled={!isLoggedIn}
                       onClick={() => setEmailEnabled(!emailEnabled)}
-                      className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none relative disabled:opacity-50 disabled:cursor-not-allowed
-                        ${emailEnabled && isLoggedIn ? "bg-themeAccentFrom" : "bg-slate-800"}`}
+                      className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none relative
+                        ${emailEnabled ? "bg-themeAccentFrom" : "bg-slate-800"}`}
                     >
                       <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200
-                        ${emailEnabled && isLoggedIn ? "translate-x-4" : "translate-x-0"}`} />
+                        ${emailEnabled ? "translate-x-4" : "translate-x-0"}`} />
                     </button>
                   </div>
 
@@ -2796,28 +2794,20 @@ export default function TodoPage() {
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <p className="font-semibold text-slate-300">SMS Notifications</p>
-                          {!isLoggedIn && (
-                            <span className="text-[8px] bg-slate-800 text-slate-400 font-bold px-1.5 py-0.5 rounded uppercase tracking-wider select-none">
-                              Sign In Required
-                            </span>
-                          )}
-                        </div>
+                        <p className="font-semibold text-slate-300">SMS Notifications</p>
                         <p className="text-[10px] text-slate-500">Receive text alerts</p>
                       </div>
                       <button
                         type="button"
-                        disabled={!isLoggedIn}
                         onClick={() => setSmsEnabled(!smsEnabled)}
-                        className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none relative disabled:opacity-50 disabled:cursor-not-allowed
-                          ${smsEnabled && isLoggedIn ? "bg-themeAccentFrom" : "bg-slate-800"}`}
+                        className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none relative
+                          ${smsEnabled ? "bg-themeAccentFrom" : "bg-slate-800"}`}
                       >
                         <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200
-                          ${smsEnabled && isLoggedIn ? "translate-x-4" : "translate-x-0"}`} />
+                          ${smsEnabled ? "translate-x-4" : "translate-x-0"}`} />
                       </button>
                     </div>
-                    {smsEnabled && isLoggedIn && (
+                    {smsEnabled && (
                       <div className="flex flex-col gap-2">
                         <div className="flex rounded-lg bg-slate-950 border border-white/[0.08] overflow-hidden focus-within:ring-1 focus-within:ring-themeAccentRing/50">
                           <span className="bg-white/[0.04] text-slate-400 px-3 py-2 text-xs border-r border-white/[0.08] select-none flex items-center">
@@ -2908,8 +2898,23 @@ export default function TodoPage() {
                     Save Preferences
                   </button>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-4 flex flex-col items-center gap-2 text-xs text-center">
+                  <span className="text-[9px] bg-slate-800 text-slate-400 font-bold px-2 py-0.5 rounded uppercase tracking-wider select-none">
+                    Sign In Required
+                  </span>
+                  <p className="text-slate-400 text-xs">
+                    Sign in to configure Email, SMS, and Discord task notifications.
+                  </p>
+                  <a
+                    href="/login"
+                    className="mt-1 inline-block text-xs font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-xl px-4 py-2 transition-all shadow-md active:scale-[0.98]"
+                  >
+                    Sign In
+                  </a>
+                </div>
+              )}
+            </div>
 
             {/* Controls */}
             <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Options</h4>
