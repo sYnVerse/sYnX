@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, FlatList } from "react-native";
+import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from "react-native";
 import { Calendar } from "react-native-calendars";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
@@ -10,7 +10,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     new Date().toISOString().split("T")[0]
   );
 
-  const { data: todos } = useQuery({
+  const { data: todos, refetch, isRefetching } = useQuery({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
@@ -20,7 +20,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   });
 
   const markedDates: Record<string, any> = {};
-  (todos || []).forEach((t) => {
+  (todos || []).forEach((t: TodoItem) => {
     if (t.reminderAt) {
       const dateStr = new Date(t.reminderAt).toISOString().split("T")[0];
       markedDates[dateStr] = {
@@ -36,7 +36,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     selectedColor: "#6366f1",
   };
 
-  const tasksForSelectedDate = (todos || []).filter((t) => {
+  const tasksForSelectedDate = (todos || []).filter((t: TodoItem) => {
     if (!t.reminderAt) return false;
     const dateStr = new Date(t.reminderAt).toISOString().split("T")[0];
     return dateStr === selectedDate;
@@ -62,10 +62,23 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
       />
 
       <View style={styles.daySection}>
-        <Text style={styles.sectionHeader}>Tasks for {selectedDate}</Text>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionHeader}>Tasks for {selectedDate}</Text>
+          <TouchableOpacity style={styles.refreshBtn} onPress={() => refetch()}>
+            <Text style={styles.refreshBtnText}>🔄</Text>
+          </TouchableOpacity>
+        </View>
         <FlatList
           data={tasksForSelectedDate}
           keyExtractor={(item) => item.id}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor="#6366f1"
+              colors={["#6366f1"]}
+            />
+          }
           ListEmptyComponent={
             <Text style={styles.emptyText}>No tasks scheduled for this day.</Text>
           }
@@ -92,11 +105,27 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   sectionHeader: {
     color: "#f8fafc",
     fontSize: 16,
     fontWeight: "bold",
-    marginBottom: 12,
+  },
+  refreshBtn: {
+    backgroundColor: "#1e293b",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  refreshBtnText: {
+    fontSize: 14,
   },
   emptyText: {
     color: "#64748b",

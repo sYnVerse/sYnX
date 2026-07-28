@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput } from "react-native";
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, RefreshControl } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { TodoItem } from "../../../shared";
@@ -10,7 +10,7 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const [search, setSearch] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
 
-  const { data, isLoading } = useQuery({
+  const { data, refetch, isRefetching } = useQuery({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
@@ -46,7 +46,7 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     },
   });
 
-  const filteredTodos = (data || []).filter((t) =>
+  const filteredTodos = (data || []).filter((t: TodoItem) =>
     t.text.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -60,11 +60,22 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
           value={search}
           onChangeText={setSearch}
         />
+        <TouchableOpacity style={styles.refreshBtn} onPress={() => refetch()}>
+          <Text style={styles.refreshBtnText}>🔄</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
         data={filteredTodos}
         keyExtractor={(item) => item.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor="#6366f1"
+            colors={["#6366f1"]}
+          />
+        }
         renderItem={({ item }) => (
           <View style={styles.todoCard}>
             <TouchableOpacity
@@ -110,14 +121,28 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     marginBottom: 12,
   },
   searchInput: {
+    flex: 1,
     backgroundColor: "#1e293b",
     color: "#f8fafc",
     borderRadius: 8,
     padding: 10,
     fontSize: 14,
+  },
+  refreshBtn: {
+    backgroundColor: "#1e293b",
+    padding: 10,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  refreshBtnText: {
+    fontSize: 16,
   },
   todoCard: {
     backgroundColor: "#1e293b",

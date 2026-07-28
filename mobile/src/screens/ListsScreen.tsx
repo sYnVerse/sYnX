@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Modal } from "react-native";
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, TextInput, Modal, RefreshControl } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import { ShareMode } from "../../../shared";
@@ -12,7 +12,7 @@ export const ListsScreen: React.FC<{
   const [newListModal, setNewListModal] = useState(false);
   const [newListName, setNewListName] = useState("");
 
-  const { data: lists } = useQuery({
+  const { data: lists, refetch, isRefetching } = useQuery({
     queryKey: ["lists"],
     queryFn: async () => {
       const res = await apiClient.get("/api/v1/lists");
@@ -51,13 +51,26 @@ export const ListsScreen: React.FC<{
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.createButton} onPress={() => setNewListModal(true)}>
-        <Text style={styles.createButtonText}>+ Create New List</Text>
-      </TouchableOpacity>
+      <View style={styles.topActionsContainer}>
+        <TouchableOpacity style={styles.createButton} onPress={() => setNewListModal(true)}>
+          <Text style={styles.createButtonText}>+ Create New List</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.refreshBtn} onPress={() => refetch()}>
+          <Text style={styles.refreshBtnText}>🔄</Text>
+        </TouchableOpacity>
+      </View>
 
       <FlatList
         data={lists || []}
         keyExtractor={(item) => item.id}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor="#6366f1"
+            colors={["#6366f1"]}
+          />
+        }
         renderItem={({ item }) => {
           const isActive = item.id === activeListId;
           return (
@@ -130,17 +143,32 @@ const styles = StyleSheet.create({
     backgroundColor: "#0f172a",
     padding: 16,
   },
+  topActionsContainer: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+  },
   createButton: {
+    flex: 1,
     backgroundColor: "#6366f1",
     padding: 14,
     borderRadius: 10,
     alignItems: "center",
-    marginBottom: 16,
   },
   createButtonText: {
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  refreshBtn: {
+    backgroundColor: "#1e293b",
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  refreshBtnText: {
+    fontSize: 16,
   },
   listCard: {
     backgroundColor: "#1e293b",
