@@ -229,10 +229,10 @@ export function CalendarView({ todos, activeListId }: CalendarViewProps) {
   };
 
   return (
-    <div className="flex-1 flex flex-col md:grid md:grid-cols-[1fr_260px] gap-6 min-h-0 h-full overflow-hidden">
+    <div className="flex-1 flex flex-col md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,260px)] gap-6 min-h-0 h-full overflow-hidden min-w-0">
       
       {/* Main Calendar Panel */}
-      <div className="flex-1 flex flex-col min-h-0 bg-themeCard border border-themeBorder rounded-2xl p-4 shadow-sm">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-themeCard border border-themeBorder rounded-2xl p-4 shadow-sm">
         
         {/* Navigation & Title */}
         <div className="flex items-center justify-between gap-4 mb-4 pb-3 border-b border-themeBorder">
@@ -386,7 +386,7 @@ export function CalendarView({ todos, activeListId }: CalendarViewProps) {
       </div>
 
       {/* Side Unscheduled Tasks Panel */}
-      <div className="w-full md:w-[260px] flex flex-col min-h-0">
+      <div className="w-full md:w-[260px] md:min-w-0 flex flex-col min-h-0">
         
         {/* Toggle sidebar button (Mobile Only) */}
         <button

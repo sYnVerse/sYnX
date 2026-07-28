@@ -63,6 +63,8 @@ body {
   background-color: var(--bg-main);
   color: #f1f5f9;
   transition: background-color 0.3s ease, color 0.3s ease;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 @keyframes confetti-fall {

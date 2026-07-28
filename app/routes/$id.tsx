@@ -693,7 +693,7 @@ function ReminderPicker({ todo }: { todo: Todo }) {
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        {displayText && <span>{displayText}</span>}
+        {displayText && <span className="max-w-[5.5rem] truncate">{displayText}</span>}
       </button>
 
       {open && (
@@ -1111,7 +1111,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
   return (
     <div className="flex flex-col w-full">
       <li
-        className={`group flex items-center gap-3 border transition-all duration-300
+        className={`group flex items-center gap-2 sm:gap-3 border transition-all duration-300 min-w-0 overflow-hidden
           ${isSubtask 
             ? "bg-transparent border-transparent py-1.5 px-2 hover:bg-white/[0.02] rounded-lg" 
             : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.04] p-3.5 rounded-xl shadow-sm"
@@ -1186,13 +1186,14 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </form>
         ) : (
           <span
-            className={`flex-1 transition-all duration-200 cursor-pointer hover:text-white ${
+            className={`flex-1 min-w-0 truncate transition-all duration-200 cursor-pointer hover:text-white ${
               isSubtask ? "text-xs text-slate-350" : "text-sm text-slate-200"
             } ${
               optimisticCompleted
                 ? "line-through text-slate-500 italic opacity-50"
                 : ""
             }`}
+            title={todo.text}
             onDoubleClick={() => {
               if (!optimisticCompleted) {
                 setIsEditing(true);
@@ -2000,7 +2001,7 @@ export default function TodoPage() {
 
   return (
     <GuestContext.Provider value={{ isLoggedIn, onGuestAction: handleGuestAction }}>
-      <div className="min-h-screen md:h-screen bg-themeBg text-slate-100 flex flex-col md:grid md:grid-cols-[280px_1fr] relative overflow-hidden font-sans">
+      <div className="min-h-screen md:h-screen bg-themeBg text-slate-100 flex flex-col md:grid md:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)] relative overflow-x-hidden overflow-y-auto md:overflow-hidden font-sans w-full max-w-[100vw]">
       
       {/* Confetti Celebration */}
       {showConfetti && (
@@ -2073,7 +2074,7 @@ export default function TodoPage() {
 
       {/* ── Sidebar Component (Desktop and Mobile drawer) ──── */}
       <aside
-        className={`fixed md:sticky top-0 left-0 bottom-0 z-40 md:z-10 w-[280px] bg-themeSidebar border-r border-themeBorder p-5 flex flex-col justify-between transition-transform duration-300 md:transform-none shadow-2xl md:shadow-none
+        className={`fixed md:sticky top-0 left-0 bottom-0 z-40 md:z-10 w-[min(280px,85vw)] md:w-full md:max-w-none md:min-w-0 bg-themeSidebar border-r border-themeBorder p-5 flex flex-col justify-between transition-transform duration-300 md:transform-none shadow-2xl md:shadow-none
           ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
         <div className="flex-1 flex flex-col min-h-0">
@@ -2246,11 +2247,11 @@ export default function TodoPage() {
       </aside>
 
       {/* ── Main Area ─────────────────────────────────────── */}
-      <main className="relative z-10 flex flex-col py-6 px-4 sm:px-6 md:px-8 max-w-2xl mx-auto w-full md:max-w-none md:h-screen md:overflow-hidden">
+      <main className="relative z-10 flex flex-col py-6 px-4 sm:px-5 md:px-6 lg:px-8 max-w-2xl mx-auto w-full min-w-0 md:max-w-none md:h-screen md:overflow-x-hidden md:overflow-y-auto">
         
         {/* Header (Active list title + Progress) */}
-        <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/[0.04] pb-6">
-          <div className="min-w-0 flex-1">
+        <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/[0.04] pb-6 min-w-0">
+          <div className="min-w-0 flex-1 overflow-hidden">
             {isEditingTitle && isOwner ? (
               <div className="flex items-center gap-2 max-w-md">
                 <input
@@ -2344,26 +2345,26 @@ export default function TodoPage() {
           }}
         >
           <input type="hidden" name="reminderAt" value="" />
-          <div className="flex flex-col sm:flex-row gap-2.5">
-            <div className="flex-1 relative">
+          <div className="flex flex-col lg:flex-row gap-2.5 min-w-0">
+            <div className="flex-1 relative min-w-0">
               <input
                 ref={inputRef}
                 type="text"
                 name="text"
                 required
-                className="w-full rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 shadow-inner px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 focus:border-themeAccentRing/50 transition-all duration-200"
+                className="w-full min-w-0 rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 shadow-inner px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 focus:border-themeAccentRing/50 transition-all duration-200"
                 placeholder="What needs to be done?"
                 autoComplete="off"
               />
             </div>
 
-            <div className="flex gap-2">
-              <div className="relative flex-1 sm:flex-initial">
+            <div className="flex flex-wrap gap-2 shrink-0">
+              <div className="relative flex-1 sm:flex-initial min-w-0">
                 <select
                   name="priority"
                   value={newPriority}
                   onChange={(e) => setNewPriority(e.target.value as "low" | "medium" | "high" | "none")}
-                  className="h-full w-full rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-350 text-xs px-3 py-3 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 cursor-pointer appearance-none bg-slate-900 pr-6"
+                  className="h-full w-full max-w-full rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-350 text-xs px-3 py-3 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 cursor-pointer appearance-none bg-slate-900 pr-6"
                 >
                   <option value="none">⚪ No Priority</option>
                   <option value="low">🟢 Low Priority</option>
@@ -2486,16 +2487,16 @@ export default function TodoPage() {
         </createFetcher.Form>
 
         {/* Toolbar (Filters, Search, Sort & Actions) */}
-        <div className="flex flex-col gap-3.5 mb-5 border-b border-white/[0.04] pb-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-col gap-3.5 mb-5 border-b border-white/[0.04] pb-5 min-w-0">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 min-w-0">
             {/* Search Box */}
-            <div className="relative flex-1 max-w-sm">
+            <div className="relative flex-1 max-w-sm min-w-0">
               <input
                 type="text"
                 placeholder="Search tasks..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-xs rounded-xl bg-white/[0.03] border border-white/[0.06] text-slate-200 placeholder-slate-500 pl-8 pr-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50"
+                className="w-full min-w-0 text-xs rounded-xl bg-white/[0.03] border border-white/[0.06] text-slate-200 placeholder-slate-500 pl-8 pr-3 py-2.5 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50"
               />
               <svg className="w-4 h-4 text-slate-500 absolute left-2.5 top-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -2511,12 +2512,12 @@ export default function TodoPage() {
             </div>
 
             {/* Sort Dropdown */}
-            <div className="flex items-center gap-2 self-end sm:self-auto">
+            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sort by</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as any)}
-                className="rounded-xl bg-white/[0.03] border border-white/[0.06] text-slate-300 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 cursor-pointer appearance-none bg-slate-900 pr-8 relative"
+                className="rounded-xl bg-white/[0.03] border border-white/[0.06] text-slate-300 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 cursor-pointer appearance-none bg-slate-900 pr-8 relative max-w-[11rem]"
                 style={{
                   backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
                   backgroundPosition: 'right 0.5rem center',
@@ -2532,8 +2533,8 @@ export default function TodoPage() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 min-w-0">
+            <div className="flex flex-wrap gap-3 items-center min-w-0">
               {/* Filter buttons */}
               <div className="flex gap-1 bg-white/[0.02] border border-white/[0.04] rounded-xl p-1 self-start">
                 {filterButtons.map((f) => (
@@ -2583,7 +2584,7 @@ export default function TodoPage() {
             </div>
 
             {/* Action buttons (Clear completed, Share Popover) */}
-            <div className="flex gap-3 items-center self-end sm:self-auto">
+            <div className="flex gap-3 items-center self-end sm:self-auto shrink-0">
               {completedCount > 0 && (
                 <clearFetcher.Form
                   method="post"
