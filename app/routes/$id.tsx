@@ -256,29 +256,33 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         try {
           const guestLists = JSON.parse(rawLists);
           for (const gList of guestLists) {
+            const listName = (gList.name || "My Tasks").trim();
+            const todos = Array.isArray(gList.todos) ? gList.todos : [];
+            if (listName === "My Tasks" && todos.length === 0) {
+              continue;
+            }
+
             const newListId = crypto.randomUUID();
             await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, NULL)")
-              .bind(newListId, gList.name || "My Tasks", userId, gList.created_at || Date.now())
+              .bind(newListId, listName, userId, gList.created_at || Date.now())
               .run();
             
-            if (Array.isArray(gList.todos)) {
-              for (const todo of gList.todos) {
-                const todoId = crypto.randomUUID();
-                await db.prepare(
-                  "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, parent_id, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                ).bind(
-                  todoId,
-                  newListId,
-                  todo.text,
-                  todo.completed ? 1 : 0,
-                  todo.createdAt || Date.now(),
-                  todo.priority && todo.priority !== "none" ? todo.priority : null,
-                  todo.reminderAt ?? null,
-                  todo.reminderSent ? 1 : (todo.reminderAt ? 0 : null),
-                  todo.parentId ?? null,
-                  todo.recurrence || "none"
-                ).run();
-              }
+            for (const todo of todos) {
+              const todoId = crypto.randomUUID();
+              await db.prepare(
+                "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, parent_id, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+              ).bind(
+                todoId,
+                newListId,
+                todo.text,
+                todo.completed ? 1 : 0,
+                todo.createdAt || Date.now(),
+                todo.priority && todo.priority !== "none" ? todo.priority : null,
+                todo.reminderAt ?? null,
+                todo.reminderSent ? 1 : (todo.reminderAt ? 0 : null),
+                todo.parentId ?? null,
+                todo.recurrence || "none"
+              ).run();
             }
           }
         } catch (e) {
@@ -1339,10 +1343,20 @@ export default function TodoPage() {
         try {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            const form = new FormData();
-            form.append("intent", "migrateGuestLists");
-            form.append("guestLists", raw);
-            listFetcher.submit(form, { method: "post" });
+            const validLists = parsed.filter((gList: any) => {
+              const listName = (gList.name || "My Tasks").trim();
+              const hasTodos = Array.isArray(gList.todos) && gList.todos.length > 0;
+              if (listName === "My Tasks" && !hasTodos) {
+                return false;
+              }
+              return true;
+            });
+            if (validLists.length > 0) {
+              const form = new FormData();
+              form.append("intent", "migrateGuestLists");
+              form.append("guestLists", JSON.stringify(validLists));
+              listFetcher.submit(form, { method: "post" });
+            }
             localStorage.removeItem(GUEST_STORAGE_KEY);
           }
         } catch (e) {
