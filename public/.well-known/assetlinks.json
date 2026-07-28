@@ -6,7 +6,9 @@
       "package_name": "io.christran.synx",
       "sha256_cert_fingerprints": [
         "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C",
-        "93:B6:BA:58:6F:04:19:D6:7A:B6:3F:8A:28:B6:F4:60:86:14:DF:4B:B2:16:32:BF:E2:B2:BF:7D:6D:E7:BE:1C"
+        "93:B6:BA:58:6F:04:19:D6:7A:B6:3F:8A:28:B6:F4:60:86:14:DF:4B:B2:16:32:BF:E2:B2:BF:7D:6D:E7:BE:1C",
+	"AF:5C:81:4B:D0:0F:B8:FE:85:30:6E:85:E2:15:30:6C:86:F5:3F:DB:D5:18:4B:FE:12:E5:26:5D:97:6C:4E:AD"
+
       ]
     }
   }
