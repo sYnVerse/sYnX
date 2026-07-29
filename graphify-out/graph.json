@@ -351,8 +351,8 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "app_root",
-      "community": 10,
-      "community_name": "root.tsx",
+      "community": 6,
+      "community_name": "verifyBearerToken",
       "norm_label": "root.tsx"
     },
     {
@@ -362,8 +362,8 @@
       "source_location": "L12",
       "_origin": "ast",
       "id": "app_root_links",
-      "community": 10,
-      "community_name": "root.tsx",
+      "community": 6,
+      "community_name": "verifyBearerToken",
       "norm_label": "links()"
     },
     {
@@ -373,8 +373,8 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "app_root_layout",
-      "community": 10,
-      "community_name": "root.tsx",
+      "community": 6,
+      "community_name": "verifyBearerToken",
       "norm_label": "layout()"
     },
     {
@@ -384,8 +384,8 @@
       "source_location": "L48",
       "_origin": "ast",
       "id": "app_root_app",
-      "community": 10,
-      "community_name": "root.tsx",
+      "community": 6,
+      "community_name": "verifyBearerToken",
       "norm_label": "app()"
     },
     {
@@ -3964,6 +3964,28 @@
       "norm_label": "postcss.config.js"
     },
     {
+      "label": "repro-sidebar-scroll.mjs",
+      "file_type": "code",
+      "source_file": "repro-sidebar-scroll.mjs",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "repro_sidebar_scroll",
+      "community": 10,
+      "community_name": "repro-sidebar-scroll.mjs",
+      "norm_label": "repro-sidebar-scroll.mjs"
+    },
+    {
+      "label": "box()",
+      "file_type": "code",
+      "source_file": "repro-sidebar-scroll.mjs",
+      "source_location": "L48",
+      "_origin": "ast",
+      "id": "repro_sidebar_scroll_box",
+      "community": 10,
+      "community_name": "repro-sidebar-scroll.mjs",
+      "norm_label": "box()"
+    },
+    {
       "label": "server.ts",
       "file_type": "code",
       "source_file": "server.ts",
@@ -4646,6 +4668,28 @@
       "norm_label": "noemit"
     },
     {
+      "label": "verify-sidebar-scroll.mjs",
+      "file_type": "code",
+      "source_file": "verify-sidebar-scroll.mjs",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "verify_sidebar_scroll",
+      "community": 29,
+      "community_name": "verify-sidebar-scroll.mjs",
+      "norm_label": "verify-sidebar-scroll.mjs"
+    },
+    {
+      "label": "seedAndMeasure()",
+      "file_type": "code",
+      "source_file": "verify-sidebar-scroll.mjs",
+      "source_location": "L5",
+      "_origin": "ast",
+      "id": "verify_sidebar_scroll_seedandmeasure",
+      "community": 29,
+      "community_name": "verify-sidebar-scroll.mjs",
+      "norm_label": "seedandmeasure()"
+    },
+    {
       "label": "vite.config.ts",
       "file_type": "code",
       "source_file": "vite.config.ts",
@@ -4733,8 +4777,8 @@
       "contributor": null,
       "community": 14,
       "norm_label": "dependabot npm package updates",
-      "id": "github_dependabot_npm_updates",
-      "community_name": "Dependabot NPM Package Updates"
+      "community_name": "Dependabot NPM Package Updates",
+      "id": "github_dependabot_npm_updates"
     },
     {
       "label": "Cloudflare D1 Database",
@@ -4747,8 +4791,8 @@
       "contributor": null,
       "community": 9,
       "norm_label": "cloudflare d1 database",
-      "id": "readme_cloudflare_d1_database",
-      "community_name": "Cloudflare D1 Database"
+      "community_name": "Cloudflare D1 Database",
+      "id": "readme_cloudflare_d1_database"
     },
     {
       "label": "Remix Framework",
@@ -4761,8 +4805,8 @@
       "contributor": null,
       "community": 28,
       "norm_label": "remix framework",
-      "id": "readme_remix_framework",
-      "community_name": "Remix Framework"
+      "community_name": "Remix Framework",
+      "id": "readme_remix_framework"
     },
     {
       "label": "Cloudflare Workers Assets",
@@ -4775,8 +4819,8 @@
       "contributor": null,
       "community": 27,
       "norm_label": "cloudflare workers assets",
-      "id": "readme_cloudflare_workers_assets",
-      "community_name": "Cloudflare Workers Assets"
+      "community_name": "Cloudflare Workers Assets",
+      "id": "readme_cloudflare_workers_assets"
     }
   ],
   "links": [
@@ -4990,31 +5034,31 @@
       "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server",
-      "target": "app_auth_server_clients"
+      "target": "app_auth_server_clients",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L50",
+      "source_location": "L45",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server",
-      "target": "app_auth_server_getauthclient"
+      "target": "app_auth_server_getauthclient",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L44",
+      "source_location": "L39",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server",
-      "target": "app_auth_server_getauthsettings"
+      "target": "app_auth_server_getauthsettings",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -5023,53 +5067,53 @@
       "source_location": "L15",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server",
-      "target": "app_auth_server_getclientid"
+      "target": "app_auth_server_getclientid",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L73",
+      "source_location": "L68",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server",
-      "target": "app_auth_server_getcookieattributes"
+      "target": "app_auth_server_getcookieattributes",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L64",
+      "source_location": "L59",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server",
-      "target": "app_auth_server_getcookiedomain"
+      "target": "app_auth_server_getcookiedomain",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L117",
+      "source_location": "L112",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server",
-      "target": "app_auth_server_getoptionaluser"
+      "target": "app_auth_server_getoptionaluser",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L81",
+      "source_location": "L76",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server",
-      "target": "app_auth_server_requireuser"
+      "target": "app_auth_server_requireuser",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -5078,9 +5122,9 @@
       "source_location": "L6",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server",
-      "target": "app_auth_server_subjects"
+      "target": "app_auth_server_subjects",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -5290,24 +5334,24 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L45",
+      "source_location": "L40",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server_getauthsettings",
-      "target": "app_auth_server_getclientid"
+      "target": "app_auth_server_getclientid",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L51",
+      "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server_getauthclient",
-      "target": "app_auth_server_getauthsettings"
+      "target": "app_auth_server_getauthsettings",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -5338,24 +5382,24 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L123",
+      "source_location": "L118",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server_getoptionaluser",
-      "target": "app_auth_server_getauthclient"
+      "target": "app_auth_server_getauthclient",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L90",
+      "source_location": "L85",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server_requireuser",
-      "target": "app_auth_server_getauthclient"
+      "target": "app_auth_server_getauthclient",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -5422,24 +5466,24 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L75",
+      "source_location": "L70",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server_getcookieattributes",
-      "target": "app_auth_server_getcookiedomain"
+      "target": "app_auth_server_getcookiedomain",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/auth.server.ts",
-      "source_location": "L96",
+      "source_location": "L91",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_auth_server_requireuser",
-      "target": "app_auth_server_getcookieattributes"
+      "target": "app_auth_server_getcookieattributes",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -5981,9 +6025,9 @@
       "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_entry_server",
-      "target": "app_entry_server_handlerequest"
+      "target": "app_entry_server_handlerequest",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -6142,9 +6186,9 @@
       "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_root",
-      "target": "app_root_app"
+      "target": "app_root_app",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -6153,9 +6197,9 @@
       "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_root",
-      "target": "app_root_layout"
+      "target": "app_root_layout",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -6164,9 +6208,9 @@
       "source_location": "L12",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_root",
-      "target": "app_root_links"
+      "target": "app_root_links",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -7451,9 +7495,9 @@
       "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager",
-      "target": "app_to_do_manager_pendingreminder"
+      "target": "app_to_do_manager_pendingreminder",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -7462,20 +7506,20 @@
       "source_location": "L1",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager",
-      "target": "app_to_do_manager_todo"
+      "target": "app_to_do_manager_todo",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L37",
+      "source_location": "L35",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager",
-      "target": "app_to_do_manager_todomanager"
+      "target": "app_to_do_manager_todomanager",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -7484,9 +7528,9 @@
       "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager",
-      "target": "app_to_do_manager_usersettings"
+      "target": "app_to_do_manager_usersettings",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -7496,9 +7540,9 @@
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "server",
-      "target": "app_to_do_manager"
+      "target": "app_to_do_manager",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -7508,64 +7552,64 @@
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "server",
-      "target": "app_to_do_manager_pendingreminder"
+      "target": "app_to_do_manager_pendingreminder",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L265",
+      "source_location": "L261",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_clearcompleted"
+      "target": "app_to_do_manager_todomanager_clearcompleted",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L44",
+      "source_location": "L40",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_constructor"
+      "target": "app_to_do_manager_todomanager_constructor",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L81",
+      "source_location": "L84",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_create"
+      "target": "app_to_do_manager_todomanager_create",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L151",
+      "source_location": "L171",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_delete"
+      "target": "app_to_do_manager_todomanager_delete",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L54",
+      "source_location": "L67",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_list"
+      "target": "app_to_do_manager_todomanager_list",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
@@ -7574,75 +7618,75 @@
       "source_location": "L49",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_maprow"
+      "target": "app_to_do_manager_todomanager_maprow",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L216",
+      "source_location": "L232",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_markremindersent"
+      "target": "app_to_do_manager_todomanager_markremindersent",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L126",
+      "source_location": "L129",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_toggle"
+      "target": "app_to_do_manager_todomanager_toggle",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L162",
+      "source_location": "L182",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_updatepriority"
+      "target": "app_to_do_manager_todomanager_updatepriority",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L242",
+      "source_location": "L248",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_updaterecurrence"
+      "target": "app_to_do_manager_todomanager_updaterecurrence",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L188",
+      "source_location": "L214",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_updatereminder"
+      "target": "app_to_do_manager_todomanager_updatereminder",
+      "confidence_score": 1.0
     },
     {
       "relation": "method",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L172",
+      "source_location": "L198",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager",
-      "target": "app_to_do_manager_todomanager_updatetext"
+      "target": "app_to_do_manager_todomanager_updatetext",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -7661,72 +7705,72 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L212",
+      "source_location": "L238",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager_markremindersent",
-      "target": "app_to_do_manager_todomanager_maprow"
+      "target": "app_to_do_manager_todomanager_maprow",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L137",
+      "source_location": "L163",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager_toggle",
-      "target": "app_to_do_manager_todomanager_maprow"
+      "target": "app_to_do_manager_todomanager_maprow",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L162",
+      "source_location": "L188",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager_updatepriority",
-      "target": "app_to_do_manager_todomanager_maprow"
+      "target": "app_to_do_manager_todomanager_maprow",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L228",
+      "source_location": "L254",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager_updaterecurrence",
-      "target": "app_to_do_manager_todomanager_maprow"
+      "target": "app_to_do_manager_todomanager_maprow",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L197",
+      "source_location": "L223",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager_updatereminder",
-      "target": "app_to_do_manager_todomanager_maprow"
+      "target": "app_to_do_manager_todomanager_maprow",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "app/to-do-manager.ts",
-      "source_location": "L178",
+      "source_location": "L204",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "app_to_do_manager_todomanager_updatetext",
-      "target": "app_to_do_manager_todomanager_maprow"
+      "target": "app_to_do_manager_todomanager_maprow",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -7735,9 +7779,9 @@
       "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "load_context",
-      "target": "load_context_apploadcontext"
+      "target": "load_context_apploadcontext",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -7746,9 +7790,9 @@
       "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "load_context",
-      "target": "load_context_getloadcontext"
+      "target": "load_context_getloadcontext",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -7757,9 +7801,9 @@
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "load_context",
-      "target": "load_context_getloadcontextargs"
+      "target": "load_context_getloadcontextargs",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -7780,9 +7824,9 @@
       "source_location": "L5",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "server",
-      "target": "load_context"
+      "target": "load_context",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -7792,9 +7836,9 @@
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "vite_config",
-      "target": "load_context"
+      "target": "load_context",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -7804,9 +7848,9 @@
       "source_location": "L5",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "server",
-      "target": "load_context_getloadcontext"
+      "target": "load_context_getloadcontext",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
@@ -7814,7 +7858,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "server.ts",
-      "source_location": "L15",
+      "source_location": "L16",
       "weight": 1.0,
       "_origin": "ast",
       "source": "server_fetch",
@@ -7828,9 +7872,9 @@
       "source_location": "L7",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "vite_config",
-      "target": "load_context_getloadcontext"
+      "target": "load_context_getloadcontext",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10146,9 +10190,9 @@
       "source_location": "L4",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_cloudflare"
+      "target": "package_cloudflare",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10157,9 +10201,9 @@
       "source_location": "L21",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_dependencies"
+      "target": "package_dependencies",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10168,31 +10212,31 @@
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_description"
+      "target": "package_description",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L32",
+      "source_location": "L30",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_devdependencies"
+      "target": "package_devdependencies",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L50",
+      "source_location": "L48",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_engines"
+      "target": "package_engines",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10201,53 +10245,53 @@
       "source_location": "L2",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_name"
+      "target": "package_name",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L65",
+      "source_location": "L63",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_overrides"
+      "target": "package_overrides",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L53",
+      "source_location": "L51",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_scripts"
+      "target": "package_scripts",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L69",
+      "source_location": "L67",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_sideeffects"
+      "target": "package_sideeffects",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L70",
+      "source_location": "L68",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package",
-      "target": "package_type"
+      "target": "package_type",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10256,9 +10300,9 @@
       "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_cloudflare",
-      "target": "package_cloudflare_categories"
+      "target": "package_cloudflare_categories",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10267,9 +10311,9 @@
       "source_location": "L19",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_cloudflare",
-      "target": "package_cloudflare_dash"
+      "target": "package_cloudflare_dash",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10278,9 +10322,9 @@
       "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_cloudflare",
-      "target": "package_cloudflare_docs_url"
+      "target": "package_cloudflare_docs_url",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10289,9 +10333,9 @@
       "source_location": "L13",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_cloudflare",
-      "target": "package_cloudflare_icon_urls"
+      "target": "package_cloudflare_icon_urls",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10300,9 +10344,9 @@
       "source_location": "L5",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_cloudflare",
-      "target": "package_cloudflare_label"
+      "target": "package_cloudflare_label",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10311,9 +10355,9 @@
       "source_location": "L18",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_cloudflare",
-      "target": "package_cloudflare_preview_image_url"
+      "target": "package_cloudflare_preview_image_url",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10322,9 +10366,9 @@
       "source_location": "L6",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_cloudflare",
-      "target": "package_cloudflare_products"
+      "target": "package_cloudflare_products",
+      "confidence_score": 1.0
     },
     {
       "relation": "extends",
@@ -10390,12 +10434,12 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L27",
+      "source_location": "L26",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_dependencies",
-      "target": "package_dependencies_isbot"
+      "target": "package_dependencies_isbot",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10404,31 +10448,31 @@
       "source_location": "L22",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_dependencies",
-      "target": "package_dependencies_openauthjs_openauth"
+      "target": "package_dependencies_openauthjs_openauth",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L29",
+      "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_dependencies",
-      "target": "package_dependencies_react"
+      "target": "package_dependencies_react",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L30",
+      "source_location": "L28",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_dependencies",
-      "target": "package_dependencies_react_dom"
+      "target": "package_dependencies_react_dom",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10437,9 +10481,9 @@
       "source_location": "L23",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_dependencies",
-      "target": "package_dependencies_remix_run_cloudflare"
+      "target": "package_dependencies_remix_run_cloudflare",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10448,20 +10492,20 @@
       "source_location": "L24",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_dependencies",
-      "target": "package_dependencies_remix_run_react"
+      "target": "package_dependencies_remix_run_react",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L26",
+      "source_location": "L25",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_dependencies",
-      "target": "package_dependencies_valibot"
+      "target": "package_dependencies_valibot",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -10551,122 +10595,34 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L40",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_autoprefixer"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L33",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_cloudflare_vitest_pool_workers"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L34",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_cloudflare_workers_types"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L41",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_eslint"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L42",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_postcss"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L35",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_remix_run_dev"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L43",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_tailwindcss"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L36",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_types_react"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L37",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_types_react_dom"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L44",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_typescript"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
       "source_location": "L38",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_devdependencies",
-      "target": "package_devdependencies_typescript_eslint_eslint_plugin"
+      "target": "package_devdependencies_autoprefixer",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L31",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_cloudflare_vitest_pool_workers",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L32",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_cloudflare_workers_types",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10675,9 +10631,119 @@
       "source_location": "L39",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_devdependencies",
-      "target": "package_devdependencies_typescript_eslint_parser"
+      "target": "package_devdependencies_eslint",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L40",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_postcss",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_remix_run_dev",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L41",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_tailwindcss",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L34",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_types_react",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L35",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_types_react_dom",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L42",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_typescript",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L36",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_typescript_eslint_eslint_plugin",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L37",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_typescript_eslint_parser",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L43",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_vite",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L44",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_devdependencies",
+      "target": "package_devdependencies_vite_tsconfig_paths",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10686,9 +10752,9 @@
       "source_location": "L45",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_devdependencies",
-      "target": "package_devdependencies_vite"
+      "target": "package_devdependencies_vitest",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10697,31 +10763,9 @@
       "source_location": "L46",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_devdependencies",
-      "target": "package_devdependencies_vite_tsconfig_paths"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L47",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_vitest"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L48",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_devdependencies",
-      "target": "package_devdependencies_wrangler"
+      "target": "package_devdependencies_wrangler",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports",
@@ -10919,12 +10963,34 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L51",
+      "source_location": "L49",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_engines",
-      "target": "package_engines_node"
+      "target": "package_engines_node",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L52",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_scripts",
+      "target": "package_scripts_build",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L53",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "package_scripts",
+      "target": "package_scripts_cf_typegen",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10933,9 +10999,9 @@
       "source_location": "L54",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_scripts",
-      "target": "package_scripts_build"
+      "target": "package_scripts_check",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10944,9 +11010,9 @@
       "source_location": "L55",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_scripts",
-      "target": "package_scripts_cf_typegen"
+      "target": "package_scripts_deploy",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10955,9 +11021,9 @@
       "source_location": "L56",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_scripts",
-      "target": "package_scripts_check"
+      "target": "package_scripts_dev",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10966,9 +11032,9 @@
       "source_location": "L57",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_scripts",
-      "target": "package_scripts_deploy"
+      "target": "package_scripts_lint",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10977,9 +11043,9 @@
       "source_location": "L58",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_scripts",
-      "target": "package_scripts_dev"
+      "target": "package_scripts_preview",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10988,9 +11054,9 @@
       "source_location": "L59",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_scripts",
-      "target": "package_scripts_lint"
+      "target": "package_scripts_start",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -10999,9 +11065,9 @@
       "source_location": "L60",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_scripts",
-      "target": "package_scripts_preview"
+      "target": "package_scripts_test",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -11010,53 +11076,42 @@
       "source_location": "L61",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_scripts",
-      "target": "package_scripts_start"
+      "target": "package_scripts_typecheck",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L62",
+      "source_location": "L64",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_scripts",
-      "target": "package_scripts_test"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L63",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "package_scripts",
-      "target": "package_scripts_typecheck"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "package.json",
-      "source_location": "L66",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_overrides",
-      "target": "package_overrides_estree_util_value_to_estree"
+      "target": "package_overrides_estree_util_value_to_estree",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "package.json",
-      "source_location": "L67",
+      "source_location": "L65",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "package_overrides",
-      "target": "package_overrides_tar"
+      "target": "package_overrides_tar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "repro-sidebar-scroll.mjs",
+      "source_location": "L48",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "repro_sidebar_scroll",
+      "target": "repro_sidebar_scroll_box",
+      "confidence_score": 1.0
     },
     {
       "relation": "imports_from",
@@ -11074,58 +11129,58 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server.ts",
-      "source_location": "L13",
+      "source_location": "L14",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "server",
-      "target": "server_fetch"
+      "target": "server_fetch",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server.ts",
-      "source_location": "L10",
+      "source_location": "L11",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "server",
-      "target": "server_handleremixrequest"
+      "target": "server_handleremixrequest",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "server.ts",
-      "source_location": "L33",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "server",
-      "target": "server_scheduled"
+      "target": "server_scheduled",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "server.ts",
-      "source_location": "L26",
+      "source_location": "L27",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "server_fetch",
-      "target": "server_handleremixrequest"
+      "target": "server_handleremixrequest",
+      "confidence_score": 1.0
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "server.ts",
-      "source_location": "L90",
+      "source_location": "L83",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "server_scheduled",
-      "target": "server_fetch"
+      "target": "server_fetch",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -11340,12 +11395,12 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tsconfig.json",
-      "source_location": "L13",
+      "source_location": "L17",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "tsconfig",
-      "target": "tsconfig_compileroptions"
+      "target": "tsconfig_compileroptions",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -11365,9 +11420,9 @@
       "source_location": "L2",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "tsconfig",
-      "target": "tsconfig_include"
+      "target": "tsconfig_include",
+      "confidence_score": 1.0
     },
     {
       "relation": "extends",
@@ -11505,144 +11560,23 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tsconfig.json",
-      "source_location": "L28",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_allowjs"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L31",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_baseurl"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L22",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_esmoduleinterop"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L30",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_forceconsistentcasinginfilenames"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L21",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_isolatedmodules"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L23",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_jsx"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L14",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_lib"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L24",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_moduleresolution"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L37",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_noemit"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
       "source_location": "L32",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_paths"
+      "target": "tsconfig_compileroptions_allowjs",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tsconfig.json",
-      "source_location": "L25",
+      "source_location": "L35",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_resolvejsonmodule"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L29",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_skiplibcheck"
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "tsconfig.json",
-      "source_location": "L27",
-      "weight": 1.0,
-      "_origin": "ast",
-      "confidence_score": 1.0,
-      "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_strict"
+      "target": "tsconfig_compileroptions_baseurl",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -11651,20 +11585,141 @@
       "source_location": "L26",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_target"
+      "target": "tsconfig_compileroptions_esmoduleinterop",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "tsconfig.json",
-      "source_location": "L15",
+      "source_location": "L34",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "tsconfig_compileroptions",
-      "target": "tsconfig_compileroptions_types"
+      "target": "tsconfig_compileroptions_forceconsistentcasinginfilenames",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L25",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_isolatedmodules",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L27",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_jsx",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L18",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_lib",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L28",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_moduleresolution",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L41",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_noemit",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L36",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_paths",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L29",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_resolvejsonmodule",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_skiplibcheck",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L31",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_strict",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L30",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_target",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "tsconfig.json",
+      "source_location": "L19",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "tsconfig_compileroptions",
+      "target": "tsconfig_compileroptions_types",
+      "confidence_score": 1.0
     },
     {
       "relation": "extends",
@@ -11753,13 +11808,24 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "verify-sidebar-scroll.mjs",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "verify_sidebar_scroll",
+      "target": "verify_sidebar_scroll_seedandmeasure",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "vite.config.ts",
       "source_location": "L10",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "vite_config",
-      "target": "vite_config_future"
+      "target": "vite_config_future",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -11779,9 +11845,9 @@
       "source_location": "L3",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "worker_configuration_d",
-      "target": "worker_configuration_d_env"
+      "target": "worker_configuration_d_env",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -11790,11 +11856,11 @@
       "source_location": "L1",
       "weight": 1.0,
       "_origin": "ast",
-      "confidence_score": 1.0,
       "source": "claude",
-      "target": "claude_graphify"
+      "target": "claude_graphify",
+      "confidence_score": 1.0
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "3233f302ea7ae6025f7e74ab15fb52e14df80cbc"
+  "built_at_commit": "fb5e8c5a6b4512c6e17dc3e07be9e45225474f0c"
 }

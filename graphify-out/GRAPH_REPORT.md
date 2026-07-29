@@ -1,16 +1,16 @@
-# Graph Report - workspace  (2026-07-28)
+# Graph Report - workspace  (2026-07-29)
 
 ## Corpus Check
-- 56 files · ~169,096 words
+- 58 files · ~169,913 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 433 nodes · 609 edges · 29 communities (23 shown, 6 thin omitted)
+- 437 nodes · 611 edges · 30 communities (24 shown, 6 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `3233f302`
+- Built from commit: `fb5e8c5a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -65,7 +65,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (29 total, 6 thin omitted)
+## Communities (30 total, 6 thin omitted)
 
 ### Community 0 - "$id.tsx"
 Cohesion: 0.10
@@ -92,7 +92,7 @@ Cohesion: 0.14
 Nodes (15): base64UrlEncode(), FCMMessagePayload, getGoogleOAuthToken(), sendFCMPushNotification(), signRS256(), PendingReminder, AppLoadContext, getLoadContext() (+7 more)
 
 ### Community 6 - "verifyBearerToken"
-Cohesion: 0.13
+Cohesion: 0.12
 Nodes (18): getListAccess(), verifyBearerToken(), action(), action(), RenameListSchema, loader(), action(), loader() (+10 more)
 
 ### Community 7 - "dependencies"
@@ -139,10 +139,10 @@ Nodes (3): fs, outPath, path
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `@remix-run/cloudflare` connect `verifyBearerToken` to `$id.tsx`, `auth.server.ts`, `compilerOptions`, `server.ts`, `root.tsx`, `index.ts`, `mobile.callback.tsx`?**
-  _High betweenness centrality (0.143) - this node is a cross-community bridge._
+- **Why does `@remix-run/cloudflare` connect `verifyBearerToken` to `$id.tsx`, `auth.server.ts`, `compilerOptions`, `server.ts`, `index.ts`, `mobile.callback.tsx`?**
+  _High betweenness centrality (0.140) - this node is a cross-community bridge._
 - **Why does `types` connect `compilerOptions` to `verifyBearerToken`?**
-  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+  _High betweenness centrality (0.079) - this node is a cross-community bridge._
 - **What connects `subjects`, `clients`, `priorityConfig` to the rest of the system?**
   _190 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `$id.tsx` be split into smaller, more focused modules?**

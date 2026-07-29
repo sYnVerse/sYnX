@@ -2074,7 +2074,7 @@ export default function TodoPage() {
 
       {/* ── Sidebar Component (Desktop and Mobile drawer) ──── */}
       <aside
-        className={`fixed md:sticky top-0 left-0 bottom-0 z-40 md:z-10 w-[min(280px,85vw)] md:w-full md:max-w-none md:min-w-0 bg-themeSidebar border-r border-themeBorder p-5 flex flex-col justify-between transition-transform duration-300 md:transform-none shadow-2xl md:shadow-none
+        className={`fixed md:sticky top-0 left-0 bottom-0 z-40 md:z-10 h-full max-h-dvh md:h-screen md:max-h-screen w-[min(280px,85vw)] md:w-full md:max-w-none md:min-w-0 bg-themeSidebar border-r border-themeBorder p-5 flex flex-col justify-between overflow-hidden transition-transform duration-300 md:transform-none shadow-2xl md:shadow-none
           ${isSidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
         <div className="flex-1 flex flex-col min-h-0">
@@ -2112,7 +2112,7 @@ export default function TodoPage() {
                 </svg>
               </button>
             </div>
-            <nav className="space-y-1 overflow-y-auto flex-1 pr-1 scrollbar-thin">
+            <nav className="space-y-1 overflow-y-auto flex-1 min-h-0 pr-1 scrollbar-thin overscroll-contain">
               {lists.map((list: any) => {
                 const isActive = list.id === activeListId;
                 const remainingCount = list.todos.filter((t: any) => !t.completed).length;
@@ -2179,7 +2179,7 @@ export default function TodoPage() {
         </div>
 
         {/* User profile bottom widget */}
-        <div className="border-t border-themeBorder pt-4 mt-4 relative z-10">
+        <div className="border-t border-themeBorder pt-4 mt-4 relative z-10 shrink-0">
           {isLoggedIn ? (
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">

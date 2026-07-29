@@ -25,8 +25,8 @@
     "semantic_hash": "f9fbbcc5cc453fc8b1a95b5fc41130aa"
   },
   "app/routes/$id.tsx": {
-    "mtime": 1785282755.2150729,
-    "ast_hash": "aff71f60daf0ba27fcd06c62094f9f9a",
+    "mtime": 1785283647.541605,
+    "ast_hash": "7386fcd2a3ef374a5b5067c8a5e7b9e8",
     "semantic_hash": ""
   },
   "app/routes/_index.tsx": {
@@ -302,6 +302,16 @@
   "mobile/assets/splash.png": {
     "mtime": 1785282261.6936674,
     "ast_hash": "251739afceee043c291de267fc330ca3",
+    "semantic_hash": ""
+  },
+  "repro-sidebar-scroll.mjs": {
+    "mtime": 1785283622.7135026,
+    "ast_hash": "e33ec47a72089029d1f53b95c4976840",
+    "semantic_hash": ""
+  },
+  "verify-sidebar-scroll.mjs": {
+    "mtime": 1785283649.0256116,
+    "ast_hash": "8013ec34cc922f202de0cf69039ed33c",
     "semantic_hash": ""
   }
 }

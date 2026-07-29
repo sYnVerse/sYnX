@@ -9,7 +9,7 @@
   "7": "dependencies",
   "8": "dependencies",
   "9": "Cloudflare D1 Database",
-  "10": "root.tsx",
+  "10": "repro-sidebar-scroll.mjs",
   "11": "worker-configuration.d.ts",
   "12": "entry.client.tsx",
   "13": ".eslintrc.js",
@@ -27,5 +27,6 @@
   "25": "decode-google-services.js",
   "26": "babel.config.js",
   "27": "Cloudflare Workers Assets",
-  "28": "Remix Framework"
+  "28": "Remix Framework",
+  "29": "verify-sidebar-scroll.mjs"
 }
