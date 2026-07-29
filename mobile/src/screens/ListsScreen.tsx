@@ -12,11 +12,10 @@ import {
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Plus, Check, FolderPlus, Trash2, Tag } from "lucide-react-native";
+import { Plus, FolderPlus, Trash2, ChevronRight, CheckCircle2, Circle } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import { TodoList, TodoItem } from "../../../shared";
 import { useTheme } from "../context/ThemeContext";
-import { cardThemePresets, CardThemePreset } from "../theme/theme";
 import { ListCardSkeleton } from "../components/SkeletonLoader";
 
 interface ListsScreenProps {
@@ -32,7 +31,6 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const [modalVisible, setModalVisible] = useState(false);
   const [newListName, setNewListName] = useState("");
   const [selectedEmoji, setSelectedEmoji] = useState(CATEGORY_EMOJIS[0]);
-  const [selectedThemeId, setSelectedThemeId] = useState("mint");
 
   const { data: lists, isLoading } = useQuery({
     queryKey: ["lists"],
@@ -42,11 +40,10 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
   });
 
-  // Query tasks for preview in list widgets
-  const { data: allTodos } = useQuery({
-    queryKey: ["all_todos_preview"],
+  // Query tasks for active list preview
+  const { data: activeListTodos } = useQuery({
+    queryKey: ["active_list_todos_preview", activeListId],
     queryFn: async () => {
-      // Fetch todos across active list
       if (!activeListId) return [];
       const res = await apiClient.get(`/api/v1/todos?listId=${activeListId}`);
       return res.data.todos as TodoItem[];
@@ -93,14 +90,15 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>My Lists & Widgets</Text>
+        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>My Task Lists</Text>
         <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>
-          Select or customize your task collections
+          Organize your tasks into dedicated lists
         </Text>
       </View>
 
       {isLoading ? (
-        <View style={styles.skeletonGrid}>
+        <View style={{ gap: 12 }}>
+          <ListCardSkeleton />
           <ListCardSkeleton />
           <ListCardSkeleton />
         </View>
@@ -108,23 +106,18 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
         <FlatList
           data={lists || []}
           keyExtractor={(item) => item.id}
-          numColumns={2}
-          columnWrapperStyle={styles.columnWrapper}
           contentContainerStyle={{ paddingBottom: 110 }}
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             const isActive = item.id === activeListId;
-            // Assign card theme preset deterministically based on index or name
-            const preset: CardThemePreset =
-              cardThemePresets[index % cardThemePresets.length];
 
             return (
               <TouchableOpacity
                 activeOpacity={0.85}
                 style={[
-                  styles.listCard,
+                  styles.listRow,
                   {
-                    backgroundColor: preset.bg,
-                    borderColor: isActive ? preset.accent : preset.border,
+                    backgroundColor: theme.cardBg,
+                    borderColor: isActive ? theme.accent : theme.cardBorder,
                     borderWidth: isActive ? 2 : 1,
                   },
                 ]}
@@ -133,52 +126,15 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                   onSelectList(item.id);
                 }}
               >
-                {/* Active Indicator Badge */}
-                {isActive && (
-                  <View style={[styles.activeBadge, { backgroundColor: preset.badgeBg }]}>
-                    <Text style={[styles.activeBadgeText, { color: preset.badgeText }]}>ACTIVE</Text>
-                  </View>
-                )}
-
-                <Text style={[styles.cardTitle, { color: preset.text }]} numberOfLines={2}>
-                  {item.name}
-                </Text>
-
-                {/* Sub-item preview */}
-                <View style={styles.previewContainer}>
-                  {isActive && allTodos && allTodos.length > 0 ? (
-                    allTodos.slice(0, 3).map((t) => (
-                      <View key={t.id} style={styles.previewRow}>
-                        <View
-                          style={[
-                            styles.previewDot,
-                            { backgroundColor: t.completed ? preset.badgeBg : preset.border },
-                          ]}
-                        />
-                        <Text
-                          style={[
-                            styles.previewText,
-                            { color: preset.secondaryText },
-                            t.completed && { textDecorationLine: "line-through", opacity: 0.6 },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {t.text}
-                        </Text>
+                {/* Header Row of List */}
+                <View style={styles.listRowHeader}>
+                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <Text style={[styles.listTitle, { color: theme.textPrimary }]}>{item.name}</Text>
+                    {isActive && (
+                      <View style={[styles.activeBadge, { backgroundColor: theme.accentLight }]}>
+                        <Text style={[styles.activeBadgeText, { color: theme.accent }]}>ACTIVE</Text>
                       </View>
-                    ))
-                  ) : (
-                    <Text style={[styles.previewText, { color: preset.secondaryText }]}>
-                      Tap to open list items
-                    </Text>
-                  )}
-                </View>
-
-                {/* Card Footer */}
-                <View style={styles.cardFooter}>
-                  <View style={[styles.tagPill, { backgroundColor: preset.border }]}>
-                    <Tag size={10} color={preset.text} />
-                    <Text style={[styles.tagPillText, { color: preset.text }]}>Checklist</Text>
+                    )}
                   </View>
 
                   {(lists?.length || 0) > 1 && (
@@ -186,10 +142,50 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                       style={styles.deleteIconBtn}
                       onPress={() => deleteListMutation.mutate(item.id)}
                     >
-                      <Trash2 size={14} color={preset.text} />
+                      <Trash2 size={16} color={theme.danger} />
                     </TouchableOpacity>
                   )}
                 </View>
+
+                {/* Expanded Item Preview for Active List */}
+                {isActive && (
+                  <View style={[styles.previewSection, { borderTopColor: theme.cardBorder }]}>
+                    <Text style={[styles.previewSectionTitle, { color: theme.textMuted }]}>
+                      TASKS IN THIS LIST ({activeListTodos?.length || 0})
+                    </Text>
+
+                    {activeListTodos && activeListTodos.length > 0 ? (
+                      activeListTodos.map((t) => (
+                        <View key={t.id} style={styles.todoPreviewItem}>
+                          {t.completed ? (
+                            <CheckCircle2 size={16} color={theme.accent} />
+                          ) : (
+                            <Circle size={16} color={theme.textMuted} />
+                          )}
+                          <Text
+                            style={[
+                              styles.todoPreviewText,
+                              { color: theme.textPrimary },
+                              t.completed && [styles.completedText, { color: theme.textMuted }],
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {t.text}
+                          </Text>
+                          {t.durationMinutes && (
+                            <Text style={[styles.durationBadge, { color: theme.textMuted }]}>
+                              {t.durationMinutes}m
+                            </Text>
+                          )}
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={[styles.emptyPreviewText, { color: theme.textMuted }]}>
+                        No tasks in this list yet. Tap to add tasks!
+                      </Text>
+                    )}
+                  </View>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -211,7 +207,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Create New List Card</Text>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Create New List</Text>
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Choose Category Icon</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.emojiRow}>
@@ -233,7 +229,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
             <Text style={[styles.label, { color: theme.textMuted }]}>List Title</Text>
             <TextInput
               style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
-              placeholder="e.g. Shopping List, Study Notes..."
+              placeholder="e.g. Shopping List, Work Notes..."
               placeholderTextColor={theme.inputPlaceholder}
               value={newListName}
               onChangeText={setNewListName}
@@ -244,7 +240,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                 <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.accent }]} onPress={handleCreateList}>
-                <Text style={styles.createBtnText}>Create Widget Card</Text>
+                <Text style={styles.createBtnText}>Create List</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -271,80 +267,72 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
-  skeletonGrid: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  columnWrapper: {
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  listCard: {
-    width: "48%",
+  listRow: {
+    width: "100%",
     padding: 16,
-    borderRadius: 22,
-    minHeight: 140,
-    justifyContent: "space-between",
-    elevation: 4,
+    borderRadius: 20,
+    marginBottom: 12,
+    elevation: 3,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 10,
   },
+  listRowHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  listTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+  },
   activeBadge: {
-    alignSelf: "flex-start",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
-    marginBottom: 8,
   },
   activeBadgeText: {
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.5,
   },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 8,
+  deleteIconBtn: {
+    padding: 6,
   },
-  previewContainer: {
-    gap: 4,
-    marginBottom: 10,
+  previewSection: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    gap: 8,
   },
-  previewRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  previewDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  previewText: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-  cardFooter: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 4,
-  },
-  tagPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
-  },
-  tagPillText: {
+  previewSectionTitle: {
     fontSize: 10,
     fontWeight: "700",
+    letterSpacing: 0.8,
+    marginBottom: 4,
   },
-  deleteIconBtn: {
-    padding: 4,
+  todoPreviewItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  todoPreviewText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  completedText: {
+    textDecorationLine: "line-through",
+  },
+  durationBadge: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  emptyPreviewText: {
+    fontSize: 13,
+    fontStyle: "italic",
+    paddingVertical: 4,
   },
   fab: {
     position: "absolute",
