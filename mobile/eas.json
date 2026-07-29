@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": ">= 10.0.0",
+    "version": ">= 21.4.0",
     "appVersionSource": "remote"
   },
   "build": {
@@ -9,12 +9,14 @@
       "distribution": "internal"
     },
     "preview": {
+      "autoIncrement": true,
       "distribution": "internal",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       }
