@@ -9,10 +9,11 @@ import {
   TextInput,
   ScrollView,
   Platform,
+  Alert,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Plus, FolderPlus, Trash2, Tag, CheckCircle2, Circle } from "lucide-react-native";
+import { FolderPlus, Trash2, Tag, CheckCircle2, Circle, Pencil } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import { TodoList, TodoItem } from "../../../shared";
 import { useTheme } from "../context/ThemeContext";
@@ -38,8 +39,13 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const { theme, hapticsEnabled } = useTheme();
   const queryClient = useQueryClient();
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingList, setEditingList] = useState<TodoList | null>(null);
+
   const [newListName, setNewListName] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(CATEGORY_OPTIONS[0]);
+
+  const [editName, setEditName] = useState("");
+  const [editCategory, setEditCategory] = useState(CATEGORY_OPTIONS[0]);
 
   const { data: lists, isLoading } = useQuery({
     queryKey: ["lists"],
@@ -80,13 +86,14 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
   });
 
-  const updateCategoryMutation = useMutation({
-    mutationFn: async ({ id, category }: { id: string; category: string }) => {
-      await apiClient.put(`/api/v1/lists/${id}`, { category });
+  const updateListMutation = useMutation({
+    mutationFn: async ({ id, name, category }: { id: string; name: string; category: string }) => {
+      await apiClient.put(`/api/v1/lists/${id}`, { name, category });
     },
     onSuccess: () => {
       triggerImpactHaptic();
       queryClient.invalidateQueries({ queryKey: ["lists"] });
+      setEditingList(null);
     },
   });
 
@@ -104,6 +111,39 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     if (!newListName.trim()) return;
     const fullName = `${selectedCategory.emoji} ${newListName.trim()}`;
     createListMutation.mutate({ name: fullName, category: selectedCategory.name });
+  };
+
+  const handleUpdateList = () => {
+    if (!editingList || !editName.trim()) return;
+    updateListMutation.mutate({
+      id: editingList.id,
+      name: editName.trim(),
+      category: editCategory.name,
+    });
+  };
+
+  const handleDeleteList = (list: TodoList) => {
+    triggerImpactHaptic();
+    Alert.alert(
+      "Delete List",
+      `Are you sure you want to delete "${list.name}" and all its tasks?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteListMutation.mutate(list.id),
+        },
+      ]
+    );
+  };
+
+  const openEditModal = (list: TodoList) => {
+    triggerImpactHaptic();
+    setEditingList(list);
+    setEditName(list.name);
+    const matchingCat = CATEGORY_OPTIONS.find((c) => c.name === list.category) || CATEGORY_OPTIONS[0];
+    setEditCategory(matchingCat);
   };
 
   return (
@@ -164,14 +204,23 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                     )}
                   </View>
 
-                  {(lists?.length || 0) > 1 && (
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                     <TouchableOpacity
-                      style={styles.deleteIconBtn}
-                      onPress={() => deleteListMutation.mutate(item.id)}
+                      style={styles.actionIconBtn}
+                      onPress={() => openEditModal(item)}
                     >
-                      <Trash2 size={16} color={theme.danger} />
+                      <Pencil size={15} color={theme.textMuted} />
                     </TouchableOpacity>
-                  )}
+
+                    {(lists?.length || 0) > 1 && (
+                      <TouchableOpacity
+                        style={styles.actionIconBtn}
+                        onPress={() => handleDeleteList(item)}
+                      >
+                        <Trash2 size={16} color={theme.danger} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
 
                 {/* Expanded Item Preview for Active List */}
@@ -230,7 +279,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
         <FolderPlus size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* New List Modal */}
+      {/* Create New List Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
@@ -281,6 +330,61 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
               </TouchableOpacity>
               <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.accent }]} onPress={handleCreateList}>
                 <Text style={styles.createBtnText}>Create List</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit List Modal */}
+      <Modal visible={!!editingList} animationType="slide" transparent onRequestClose={() => setEditingList(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Edit List Details</Text>
+
+            <Text style={[styles.label, { color: theme.textMuted }]}>Category Tag</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+              {CATEGORY_OPTIONS.map((cat) => (
+                <TouchableOpacity
+                  key={cat.name}
+                  style={[
+                    styles.catBtn,
+                    { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                    editCategory.name === cat.name && {
+                      backgroundColor: theme.accentLight,
+                      borderColor: theme.accent,
+                      borderWidth: 2,
+                    },
+                  ]}
+                  onPress={() => setEditCategory(cat)}
+                >
+                  <Text style={styles.catEmoji}>{cat.emoji}</Text>
+                  <Text
+                    style={[
+                      styles.catName,
+                      { color: theme.textPrimary },
+                      editCategory.name === cat.name && { color: theme.accent, fontWeight: "700" },
+                    ]}
+                  >
+                    {cat.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={[styles.label, { color: theme.textMuted }]}>List Title</Text>
+            <TextInput
+              style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+              value={editName}
+              onChangeText={setEditName}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingList(null)}>
+                <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.accent }]} onPress={handleUpdateList}>
+                <Text style={styles.createBtnText}>Save Changes</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -349,7 +453,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.5,
   },
-  deleteIconBtn: {
+  actionIconBtn: {
     padding: 6,
   },
   previewSection: {

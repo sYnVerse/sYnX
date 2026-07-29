@@ -8,10 +8,11 @@ import {
   TextInput,
   RefreshControl,
   Platform,
+  Alert,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Search, RefreshCw, Plus, Check, Trash2, Clock, ListTree, Repeat } from "lucide-react-native";
+import { Search, RefreshCw, Plus, Check, Trash2, Clock, ListTree, Repeat, Pencil } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import { TodoItem } from "../../../shared";
 import { TaskModal } from "../components/TaskModal";
@@ -24,6 +25,7 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
+  const [editingTask, setEditingTask] = useState<TodoItem | null>(null);
   const [selectedTaskForBreakdown, setSelectedTaskForBreakdown] = useState<TodoItem | null>(null);
 
   const { data: todos, refetch, isRefetching, isLoading } = useQuery({
@@ -77,8 +79,33 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, payload }: { id: string; payload: any }) => {
+      await apiClient.put(`/api/v1/todos/${id}`, payload);
+    },
+    onSuccess: () => {
+      triggerSuccessHaptic();
+      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+    },
+  });
+
+  const handleDeleteTask = (task: TodoItem) => {
+    triggerImpactHaptic();
+    Alert.alert(
+      "Delete Task",
+      `Are you sure you want to delete "${task.text}"?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteMutation.mutate(task.id),
+        },
+      ]
+    );
+  };
+
   const handleSaveSubtasks = async (taskId: string, subtasks: any[]) => {
-    // In local state & server sync
     try {
       await apiClient.patch(`/api/v1/todos/${taskId}`, { subtasks });
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
@@ -218,9 +245,18 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
                   </View>
                 </View>
 
+                {/* Edit Task Action */}
                 <TouchableOpacity
-                  style={styles.deleteBtn}
-                  onPress={() => deleteMutation.mutate(item.id)}
+                  style={styles.actionBtn}
+                  onPress={() => setEditingTask(item)}
+                >
+                  <Pencil size={15} color={theme.textMuted} />
+                </TouchableOpacity>
+
+                {/* Delete Task Action with Confirmation */}
+                <TouchableOpacity
+                  style={styles.actionBtn}
+                  onPress={() => handleDeleteTask(item)}
                 >
                   <Trash2 size={16} color={theme.danger} />
                 </TouchableOpacity>
@@ -235,18 +271,37 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
         style={[styles.fab, { backgroundColor: theme.accent }]}
         onPress={() => {
           triggerImpactHaptic();
+          setEditingTask(null);
           setModalVisible(true);
         }}
       >
         <Plus size={26} color="#FFFFFF" />
       </TouchableOpacity>
 
+      {/* Create New Task Modal */}
       <TaskModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         onSave={(task) => createMutation.mutate(task)}
       />
 
+      {/* Edit Existing Task Modal */}
+      <TaskModal
+        visible={!!editingTask}
+        isEditing
+        initialText={editingTask?.text}
+        initialPriority={editingTask?.priority}
+        initialRecurrence={editingTask?.recurrence}
+        initialDurationMinutes={editingTask?.durationMinutes || 15}
+        onClose={() => setEditingTask(null)}
+        onSave={(updated) => {
+          if (editingTask) {
+            updateMutation.mutate({ id: editingTask.id, payload: updated });
+          }
+        }}
+      />
+
+      {/* Subtask Breakdown View */}
       <TaskBreakdownModal
         visible={!!selectedTaskForBreakdown}
         task={selectedTaskForBreakdown}
@@ -314,7 +369,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     marginBottom: 12,
-    gap: 12,
+    gap: 10,
     elevation: 3,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
@@ -353,7 +408,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
   },
-  deleteBtn: {
+  actionBtn: {
     padding: 6,
   },
   fab: {

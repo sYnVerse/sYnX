@@ -70,6 +70,7 @@ export const UpdateTodoSchema = v.object({
   priority: v.optional(PriorityLevelSchema),
   reminderAt: v.optional(v.nullable(v.number())),
   recurrence: v.optional(RecurrencePatternSchema),
+  durationMinutes: v.optional(v.number()),
 });
 
 export type UpdateTodoInput = v.InferOutput<typeof UpdateTodoSchema>;

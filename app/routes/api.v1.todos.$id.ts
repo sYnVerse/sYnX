@@ -49,11 +49,17 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       if (parsed.recurrence !== undefined) {
         updatedTodo = await manager.updateRecurrence(todoId, parsed.recurrence);
       }
-
-      if (!updatedTodo) {
-        const current = await db.prepare("SELECT * FROM todos WHERE id = ?").bind(todoId).first<any>();
-        updatedTodo = current;
+      if (parsed.durationMinutes !== undefined) {
+        try {
+          await db.prepare("ALTER TABLE todos ADD COLUMN duration_minutes INTEGER DEFAULT 15").run().catch(() => {});
+          await db.prepare("UPDATE todos SET duration_minutes = ? WHERE id = ?").bind(parsed.durationMinutes, todoId).run();
+        } catch (e) {
+          console.error("Failed to update duration_minutes", e);
+        }
       }
+
+      const current = await db.prepare("SELECT * FROM todos WHERE id = ?").bind(todoId).first<any>();
+      updatedTodo = current;
 
       return Response.json({ success: true, todo: updatedTodo });
     } catch (err: any) {
