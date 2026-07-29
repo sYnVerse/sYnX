@@ -39,6 +39,7 @@ export interface TodoList {
   createdAt: number;
   expirationTtl?: number | null;
   shareMode: ShareMode;
+  category?: string;
 }
 
 // User settings data structure
@@ -75,9 +76,17 @@ export type UpdateTodoInput = v.InferOutput<typeof UpdateTodoSchema>;
 
 export const CreateListSchema = v.object({
   name: v.pipe(v.string(), v.minLength(1, "List name cannot be empty")),
+  category: v.optional(v.string(), "Checklist"),
 });
 
 export type CreateListInput = v.InferOutput<typeof CreateListSchema>;
+
+export const UpdateListSchema = v.object({
+  name: v.optional(v.pipe(v.string(), v.minLength(1))),
+  category: v.optional(v.string()),
+});
+
+export type UpdateListInput = v.InferOutput<typeof UpdateListSchema>;
 
 export const UpdateShareModeSchema = v.object({
   shareMode: ShareModeSchema,

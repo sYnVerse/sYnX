@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Plus, FolderPlus, Trash2, ChevronRight, CheckCircle2, Circle } from "lucide-react-native";
+import { Plus, FolderPlus, Trash2, Tag, CheckCircle2, Circle } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import { TodoList, TodoItem } from "../../../shared";
 import { useTheme } from "../context/ThemeContext";
@@ -23,14 +23,23 @@ interface ListsScreenProps {
   onSelectList: (id: string) => void;
 }
 
-const CATEGORY_EMOJIS = ["🎓", "🛒", "🎬", "💼", "📚", "✈️", "🏠", "💪", "💡", "🎵"];
+const CATEGORY_OPTIONS = [
+  { name: "Checklist", emoji: "📋" },
+  { name: "Study", emoji: "🎓" },
+  { name: "Shopping", emoji: "🛒" },
+  { name: "Movies", emoji: "🎬" },
+  { name: "Work", emoji: "💼" },
+  { name: "Personal", emoji: "🏠" },
+  { name: "Travel", emoji: "✈️" },
+  { name: "Fitness", emoji: "💪" },
+];
 
 export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelectList }) => {
   const { theme, hapticsEnabled } = useTheme();
   const queryClient = useQueryClient();
   const [modalVisible, setModalVisible] = useState(false);
   const [newListName, setNewListName] = useState("");
-  const [selectedEmoji, setSelectedEmoji] = useState(CATEGORY_EMOJIS[0]);
+  const [selectedCategory, setSelectedCategory] = useState(CATEGORY_OPTIONS[0]);
 
   const { data: lists, isLoading } = useQuery({
     queryKey: ["lists"],
@@ -58,8 +67,8 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   };
 
   const createListMutation = useMutation({
-    mutationFn: async (nameWithEmoji: string) => {
-      const res = await apiClient.post("/api/v1/lists", { name: nameWithEmoji });
+    mutationFn: async ({ name, category }: { name: string; category: string }) => {
+      const res = await apiClient.post("/api/v1/lists", { name, category });
       return res.data.list as TodoList;
     },
     onSuccess: (newList) => {
@@ -68,6 +77,16 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       onSelectList(newList.id);
       setNewListName("");
       setModalVisible(false);
+    },
+  });
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: async ({ id, category }: { id: string; category: string }) => {
+      await apiClient.put(`/api/v1/lists/${id}`, { category });
+    },
+    onSuccess: () => {
+      triggerImpactHaptic();
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
     },
   });
 
@@ -83,8 +102,8 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 
   const handleCreateList = () => {
     if (!newListName.trim()) return;
-    const fullName = `${selectedEmoji} ${newListName.trim()}`;
-    createListMutation.mutate(fullName);
+    const fullName = `${selectedCategory.emoji} ${newListName.trim()}`;
+    createListMutation.mutate({ name: fullName, category: selectedCategory.name });
   };
 
   return (
@@ -92,7 +111,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>My Task Lists</Text>
         <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>
-          Organize your tasks into dedicated lists
+          Organize your tasks into categorized lists stored in D1
         </Text>
       </View>
 
@@ -109,6 +128,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
           contentContainerStyle={{ paddingBottom: 110 }}
           renderItem={({ item }) => {
             const isActive = item.id === activeListId;
+            const categoryTag = item.category || "Checklist";
 
             return (
               <TouchableOpacity
@@ -128,11 +148,18 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
               >
                 {/* Header Row of List */}
                 <View style={styles.listRowHeader}>
-                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     <Text style={[styles.listTitle, { color: theme.textPrimary }]}>{item.name}</Text>
+                    
+                    {/* D1 Categorized Tag Badge */}
+                    <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
+                      <Tag size={10} color={theme.accent} />
+                      <Text style={[styles.categoryPillText, { color: theme.accent }]}>{categoryTag}</Text>
+                    </View>
+
                     {isActive && (
-                      <View style={[styles.activeBadge, { backgroundColor: theme.accentLight }]}>
-                        <Text style={[styles.activeBadgeText, { color: theme.accent }]}>ACTIVE</Text>
+                      <View style={[styles.activeBadge, { backgroundColor: theme.accent }]}>
+                        <Text style={styles.activeBadgeText}>ACTIVE</Text>
                       </View>
                     )}
                   </View>
@@ -207,21 +234,34 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Create New List</Text>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Create Categorized List</Text>
 
-            <Text style={[styles.label, { color: theme.textMuted }]}>Choose Category Icon</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.emojiRow}>
-              {CATEGORY_EMOJIS.map((emoji) => (
+            <Text style={[styles.label, { color: theme.textMuted }]}>Select List Category Tag</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+              {CATEGORY_OPTIONS.map((cat) => (
                 <TouchableOpacity
-                  key={emoji}
+                  key={cat.name}
                   style={[
-                    styles.emojiBtn,
-                    { backgroundColor: theme.inputBg },
-                    selectedEmoji === emoji && { backgroundColor: theme.accentLight, borderColor: theme.accent, borderWidth: 2 },
+                    styles.catBtn,
+                    { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                    selectedCategory.name === cat.name && {
+                      backgroundColor: theme.accentLight,
+                      borderColor: theme.accent,
+                      borderWidth: 2,
+                    },
                   ]}
-                  onPress={() => setSelectedEmoji(emoji)}
+                  onPress={() => setSelectedCategory(cat)}
                 >
-                  <Text style={styles.emojiText}>{emoji}</Text>
+                  <Text style={styles.catEmoji}>{cat.emoji}</Text>
+                  <Text
+                    style={[
+                      styles.catName,
+                      { color: theme.textPrimary },
+                      selectedCategory.name === cat.name && { color: theme.accent, fontWeight: "700" },
+                    ]}
+                  >
+                    {cat.name}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -229,7 +269,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
             <Text style={[styles.label, { color: theme.textMuted }]}>List Title</Text>
             <TextInput
               style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
-              placeholder="e.g. Shopping List, Work Notes..."
+              placeholder="e.g. Supermarket, French HW, Big Movies..."
               placeholderTextColor={theme.inputPlaceholder}
               value={newListName}
               onChangeText={setNewListName}
@@ -286,12 +326,25 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "700",
   },
+  categoryPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
+  },
+  categoryPillText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
   activeBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 8,
   },
   activeBadgeText: {
+    color: "#FFFFFF",
     fontSize: 10,
     fontWeight: "800",
     letterSpacing: 0.5,
@@ -371,20 +424,26 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     marginBottom: 8,
   },
-  emojiRow: {
+  catRow: {
     flexDirection: "row",
     marginBottom: 14,
   },
-  emojiBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  catBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
     marginRight: 8,
+    gap: 6,
   },
-  emojiText: {
-    fontSize: 20,
+  catEmoji: {
+    fontSize: 16,
+  },
+  catName: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   input: {
     padding: 12,

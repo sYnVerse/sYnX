@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS lists (
   owner_id TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   expiration_ttl INTEGER,
-  share_mode TEXT DEFAULT 'private'
+  share_mode TEXT DEFAULT 'private',
+  category TEXT DEFAULT 'Checklist'
 );
 
 CREATE TABLE IF NOT EXISTS todos (

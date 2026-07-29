@@ -1,10 +1,7 @@
 import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
-
-const RenameListSchema = v.object({
-  name: v.pipe(v.string(), v.minLength(1, "Name cannot be empty")),
-});
+import { UpdateListSchema } from "../../shared";
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
   const env = context.cloudflare.env;
@@ -32,9 +29,16 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   if (request.method === "PUT") {
     try {
       const body = await request.json();
-      const parsed = v.parse(RenameListSchema, body);
+      const parsed = v.parse(UpdateListSchema, body);
 
-      await db.prepare("UPDATE lists SET name = ? WHERE id = ?").bind(parsed.name, listId).run();
+      const newName = parsed.name ?? listRow.name;
+      const newCategory = parsed.category ?? listRow.category ?? "Checklist";
+
+      await db
+        .prepare("UPDATE lists SET name = ?, category = ? WHERE id = ?")
+        .bind(newName, newCategory, listId)
+        .run();
+
       const updated = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
 
       return Response.json({
@@ -45,6 +49,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
           ownerId: updated.owner_id,
           createdAt: Number(updated.created_at),
           shareMode: updated.share_mode || "private",
+          category: updated.category || "Checklist",
           isOwner: true,
         },
       });

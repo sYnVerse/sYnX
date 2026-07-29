@@ -454,13 +454,15 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "createList": {
       const listName = formData.get("listName");
+      const category = (formData.get("category") as string) || "Checklist";
       if (typeof listName !== "string" || !listName.trim()) {
         return Response.json({ error: "Invalid list name" }, { status: 400 });
       }
       const newListId = crypto.randomUUID();
       try {
-        await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, ?)")
-          .bind(newListId, listName.trim(), userId, Date.now(), isLoggedIn ? null : 86400)
+        await db.prepare("ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist'").run().catch(() => {});
+        await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl, category) VALUES (?, ?, ?, ?, ?, ?)")
+          .bind(newListId, listName.trim(), userId, Date.now(), isLoggedIn ? null : 86400, category)
           .run();
       } catch (e) {
         console.error("Failed to create list:", e);
@@ -482,6 +484,25 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         await db.prepare("UPDATE lists SET name = ? WHERE id = ?").bind(newName.trim(), listId).run();
       } catch (e) {
         console.error("Failed to rename list:", e);
+      }
+      return { success: true };
+    }
+
+    case "updateListCategory": {
+      const listId = formData.get("listId") as string;
+      const category = formData.get("category") as string;
+      if (!category) {
+        return Response.json({ error: "Invalid category" }, { status: 400 });
+      }
+      const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
+      if (!ownRow) {
+        return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
+      }
+      try {
+        await db.prepare("ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist'").run().catch(() => {});
+        await db.prepare("UPDATE lists SET category = ? WHERE id = ?").bind(category, listId).run();
+      } catch (e) {
+        console.error("Failed to update list category:", e);
       }
       return { success: true };
     }

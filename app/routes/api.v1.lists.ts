@@ -3,6 +3,14 @@ import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { CreateListSchema } from "../../shared";
 
+async function ensureCategoryColumn(db: D1Database) {
+  try {
+    await db.prepare("ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist'").run();
+  } catch (e) {
+    // Column already exists, ignore error
+  }
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
   const db = env.DB as D1Database;
@@ -11,6 +19,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  await ensureCategoryColumn(db);
 
   // Only return lists the user owns. Shared lists are opened by explicit list ID
   // (deep link / known URL), matching web behavior — never enumerate all public lists.
@@ -30,6 +40,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     createdAt: Number(row.created_at),
     expirationTtl: row.expiration_ttl ? Number(row.expiration_ttl) : null,
     shareMode: row.share_mode || "private",
+    category: row.category || "Checklist",
     isOwner: row.owner_id === user.userId,
   }));
 
@@ -49,15 +60,18 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  await ensureCategoryColumn(db);
+
   try {
     const body = await request.json();
     const parsed = v.parse(CreateListSchema, body);
     const id = crypto.randomUUID();
     const createdAt = Date.now();
+    const category = parsed.category || "Checklist";
 
     await db
-      .prepare("INSERT INTO lists (id, name, owner_id, created_at, share_mode) VALUES (?, ?, ?, ?, ?)")
-      .bind(id, parsed.name, user.userId, createdAt, "private")
+      .prepare("INSERT INTO lists (id, name, owner_id, created_at, share_mode, category) VALUES (?, ?, ?, ?, ?, ?)")
+      .bind(id, parsed.name, user.userId, createdAt, "private", category)
       .run();
 
     const newList = {
@@ -67,6 +81,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       createdAt,
       expirationTtl: null,
       shareMode: "private",
+      category,
       isOwner: true,
     };
 
