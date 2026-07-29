@@ -6,3 +6,4 @@ google-services.json
 *.aab
 credentials.json
 credentials/
+android/

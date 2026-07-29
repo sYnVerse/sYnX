@@ -22,3 +22,6 @@ graphify-out/*-*/
 mobile/google-services.json
 mobile/node_modules/
 mobile/.expo/
+
+.idea/
+.artifacts/
