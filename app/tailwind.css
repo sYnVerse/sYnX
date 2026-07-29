@@ -14,6 +14,9 @@
   --color-accent-bg: rgba(99, 102, 241, 0.1);
   --color-accent-text: #a5b4fc; /* indigo-300 */
   --color-accent-ring: rgba(99, 102, 241, 0.4);
+  --scrollbar-track: rgba(15, 23, 42, 0.4);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(99, 102, 241, 0.5);
 }
 
 [data-theme="emerald"] {
@@ -28,6 +31,9 @@
   --color-accent-bg: rgba(16, 185, 129, 0.1);
   --color-accent-text: #6ee7b7; /* emerald-300 */
   --color-accent-ring: rgba(16, 185, 129, 0.4);
+  --scrollbar-track: rgba(6, 78, 59, 0.4);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(16, 185, 129, 0.5);
 }
 
 [data-theme="sunset"] {
@@ -42,6 +48,9 @@
   --color-accent-bg: rgba(236, 72, 153, 0.1);
   --color-accent-text: #f472b6; /* rose-400 */
   --color-accent-ring: rgba(236, 72, 153, 0.4);
+  --scrollbar-track: rgba(45, 19, 25, 0.4);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(236, 72, 153, 0.5);
 }
 
 [data-theme="cyberpunk"] {
@@ -56,6 +65,9 @@
   --color-accent-bg: rgba(240, 171, 252, 0.15);
   --color-accent-text: #f472b6; /* rose-400 */
   --color-accent-ring: rgba(240, 171, 252, 0.5);
+  --scrollbar-track: rgba(10, 10, 10, 0.6);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --scrollbar-thumb-hover: rgba(240, 171, 252, 0.6);
 }
 
 html,
@@ -65,6 +77,75 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
   overflow-x: hidden;
   max-width: 100%;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Premium Custom Scrollbar Styling (Cross-browser Compatibility)              */
+/* -------------------------------------------------------------------------- */
+
+/* 1. Modern standard CSS for supporting browsers (Firefox, modern Chrome/Edge) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* 2. WebKit styles apply for Chromium (Chrome, Edge, Opera, Brave) & Safari engines */
+@supports not (scrollbar-width: thin) {
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+  }
+}
+
+/* WebKit fine-tuning for rounded sleek scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 @keyframes confetti-fall {
