@@ -27,6 +27,7 @@ export interface TodoItem {
   reminderSent: boolean;
   parentId?: string | null;
   recurrence: RecurrencePattern;
+  durationMinutes?: number;
   subtasks?: TodoItem[];
 }
 

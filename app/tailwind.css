@@ -70,6 +70,24 @@
   --scrollbar-thumb-hover: rgba(240, 171, 252, 0.6);
 }
 
+[data-theme="pastel"] {
+  --bg-main: #FAF7F2; /* warm cream background */
+  --bg-sidebar: #F3EFEA; /* soft cream sidebar */
+  --bg-card: #FFFFFF;
+  --bg-card-hover: rgba(79, 70, 229, 0.04);
+  --border-color: rgba(0, 0, 0, 0.07);
+  --border-color-strong: rgba(0, 0, 0, 0.12);
+  --color-accent-from: #4F46E5; /* indigo-600 */
+  --color-accent-to: #7C3AED; /* violet-600 */
+  --color-accent-bg: rgba(79, 70, 229, 0.1);
+  --color-accent-text: #4F46E5; /* indigo-600 */
+  --color-accent-ring: rgba(79, 70, 229, 0.4);
+  --scrollbar-track: rgba(0, 0, 0, 0.05);
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(79, 70, 229, 0.4);
+}
+
+
 html,
 body {
   background-color: var(--bg-main);

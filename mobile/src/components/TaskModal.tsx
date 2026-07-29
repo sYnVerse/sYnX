@@ -1,6 +1,18 @@
 import React, { useState, useEffect } from "react";
-import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import {
+  Modal,
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+} from "react-native";
+import * as Haptics from "expo-haptics";
 import { PriorityLevel, RecurrencePattern } from "../../../shared";
+import { useTheme } from "../context/ThemeContext";
 
 interface TaskModalProps {
   visible: boolean;
@@ -10,11 +22,13 @@ interface TaskModalProps {
     priority: PriorityLevel;
     reminderAt?: number;
     recurrence: RecurrencePattern;
+    durationMinutes?: number;
   }) => void;
   initialText?: string;
   initialPriority?: PriorityLevel;
   initialReminderAt?: number;
   initialRecurrence?: RecurrencePattern;
+  initialDurationMinutes?: number;
   isEditing?: boolean;
 }
 
@@ -26,90 +40,171 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   initialPriority = "none",
   initialReminderAt,
   initialRecurrence = "none",
+  initialDurationMinutes = 15,
   isEditing = false,
 }) => {
+  const { theme, hapticsEnabled } = useTheme();
   const [text, setText] = useState(initialText);
   const [priority, setPriority] = useState<PriorityLevel>(initialPriority);
   const [recurrence, setRecurrence] = useState<RecurrencePattern>(initialRecurrence);
+  const [durationMinutes, setDurationMinutes] = useState<string>(String(initialDurationMinutes));
   const [reminderMins, setReminderMins] = useState<number | null>(null);
 
   useEffect(() => {
     setText(initialText);
     setPriority(initialPriority);
     setRecurrence(initialRecurrence);
+    setDurationMinutes(String(initialDurationMinutes));
     setReminderMins(null);
-  }, [visible, initialText, initialPriority, initialRecurrence]);
+  }, [visible, initialText, initialPriority, initialRecurrence, initialDurationMinutes]);
+
+  const triggerHaptic = () => {
+    if (hapticsEnabled && Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  };
 
   const handleSave = () => {
     if (!text.trim()) return;
+    triggerHaptic();
     let reminderAt: number | undefined = initialReminderAt;
     if (reminderMins !== null) {
       reminderAt = Date.now() + reminderMins * 60 * 1000;
     }
+    const parsedDur = parseInt(durationMinutes.replace(/\D/g, ""), 10);
     onSave({
       text: text.trim(),
       priority,
       reminderAt,
       recurrence,
+      durationMinutes: isNaN(parsedDur) ? 15 : parsedDur,
     });
     onClose();
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>{isEditing ? "Edit Task" : "New Task"}</Text>
-          <ScrollView>
-            <Text style={styles.label}>Task Description</Text>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={[styles.modalContainer, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+          <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+            {isEditing ? "Edit Task" : "New Task"}
+          </Text>
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <Text style={[styles.label, { color: theme.textMuted }]}>Task Description</Text>
             <TextInput
-              style={styles.input}
+              style={[
+                styles.input,
+                {
+                  color: theme.textPrimary,
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                },
+              ]}
               placeholder="What needs to be done?"
-              placeholderTextColor="#64748b"
+              placeholderTextColor={theme.inputPlaceholder}
               value={text}
               onChangeText={setText}
               autoFocus
             />
 
-            <Text style={styles.label}>Priority Level</Text>
+            <Text style={[styles.label, { color: theme.textMuted }]}>Est. Duration (Minutes)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  color: theme.textPrimary,
+                  backgroundColor: theme.inputBg,
+                  borderColor: theme.inputBorder,
+                },
+              ]}
+              keyboardType="number-pad"
+              placeholder="15"
+              placeholderTextColor={theme.inputPlaceholder}
+              value={durationMinutes}
+              onChangeText={setDurationMinutes}
+            />
+
+            <Text style={[styles.label, { color: theme.textMuted }]}>Priority Level</Text>
             <View style={styles.row}>
               {(["none", "low", "medium", "high"] as PriorityLevel[]).map((p) => (
                 <TouchableOpacity
                   key={p}
-                  style={[styles.pill, priority === p && styles.pillActive]}
-                  onPress={() => setPriority(p)}
+                  style={[
+                    styles.pill,
+                    { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                    priority === p && { backgroundColor: theme.accent, borderColor: theme.accent },
+                  ]}
+                  onPress={() => {
+                    triggerHaptic();
+                    setPriority(p);
+                  }}
                 >
-                  <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
+                  <Text
+                    style={[
+                      styles.pillText,
+                      { color: theme.textSecondary },
+                      priority === p && { color: "#FFFFFF", fontWeight: "700" },
+                    ]}
+                  >
                     {p.toUpperCase()}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.label}>Recurrence Pattern</Text>
+            <Text style={[styles.label, { color: theme.textMuted }]}>Recurrence Pattern</Text>
             <View style={styles.row}>
               {(["none", "daily", "weekly", "monthly"] as RecurrencePattern[]).map((r) => (
                 <TouchableOpacity
                   key={r}
-                  style={[styles.pill, recurrence === r && styles.pillActive]}
-                  onPress={() => setRecurrence(r)}
+                  style={[
+                    styles.pill,
+                    { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                    recurrence === r && { backgroundColor: theme.accent, borderColor: theme.accent },
+                  ]}
+                  onPress={() => {
+                    triggerHaptic();
+                    setRecurrence(r);
+                  }}
                 >
-                  <Text style={[styles.pillText, recurrence === r && styles.pillTextActive]}>
+                  <Text
+                    style={[
+                      styles.pillText,
+                      { color: theme.textSecondary },
+                      recurrence === r && { color: "#FFFFFF", fontWeight: "700" },
+                    ]}
+                  >
                     {r.toUpperCase()}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.label}>Set Reminder</Text>
+            <Text style={[styles.label, { color: theme.textMuted }]}>Set Quick Reminder</Text>
             <View style={styles.row}>
               {[5, 15, 30, 60].map((mins) => (
                 <TouchableOpacity
                   key={mins}
-                  style={[styles.pill, reminderMins === mins && styles.pillActive]}
-                  onPress={() => setReminderMins(mins)}
+                  style={[
+                    styles.pill,
+                    { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                    reminderMins === mins && { backgroundColor: theme.accent, borderColor: theme.accent },
+                  ]}
+                  onPress={() => {
+                    triggerHaptic();
+                    setReminderMins(mins);
+                  }}
                 >
-                  <Text style={[styles.pillText, reminderMins === mins && styles.pillTextActive]}>
+                  <Text
+                    style={[
+                      styles.pillText,
+                      { color: theme.textSecondary },
+                      reminderMins === mins && { color: "#FFFFFF", fontWeight: "700" },
+                    ]}
+                  >
                     +{mins}m
                   </Text>
                 </TouchableOpacity>
@@ -119,14 +214,17 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
           <View style={styles.actions}>
             <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={[styles.cancelText, { color: theme.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <TouchableOpacity
+              style={[styles.saveButton, { backgroundColor: theme.accent }]}
+              onPress={handleSave}
+            >
               <Text style={styles.saveText}>Save Task</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -134,40 +232,39 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
     justifyContent: "flex-end",
   },
   modalContainer: {
-    backgroundColor: "#0f172a",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     padding: 20,
-    maxHeight: "80%",
+    maxHeight: "85%",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
   },
   modalTitle: {
     fontSize: 20,
-    fontWeight: "bold",
-    color: "#f8fafc",
+    fontWeight: "700",
     marginBottom: 16,
   },
   label: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
-    color: "#94a3b8",
     marginTop: 12,
     marginBottom: 6,
     textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   input: {
-    backgroundColor: "#1e293b",
-    color: "#f8fafc",
     padding: 12,
-    borderRadius: 8,
-    fontSize: 16,
+    borderRadius: 12,
+    fontSize: 15,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    marginBottom: 4,
   },
   row: {
     flexDirection: "row",
@@ -175,24 +272,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   pill: {
-    backgroundColor: "#1e293b",
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    paddingVertical: 7,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-  },
-  pillActive: {
-    backgroundColor: "#6366f1",
-    borderColor: "#818cf8",
   },
   pillText: {
-    color: "#94a3b8",
     fontSize: 12,
     fontWeight: "600",
-  },
-  pillTextActive: {
-    color: "#ffffff",
   },
   actions: {
     flexDirection: "row",
@@ -201,19 +288,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   cancelButton: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   cancelText: {
-    color: "#94a3b8",
     fontWeight: "600",
   },
   saveButton: {
-    backgroundColor: "#6366f1",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 12,
   },
   saveText: {
     color: "#ffffff",

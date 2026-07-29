@@ -1,9 +1,22 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Switch, TextInput, TouchableOpacity, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Switch,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Platform,
+  Alert,
+} from "react-native";
 import * as SecureStore from "expo-secure-store";
+import * as Haptics from "expo-haptics";
+import { Palette, Vibrate, Bell, Smartphone, LogOut, Check, Save } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { apiClient, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
 import { registerForPushNotificationsAsync } from "../services/notifications";
+import { useTheme } from "../context/ThemeContext";
 
 interface SettingsScreenProps {
   onDirtyChange?: (isDirty: boolean) => void;
@@ -12,6 +25,8 @@ interface SettingsScreenProps {
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, onRegisterActions }) => {
   const { logout } = useAuth();
+  const { theme, themeMode, setThemeMode, hapticsEnabled, setHapticsEnabled } = useTheme();
+
   const [initialSettings, setInitialSettings] = useState<{
     emailEnabled: boolean;
     smsEnabled: boolean;
@@ -26,6 +41,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [phoneCarrier, setPhoneCarrier] = useState("");
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
   const [pushStatus, setPushStatus] = useState<string>("Not Registered");
+
+  const triggerImpact = () => {
+    if (hapticsEnabled && Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  };
 
   useEffect(() => {
     async function loadSettings() {
@@ -76,6 +97,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   }, [emailEnabled, smsEnabled, phoneNumber, phoneCarrier, discordWebhookUrl, initialSettings]);
 
   const handleSave = async (): Promise<boolean> => {
+    triggerImpact();
     try {
       await apiClient.put("/api/v1/settings", {
         emailEnabled,
@@ -87,10 +109,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       const updated = { emailEnabled, smsEnabled, phoneNumber, phoneCarrier, discordWebhookUrl };
       setInitialSettings(updated);
       onDirtyChange?.(false);
-      alert("Settings saved successfully!");
+      Alert.alert("Success", "Settings saved successfully!");
       return true;
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to save settings");
+      Alert.alert("Error", e.response?.data?.error || "Failed to save settings");
       return false;
     }
   };
@@ -116,6 +138,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   }, [emailEnabled, smsEnabled, phoneNumber, phoneCarrier, discordWebhookUrl, initialSettings]);
 
   const handleRegisterPush = async () => {
+    triggerImpact();
     const token = await registerForPushNotificationsAsync();
     if (token) {
       setPushStatus("Registered!");
@@ -125,66 +148,162 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.header}>Notification Settings</Text>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.bg }]}
+      contentContainerStyle={{ paddingBottom: 110 }}
+    >
+      {/* App Theme & Experience Section */}
+      <View style={styles.sectionHeader}>
+        <Palette size={16} color={theme.accent} />
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Appearance & Haptics</Text>
+      </View>
 
-      <View style={styles.card}>
-        <View style={styles.row}>
-          <Text style={styles.label}>Email Notifications</Text>
-          <Switch value={emailEnabled} onValueChange={setEmailEnabled} />
+      <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+        <Text style={[styles.subLabel, { color: theme.textMuted }]}>THEME PREFERENCE</Text>
+        <View style={styles.themeRow}>
+          <TouchableOpacity
+            style={[
+              styles.themeOption,
+              { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+              themeMode === "dark" && { backgroundColor: theme.accentLight, borderColor: theme.accent, borderWidth: 2 },
+            ]}
+            onPress={() => {
+              triggerImpact();
+              setThemeMode("dark");
+            }}
+          >
+            <View style={[styles.colorPreviewCircle, { backgroundColor: "#0F172A" }]} />
+            <Text style={[styles.themeOptionText, { color: theme.textPrimary }]}>Modern Glass Dark</Text>
+            {themeMode === "dark" && <Check size={14} color={theme.accent} />}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.themeOption,
+              { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+              themeMode === "light" && { backgroundColor: theme.accentLight, borderColor: theme.accent, borderWidth: 2 },
+            ]}
+            onPress={() => {
+              triggerImpact();
+              setThemeMode("light");
+            }}
+          >
+            <View style={[styles.colorPreviewCircle, { backgroundColor: "#FAF7F2", borderColor: "#CBD5E1", borderWidth: 1 }]} />
+            <Text style={[styles.themeOptionText, { color: theme.textPrimary }]}>Light Pastel</Text>
+            {themeMode === "light" && <Check size={14} color={theme.accent} />}
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.row}>
-          <Text style={styles.label}>SMS Notifications</Text>
-          <Switch value={smsEnabled} onValueChange={setSmsEnabled} />
+        <View style={styles.switchRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Vibrate size={18} color={theme.textSecondary} />
+            <Text style={[styles.label, { color: theme.textPrimary }]}>Tactile Haptic Feedback</Text>
+          </View>
+          <Switch
+            value={hapticsEnabled}
+            onValueChange={(val) => {
+              triggerImpact();
+              setHapticsEnabled(val);
+            }}
+            trackColor={{ false: theme.inputBg, true: theme.accentLight }}
+            thumbColor={hapticsEnabled ? theme.accent : "#94A3B8"}
+          />
+        </View>
+      </View>
+
+      {/* Notifications Section */}
+      <View style={styles.sectionHeader}>
+        <Bell size={16} color={theme.accent} />
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Notifications</Text>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+        <View style={styles.switchRow}>
+          <Text style={[styles.label, { color: theme.textPrimary }]}>Email Notifications</Text>
+          <Switch
+            value={emailEnabled}
+            onValueChange={(val) => {
+              triggerImpact();
+              setEmailEnabled(val);
+            }}
+            trackColor={{ false: theme.inputBg, true: theme.accentLight }}
+            thumbColor={emailEnabled ? theme.accent : "#94A3B8"}
+          />
+        </View>
+
+        <View style={styles.switchRow}>
+          <Text style={[styles.label, { color: theme.textPrimary }]}>SMS Notifications</Text>
+          <Switch
+            value={smsEnabled}
+            onValueChange={(val) => {
+              triggerImpact();
+              setSmsEnabled(val);
+            }}
+            trackColor={{ false: theme.inputBg, true: theme.accentLight }}
+            thumbColor={smsEnabled ? theme.accent : "#94A3B8"}
+          />
         </View>
 
         {smsEnabled && (
           <>
-            <Text style={styles.subLabel}>Phone Number</Text>
+            <Text style={[styles.subLabel, { color: theme.textMuted }]}>Phone Number</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
               placeholder="e.g. +12345678901"
-              placeholderTextColor="#64748b"
+              placeholderTextColor={theme.inputPlaceholder}
               value={phoneNumber}
               onChangeText={setPhoneNumber}
             />
 
-            <Text style={styles.subLabel}>Phone Carrier</Text>
+            <Text style={[styles.subLabel, { color: theme.textMuted }]}>Phone Carrier</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
               placeholder="verizon, att, tmobile..."
-              placeholderTextColor="#64748b"
+              placeholderTextColor={theme.inputPlaceholder}
               value={phoneCarrier}
               onChangeText={setPhoneCarrier}
             />
           </>
         )}
 
-        <Text style={styles.subLabel}>Discord Webhook URL</Text>
+        <Text style={[styles.subLabel, { color: theme.textMuted }]}>Discord Webhook URL</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
           placeholder="https://discord.com/api/webhooks/..."
-          placeholderTextColor="#64748b"
+          placeholderTextColor={theme.inputPlaceholder}
           value={discordWebhookUrl}
           onChangeText={setDiscordWebhookUrl}
         />
 
-        <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-          <Text style={styles.saveBtnText}>Save Settings</Text>
+        <TouchableOpacity style={[styles.saveBtn, { backgroundColor: theme.accent }]} onPress={handleSave}>
+          <Save size={16} color="#FFFFFF" />
+          <Text style={styles.saveBtnText}>Save Notification Settings</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.header}>Device Push Notifications</Text>
-      <View style={styles.card}>
-        <Text style={styles.subLabel}>Status: {pushStatus}</Text>
-        <TouchableOpacity style={styles.pushBtn} onPress={handleRegisterPush}>
-          <Text style={styles.pushBtnText}>Enable Device Push Notifications</Text>
+      {/* Device Push Notifications */}
+      <View style={styles.sectionHeader}>
+        <Smartphone size={16} color={theme.accent} />
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Device Push Token</Text>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+        <Text style={[styles.subLabel, { color: theme.textMuted }]}>STATUS: {pushStatus}</Text>
+        <TouchableOpacity style={[styles.pushBtn, { backgroundColor: theme.accentLight }]} onPress={handleRegisterPush}>
+          <Text style={[styles.pushBtnText, { color: theme.accent }]}>Register Push Token</Text>
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-        <Text style={styles.logoutText}>Log Out</Text>
+      {/* Log Out */}
+      <TouchableOpacity
+        style={[styles.logoutBtn, { backgroundColor: theme.danger }]}
+        onPress={() => {
+          triggerImpact();
+          logout();
+        }}
+      >
+        <LogOut size={18} color="#FFFFFF" />
+        <Text style={styles.logoutText}>Log Out of sYnID</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -193,79 +312,111 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
-  header: {
-    color: "#f8fafc",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginVertical: 12,
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginVertical: 10,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: "700",
   },
   card: {
-    backgroundColor: "#1e293b",
     padding: 16,
-    borderRadius: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginBottom: 14,
+    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+  },
+  subLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  themeRow: {
+    gap: 8,
     marginBottom: 16,
   },
-  row: {
+  themeOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 10,
+  },
+  colorPreviewCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+  },
+  themeOptionText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  switchRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    paddingVertical: 8,
   },
   label: {
-    color: "#f8fafc",
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "500",
   },
-  subLabel: {
-    color: "#94a3b8",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 8,
-    marginBottom: 4,
-  },
   input: {
-    backgroundColor: "#0f172a",
-    color: "#f8fafc",
     padding: 10,
-    borderRadius: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    fontSize: 13,
     marginBottom: 8,
   },
   saveBtn: {
-    backgroundColor: "#6366f1",
-    padding: 12,
-    borderRadius: 8,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+    borderRadius: 14,
     marginTop: 12,
+    gap: 8,
   },
   saveBtnText: {
-    color: "#ffffff",
-    fontWeight: "bold",
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 14,
   },
   pushBtn: {
-    backgroundColor: "#3b82f6",
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: "center",
-    marginTop: 8,
+    marginTop: 6,
   },
   pushBtnText: {
-    color: "#ffffff",
-    fontWeight: "bold",
+    fontWeight: "700",
+    fontSize: 14,
   },
   logoutBtn: {
-    backgroundColor: "#f43f5e",
-    padding: 14,
-    borderRadius: 10,
+    flexDirection: "row",
     alignItems: "center",
-    marginTop: 20,
-    marginBottom: 40,
+    justifyContent: "center",
+    padding: 14,
+    borderRadius: 16,
+    marginTop: 12,
+    marginBottom: 20,
+    gap: 8,
   },
   logoutText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "bold",
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

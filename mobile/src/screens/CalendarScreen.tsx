@@ -1,16 +1,20 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, FlatList, RefreshControl, TouchableOpacity } from "react-native";
-import { Calendar } from "react-native-calendars";
-import { useQuery } from "@tanstack/react-query";
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Platform } from "react-native";
+import { Calendar, DateData } from "react-native-calendars";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import * as Haptics from "expo-haptics";
+import { Clock, Check, Calendar as CalendarIcon } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import { TodoItem } from "../../../shared";
+import { useTheme } from "../context/ThemeContext";
 
 export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
+  const { theme, themeMode, hapticsEnabled } = useTheme();
+  const queryClient = useQueryClient();
+  const today = new Date().toISOString().split("T")[0];
+  const [selectedDate, setSelectedDate] = useState(today);
 
-  const { data: todos, refetch, isRefetching } = useQuery({
+  const { data: todos } = useQuery({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
@@ -19,79 +23,144 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     enabled: !!listId,
   });
 
+  const triggerImpactHaptic = () => {
+    if (hapticsEnabled && Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+  };
+
+  const toggleMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.post(`/api/v1/todos/${id}/toggle`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+    },
+  });
+
   const markedDates: Record<string, any> = {};
-  (todos || []).forEach((t: TodoItem) => {
+  (todos || []).forEach((t) => {
     if (t.reminderAt) {
       const dateStr = new Date(t.reminderAt).toISOString().split("T")[0];
       markedDates[dateStr] = {
         marked: true,
-        dotColor: "#6366f1",
+        dotColor: theme.accent,
       };
     }
   });
 
   markedDates[selectedDate] = {
-    ...(markedDates[selectedDate] || {}),
+    ...markedDates[selectedDate],
     selected: true,
-    selectedColor: "#6366f1",
+    selectedColor: theme.accent,
+    selectedTextColor: "#FFFFFF",
   };
 
-  const tasksForSelectedDate = (todos || []).filter((t: TodoItem) => {
-    if (!t.reminderAt) return false;
-    const dateStr = new Date(t.reminderAt).toISOString().split("T")[0];
-    return dateStr === selectedDate;
+  const selectedDateTodos = (todos || []).filter((t) => {
+    if (!t.reminderAt) return selectedDate === today;
+    const d = new Date(t.reminderAt).toISOString().split("T")[0];
+    return d === selectedDate;
   });
 
   return (
-    <View style={styles.container}>
-      <Calendar
-        theme={{
-          backgroundColor: "#0f172a",
-          calendarBackground: "#1e293b",
-          textSectionTitleColor: "#94a3b8",
-          selectedDayBackgroundColor: "#6366f1",
-          selectedDayTextColor: "#ffffff",
-          todayTextColor: "#818cf8",
-          dayTextColor: "#f8fafc",
-          textDisabledColor: "#475569",
-          arrowColor: "#6366f1",
-          monthTextColor: "#f8fafc",
-        }}
-        onDayPress={(day: any) => setSelectedDate(day.dateString)}
-        markedDates={markedDates}
-      />
-
-      <View style={styles.daySection}>
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionHeader}>Tasks for {selectedDate}</Text>
-          <TouchableOpacity style={styles.refreshBtn} onPress={() => refetch()}>
-            <Text style={styles.refreshBtnText}>🔄</Text>
-          </TouchableOpacity>
-        </View>
-        <FlatList
-          data={tasksForSelectedDate}
-          keyExtractor={(item) => item.id}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefetching}
-              onRefresh={refetch}
-              tintColor="#6366f1"
-              colors={["#6366f1"]}
-            />
-          }
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No tasks scheduled for this day.</Text>
-          }
-          renderItem={({ item }) => (
-            <View style={styles.taskCard}>
-              <Text style={styles.taskTitle}>{item.text}</Text>
-              {item.recurrence !== "none" && (
-                <Text style={styles.taskSub}>🔄 {item.recurrence}</Text>
-              )}
-            </View>
-          )}
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      <View style={styles.calendarCard}>
+        <Calendar
+          key={themeMode}
+          current={selectedDate}
+          onDayPress={(day: DateData) => {
+            triggerImpactHaptic();
+            setSelectedDate(day.dateString);
+          }}
+          markedDates={markedDates}
+          theme={{
+            calendarBackground: theme.surface,
+            textSectionTitleColor: theme.textMuted,
+            selectedDayBackgroundColor: theme.accent,
+            selectedDayTextColor: "#FFFFFF",
+            todayTextColor: theme.accent,
+            dayTextColor: theme.textPrimary,
+            textDisabledColor: theme.textMuted + "50",
+            dotColor: theme.accent,
+            selectedDotColor: "#FFFFFF",
+            arrowColor: theme.accent,
+            monthTextColor: theme.textPrimary,
+            indicatorColor: theme.accent,
+            textDayFontWeight: "600",
+            textMonthFontWeight: "700",
+            textDayHeaderFontWeight: "600",
+            textDayFontSize: 14,
+            textMonthFontSize: 16,
+            textDayHeaderFontSize: 12,
+          }}
+          style={{
+            borderRadius: 20,
+            overflow: "hidden",
+          }}
         />
       </View>
+
+      <View style={styles.scheduleHeader}>
+        <CalendarIcon size={16} color={theme.accent} />
+        <Text style={[styles.scheduleTitle, { color: theme.textPrimary }]}>
+          Schedule for {selectedDate}
+        </Text>
+      </View>
+
+      <FlatList
+        data={selectedDateTodos}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={{ paddingBottom: 110 }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+              No tasks scheduled for this date.
+            </Text>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <View
+            style={[
+              styles.todoCard,
+              {
+                backgroundColor: theme.cardBg,
+                borderColor: theme.cardBorder,
+                shadowColor: theme.shadowColor,
+              },
+            ]}
+          >
+            <TouchableOpacity
+              style={[
+                styles.checkbox,
+                { borderColor: theme.accent },
+                item.completed && { backgroundColor: theme.accent },
+              ]}
+              onPress={() => toggleMutation.mutate(item.id)}
+            >
+              {item.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+            </TouchableOpacity>
+
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  styles.todoText,
+                  { color: theme.textPrimary },
+                  item.completed && { textDecorationLine: "line-through", color: theme.textMuted },
+                ]}
+              >
+                {item.text}
+              </Text>
+            </View>
+
+            <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
+              <Clock size={11} color={theme.accent} />
+              <Text style={[styles.durationText, { color: theme.accent }]}>
+                {item.durationMinutes || 15}m
+              </Text>
+            </View>
+          </View>
+        )}
+      />
     </View>
   );
 };
@@ -99,53 +168,66 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#0f172a",
+    paddingHorizontal: 16,
+    paddingTop: 12,
   },
-  daySection: {
-    flex: 1,
-    padding: 16,
+  calendarCard: {
+    borderRadius: 20,
+    overflow: "hidden",
+    marginBottom: 16,
+    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
-  sectionHeaderRow: {
+  scheduleHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 8,
     marginBottom: 12,
   },
-  sectionHeader: {
-    color: "#f8fafc",
+  scheduleTitle: {
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "700",
   },
-  refreshBtn: {
-    backgroundColor: "#1e293b",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+  emptyContainer: {
+    paddingVertical: 30,
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: 13,
+  },
+  todoCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 10,
+    gap: 12,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 6,
+    borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
   },
-  refreshBtnText: {
-    fontSize: 14,
-  },
-  emptyText: {
-    color: "#64748b",
-    fontSize: 14,
-    fontStyle: "italic",
-  },
-  taskCard: {
-    backgroundColor: "#1e293b",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  taskTitle: {
-    color: "#f8fafc",
+  todoText: {
     fontSize: 14,
     fontWeight: "500",
   },
-  taskSub: {
-    color: "#818cf8",
-    fontSize: 12,
-    marginTop: 2,
+  durationBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  durationText: {
+    fontSize: 11,
+    fontWeight: "700",
   },
 });

@@ -2814,6 +2814,7 @@ export default function TodoPage() {
                 { id: "emerald", name: "Emerald Forest", bg: "bg-emerald-950 border-emerald-500/50" },
                 { id: "sunset", name: "Sunset Rose", bg: "bg-stone-900 border-rose-500/50" },
                 { id: "cyberpunk", name: "Cyberpunk Neon", bg: "bg-black border-pink-500/50" },
+                { id: "pastel", name: "Light Pastel", bg: "bg-amber-50 border-indigo-500/50" },
               ].map((t) => (
                 <button
                   key={t.id}
