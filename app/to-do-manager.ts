@@ -21,6 +21,7 @@ export interface UserSettings {
 export interface PendingReminder {
   id: string;
   listId: string;
+  listName?: string;
   text: string;
   reminderAt: number;
   userId: string;

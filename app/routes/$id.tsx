@@ -1725,37 +1725,39 @@ export default function TodoPage() {
 
     const checkReminders = () => {
       const now = Date.now();
-      const activeTodos = lists.flatMap((list: any) => list.todos || []) as Todo[];
 
       const notifiedStr = sessionStorage.getItem("synx_notified_ids") || "[]";
       const notifiedSet = new Set<string>(JSON.parse(notifiedStr));
 
-      activeTodos.forEach((todo) => {
-        if (
-          !todo.completed &&
-          todo.reminderAt &&
-          !todo.reminderSent &&
-          todo.reminderAt <= now &&
-          !notifiedSet.has(todo.id)
-        ) {
-          notifiedSet.add(todo.id);
-          sessionStorage.setItem("synx_notified_ids", JSON.stringify(Array.from(notifiedSet)));
+      lists.forEach((list: any) => {
+        const listTitle = (list.name && String(list.name).trim()) || "Reminder";
+        ((list.todos || []) as Todo[]).forEach((todo) => {
+          if (
+            !todo.completed &&
+            todo.reminderAt &&
+            !todo.reminderSent &&
+            todo.reminderAt <= now &&
+            !notifiedSet.has(todo.id)
+          ) {
+            notifiedSet.add(todo.id);
+            sessionStorage.setItem("synx_notified_ids", JSON.stringify(Array.from(notifiedSet)));
 
-          if (Notification.permission === "granted") {
-            try {
-              const notification = new Notification("sYnX Reminder", {
-                body: todo.text,
-                icon: "/favicon.ico",
-                tag: todo.id,
-              });
-              notification.onclick = () => {
-                window.focus();
-              };
-            } catch (err) {
-              console.error("Failed to trigger Notification API:", err);
+            if (Notification.permission === "granted") {
+              try {
+                const notification = new Notification(listTitle, {
+                  body: todo.text,
+                  icon: "/favicon.ico",
+                  tag: todo.id,
+                });
+                notification.onclick = () => {
+                  window.focus();
+                };
+              } catch (err) {
+                console.error("Failed to trigger Notification API:", err);
+              }
             }
           }
-        }
+        });
       });
     };
 
