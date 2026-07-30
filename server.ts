@@ -43,7 +43,7 @@ export default {
       const { results } = await db.prepare(`
         SELECT 
           t.id, t.list_id as listId, t.text, t.reminder_at as reminderAt,
-          l.owner_id as userId,
+          l.owner_id as userId, l.name as listName,
           s.email, s.email_enabled as emailEnabled, s.sms_enabled as smsEnabled, 
           s.phone_number as phoneNumber, s.phone_carrier as phoneCarrier, s.discord_webhook_url as discordWebhookUrl
         FROM todos t
@@ -69,6 +69,7 @@ export default {
 
     for (const reminder of dueReminders) {
       const promises: Promise<any>[] = [];
+      const listTitle = (reminder.listName && String(reminder.listName).trim()) || "Reminder";
 
       const emailEnabled = Boolean(reminder.emailEnabled);
       const smsEnabled = Boolean(reminder.smsEnabled);
@@ -89,7 +90,7 @@ export default {
               body: JSON.stringify({
                 from: "sYnX Reminders <no-reply@synx.christran.io>",
                 to: [reminder.email],
-                subject: "sYnX Task Reminder",
+                subject: listTitle,
                 html: `<p>${reminder.text}</p>`,
               }),
             }).then(res => {
@@ -137,8 +138,8 @@ export default {
                   body: JSON.stringify({
                     from: "sYnX Reminders <no-reply@synx.christran.io>",
                     to: [gatewayEmail],
-                    subject: "",
-                    text: `[sYnX Reminder] Task: ${reminder.text}`,
+                    subject: listTitle,
+                    text: reminder.text,
                   }),
                 }).then(res => {
                   if (!res.ok) {
@@ -161,7 +162,7 @@ export default {
           const formData = new URLSearchParams();
           formData.append("To", reminder.phoneNumber);
           formData.append("From", env.TWILIO_FROM_NUMBER);
-          formData.append("Body", `[sYnX Reminder] Task: ${reminder.text}`);
+          formData.append("Body", `[${listTitle}] ${reminder.text}`);
 
           promises.push(
             fetch(twilioUrl, {
@@ -193,7 +194,7 @@ export default {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              content: `⏰ **sYnX Task Reminder:** ${reminder.text}`,
+              content: `⏰ **${listTitle}:** ${reminder.text}`,
             }),
           }).then(res => {
             if (!res.ok) console.error("Discord Webhook failed:", res.statusText);
@@ -215,7 +216,7 @@ export default {
               sendFCMPushNotification(
                 device.token,
                 {
-                  title: "sYnX Task Reminder",
+                  title: listTitle,
                   body: reminder.text,
                   data: { todoId: reminder.id, listId: reminder.listId },
                 },
