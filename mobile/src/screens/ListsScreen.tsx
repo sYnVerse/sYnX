@@ -34,6 +34,7 @@ const CATEGORY_OPTIONS = [
   { name: "Personal", emoji: "🏠" },
   { name: "Travel", emoji: "✈️" },
   { name: "Fitness", emoji: "💪" },
+  { name: "Custom", emoji: "✏️" },
 ];
 
 export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelectList }) => {
@@ -45,9 +46,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 
   const [newListName, setNewListName] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(CATEGORY_OPTIONS[0]);
+  const [customCategoryText, setCustomCategoryText] = useState("");
 
   const [editName, setEditName] = useState("");
   const [editCategory, setEditCategory] = useState(CATEGORY_OPTIONS[0]);
+  const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
 
   const { data: lists, isLoading } = useQuery({
     queryKey: ["lists"],
@@ -68,6 +71,29 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     enabled: !!activeListId,
   });
 
+  // Group subtasks under their parent tasks for the active list preview
+  const mainTasks = React.useMemo(() => {
+    if (!activeListTodos) return [];
+    const parentMap: Record<string, TodoItem & { subtasks: TodoItem[] }> = {};
+    const topLevel: (TodoItem & { subtasks: TodoItem[] })[] = [];
+
+    activeListTodos.forEach((t) => {
+      if (!t.parentId) {
+        const item = { ...t, subtasks: [] };
+        parentMap[t.id] = item;
+        topLevel.push(item);
+      }
+    });
+
+    activeListTodos.forEach((st) => {
+      if (st.parentId && parentMap[st.parentId]) {
+        parentMap[st.parentId].subtasks.push(st);
+      }
+    });
+
+    return topLevel;
+  }, [activeListTodos]);
+
   const triggerImpactHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -84,6 +110,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       queryClient.invalidateQueries({ queryKey: ["lists"] });
       onSelectList(newList.id);
       setNewListName("");
+      setCustomCategoryText("");
       setModalVisible(false);
     },
   });
@@ -125,16 +152,18 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 
   const handleCreateList = () => {
     if (!newListName.trim()) return;
-    const fullName = `${selectedCategory.emoji} ${newListName.trim()}`;
-    createListMutation.mutate({ name: fullName, category: selectedCategory.name });
+    const categoryName = selectedCategory.name === "Custom" ? (customCategoryText.trim() || "Custom") : selectedCategory.name;
+    const fullName = selectedCategory.name === "Custom" ? newListName.trim() : `${selectedCategory.emoji} ${newListName.trim()}`;
+    createListMutation.mutate({ name: fullName, category: categoryName });
   };
 
   const handleUpdateList = () => {
     if (!editingList || !editName.trim()) return;
+    const categoryName = editCategory.name === "Custom" ? (editCustomCategoryText.trim() || "Custom") : editCategory.name;
     updateListMutation.mutate({
       id: editingList.id,
       name: editName.trim(),
-      category: editCategory.name,
+      category: categoryName,
     });
   };
 
@@ -158,8 +187,14 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     triggerImpactHaptic();
     setEditingList(list);
     setEditName(list.name);
-    const matchingCat = CATEGORY_OPTIONS.find((c) => c.name === list.category) || CATEGORY_OPTIONS[0];
-    setEditCategory(matchingCat);
+    const matchingCat = CATEGORY_OPTIONS.find((c) => c.name === list.category);
+    if (matchingCat) {
+      setEditCategory(matchingCat);
+      setEditCustomCategoryText("");
+    } else {
+      setEditCategory(CATEGORY_OPTIONS.find((c) => c.name === "Custom") || CATEGORY_OPTIONS[0]);
+      setEditCustomCategoryText(list.category || "");
+    }
   };
 
   const handleShareLink = async (list: TodoList) => {
@@ -265,32 +300,60 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                 {isActive && (
                   <View style={[styles.previewSection, { borderTopColor: theme.cardBorder }]}>
                     <Text style={[styles.previewSectionTitle, { color: theme.textMuted }]}>
-                      TASKS IN THIS LIST ({activeListTodos?.length || 0})
+                      TASKS IN THIS LIST ({mainTasks.length})
                     </Text>
 
-                    {activeListTodos && activeListTodos.length > 0 ? (
-                      activeListTodos.map((t) => (
-                        <View key={t.id} style={styles.todoPreviewItem}>
-                          {t.completed ? (
-                            <CheckCircle2 size={16} color={theme.accent} />
-                          ) : (
-                            <Circle size={16} color={theme.textMuted} />
-                          )}
-                          <Text
-                            style={[
-                              styles.todoPreviewText,
-                              { color: theme.textPrimary },
-                              t.completed && [styles.completedText, { color: theme.textMuted }],
-                            ]}
-                            numberOfLines={1}
-                          >
-                            {t.text}
-                          </Text>
-                          {t.durationMinutes && (
-                            <Text style={[styles.durationBadge, { color: theme.textMuted }]}>
-                              {t.durationMinutes}m
+                    {mainTasks.length > 0 ? (
+                      mainTasks.map((t) => (
+                        <View key={t.id} style={{ marginBottom: 4 }}>
+                          <View style={styles.todoPreviewItem}>
+                            {t.completed ? (
+                              <CheckCircle2 size={16} color={theme.accent} />
+                            ) : (
+                              <Circle size={16} color={theme.textMuted} />
+                            )}
+                            <Text
+                              style={[
+                                styles.todoPreviewText,
+                                { color: theme.textPrimary },
+                                t.completed && [styles.completedText, { color: theme.textMuted }],
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {t.text}
                             </Text>
-                          )}
+                            {t.durationMinutes && (
+                              <Text style={[styles.durationBadge, { color: theme.textMuted }]}>
+                                {t.durationMinutes}m
+                              </Text>
+                            )}
+                          </View>
+
+                          {/* Subtasks nested under main task */}
+                          {t.subtasks && t.subtasks.map((st) => (
+                            <View key={st.id} style={[styles.todoPreviewItem, { paddingLeft: 28, marginTop: 2 }]}>
+                              {st.completed ? (
+                                <CheckCircle2 size={13} color={theme.accent} />
+                              ) : (
+                                <Circle size={13} color={theme.textMuted} />
+                              )}
+                              <Text
+                                style={[
+                                  styles.todoPreviewText,
+                                  { color: theme.textMuted, fontSize: 12 },
+                                  st.completed && styles.completedText,
+                                ]}
+                                numberOfLines={1}
+                              >
+                                {st.text}
+                              </Text>
+                              {st.durationMinutes && (
+                                <Text style={[styles.durationBadge, { color: theme.textMuted, fontSize: 10 }]}>
+                                  {st.durationMinutes}m
+                                </Text>
+                              )}
+                            </View>
+                          ))}
                         </View>
                       ))
                     ) : (
@@ -353,6 +416,19 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
               ))}
             </ScrollView>
 
+            {selectedCategory.name === "Custom" && (
+              <View style={{ marginTop: 4 }}>
+                <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
+                <TextInput
+                  style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                  placeholder="e.g. Project X, Home Chores..."
+                  placeholderTextColor={theme.inputPlaceholder}
+                  value={customCategoryText}
+                  onChangeText={setCustomCategoryText}
+                />
+              </View>
+            )}
+
             <Text style={[styles.label, { color: theme.textMuted }]}>List Title</Text>
             <TextInput
               style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
@@ -409,6 +485,19 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                 </TouchableOpacity>
               ))}
             </ScrollView>
+
+            {editCategory.name === "Custom" && (
+              <View style={{ marginTop: 4 }}>
+                <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
+                <TextInput
+                  style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                  placeholder="e.g. Project X, Home Chores..."
+                  placeholderTextColor={theme.inputPlaceholder}
+                  value={editCustomCategoryText}
+                  onChangeText={setEditCustomCategoryText}
+                />
+              </View>
+            )}
 
             <Text style={[styles.label, { color: theme.textMuted }]}>List Title</Text>
             <TextInput

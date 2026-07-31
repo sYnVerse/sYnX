@@ -2,21 +2,24 @@
 
 ![To-Do List Template Preview](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/923473bc-a285-487c-93db-e0ddea3d3700/public)
 
-Manage your to-do list with [Cloudflare Workers Assets](https://developers.cloudflare.com/workers/static-assets/) + [Remix](https://remix.run/) + [Cloudflare D1 Database](https://developers.cloudflare.com/d1/).
+Manage your task workspaces with [Cloudflare Workers Assets](https://developers.cloudflare.com/workers/static-assets/) + [Remix](https://remix.run/) + [Cloudflare D1 Database](https://developers.cloudflare.com/d1/) on Web, Desktop, and Mobile (React Native / Expo).
 
 ---
 
 ## Key Features
 
-*   **Public & Collaborative List Sharing**: Share your task list as Private, View-Only, or Collaborative (Public edit access for team coordination).
-*   **Inline Task Editing**: Quickly update tasks inline using the Edit (pencil) button or by double-clicking the task text.
-*   **One-Level Nested Subtasks**: Break down tasks into subtask checklists.
-*   **Flexible Priority Levels**: Select between Low, Medium, High, or No Priority (none) to organize tasks. Unprioritized tasks rank logically at the bottom during priority sorting.
-*   **Recurring Tasks**: Automate repeating chores with Daily, Weekly, and Monthly recurrence periods (automatically updates reminder timestamps).
-*   **Search & Sorting Options**: Instantly filter tasks by search term and sort by Priority, Due Date, Alphabetical, or Date Created.
-*   **Theme Customizer**: Toggle between Midnight Indigo (default), Emerald Forest, Sunset Rose, and Cyberpunk Neon dark themes.
-*   **Confetti Celebration**: Responsive CSS/JS confetti particles celebrate when you clear the last remaining task.
-*   **Smart Web Notifications**: Local browser pushes and synced email/SMS/Discord notification integrations for task reminders.
+* **Public & Collaborative List Sharing**: Share your task list as Private, View-Only, or Collaborative (Public edit access for team coordination).
+* **Categorized Task Workspaces & Custom Categories**: Organize lists with preset categories (`Checklist`, `Study`, `Shopping`, `Movies`, `Work`, `Personal`, `Travel`, `Fitness`) or create **Custom** category tags on web and mobile.
+* **Optional Task Duration**: Set optional task duration estimations (`5m`, `15m`, `30m`, `45m`, `60m`, or custom) via an intuitive Duration picker button. Tasks default to no duration set (`NULL`).
+* **Nested Subtask Hierarchy**: Break down main tasks into subtask checklists with clean visual nesting on both Web/Desktop and Mobile list views.
+* **Inline Task & Title Editing**: Quickly update tasks and list titles inline using edit buttons or text interaction.
+* **Flexible Priority Levels**: Select between Low, Medium, High, or No Priority (none) with high-contrast, accessible dropdown controls.
+* **Recurring Tasks**: Automate repeating chores with Daily, Weekly, and Monthly recurrence periods (automatically updates reminder timestamps).
+* **Search & Sorting Options**: Filter tasks by search term and sort by Priority, Due Date, Alphabetical, or Date Created.
+* **Cross-Platform Mobile App (Expo / React Native)**: Complete mobile client supporting haptic feedback, task creation, sub-task nesting, list switching, and settings.
+* **Theme Customizer**: Toggle between Midnight Indigo (default), Emerald Forest, Sunset Rose, and Cyberpunk Neon dark themes.
+* **Confetti Celebration**: Responsive CSS/JS confetti particles celebrate when you clear the last remaining task.
+* **Smart Web & Push Notifications**: Local browser push alerts, Firebase Cloud Messaging (FCM) mobile notifications, and synced email/SMS/Discord notification integrations.
 
 ---
 
@@ -25,49 +28,58 @@ Manage your to-do list with [Cloudflare Workers Assets](https://developers.cloud
 This project uses a Cloudflare D1 SQLite database. Run the following SQL queries on your D1 database to add the required columns:
 
 ```sql
--- 1. Add share_mode to lists
+-- 1. Add share_mode and category to lists
 ALTER TABLE lists ADD COLUMN share_mode TEXT DEFAULT 'private';
+ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist';
 
--- 2. Add parent_id to todos
+-- 2. Add parent_id, recurrence, and duration_minutes to todos
 ALTER TABLE todos ADD COLUMN parent_id TEXT REFERENCES todos(id) ON DELETE CASCADE;
-
--- 3. Add recurrence to todos
 ALTER TABLE todos ADD COLUMN recurrence TEXT DEFAULT 'none';
+ALTER TABLE todos ADD COLUMN duration_minutes INTEGER DEFAULT NULL;
 ```
 
 ### Apply Locally
 To run these migrations on your local wrangler dev environment, execute:
 ```bash
 npx wrangler d1 execute synx-db --local --command "ALTER TABLE lists ADD COLUMN share_mode TEXT DEFAULT 'private';"
+npx wrangler d1 execute synx-db --local --command "ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist';"
 npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN parent_id TEXT REFERENCES todos(id) ON DELETE CASCADE;"
 npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN recurrence TEXT DEFAULT 'none';"
+npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN duration_minutes INTEGER DEFAULT NULL;"
 ```
 
 ---
 
 ## Getting Started
 
-1.  **Install the dependencies**:
-    ```bash
-    npm install
-    ```
+1. **Install Web/Remix Dependencies**:
+   ```bash
+   npm install
+   ```
 
-2.  **Generate D1 Database and Wrangler bindings types**:
-    ```bash
-    npm run cf-typegen
-    ```
+2. **Generate D1 Database and Wrangler Bindings Types**:
+   ```bash
+   npm run cf-typegen
+   ```
 
-3.  **Run Dev server**:
-    ```bash
-    npm run dev
-    ```
+3. **Run Dev Server**:
+   ```bash
+   npm run dev
+   ```
 
-4.  **Run Tests**:
-    ```bash
-    npm run test -- --run
-    ```
+4. **Run Tests**:
+   ```bash
+   npm run test -- --run
+   ```
 
-5.  **Build production version**:
-    ```bash
-    npm run build
-    ```
+5. **Run Mobile App (React Native / Expo)**:
+   ```bash
+   cd mobile
+   npm install
+   npx expo start
+   ```
+
+6. **Build Web Production Bundle**:
+   ```bash
+   npm run build
+   ```

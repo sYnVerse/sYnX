@@ -59,7 +59,7 @@ export class TodoManager {
       reminderSent: t.reminder_sent !== null ? Boolean(t.reminder_sent) : undefined,
       parentId: t.parent_id || undefined,
       recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
-      durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : 15,
+      durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : undefined,
     };
   }
 
@@ -82,7 +82,7 @@ export class TodoManager {
    * @param reminderAt - Optional reminder timestamp (in ms)
    * @param parentId - Optional parent todo ID for subtasks
    * @param recurrence - Optional recurrence setting (defaults to "none")
-   * @param durationMinutes - Optional estimated duration in minutes (defaults to 15)
+   * @param durationMinutes - Optional estimated duration in minutes (defaults to null)
    * @returns Promise containing the newly created Todo item
    */
   async create(
@@ -91,7 +91,7 @@ export class TodoManager {
     reminderAt?: number,
     parentId?: string,
     recurrence: "none" | "daily" | "weekly" | "monthly" = "none",
-    durationMinutes: number = 15,
+    durationMinutes: number | null = null,
   ): Promise<Todo> {
     const id = crypto.randomUUID();
     const createdAt = Date.now();
@@ -123,7 +123,7 @@ export class TodoManager {
       reminderSent: reminderAt ? false : undefined,
       parentId,
       recurrence,
-      durationMinutes,
+      durationMinutes: durationMinutes !== null && durationMinutes !== undefined ? durationMinutes : undefined,
     };
   }
 
@@ -180,27 +180,10 @@ export class TodoManager {
   }
 
   /**
-   * Updates the priority of a todo item
-   * @param id - The unique identifier of the todo item to update
-   * @param priority - The new priority level
-   * @returns Promise containing the updated Todo item
-   * @throws Error if the todo item with the specified ID is not found
-   */
-  async updatePriority(id: string, priority: "low" | "medium" | "high" | "none"): Promise<Todo> {
-    await this.db.prepare("UPDATE todos SET priority = ? WHERE id = ? AND list_id = ?").bind(priority === "none" ? null : priority, id, this.listId).run();
-    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
-    if (!todo) {
-      throw new Error(`Todo with id ${id} not found in this list`);
-    }
-    return this.mapRow(todo);
-  }
-
-  /**
    * Updates the text of a todo item
-   * @param id - The unique identifier of the todo item to update
+   * @param id - The unique identifier of the todo item
    * @param text - The new text content
    * @returns Promise containing the updated Todo item
-   * @throws Error if the todo item with the specified ID is not found
    */
   async updateText(id: string, text: string): Promise<Todo> {
     await this.db.prepare("UPDATE todos SET text = ? WHERE id = ? AND list_id = ?").bind(text, id, this.listId).run();
@@ -212,16 +195,31 @@ export class TodoManager {
   }
 
   /**
-   * Updates the reminder timestamp of a todo item
-   * @param id - The unique identifier of the todo item to update
-   * @param reminderAt - The new reminder timestamp (in ms), or undefined to clear
+   * Updates the priority level of a todo item
+   * @param id - The unique identifier of the todo item
+   * @param priority - The new priority level
    * @returns Promise containing the updated Todo item
-   * @throws Error if the todo item with the specified ID is not found
+   */
+  async updatePriority(id: string, priority: "low" | "medium" | "high" | "none"): Promise<Todo> {
+    await this.db.prepare("UPDATE todos SET priority = ? WHERE id = ? AND list_id = ?").bind(priority, id, this.listId).run();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
+    if (!todo) {
+      throw new Error(`Todo with id ${id} not found in this list`);
+    }
+    return this.mapRow(todo);
+  }
+
+  /**
+   * Updates the reminder timestamp of a todo item
+   * @param id - The unique identifier of the todo item
+   * @param reminderAt - The new reminder timestamp (in ms) or undefined to clear
+   * @returns Promise containing the updated Todo item
    */
   async updateReminder(id: string, reminderAt?: number): Promise<Todo> {
+    const val = reminderAt !== undefined ? reminderAt : null;
     await this.db
       .prepare("UPDATE todos SET reminder_at = ?, reminder_sent = ? WHERE id = ? AND list_id = ?")
-      .bind(reminderAt ?? null, reminderAt ? 0 : null, id, this.listId)
+      .bind(val, reminderAt !== undefined ? 0 : null, id, this.listId)
       .run();
     const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
     if (!todo) {
@@ -246,11 +244,10 @@ export class TodoManager {
   }
 
   /**
-   * Updates the recurrence of a todo item
+   * Updates the recurrence setting of a todo item
    * @param id - The unique identifier of the todo item
-   * @param recurrence - The recurrence setting
+   * @param recurrence - The new recurrence setting
    * @returns Promise containing the updated Todo item
-   * @throws Error if the todo item with the specified ID is not found
    */
   async updateRecurrence(id: string, recurrence: "none" | "daily" | "weekly" | "monthly"): Promise<Todo> {
     await this.db.prepare("UPDATE todos SET recurrence = ? WHERE id = ? AND list_id = ?").bind(recurrence, id, this.listId).run();
@@ -264,10 +261,10 @@ export class TodoManager {
   /**
    * Updates the duration (in minutes) of a todo item
    * @param id - The unique identifier of the todo item
-   * @param durationMinutes - The duration in minutes
+   * @param durationMinutes - The duration in minutes or null to clear
    * @returns Promise containing the updated Todo item
    */
-  async updateDuration(id: string, durationMinutes: number): Promise<Todo> {
+  async updateDuration(id: string, durationMinutes: number | null): Promise<Todo> {
     await this.db.prepare("UPDATE todos SET duration_minutes = ? WHERE id = ? AND list_id = ?").bind(durationMinutes, id, this.listId).run();
     const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
     if (!todo) {

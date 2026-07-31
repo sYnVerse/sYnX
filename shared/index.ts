@@ -27,7 +27,7 @@ export interface TodoItem {
   reminderSent: boolean;
   parentId?: string | null;
   recurrence: RecurrencePattern;
-  durationMinutes?: number;
+  durationMinutes?: number | null;
   subtasks?: TodoItem[];
 }
 
@@ -63,7 +63,7 @@ export const CreateTodoSchema = v.object({
   reminderAt: v.optional(v.number()),
   parentId: v.optional(v.string()),
   recurrence: v.optional(RecurrencePatternSchema, "none"),
-  durationMinutes: v.optional(v.number(), 15),
+  durationMinutes: v.optional(v.nullable(v.number())),
 });
 
 export type CreateTodoInput = v.InferOutput<typeof CreateTodoSchema>;
@@ -73,7 +73,7 @@ export const UpdateTodoSchema = v.object({
   priority: v.optional(PriorityLevelSchema),
   reminderAt: v.optional(v.nullable(v.number())),
   recurrence: v.optional(RecurrencePatternSchema),
-  durationMinutes: v.optional(v.number()),
+  durationMinutes: v.optional(v.nullable(v.number())),
 });
 
 export type UpdateTodoInput = v.InferOutput<typeof UpdateTodoSchema>;

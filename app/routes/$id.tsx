@@ -1230,9 +1230,11 @@ function TodoItem({ todo, subtasks = [], isSubtask = false, canEdit = true }: { 
         )}
 
         {/* Duration Badge */}
-        <span className="text-[10px] bg-white/[0.04] text-slate-400 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 border border-white/[0.06]">
-          ⏱ {todo.durationMinutes || 15}m
-        </span>
+        {todo.durationMinutes ? (
+          <span className="text-[10px] bg-white/[0.04] text-slate-400 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 border border-white/[0.06]">
+            ⏱ {todo.durationMinutes}m
+          </span>
+        ) : null}
 
         {/* Recurrence Indicator (for parent tasks only) */}
         {!isSubtask && todo.recurrence && todo.recurrence !== "none" && (
@@ -1783,6 +1785,15 @@ export default function TodoPage() {
   const [renameInput, setRenameInput] = useState("");
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
   const [newListInput, setNewListInput] = useState("");
+  const [newListCategory, setNewListCategory] = useState("Checklist");
+  const [customCategoryInput, setCustomCategoryInput] = useState("");
+
+  const [listToEditCategory, setListToEditCategory] = useState<{ id: string; name: string; category?: string } | null>(null);
+  const [editCategorySelection, setEditCategorySelection] = useState("Checklist");
+  const [editCustomCategoryInput, setEditCustomCategoryInput] = useState("");
+
+  const [newDurationMinutes, setNewDurationMinutes] = useState<number | null>(null);
+  const [showDurationPicker, setShowDurationPicker] = useState<boolean>(false);
 
   // Handle escape key to close modals
   useEffect(() => {
@@ -1796,17 +1807,18 @@ export default function TodoPage() {
           setListToRename(null);
           setListToDelete(null);
           setIsCreateListOpen(false);
+          setListToEditCategory(null);
         }
       }
     };
-    const isAnyModalOpen = isProfileOpen || !!listToRename || !!listToDelete || isCreateListOpen || showUnsavedPrompt;
+    const isAnyModalOpen = isProfileOpen || !!listToRename || !!listToDelete || isCreateListOpen || !!listToEditCategory || showUnsavedPrompt;
     if (isAnyModalOpen) {
       document.addEventListener("keydown", handleKeyDown);
     }
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isProfileOpen, listToRename, listToDelete, isCreateListOpen, showUnsavedPrompt, isSettingsDirty]);
+  }, [isProfileOpen, listToRename, listToDelete, isCreateListOpen, listToEditCategory, showUnsavedPrompt, isSettingsDirty]);
 
   // Inline List Title Edit State (Main Panel Header)
   const activeListName = activeListMeta?.name || "My Tasks";
@@ -1828,11 +1840,13 @@ export default function TodoPage() {
     if (prevIsCreating.current && !isCreating) {
       if (inputRef.current) inputRef.current.value = "";
       inputRef.current?.focus();
-      // Reset reminder states
+      // Reset reminder & duration states
       setReminderMode("none");
       setReminderDuration(5);
       setReminderDateTime("");
       setShowReminderPanel(false);
+      setNewDurationMinutes(null);
+      setShowDurationPicker(false);
     }
     prevIsCreating.current = isCreating;
   }, [isCreating]);
@@ -2319,7 +2333,7 @@ export default function TodoPage() {
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-2 group">
+              <div className="flex flex-wrap items-center gap-2 group">
                 <h1
                   onClick={() => { if (isOwner) setIsEditingTitle(true); }}
                   className={`text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-white via-slate-100 to-slate-350 bg-clip-text text-transparent font-display truncate pr-2 ${isOwner ? "cursor-pointer hover:opacity-85" : ""}`}
@@ -2336,6 +2350,32 @@ export default function TodoPage() {
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                     </svg>
+                  </button>
+                )}
+                {/* Active List Category Badge */}
+                {activeListMeta && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!canEdit) return;
+                      const cat = activeListMeta.category || "Checklist";
+                      setListToEditCategory({ id: activeListMeta.id, name: activeListName, category: cat });
+                      const PRESETS = ["Checklist", "Study", "Shopping", "Movies", "Work", "Personal", "Travel", "Fitness"];
+                      if (PRESETS.includes(cat)) {
+                        setEditCategorySelection(cat);
+                        setEditCustomCategoryInput("");
+                      } else {
+                        setEditCategorySelection("Custom");
+                        setEditCustomCategoryInput(cat);
+                      }
+                    }}
+                    className={`text-[11px] font-medium px-2.5 py-0.5 rounded-md border transition-all duration-200 flex items-center gap-1 ${
+                      canEdit ? "cursor-pointer hover:border-themeAccentRing/50 hover:bg-white/[0.08]" : "cursor-default"
+                    } bg-white/[0.04] border-white/[0.08] text-slate-350`}
+                    title={canEdit ? "Click to edit category" : undefined}
+                  >
+                    <span>🏷️ {activeListMeta.category || "Checklist"}</span>
+                    {canEdit && <span className="text-[9px] text-slate-500">✏️</span>}
                   </button>
                 )}
               </div>
@@ -2409,14 +2449,25 @@ export default function TodoPage() {
             <div className="flex flex-wrap gap-2 shrink-0">
               <div className="relative flex-1 sm:flex-initial min-w-0" title="Est. Duration in minutes">
                 <input
-                  type="number"
+                  type="hidden"
                   name="durationMinutes"
-                  defaultValue={15}
-                  min={1}
-                  max={480}
-                  className="h-full w-20 rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-300 text-xs px-3 py-3 text-center focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200"
-                  placeholder="15m"
+                  value={newDurationMinutes !== null ? newDurationMinutes : ""}
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowDurationPicker(!showDurationPicker)}
+                  className={`h-full w-full rounded-xl border px-3.5 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer ${
+                    newDurationMinutes !== null
+                      ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText"
+                      : "bg-white/[0.04] border-white/[0.06] text-slate-400 hover:text-slate-200"
+                  }`}
+                  title="Set Estimated Duration"
+                >
+                  <span>⏱️</span>
+                  <span className="hidden sm:inline">
+                    {newDurationMinutes !== null ? `${newDurationMinutes}m` : "Duration"}
+                  </span>
+                </button>
               </div>
 
               <div className="relative flex-1 sm:flex-initial min-w-0">
@@ -2426,10 +2477,10 @@ export default function TodoPage() {
                   onChange={(e) => setNewPriority(e.target.value as "low" | "medium" | "high" | "none")}
                   className="h-full w-full max-w-full rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-350 text-xs px-3 py-3 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 cursor-pointer appearance-none bg-slate-900 pr-6"
                 >
-                  <option value="none">⚪ No Priority</option>
-                  <option value="low">🟢 Low Priority</option>
-                  <option value="medium">🟡 Medium Priority</option>
-                  <option value="high">🔴 High Priority</option>
+                  <option value="none" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>⚪ No Priority</option>
+                  <option value="low" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>🟢 Low Priority</option>
+                  <option value="medium" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>🟡 Medium Priority</option>
+                  <option value="high" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>🔴 High Priority</option>
                 </select>
               </div>
 
@@ -2477,6 +2528,66 @@ export default function TodoPage() {
               </button>
             </div>
           </div>
+
+          {showDurationPicker && (
+            <div className="mt-2.5 p-3.5 rounded-xl bg-slate-900 border border-white/10 flex flex-col gap-2.5 animate-fade-in shadow-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-400">ESTIMATED DURATION</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewDurationMinutes(null);
+                    setShowDurationPicker(false);
+                  }}
+                  className="text-[10px] font-semibold text-rose-400 hover:underline cursor-pointer bg-transparent"
+                >
+                  Clear Duration
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { label: "5m", value: 5 },
+                  { label: "15m", value: 15 },
+                  { label: "30m", value: 30 },
+                  { label: "45m", value: 45 },
+                  { label: "60m", value: 60 },
+                ].map((d) => (
+                  <button
+                    key={d.label}
+                    type="button"
+                    onClick={() => {
+                      setNewDurationMinutes(d.value);
+                      setShowDurationPicker(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all ${
+                      newDurationMinutes === d.value
+                        ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText"
+                        : "bg-white/[0.04] border-white/[0.06] text-slate-300 hover:bg-white/[0.08]"
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <span className="text-[10px] text-slate-400 font-medium">Custom:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={480}
+                    placeholder="Mins"
+                    value={newDurationMinutes && ![5, 15, 30, 45, 60].includes(newDurationMinutes) ? newDurationMinutes : ""}
+                    onChange={(e) => {
+                      const val = e.target.value ? Number(e.target.value) : null;
+                      setNewDurationMinutes(val);
+                    }}
+                    className="w-16 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 text-center"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {showReminderPanel && (
             <div className="mt-2.5 p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] flex flex-col gap-3 animate-fade-in">
@@ -2586,10 +2697,10 @@ export default function TodoPage() {
                   backgroundRepeat: 'no-repeat'
                 }}
               >
-                <option value="created">🕒 Date Created</option>
-                <option value="priority">🔴 Priority</option>
-                <option value="reminder">⏰ Reminder Time</option>
-                <option value="alphabetical">🔤 Alphabetical</option>
+                <option value="created" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>🕒 Date Created</option>
+                <option value="priority" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>🔴 Priority</option>
+                <option value="reminder" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>⏰ Reminder Time</option>
+                <option value="alphabetical" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>🔤 Alphabetical</option>
               </select>
             </div>
           </div>
@@ -2960,15 +3071,15 @@ export default function TodoPage() {
                             onChange={(e) => setPhoneCarrier(e.target.value)}
                             className="w-full rounded-lg bg-slate-950 border border-white/[0.08] text-slate-400 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 appearance-none bg-slate-955"
                           >
-                            <option value="">-- Mobile Carrier (Optional / Twilio) --</option>
-                            <option value="verizon">Verizon</option>
-                            <option value="att">AT&T</option>
-                            <option value="tmobile">T-Mobile</option>
-                            <option value="sprint">Sprint</option>
-                            <option value="googlefi">Google Fi</option>
-                            <option value="boost">Boost Mobile</option>
-                            <option value="cricket">Cricket Wireless</option>
-                            <option value="uscellular">US Cellular</option>
+                            <option value="" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>-- Mobile Carrier (Optional / Twilio) --</option>
+                            <option value="verizon" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Verizon</option>
+                            <option value="att" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>AT&T</option>
+                            <option value="tmobile" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>T-Mobile</option>
+                            <option value="sprint" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Sprint</option>
+                            <option value="googlefi" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Google Fi</option>
+                            <option value="boost" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Boost Mobile</option>
+                            <option value="cricket" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Cricket Wireless</option>
+                            <option value="uscellular" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>US Cellular</option>
                           </select>
                         </div>
                       </div>
@@ -3248,44 +3359,56 @@ export default function TodoPage() {
       {/* ── Create List Dialog Modal ──────────────────────── */}
       {isCreateListOpen && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
             <h3 className="text-base font-bold text-slate-200 mb-3 font-display">Create New List</h3>
+            
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">List Name</label>
             <input
               type="text"
               value={newListInput}
               onChange={(e) => setNewListInput(e.target.value)}
-              className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 mb-5"
+              className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 mb-4"
               placeholder="Enter list name (e.g., Shopping, Work)..."
               autoFocus
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  if (newListInput.trim()) {
-                    if (!isLoggedIn) {
-                      const newId = crypto.randomUUID();
-                      handleGuestAction("createList", { id: newId, name: newListInput.trim() });
-                      setNewListInput("");
-                      setIsCreateListOpen(false);
-                      navigate(`/${newId}`);
-                    } else {
-                      listFetcher.submit(
-                        { intent: "createList", listName: newListInput.trim() } as any,
-                        { method: "post" }
-                      );
-                      setNewListInput("");
-                      setIsCreateListOpen(false);
-                    }
-                  } else {
-                    setNewListInput("");
-                    setIsCreateListOpen(false);
-                  }
-                }
-              }}
             />
-            <div className="flex gap-2.5 justify-end">
+
+            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Select Category Tag</label>
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {["Checklist", "Study", "Shopping", "Movies", "Work", "Personal", "Travel", "Fitness", "Custom"].map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setNewListCategory(cat)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium cursor-pointer transition-all ${
+                    newListCategory === cat
+                      ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-bold shadow-sm"
+                      : "bg-white/[0.02] border-white/[0.06] text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {cat === "Custom" ? "✏️ Custom" : cat}
+                </button>
+              ))}
+            </div>
+
+            {newListCategory === "Custom" && (
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Custom Category Name</label>
+                <input
+                  type="text"
+                  value={customCategoryInput}
+                  onChange={(e) => setCustomCategoryInput(e.target.value)}
+                  className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50"
+                  placeholder="e.g. Project Alpha..."
+                />
+              </div>
+            )}
+
+            <div className="flex gap-2.5 justify-end mt-2">
               <button
                 type="button"
                 onClick={() => {
                   setNewListInput("");
+                  setCustomCategoryInput("");
                   setIsCreateListOpen(false);
                 }}
                 className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-xl transition-all duration-200"
@@ -3296,28 +3419,101 @@ export default function TodoPage() {
                 type="button"
                 onClick={() => {
                   if (newListInput.trim()) {
+                    const finalCategory = newListCategory === "Custom" ? (customCategoryInput.trim() || "Custom") : newListCategory;
                     if (!isLoggedIn) {
                       const newId = crypto.randomUUID();
-                      handleGuestAction("createList", { id: newId, name: newListInput.trim() });
+                      handleGuestAction("createList", { id: newId, name: newListInput.trim(), category: finalCategory });
                       setNewListInput("");
+                      setCustomCategoryInput("");
                       setIsCreateListOpen(false);
                       navigate(`/${newId}`);
                     } else {
                       listFetcher.submit(
-                        { intent: "createList", listName: newListInput.trim() } as any,
+                        { intent: "createList", listName: newListInput.trim(), category: finalCategory } as any,
                         { method: "post" }
                       );
                       setNewListInput("");
+                      setCustomCategoryInput("");
                       setIsCreateListOpen(false);
                     }
                   } else {
                     setNewListInput("");
+                    setCustomCategoryInput("");
                     setIsCreateListOpen(false);
                   }
                 }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-xl shadow-lg transition-all duration-200"
               >
                 Create List
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit List Category Modal ──────────────────────── */}
+      {listToEditCategory && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+            <h3 className="text-base font-bold text-slate-200 mb-1 font-display">Edit Category Tag</h3>
+            <p className="text-xs text-slate-400 mb-4">Set or update the category tag for "{listToEditCategory.name}"</p>
+
+            <div className="flex flex-wrap gap-1.5 mb-4">
+              {["Checklist", "Study", "Shopping", "Movies", "Work", "Personal", "Travel", "Fitness", "Custom"].map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setEditCategorySelection(cat)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border font-medium cursor-pointer transition-all ${
+                    editCategorySelection === cat
+                      ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-bold shadow-sm"
+                      : "bg-white/[0.02] border-white/[0.06] text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {cat === "Custom" ? "✏️ Custom" : cat}
+                </button>
+              ))}
+            </div>
+
+            {editCategorySelection === "Custom" && (
+              <div className="mb-4">
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Custom Category Name</label>
+                <input
+                  type="text"
+                  value={editCustomCategoryInput}
+                  onChange={(e) => setEditCustomCategoryInput(e.target.value)}
+                  className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50"
+                  placeholder="e.g. Special Project..."
+                  autoFocus
+                />
+              </div>
+            )}
+
+            <div className="flex gap-2.5 justify-end mt-2">
+              <button
+                type="button"
+                onClick={() => setListToEditCategory(null)}
+                className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-slate-200 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.05] rounded-xl transition-all duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const finalCategory = editCategorySelection === "Custom" ? (editCustomCategoryInput.trim() || "Custom") : editCategorySelection;
+                  if (!isLoggedIn) {
+                    handleGuestAction("updateListCategory", { id: listToEditCategory.id, category: finalCategory });
+                  } else {
+                    listFetcher.submit(
+                      { intent: "updateListCategory", listId: listToEditCategory.id, category: finalCategory } as any,
+                      { method: "post" }
+                    );
+                  }
+                  setListToEditCategory(null);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-xl shadow-lg transition-all duration-200"
+              >
+                Save Category
               </button>
             </div>
           </div>
