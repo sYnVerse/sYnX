@@ -42,6 +42,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     shareMode: row.share_mode || "private",
     category: row.category || "Checklist",
     isOwner: row.owner_id === user.userId,
+    canEdit: true,
   }));
 
   return Response.json({ success: true, lists });

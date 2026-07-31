@@ -8,6 +8,7 @@ export interface Todo {
   reminderSent?: boolean;
   parentId?: string;
   recurrence?: "none" | "daily" | "weekly" | "monthly";
+  durationMinutes?: number;
 }
 
 export interface UserSettings {
@@ -58,6 +59,7 @@ export class TodoManager {
       reminderSent: t.reminder_sent !== null ? Boolean(t.reminder_sent) : undefined,
       parentId: t.parent_id || undefined,
       recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
+      durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : 15,
     };
   }
 
@@ -80,6 +82,7 @@ export class TodoManager {
    * @param reminderAt - Optional reminder timestamp (in ms)
    * @param parentId - Optional parent todo ID for subtasks
    * @param recurrence - Optional recurrence setting (defaults to "none")
+   * @param durationMinutes - Optional estimated duration in minutes (defaults to 15)
    * @returns Promise containing the newly created Todo item
    */
   async create(
@@ -88,12 +91,13 @@ export class TodoManager {
     reminderAt?: number,
     parentId?: string,
     recurrence: "none" | "daily" | "weekly" | "monthly" = "none",
+    durationMinutes: number = 15,
   ): Promise<Todo> {
     const id = crypto.randomUUID();
     const createdAt = Date.now();
     await this.db
       .prepare(
-        "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, parent_id, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, parent_id, recurrence, duration_minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .bind(
         id,
@@ -105,7 +109,8 @@ export class TodoManager {
         reminderAt ?? null,
         reminderAt ? 0 : null,
         parentId ?? null,
-        recurrence
+        recurrence,
+        durationMinutes
       )
       .run();
     return {
@@ -118,6 +123,7 @@ export class TodoManager {
       reminderSent: reminderAt ? false : undefined,
       parentId,
       recurrence,
+      durationMinutes,
     };
   }
 
@@ -248,6 +254,21 @@ export class TodoManager {
    */
   async updateRecurrence(id: string, recurrence: "none" | "daily" | "weekly" | "monthly"): Promise<Todo> {
     await this.db.prepare("UPDATE todos SET recurrence = ? WHERE id = ? AND list_id = ?").bind(recurrence, id, this.listId).run();
+    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
+    if (!todo) {
+      throw new Error(`Todo with id ${id} not found in this list`);
+    }
+    return this.mapRow(todo);
+  }
+
+  /**
+   * Updates the duration (in minutes) of a todo item
+   * @param id - The unique identifier of the todo item
+   * @param durationMinutes - The duration in minutes
+   * @returns Promise containing the updated Todo item
+   */
+  async updateDuration(id: string, durationMinutes: number): Promise<Todo> {
+    await this.db.prepare("UPDATE todos SET duration_minutes = ? WHERE id = ? AND list_id = ?").bind(durationMinutes, id, this.listId).run();
     const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);

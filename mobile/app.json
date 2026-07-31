@@ -32,6 +32,11 @@
               "scheme": "https",
               "host": "synx.christran.io",
               "pathPrefix": "/mobile/callback"
+            },
+            {
+              "scheme": "https",
+              "host": "synx.christran.io",
+              "pathPrefix": "/list"
             }
           ],
           "category": [

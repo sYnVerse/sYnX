@@ -59,7 +59,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
       parsed.priority,
       parsed.reminderAt,
       parsed.parentId,
-      parsed.recurrence
+      parsed.recurrence,
+      parsed.durationMinutes
     );
 
     return Response.json({ success: true, todo }, { status: 201 });

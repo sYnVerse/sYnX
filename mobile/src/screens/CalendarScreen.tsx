@@ -3,16 +3,18 @@ import { View, Text, FlatList, StyleSheet, TouchableOpacity, Platform } from "re
 import { Calendar, DateData } from "react-native-calendars";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Clock, Check, Calendar as CalendarIcon } from "lucide-react-native";
+import { Clock, Check, Calendar as CalendarIcon, Plus } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import { TodoItem } from "../../../shared";
 import { useTheme } from "../context/ThemeContext";
+import { TaskModal } from "../components/TaskModal";
 
 export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const { theme, themeMode, hapticsEnabled } = useTheme();
   const queryClient = useQueryClient();
   const today = new Date().toISOString().split("T")[0];
   const [selectedDate, setSelectedDate] = useState(today);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const { data: todos } = useQuery({
     queryKey: ["todos", listId],
@@ -29,11 +31,27 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     }
   };
 
+  const triggerSuccessHaptic = () => {
+    if (hapticsEnabled && Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
+  };
+
   const toggleMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiClient.post(`/api/v1/todos/${id}/toggle`);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (newTodo: any) => {
+      await apiClient.post("/api/v1/todos", { ...newTodo, listId });
+    },
+    onSuccess: () => {
+      triggerSuccessHaptic();
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
   });
@@ -61,6 +79,16 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     const d = new Date(t.reminderAt).toISOString().split("T")[0];
     return d === selectedDate;
   });
+
+  // Calculate default 9:00 AM timestamp for selected date
+  const getSelectedDate9AMTimestamp = () => {
+    const parts = selectedDate.split("-").map(Number);
+    if (parts.length === 3) {
+      const d = new Date(parts[0], parts[1] - 1, parts[2], 9, 0, 0, 0);
+      return d.getTime();
+    }
+    return Date.now();
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -161,6 +189,26 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
           </View>
         )}
       />
+
+      {/* FAB Add Task for Selected Date */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: theme.accent }]}
+        onPress={() => {
+          triggerImpactHaptic();
+          setModalVisible(true);
+        }}
+      >
+        <Plus size={24} color="#FFFFFF" />
+      </TouchableOpacity>
+
+      <TaskModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        initialReminderAt={getSelectedDate9AMTimestamp()}
+        onSave={(newTodo) => {
+          createMutation.mutate(newTodo);
+        }}
+      />
     </View>
   );
 };
@@ -229,5 +277,19 @@ const styles = StyleSheet.create({
   durationText: {
     fontSize: 11,
     fontWeight: "700",
+  },
+  fab: {
+    position: "absolute",
+    right: 20,
+    bottom: 90,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 6,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
 });

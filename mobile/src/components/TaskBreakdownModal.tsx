@@ -10,9 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { X, Plus, Minus, Clock, Check, Trash2 } from "lucide-react-native";
+import { X, Plus, Minus, Clock, Check } from "lucide-react-native";
 import { TodoItem } from "../../../shared";
+import { apiClient } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
 
 interface SubtaskItemState {
@@ -25,41 +27,30 @@ interface SubtaskItemState {
 interface TaskBreakdownModalProps {
   visible: boolean;
   task: TodoItem | null;
+  canEdit?: boolean;
   onClose: () => void;
-  onSaveSubtasks: (taskId: string, subtasks: SubtaskItemState[]) => void;
 }
 
 export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   visible,
   task,
+  canEdit = true,
   onClose,
-  onSaveSubtasks,
 }) => {
   const { theme, themeMode, hapticsEnabled } = useTheme();
+  const queryClient = useQueryClient();
   const [newSubtaskText, setNewSubtaskText] = useState("");
   const [newSubtaskDuration, setNewSubtaskDuration] = useState("5");
 
-  // Local state for editing subtasks
-  const [subtasks, setSubtasks] = useState<SubtaskItemState[]>([]);
-
-  React.useEffect(() => {
-    if (task) {
-      const existing = (task.subtasks || []).map((st) => ({
-        id: st.id || String(Math.random()),
-        text: st.text,
-        completed: st.completed,
-        durationMinutes: st.durationMinutes ?? 5,
-      }));
-      setSubtasks(existing);
-    } else {
-      setSubtasks([]);
-    }
+  const subtasks = useMemo(() => {
+    if (!task || !task.subtasks) return [];
+    return task.subtasks.map((st) => ({
+      id: st.id,
+      text: st.text,
+      completed: st.completed,
+      durationMinutes: st.durationMinutes ?? 5,
+    }));
   }, [task]);
-
-  // Total overall duration calculated cleanly via useMemo
-  const overallDurationMinutes = useMemo(() => {
-    return subtasks.reduce((sum, st) => sum + (st.durationMinutes || 0), 0);
-  }, [subtasks]);
 
   const triggerHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -67,46 +58,69 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
     }
   };
 
-  const handleToggleSubtask = (id: string) => {
-    triggerHaptic();
-    setSubtasks((prev) =>
-      prev.map((st) => (st.id === id ? { ...st, completed: !st.completed } : st))
-    );
-  };
+  const addSubtaskMutation = useMutation({
+    mutationFn: async ({ text, durationMinutes }: { text: string; durationMinutes: number }) => {
+      if (!task) return;
+      await apiClient.post("/api/v1/todos", {
+        text,
+        listId: task.listId,
+        parentId: task.id,
+        durationMinutes,
+      });
+    },
+    onSuccess: () => {
+      triggerHaptic();
+      if (task) {
+        queryClient.invalidateQueries({ queryKey: ["todos", task.listId] });
+      }
+      setNewSubtaskText("");
+      setNewSubtaskDuration("5");
+    },
+  });
 
-  const handleRemoveSubtask = (id: string) => {
-    triggerHaptic();
-    setSubtasks((prev) => prev.filter((st) => st.id !== id));
-  };
+  const toggleSubtaskMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.post(`/api/v1/todos/${id}/toggle`);
+    },
+    onSuccess: () => {
+      triggerHaptic();
+      if (task) {
+        queryClient.invalidateQueries({ queryKey: ["todos", task.listId] });
+      }
+    },
+  });
 
-  const handleUpdateDuration = (id: string, minsText: string) => {
-    const parsed = parseInt(minsText.replace(/\D/g, ""), 10);
-    const validMins = isNaN(parsed) ? 0 : parsed;
-    setSubtasks((prev) =>
-      prev.map((st) => (st.id === id ? { ...st, durationMinutes: validMins } : st))
-    );
-  };
+  const removeSubtaskMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/api/v1/todos/${id}`);
+    },
+    onSuccess: () => {
+      triggerHaptic();
+      if (task) {
+        queryClient.invalidateQueries({ queryKey: ["todos", task.listId] });
+      }
+    },
+  });
+
+  const updateSubtaskDurationMutation = useMutation({
+    mutationFn: async ({ id, durationMinutes }: { id: string; durationMinutes: number }) => {
+      await apiClient.put(`/api/v1/todos/${id}`, { durationMinutes });
+    },
+    onSuccess: () => {
+      if (task) {
+        queryClient.invalidateQueries({ queryKey: ["todos", task.listId] });
+      }
+    },
+  });
+
+  const overallDurationMinutes = useMemo(() => {
+    return subtasks.reduce((sum, st) => sum + (st.durationMinutes || 0), 0);
+  }, [subtasks]);
 
   const handleAddSubtask = () => {
-    if (!newSubtaskText.trim()) return;
-    triggerHaptic();
+    if (!newSubtaskText.trim() || !canEdit) return;
     const mins = parseInt(newSubtaskDuration.replace(/\D/g, ""), 10) || 5;
-    const newSt: SubtaskItemState = {
-      id: "temp_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
-      text: newSubtaskText.trim(),
-      completed: false,
-      durationMinutes: mins,
-    };
-    setSubtasks((prev) => [...prev, newSt]);
-    setNewSubtaskText("");
-    setNewSubtaskDuration("5");
-  };
-
-  const handleSave = () => {
-    if (task) {
-      onSaveSubtasks(task.id, subtasks);
-    }
-    onClose();
+    addSubtaskMutation.mutate({ text: newSubtaskText.trim(), durationMinutes: mins });
   };
 
   if (!task) return null;
@@ -173,12 +187,13 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
                   ]}
                 >
                   <TouchableOpacity
+                    disabled={!canEdit}
                     style={[
                       styles.checkbox,
                       { borderColor: theme.accent },
                       st.completed && { backgroundColor: theme.accent },
                     ]}
-                    onPress={() => handleToggleSubtask(st.id)}
+                    onPress={() => toggleSubtaskMutation.mutate(st.id)}
                   >
                     {st.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
                   </TouchableOpacity>
@@ -195,57 +210,67 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
 
                   <View style={styles.minsInputWrapper}>
                     <TextInput
+                      editable={canEdit}
                       style={[styles.minsInput, { color: theme.textSecondary, backgroundColor: theme.inputBg }]}
                       keyboardType="number-pad"
                       value={String(st.durationMinutes)}
-                      onChangeText={(val) => handleUpdateDuration(st.id, val)}
+                      onChangeText={(val) => {
+                        const parsed = parseInt(val.replace(/\D/g, ""), 10);
+                        if (!isNaN(parsed) && canEdit) {
+                          updateSubtaskDurationMutation.mutate({ id: st.id, durationMinutes: parsed });
+                        }
+                      }}
                     />
                     <Text style={[styles.minsLabel, { color: theme.textMuted }]}>min.</Text>
                   </View>
 
-                  <TouchableOpacity
-                    style={styles.removeBtn}
-                    onPress={() => handleRemoveSubtask(st.id)}
-                  >
-                    <Minus size={16} color={theme.danger} />
-                  </TouchableOpacity>
+                  {canEdit && (
+                    <TouchableOpacity
+                      style={styles.removeBtn}
+                      onPress={() => removeSubtaskMutation.mutate(st.id)}
+                    >
+                      <Minus size={16} color={theme.danger} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               ))
             )}
           </ScrollView>
 
           {/* Inline Add Subtask Input */}
-          <View style={[styles.addInputRow, { borderColor: theme.inputBorder }]}>
-            <TextInput
-              style={[styles.textInputFlex, { color: theme.textPrimary, backgroundColor: theme.inputBg }]}
-              placeholder="New subtask step..."
-              placeholderTextColor={theme.inputPlaceholder}
-              value={newSubtaskText}
-              onChangeText={setNewSubtaskText}
-            />
-            <TextInput
-              style={[styles.minsInputAdd, { color: theme.textPrimary, backgroundColor: theme.inputBg }]}
-              keyboardType="number-pad"
-              placeholder="5"
-              placeholderTextColor={theme.inputPlaceholder}
-              value={newSubtaskDuration}
-              onChangeText={setNewSubtaskDuration}
-            />
-            <Text style={[styles.minsLabel, { color: theme.textMuted }]}>m</Text>
-            <TouchableOpacity
-              style={[styles.addBtn, { backgroundColor: theme.accent }]}
-              onPress={handleAddSubtask}
-            >
-              <Plus size={18} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
+          {canEdit && (
+            <View style={[styles.addInputRow, { borderColor: theme.inputBorder }]}>
+              <TextInput
+                style={[styles.textInputFlex, { color: theme.textPrimary, backgroundColor: theme.inputBg }]}
+                placeholder="New subtask step..."
+                placeholderTextColor={theme.inputPlaceholder}
+                value={newSubtaskText}
+                onChangeText={setNewSubtaskText}
+              />
+              <TextInput
+                style={[styles.minsInputAdd, { color: theme.textPrimary, backgroundColor: theme.inputBg }]}
+                keyboardType="number-pad"
+                placeholder="5"
+                placeholderTextColor={theme.inputPlaceholder}
+                value={newSubtaskDuration}
+                onChangeText={setNewSubtaskDuration}
+              />
+              <Text style={[styles.minsLabel, { color: theme.textMuted }]}>m</Text>
+              <TouchableOpacity
+                style={[styles.addBtn, { backgroundColor: theme.accent }]}
+                onPress={handleAddSubtask}
+              >
+                <Plus size={18} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          )}
 
-          {/* Save Button */}
+          {/* Close Button */}
           <TouchableOpacity
             style={[styles.saveBtn, { backgroundColor: theme.accent }]}
-            onPress={handleSave}
+            onPress={onClose}
           >
-            <Text style={styles.saveBtnText}>Save Task Breakdown</Text>
+            <Text style={styles.saveBtnText}>Done</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

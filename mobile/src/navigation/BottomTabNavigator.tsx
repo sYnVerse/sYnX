@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from "react-native";
+import * as Linking from "expo-linking";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { TasksScreen } from "../screens/TasksScreen";
 import { CalendarScreen } from "../screens/CalendarScreen";
@@ -35,6 +36,30 @@ const MainAppContent: React.FC = () => {
   const [listError, setListError] = useState<string | null>(null);
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsActions, setSettingsActions] = useState<{ save: () => Promise<boolean>; reset: () => void } | null>(null);
+
+  const handleDeepLink = useCallback((url: string | null) => {
+    if (!url) return;
+    const match = url.match(/\/list\/([a-zA-Z0-9-]+)/);
+    if (match && match[1]) {
+      const extractedListId = match[1];
+      setActiveListId(extractedListId);
+      setActiveTab("tasks");
+    }
+  }, []);
+
+  useEffect(() => {
+    Linking.getInitialURL().then((url) => {
+      handleDeepLink(url);
+    });
+
+    const subscription = Linking.addEventListener("url", (event) => {
+      handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [handleDeepLink]);
 
   const handleTabSwitch = (targetTab: TabType) => {
     if (activeTab === targetTab) return;

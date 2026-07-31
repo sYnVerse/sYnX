@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Search, RefreshCw, Plus, Check, Trash2, Clock, ListTree, Repeat, Pencil } from "lucide-react-native";
+import { Search, RefreshCw, Plus, Check, Trash2, Clock, ListTree, Repeat, Pencil, Eye } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import { TodoItem } from "../../../shared";
 import { TaskModal } from "../components/TaskModal";
@@ -28,7 +28,22 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const [editingTask, setEditingTask] = useState<TodoItem | null>(null);
   const [selectedTaskForBreakdown, setSelectedTaskForBreakdown] = useState<TodoItem | null>(null);
 
-  const { data: todos, refetch, isRefetching, isLoading } = useQuery({
+  const { data: listMeta } = useQuery({
+    queryKey: ["list_meta", listId],
+    queryFn: async () => {
+      try {
+        const res = await apiClient.get(`/api/v1/lists/${listId}`);
+        return res.data.list;
+      } catch (e) {
+        return null;
+      }
+    },
+    enabled: !!listId,
+  });
+
+  const canEdit = listMeta ? listMeta.canEdit !== false : true;
+
+  const { data: rawTodos, refetch, isRefetching, isLoading } = useQuery({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
@@ -36,6 +51,29 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     },
     enabled: !!listId,
   });
+
+  // Group subtasks under their parent tasks and filter child tasks out of the top-level list
+  const structuredTodos = useMemo(() => {
+    if (!rawTodos) return [];
+    const parentMap: Record<string, TodoItem & { subtasks: TodoItem[] }> = {};
+    const children: TodoItem[] = [];
+
+    rawTodos.forEach((t) => {
+      if (!t.parentId) {
+        parentMap[t.id] = { ...t, subtasks: [] };
+      } else {
+        children.push(t);
+      }
+    });
+
+    children.forEach((st) => {
+      if (st.parentId && parentMap[st.parentId]) {
+        parentMap[st.parentId].subtasks.push(st);
+      }
+    });
+
+    return Object.values(parentMap);
+  }, [rawTodos]);
 
   const triggerSuccessHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -105,16 +143,7 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     );
   };
 
-  const handleSaveSubtasks = async (taskId: string, subtasks: any[]) => {
-    try {
-      await apiClient.patch(`/api/v1/todos/${taskId}`, { subtasks });
-      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
-    } catch (e) {
-      console.error("Failed to save subtasks", e);
-    }
-  };
-
-  const filteredTodos = (todos || []).filter((t: TodoItem) =>
+  const filteredTodos = structuredTodos.filter((t) =>
     t.text.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -151,6 +180,16 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
         </TouchableOpacity>
       </View>
 
+      {/* View Only Banner */}
+      {!canEdit && (
+        <View style={[styles.viewOnlyBanner, { backgroundColor: theme.accentLight }]}>
+          <Eye size={14} color={theme.accent} />
+          <Text style={[styles.viewOnlyText, { color: theme.accent }]}>
+            View-Only Access — You cannot modify tasks in this list.
+          </Text>
+        </View>
+      )}
+
       {/* Task List */}
       {isLoading ? (
         <View style={{ paddingTop: 8 }}>
@@ -175,7 +214,7 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
             <View style={styles.emptyContainer}>
               <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No tasks found</Text>
               <Text style={[styles.emptySub, { color: theme.textMuted }]}>
-                Tap the + button to add your first task to this list.
+                {canEdit ? "Tap the + button to add your first task to this list." : "No tasks in this shared list yet."}
               </Text>
             </View>
           }
@@ -198,6 +237,7 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
                 onPress={() => setSelectedTaskForBreakdown(item)}
               >
                 <TouchableOpacity
+                  disabled={!canEdit}
                   style={[
                     styles.checkbox,
                     { borderColor: theme.accent },
@@ -245,21 +285,25 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
                   </View>
                 </View>
 
-                {/* Edit Task Action */}
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => setEditingTask(item)}
-                >
-                  <Pencil size={15} color={theme.textMuted} />
-                </TouchableOpacity>
+                {canEdit && (
+                  <>
+                    {/* Edit Task Action */}
+                    <TouchableOpacity
+                      style={styles.actionBtn}
+                      onPress={() => setEditingTask(item)}
+                    >
+                      <Pencil size={15} color={theme.textMuted} />
+                    </TouchableOpacity>
 
-                {/* Delete Task Action with Confirmation */}
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => handleDeleteTask(item)}
-                >
-                  <Trash2 size={16} color={theme.danger} />
-                </TouchableOpacity>
+                    {/* Delete Task Action with Confirmation */}
+                    <TouchableOpacity
+                      style={styles.actionBtn}
+                      onPress={() => handleDeleteTask(item)}
+                    >
+                      <Trash2 size={16} color={theme.danger} />
+                    </TouchableOpacity>
+                  </>
+                )}
               </TouchableOpacity>
             );
           }}
@@ -267,16 +311,18 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
       )}
 
       {/* Floating Add Task Action Button */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: theme.accent }]}
-        onPress={() => {
-          triggerImpactHaptic();
-          setEditingTask(null);
-          setModalVisible(true);
-        }}
-      >
-        <Plus size={26} color="#FFFFFF" />
-      </TouchableOpacity>
+      {canEdit && (
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: theme.accent }]}
+          onPress={() => {
+            triggerImpactHaptic();
+            setEditingTask(null);
+            setModalVisible(true);
+          }}
+        >
+          <Plus size={26} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
 
       {/* Create New Task Modal */}
       <TaskModal
@@ -305,8 +351,8 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
       <TaskBreakdownModal
         visible={!!selectedTaskForBreakdown}
         task={selectedTaskForBreakdown}
+        canEdit={canEdit}
         onClose={() => setSelectedTaskForBreakdown(null)}
-        onSaveSubtasks={handleSaveSubtasks}
       />
     </View>
   );
@@ -322,7 +368,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  viewOnlyBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    gap: 8,
+    marginBottom: 12,
+  },
+  viewOnlyText: {
+    fontSize: 12,
+    fontWeight: "600",
   },
   searchInputWrapper: {
     flex: 1,
