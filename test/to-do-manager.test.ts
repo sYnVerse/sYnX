@@ -250,6 +250,19 @@ describe("TodoManager", () => {
       expect(foundSub).toBeDefined();
       expect(foundSub?.parentId).toBe(parent.id);
     });
+
+    it("deletes all subtasks when parent task is deleted", async () => {
+      const parent = await manager.create("Parent task");
+      const subtask1 = await manager.create("Subtask 1", "none", undefined, parent.id);
+      const subtask2 = await manager.create("Subtask 2", "none", undefined, parent.id);
+
+      expect(await manager.list()).toHaveLength(3);
+
+      await manager.delete(parent.id);
+
+      const listAfterDelete = await manager.list();
+      expect(listAfterDelete).toHaveLength(0);
+    });
   });
 
   describe("recurrence", () => {
