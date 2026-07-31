@@ -12,7 +12,7 @@ describe("TodoManager", () => {
     // Create tables in test D1 database
     await db.exec(`
       CREATE TABLE IF NOT EXISTS lists ( id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL, expiration_ttl INTEGER, share_mode TEXT DEFAULT 'private' );
-      CREATE TABLE IF NOT EXISTS todos ( id TEXT PRIMARY KEY, list_id TEXT NOT NULL, text TEXT NOT NULL, completed INTEGER DEFAULT 0, created_at INTEGER NOT NULL, priority TEXT DEFAULT 'medium', reminder_at INTEGER, reminder_sent INTEGER DEFAULT 0, parent_id TEXT DEFAULT NULL, recurrence TEXT DEFAULT 'none', FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE, FOREIGN KEY(parent_id) REFERENCES todos(id) ON DELETE CASCADE );
+      CREATE TABLE IF NOT EXISTS todos ( id TEXT PRIMARY KEY, list_id TEXT NOT NULL, text TEXT NOT NULL, completed INTEGER DEFAULT 0, created_at INTEGER NOT NULL, priority TEXT DEFAULT 'medium', reminder_at INTEGER, reminder_sent INTEGER DEFAULT 0, parent_id TEXT DEFAULT NULL, recurrence TEXT DEFAULT 'none', duration_minutes INTEGER DEFAULT NULL, FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE, FOREIGN KEY(parent_id) REFERENCES todos(id) ON DELETE CASCADE );
     `.replace(/\n/g, " "));
 
     // Setup a mock list
@@ -284,6 +284,35 @@ describe("TodoManager", () => {
       expect(toggled.completed).toBe(false);
       expect(toggled.reminderAt).toBe(now + 7 * 24 * 60 * 60 * 1000);
       expect(toggled.reminderSent).toBe(false);
+    });
+  });
+
+  describe("durationMinutes", () => {
+    it("defaults durationMinutes to undefined (no duration) when not specified", async () => {
+      const todo = await manager.create("No duration task");
+      expect(todo.durationMinutes).toBeUndefined();
+
+      const stored = await manager.list();
+      expect(stored[0].durationMinutes).toBeUndefined();
+    });
+
+    it("creates a todo with custom durationMinutes", async () => {
+      const todo = await manager.create("Timed task", "medium", undefined, undefined, "none", 45);
+      expect(todo.durationMinutes).toBe(45);
+
+      const stored = await manager.list();
+      expect(stored[0].durationMinutes).toBe(45);
+    });
+
+    it("updates durationMinutes and can clear it to null", async () => {
+      const todo = await manager.create("Timed task", "medium", undefined, undefined, "none", 30);
+      expect(todo.durationMinutes).toBe(30);
+
+      const updated = await manager.updateDuration(todo.id, 60);
+      expect(updated.durationMinutes).toBe(60);
+
+      const cleared = await manager.updateDuration(todo.id, null);
+      expect(cleared.durationMinutes).toBeUndefined();
     });
   });
 });
