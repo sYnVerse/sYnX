@@ -49,6 +49,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [recurrence, setRecurrence] = useState<RecurrencePattern>(initialRecurrence);
   const [durationMinutes, setDurationMinutes] = useState<string>(String(initialDurationMinutes));
   const [reminderMins, setReminderMins] = useState<number | null>(null);
+  const [clearReminder, setClearReminder] = useState<boolean>(false);
 
   useEffect(() => {
     setText(initialText);
@@ -56,6 +57,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setRecurrence(initialRecurrence);
     setDurationMinutes(String(initialDurationMinutes));
     setReminderMins(null);
+    setClearReminder(false);
   }, [visible, initialText, initialPriority, initialRecurrence, initialDurationMinutes]);
 
   const triggerHaptic = () => {
@@ -67,15 +69,17 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const handleSave = () => {
     if (!text.trim()) return;
     triggerHaptic();
-    let reminderAt: number | undefined = initialReminderAt;
-    if (reminderMins !== null) {
+    let reminderAt: number | undefined | null = initialReminderAt;
+    if (clearReminder) {
+      reminderAt = null;
+    } else if (reminderMins !== null) {
       reminderAt = Date.now() + reminderMins * 60 * 1000;
     }
     const parsedDur = parseInt(durationMinutes.replace(/\D/g, ""), 10);
     onSave({
       text: text.trim(),
       priority,
-      reminderAt,
+      reminderAt: reminderAt as any,
       recurrence,
       durationMinutes: isNaN(parsedDur) ? 15 : parsedDur,
     });
@@ -185,24 +189,47 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Set Quick Reminder</Text>
             <View style={styles.row}>
+              <TouchableOpacity
+                style={[
+                  styles.pill,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  (clearReminder || (!reminderMins && !initialReminderAt)) && { backgroundColor: theme.accent, borderColor: theme.accent },
+                ]}
+                onPress={() => {
+                  triggerHaptic();
+                  setReminderMins(null);
+                  setClearReminder(true);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.pillText,
+                    { color: theme.textSecondary },
+                    (clearReminder || (!reminderMins && !initialReminderAt)) && { color: "#FFFFFF", fontWeight: "700" },
+                  ]}
+                >
+                  None
+                </Text>
+              </TouchableOpacity>
               {[5, 15, 30, 60].map((mins) => (
                 <TouchableOpacity
                   key={mins}
                   style={[
                     styles.pill,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                    reminderMins === mins && { backgroundColor: theme.accent, borderColor: theme.accent },
+                    !clearReminder && reminderMins === mins && { backgroundColor: theme.accent, borderColor: theme.accent },
                   ]}
                   onPress={() => {
                     triggerHaptic();
-                    setReminderMins(mins);
+                    setClearReminder(false);
+                    setReminderMins(reminderMins === mins ? null : mins);
                   }}
                 >
                   <Text
                     style={[
                       styles.pillText,
                       { color: theme.textSecondary },
-                      reminderMins === mins && { color: "#FFFFFF", fontWeight: "700" },
+                      !clearReminder && reminderMins === mins && { color: "#FFFFFF", fontWeight: "700" },
                     ]}
                   >
                     +{mins}m

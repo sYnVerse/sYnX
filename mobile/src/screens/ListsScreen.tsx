@@ -10,12 +10,13 @@ import {
   ScrollView,
   Platform,
   Alert,
+  Share,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { FolderPlus, Trash2, Tag, CheckCircle2, Circle, Pencil } from "lucide-react-native";
+import { FolderPlus, Trash2, Tag, CheckCircle2, Circle, Pencil, Share2, Lock, Eye, Users } from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoList, TodoItem } from "../../../shared";
+import { TodoList, TodoItem, ShareMode } from "../../../shared";
 import { useTheme } from "../context/ThemeContext";
 import { ListCardSkeleton } from "../components/SkeletonLoader";
 
@@ -40,6 +41,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const queryClient = useQueryClient();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
+  const [sharingList, setSharingList] = useState<TodoList | null>(null);
 
   const [newListName, setNewListName] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(CATEGORY_OPTIONS[0]);
@@ -97,6 +99,20 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
   });
 
+  const shareModeMutation = useMutation({
+    mutationFn: async ({ id, shareMode }: { id: string; shareMode: ShareMode }) => {
+      const res = await apiClient.put(`/api/v1/lists/${id}/share-mode`, { shareMode });
+      return res.data.list as TodoList;
+    },
+    onSuccess: (updatedList) => {
+      triggerImpactHaptic();
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+      if (sharingList && sharingList.id === updatedList.id) {
+        setSharingList(updatedList);
+      }
+    },
+  });
+
   const deleteListMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiClient.delete(`/api/v1/lists/${id}`);
@@ -146,12 +162,24 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     setEditCategory(matchingCat);
   };
 
+  const handleShareLink = async (list: TodoList) => {
+    try {
+      const link = `https://synx.christran.io/list/${list.id}`;
+      await Share.share({
+        message: `Check out my list "${list.name}" on sYnX: ${link}`,
+        url: link,
+      });
+    } catch (e) {
+      console.error("Failed to share link", e);
+    }
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>My Task Lists</Text>
+        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>My Lists</Text>
         <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>
-          Organize your tasks into categorized lists stored in D1
+          Manage and switch between your task workspaces
         </Text>
       </View>
 
@@ -205,6 +233,16 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                   </View>
 
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <TouchableOpacity
+                      style={styles.actionIconBtn}
+                      onPress={() => {
+                        triggerImpactHaptic();
+                        setSharingList(item);
+                      }}
+                    >
+                      <Share2 size={15} color={theme.accent} />
+                    </TouchableOpacity>
+
                     <TouchableOpacity
                       style={styles.actionIconBtn}
                       onPress={() => openEditModal(item)}
@@ -387,6 +425,68 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                 <Text style={styles.createBtnText}>Save Changes</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Share List Modal */}
+      <Modal visible={!!sharingList} animationType="slide" transparent onRequestClose={() => setSharingList(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Share List Access</Text>
+            <Text style={[styles.label, { color: theme.textMuted }]}>
+              {sharingList?.name}
+            </Text>
+
+            <Text style={[styles.label, { color: theme.textMuted, marginTop: 12 }]}>Access Permission</Text>
+            <View style={{ gap: 8, marginVertical: 8 }}>
+              {[
+                { mode: "private" as ShareMode, label: "Private", desc: "Only you can view and edit", Icon: Lock },
+                { mode: "public_read" as ShareMode, label: "View-Only", desc: "Anyone with link can view, no edits", Icon: Eye },
+                { mode: "public_edit" as ShareMode, label: "Collaborative", desc: "Anyone with link can view and edit", Icon: Users },
+              ].map(({ mode, label, desc, Icon }) => {
+                const isSelected = sharingList?.shareMode === mode;
+                return (
+                  <TouchableOpacity
+                    key={mode}
+                    style={[
+                      styles.catBtn,
+                      { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, width: "100%", justifyContent: "flex-start" },
+                      isSelected && { backgroundColor: theme.accentLight, borderColor: theme.accent, borderWidth: 2 },
+                    ]}
+                    onPress={() => {
+                      if (sharingList) {
+                        shareModeMutation.mutate({ id: sharingList.id, shareMode: mode });
+                      }
+                    }}
+                  >
+                    <Icon size={16} color={isSelected ? theme.accent : theme.textMuted} />
+                    <View style={{ flex: 1, marginLeft: 8 }}>
+                      <Text style={[{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }, isSelected && { color: theme.accent }]}>
+                        {label}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: theme.textMuted }}>{desc}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.createBtn, { backgroundColor: theme.accent, marginTop: 12 }]}
+              onPress={() => {
+                if (sharingList) handleShareLink(sharingList);
+              }}
+            >
+              <Text style={styles.createBtnText}>Share Link via App / System</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.cancelBtn, { marginTop: 8 }]}
+              onPress={() => setSharingList(null)}
+            >
+              <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS todos (
   reminder_sent INTEGER DEFAULT 0,
   parent_id TEXT DEFAULT NULL,
   recurrence TEXT DEFAULT 'none',
+  duration_minutes INTEGER DEFAULT 15,
   FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE,
   FOREIGN KEY(parent_id) REFERENCES todos(id) ON DELETE CASCADE
 );

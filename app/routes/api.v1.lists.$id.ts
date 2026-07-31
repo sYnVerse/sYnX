@@ -1,7 +1,39 @@
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { UpdateListSchema } from "../../shared";
+import { getListAccess } from "../api-helpers.server";
+
+export async function loader({ request, params, context }: LoaderFunctionArgs) {
+  const env = context.cloudflare.env;
+  const db = env.DB as D1Database;
+  const user = await verifyBearerToken(request, env);
+
+  const listId = params.id;
+  if (!listId) {
+    return Response.json({ error: "List ID is required" }, { status: 400 });
+  }
+
+  const userId = user ? user.userId : "";
+  const access = await getListAccess(db, listId, userId);
+  if (!access.hasAccess || !access.list) {
+    return Response.json({ error: "List not found or access denied" }, { status: 403 });
+  }
+
+  return Response.json({
+    success: true,
+    list: {
+      id: access.list.id,
+      name: access.list.name,
+      ownerId: access.list.owner_id,
+      createdAt: Number(access.list.created_at),
+      shareMode: access.list.share_mode || "private",
+      category: access.list.category || "Checklist",
+      isOwner: access.isOwner,
+      canEdit: access.canEdit,
+    },
+  });
+}
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
   const env = context.cloudflare.env;

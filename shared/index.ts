@@ -40,6 +40,8 @@ export interface TodoList {
   expirationTtl?: number | null;
   shareMode: ShareMode;
   category?: string;
+  isOwner?: boolean;
+  canEdit?: boolean;
 }
 
 // User settings data structure
@@ -61,6 +63,7 @@ export const CreateTodoSchema = v.object({
   reminderAt: v.optional(v.number()),
   parentId: v.optional(v.string()),
   recurrence: v.optional(RecurrencePatternSchema, "none"),
+  durationMinutes: v.optional(v.number(), 15),
 });
 
 export type CreateTodoInput = v.InferOutput<typeof CreateTodoSchema>;

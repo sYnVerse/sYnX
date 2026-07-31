@@ -375,11 +375,13 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const reminderAt = reminderAtVal ? Number(reminderAtVal) : undefined;
       const parentId = (formData.get("parentId") as string) || undefined;
       const recurrence = (formData.get("recurrence") as "none" | "daily" | "weekly" | "monthly") || "none";
+      const durationMinutesVal = formData.get("durationMinutes");
+      const durationMinutes = durationMinutesVal ? Number(durationMinutesVal) : 15;
       
       if (typeof text !== "string" || !text)
         return Response.json({ error: "Invalid text" }, { status: 400 });
       
-      await todoManager.create(text, priority, reminderAt, parentId, recurrence);
+      await todoManager.create(text, priority, reminderAt, parentId, recurrence, durationMinutes);
       return { success: true };
     }
 
@@ -1044,7 +1046,7 @@ function RecurrencePicker({
   );
 }
 
-function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subtasks?: Todo[]; isSubtask?: boolean }) {
+function TodoItem({ todo, subtasks = [], isSubtask = false, canEdit = true }: { todo: Todo; subtasks?: Todo[]; isSubtask?: boolean; canEdit?: boolean }) {
   const { isLoggedIn, onGuestAction } = useContext(GuestContext);
   const toggleFetcher = useFetcher();
   const deleteFetcher = useFetcher();
@@ -1084,7 +1086,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
 
   const handleAddSubtask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subtaskText.trim()) return;
+    if (!subtaskText.trim() || !canEdit) return;
     if (!isLoggedIn) {
       onGuestAction("create", { text: subtaskText.trim(), parentId: todo.id, priority: "none" });
     }
@@ -1103,7 +1105,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editText.trim()) return;
+    if (!editText.trim() || !canEdit) return;
     if (editText.trim() === todo.text) {
       setIsEditing(false);
       return;
@@ -1143,6 +1145,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           method="post"
           className="flex-shrink-0"
           onSubmit={() => {
+            if (!canEdit) return;
             if (!isLoggedIn) {
               onGuestAction("toggle", { id: todo.id });
             }
@@ -1152,9 +1155,10 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           <input type="hidden" name="intent" value="toggle" />
           <button
             type="submit"
-            className={`rounded-md border-2 flex items-center justify-center transition-all duration-200 cursor-pointer
+            disabled={!canEdit}
+            className={`rounded-md border-2 flex items-center justify-center transition-all duration-200 ${canEdit ? "cursor-pointer" : "cursor-default opacity-80"}
               ${isSubtask ? "w-4 h-4 border-slate-700" : "w-5 h-5 border-slate-700"}
-              hover:border-themeAccentFrom
+              ${canEdit ? "hover:border-themeAccentFrom" : ""}
               data-[checked=true]:bg-themeAccentFrom data-[checked=true]:border-themeAccentFrom`}
             data-checked={optimisticCompleted}
           >
@@ -1176,7 +1180,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </button>
         </toggleFetcher.Form>
 
-        {isEditing ? (
+        {isEditing && canEdit ? (
           <form onSubmit={handleEditSubmit} className="flex-1 flex items-center gap-2">
             <input
               ref={editInputRef}
@@ -1207,7 +1211,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </form>
         ) : (
           <span
-            className={`flex-1 min-w-0 truncate transition-all duration-200 cursor-pointer hover:text-white ${
+            className={`flex-1 min-w-0 truncate transition-all duration-200 ${canEdit ? "cursor-pointer hover:text-white" : "cursor-default"} ${
               isSubtask ? "text-xs text-slate-350" : "text-sm text-slate-200"
             } ${
               optimisticCompleted
@@ -1216,7 +1220,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
             }`}
             title={todo.text}
             onDoubleClick={() => {
-              if (!optimisticCompleted) {
+              if (!optimisticCompleted && canEdit) {
                 setIsEditing(true);
               }
             }}
@@ -1225,6 +1229,11 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </span>
         )}
 
+        {/* Duration Badge */}
+        <span className="text-[10px] bg-white/[0.04] text-slate-400 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 border border-white/[0.06]">
+          ⏱ {todo.durationMinutes || 15}m
+        </span>
+
         {/* Recurrence Indicator (for parent tasks only) */}
         {!isSubtask && todo.recurrence && todo.recurrence !== "none" && (
           <span className="text-[9px] bg-themeAccentBg text-themeAccentText px-1.5 py-0.5 rounded font-bold uppercase tracking-wider flex items-center gap-1 border border-themeAccentText/20">
@@ -1232,16 +1241,16 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </span>
         )}
 
-        <PriorityPicker currentPriority={todo.priority || "none"} todoId={todo.id} />
-        {!optimisticCompleted && !isSubtask && <ReminderPicker todo={todo} />}
+        {canEdit && <PriorityPicker currentPriority={todo.priority || "none"} todoId={todo.id} />}
+        {canEdit && !optimisticCompleted && !isSubtask && <ReminderPicker todo={todo} />}
 
         {/* Recurrence Picker dropdown (only for parent tasks) */}
-        {!isSubtask && !optimisticCompleted && (
+        {canEdit && !isSubtask && !optimisticCompleted && (
           <RecurrencePicker currentRecurrence={todo.recurrence || "none"} todoId={todo.id} />
         )}
 
         {/* Add Subtask Button (only for parent tasks) */}
-        {!isSubtask && !optimisticCompleted && (
+        {canEdit && !isSubtask && !optimisticCompleted && (
           <button
             type="button"
             onClick={() => setShowAddSubtask(!showAddSubtask)}
@@ -1254,7 +1263,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </button>
         )}
 
-        {!optimisticCompleted && !isEditing && (
+        {canEdit && !optimisticCompleted && !isEditing && (
           <button
             type="button"
             onClick={() => setIsEditing(true)}
@@ -1278,24 +1287,25 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
           </button>
         )}
 
-        <deleteFetcher.Form
-          method="post"
-          onSubmit={() => {
-            if (!isLoggedIn) {
-              onGuestAction("delete", { id: todo.id });
-            }
-          }}
-        >
-          <input type="hidden" name="id" value={todo.id} />
-          <input type="hidden" name="intent" value="delete" />
-          <button
-            type="submit"
-            className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-all duration-200 p-1 rounded-lg hover:bg-rose-500/10 cursor-pointer"
-            aria-label="Delete task"
+        {canEdit && (
+          <deleteFetcher.Form
+            method="post"
+            onSubmit={() => {
+              if (!isLoggedIn) {
+                onGuestAction("delete", { id: todo.id });
+              }
+            }}
           >
-            <svg
-              className="w-4 h-4"
-              fill="none"
+            <input type="hidden" name="id" value={todo.id} />
+            <input type="hidden" name="intent" value="delete" />
+            <button
+              type="submit"
+              className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-all duration-200 p-1 rounded-lg hover:bg-rose-500/10 cursor-pointer"
+              aria-label="Delete task"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
               strokeWidth="2"
@@ -1307,14 +1317,15 @@ function TodoItem({ todo, subtasks = [], isSubtask = false }: { todo: Todo; subt
               />
             </svg>
           </button>
-        </deleteFetcher.Form>
+          </deleteFetcher.Form>
+        )}
       </li>
 
       {/* Render subtasks underneath the parent */}
       {!isSubtask && (
         <div className="pl-6 mt-1 flex flex-col gap-1 border-l border-white/[0.04] ml-5">
           {subtasks.map((sub) => (
-            <TodoItem key={sub.id} todo={sub} isSubtask={true} />
+            <TodoItem key={sub.id} todo={sub} isSubtask={true} canEdit={canEdit} />
           ))}
 
           {/* Inline Add Subtask Input Form */}
@@ -1801,6 +1812,7 @@ export default function TodoPage() {
   const activeListName = activeListMeta?.name || "My Tasks";
   const activeListShareMode = activeListMeta?.share_mode || "private";
   const isOwner = activeListMeta ? activeListMeta.owner_id === userId : false;
+  const canEdit = isOwner || activeListShareMode === "public_edit" || !activeListMeta;
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(activeListName);
@@ -2158,6 +2170,11 @@ export default function TodoPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <span className="text-xs font-semibold truncate">{list.name}</span>
+                      {list.category && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-slate-400 font-medium shrink-0">
+                          {list.category}
+                        </span>
+                      )}
                     </a>
 
                     <div className="flex items-center gap-1.5">
@@ -2335,7 +2352,15 @@ export default function TodoPage() {
           </div>
         </header>
 
-        {/* Create Task Form */}
+        {/* Create Task Form / View Only Banner */}
+        {!canEdit ? (
+          <div className="mb-6 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-3.5 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-indigo-300 text-xs font-semibold">
+              <span>👁 View-Only Access</span>
+              <span className="text-indigo-400/70 font-normal">— You are viewing a shared list with read-only permissions.</span>
+            </div>
+          </div>
+        ) : (
         <createFetcher.Form
           method="post"
           className="mb-6"
@@ -2382,6 +2407,18 @@ export default function TodoPage() {
             </div>
 
             <div className="flex flex-wrap gap-2 shrink-0">
+              <div className="relative flex-1 sm:flex-initial min-w-0" title="Est. Duration in minutes">
+                <input
+                  type="number"
+                  name="durationMinutes"
+                  defaultValue={15}
+                  min={1}
+                  max={480}
+                  className="h-full w-20 rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-300 text-xs px-3 py-3 text-center focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200"
+                  placeholder="15m"
+                />
+              </div>
+
               <div className="relative flex-1 sm:flex-initial min-w-0">
                 <select
                   name="priority"
@@ -2508,6 +2545,7 @@ export default function TodoPage() {
             </div>
           )}
         </createFetcher.Form>
+        )}
 
         {/* Toolbar (Filters, Search, Sort & Actions) */}
         <div className="flex flex-col gap-3.5 mb-5 border-b border-white/[0.04] pb-5 min-w-0">
@@ -2641,7 +2679,7 @@ export default function TodoPage() {
                 </button>
 
                 {showSharePopover && (
-                  <div className="absolute right-0 top-full mt-2.5 z-45 bg-slate-900 border border-white/10 rounded-xl p-4 shadow-2xl min-w-[260px] flex flex-col gap-3">
+                  <div className="absolute right-0 top-full mt-2.5 z-[60] bg-slate-900 border border-white/10 rounded-xl p-4 shadow-2xl min-w-[260px] flex flex-col gap-3">
                     <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Share Settings</span>
                       <p className="text-[10px] text-slate-400">Configure access permissions for this list.</p>
@@ -2722,6 +2760,7 @@ export default function TodoPage() {
                   key={todo.id} 
                   todo={todo} 
                   subtasks={subtasksMap[todo.id] || []}
+                  canEdit={canEdit}
                 />
               ))}
             </ul>
