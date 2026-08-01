@@ -12,131 +12,413 @@ export interface ReleaseNote {
   changes: ChangelogItem[];
 }
 
-export const WEB_VERSION = "v8.0.2";
-export const MOBILE_VERSION = "v4.0.0";
+export const WEB_VERSION = "v5.1.0";
+export const MOBILE_VERSION = "v3.1.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
-    version: "v8.0.2",
+    version: "v5.1.0",
     date: "2026-08-01",
     title: "What's new?",
     changes: [
-      { type: "NEW", text: "Added Version Log & Release Notes modal to inform users of latest feature updates, fixes, and improvements." },
-      { type: "NEW", text: "Added manual Version Log launcher inside Profile & Settings drawer." },
-      { type: "IMPR", text: "Standardized Semantic Versioning (SemVer) guidelines and automated commit tracking across web and mobile." },
-      { type: "FIX", text: "Resolved subtask hierarchy tree rendering, dropdown styling, and task duration inputs." }
-    ]
-  },
-  {
-    version: "v8.0.1",
-    date: "2026-07-31",
-    changes: [
-      { type: "NEW", text: "Added unit tests for subtask cascade deletion and task hierarchy tree builder." },
-      { type: "NEW", text: "Added durationMinutes field and database column for time estimation." }
-    ]
-  },
-  {
-    version: "v8.0.0",
-    date: "2026-07-30",
-    changes: [
-      { type: "NEW", text: "Added category support to lists for better task organization." },
-      { type: "NEW", text: "Added email notification subject customization using list title." },
-      { type: "IMPR", text: "Added custom glassmorphic themed scrollbar styles." },
-      { type: "FIX", text: "Fixed sidebar list scrolling and small-screen overflow issue." }
-    ]
-  },
-  {
-    version: "v7.0.0",
-    date: "2026-07-28",
-    changes: [
-      { type: "NEW", text: "Added pull-to-refresh and manual refresh buttons across list views." },
-      { type: "NEW", text: "Added local storage fallback for guest list management." },
-      { type: "FIX", text: "Fixed guest list migration edge case when skipping empty lists." }
-    ]
-  },
-  {
-    version: "v6.0.0",
-    date: "2026-07-25",
-    changes: [
-      { type: "NEW", text: "Implemented interactive monthly calendar view with drag-and-drop task rescheduling." },
-      { type: "IMPR", text: "Added support for 'none' priority level and inline text editing." }
+      {
+        type: "NEW",
+        text: "Added native device calendar sync integration (expo-calendar)."
+      },
+      {
+        type: "NEW",
+        text: "Added cross-platform Version Log & What's New popup with date-aggregated SemVer tracking."
+      }
     ]
   },
   {
     version: "v5.0.0",
-    date: "2026-07-20",
+    date: "2026-07-30",
     changes: [
-      { type: "NEW", text: "Added task recurrence (daily, weekly, monthly) and subtask nesting." },
-      { type: "NEW", text: "Added public/private list sharing permissions." }
+      {
+        type: "FIX",
+        text: "Resolved mobile/web app bugs and implemented feature parity across platforms."
+      },
+      {
+        type: "FIX",
+        text: "Improved dropdown styling, task duration inputs, list categories, and sub-task hierarchy."
+      },
+      {
+        type: "IMPR",
+        text: "Added durationMinutes database column and comprehensive test suite."
+      },
+      {
+        type: "IMPR",
+        text: "Added unit tests for subtask cascade deletion and hierarchy tree builder."
+      }
+    ]
+  },
+  {
+    version: "v4.1.0",
+    date: "2026-07-29",
+    changes: [
+      {
+        type: "NEW",
+        text: "Use active list title as notification subject line across email, SMS, and Discord channels."
+      }
     ]
   },
   {
     version: "v4.0.0",
+    date: "2026-07-28",
+    changes: [
+      {
+        type: "NEW",
+        text: "Added category support to task lists."
+      },
+      {
+        type: "NEW",
+        text: "Added custom themed scrollbar styles for dark themes."
+      },
+      {
+        type: "NEW",
+        text: "Added mobile app dark/light pastel theming, tactile haptics, and task breakdown UI."
+      },
+      {
+        type: "NEW",
+        text: "Added inline task duration picker and editing support."
+      },
+      {
+        type: "FIX",
+        text: "Fixed sidebar list scrolling and small-screen layout overflow."
+      },
+      {
+        type: "FIX",
+        text: "Wrapped Mobile App with SafeAreaProvider for notch and status bar bounds."
+      },
+      {
+        type: "IMPR",
+        text: "Single-column layout and active task preview for mobile lists."
+      }
+    ]
+  },
+  {
+    version: "v3.4.0",
+    date: "2026-07-27",
+    changes: [
+      {
+        type: "NEW",
+        text: "Added pull-to-refresh and manual refresh controls."
+      },
+      {
+        type: "NEW",
+        text: "Added EAS build SHA-256 fingerprint for automatic deep link verification."
+      },
+      {
+        type: "FIX",
+        text: "Fixed Android status bar styling and push token retrieval."
+      },
+      {
+        type: "FIX",
+        text: "Fixed empty 'My Tasks' list skipping during guest data migration."
+      },
+      {
+        type: "FIX",
+        text: "Added unsaved settings confirmation prompt."
+      },
+      {
+        type: "IMPR",
+        text: "Upgraded mobile runtime to Expo SDK 57, React 19, and React Native 0.86.0."
+      }
+    ]
+  },
+  {
+    version: "v3.3.0",
+    date: "2026-07-26",
+    changes: [
+      {
+        type: "NEW",
+        text: "Initial Android & iOS Mobile App deployment with Expo."
+      },
+      {
+        type: "NEW",
+        text: "Added localStorage-based guest list management."
+      },
+      {
+        type: "FIX",
+        text: "Installed react-native-svg peer dependency and excluded typescript from validation."
+      }
+    ]
+  },
+  {
+    version: "v3.2.2",
+    date: "2026-07-25",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Upgraded core React & React-DOM dependencies."
+      }
+    ]
+  },
+  {
+    version: "v3.2.1",
+    date: "2026-07-23",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Upgraded user-agent detection engine."
+      }
+    ]
+  },
+  {
+    version: "v3.2.0",
     date: "2026-07-15",
     changes: [
-      { type: "NEW", text: "Registered WebMCP tools for AI coding agent integration." },
-      { type: "IMPR", text: "Added Terms of Service and Privacy Policy footer links." }
+      {
+        type: "NEW",
+        text: "Implemented monthly calendar view with drag-and-drop task rescheduling."
+      },
+      {
+        type: "IMPR",
+        text: "Updated Graphify project knowledge graph."
+      }
+    ]
+  },
+  {
+    version: "v3.1.1",
+    date: "2026-07-04",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Upgraded Valibot schema validation and core utilities."
+      }
+    ]
+  },
+  {
+    version: "v3.1.0",
+    date: "2026-06-27",
+    changes: [
+      {
+        type: "NEW",
+        text: "Added support for 'none' priority level and inline text editing."
+      },
+      {
+        type: "NEW",
+        text: "Set up Graphify knowledge graph."
+      }
     ]
   },
   {
     version: "v3.0.0",
-    date: "2026-07-10",
+    date: "2026-06-20",
     changes: [
-      { type: "NEW", text: "Added multi-channel notification support: Email, SMS, and Discord webhooks." },
-      { type: "IMPR", text: "Upgraded backend storage engine to Cloudflare D1 database." }
+      {
+        type: "FIX",
+        text: "Fixed local sign-out flow by properly clearing session cookies."
+      },
+      {
+        type: "IMPR",
+        text: "Updated D1 database schema and production dependency packages."
+      }
+    ]
+  },
+  {
+    version: "v2.1.1",
+    date: "2026-06-19",
+    changes: [
+      {
+        type: "FIX",
+        text: "Adjusted EmptyState layout bounds and slate color themes."
+      }
+    ]
+  },
+  {
+    version: "v2.1.0",
+    date: "2026-06-18",
+    changes: [
+      {
+        type: "NEW",
+        text: "Added task recurrence (daily, weekly, monthly), subtasks, and public/private list sharing."
+      },
+      {
+        type: "IMPR",
+        text: "Added worker test suites for subtasks and recurrence."
+      }
+    ]
+  },
+  {
+    version: "v2.0.1",
+    date: "2026-06-05",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Registered WebMCP tools for AI coding agent integration."
+      },
+      {
+        type: "IMPR",
+        text: "Scoped todo list endpoints and validated Discord webhooks."
+      }
     ]
   },
   {
     version: "v2.0.0",
-    date: "2026-07-05",
+    date: "2026-05-30",
     changes: [
-      { type: "NEW", text: "Integrated sYnID Single Sign-On (SSO) authentication." },
-      { type: "IMPR", text: "Added guest user session support with instant onboarding." }
+      {
+        type: "NEW",
+        text: "Integrated sYnID Single Sign-On (SSO) authentication."
+      },
+      {
+        type: "NEW",
+        text: "Added multi-channel notifications (Email, SMS, Discord webhooks)."
+      },
+      {
+        type: "IMPR",
+        text: "Migrated backend storage engine from Workers KV to Cloudflare D1 database."
+      },
+      {
+        type: "FIX",
+        text: "Resolved Resend API email delivery issues and session cookie domain attributes."
+      }
     ]
   },
   {
-    version: "v1.0.0",
-    date: "2026-07-01",
+    version: "v1.0.5",
+    date: "2026-05-29",
     changes: [
-      { type: "NEW", text: "Initial release of sYnX Web Application with task management, categories, and glassmorphic UI." }
+      {
+        type: "NEW",
+        text: "Added browser push notification reminders."
+      },
+      {
+        type: "FIX",
+        text: "Fixed UI button visibility for user stats and sign-out buttons."
+      }
+    ]
+  },
+  {
+    version: "v1.0.4",
+    date: "2026-05-28",
+    changes: [
+      {
+        type: "NEW",
+        text: "Added authentication system and guest session support."
+      }
+    ]
+  },
+  {
+    version: "v1.0.3",
+    date: "2026-05-27",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Applied UI and UX design enhancements."
+      }
+    ]
+  },
+  {
+    version: "v1.0.2",
+    date: "2025-08-03",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Updated app title and added footer links."
+      }
+    ]
+  },
+  {
+    version: "v1.0.1",
+    date: "2025-05-01",
+    changes: [
+      {
+        type: "NEW",
+        text: "Initial commit of sYnX repository with Cloudflare Workers Assets + Remix foundation."
+      }
     ]
   }
 ];
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
-    version: "v4.0.0",
+    version: "v3.1.0",
     date: "2026-08-01",
     title: "What's new?",
     changes: [
-      { type: "NEW", text: "Added native What's New / Version Log popup and Settings menu launcher." },
-      { type: "NEW", text: "Added Task Breakdown modal and task duration support." },
-      { type: "IMPR", text: "Added tactile haptic feedback and modern dark/light pastel theme presets." },
-      { type: "IMPR", text: "Upgraded Mobile app to Expo SDK 57, React 19, and React Native 0.86.0." },
-      { type: "FIX", text: "Fixed dropdown picker styling, Android status bar padding, and safe area bounds." }
+      {
+        type: "NEW",
+        text: "Added native device calendar sync integration (expo-calendar)."
+      },
+      {
+        type: "NEW",
+        text: "Added native What's New / Version Log popup and Settings menu launcher."
+      }
     ]
   },
   {
     version: "v3.0.0",
-    date: "2026-07-28",
+    date: "2026-07-30",
     changes: [
-      { type: "NEW", text: "Added push token registration with Expo Notifications." },
-      { type: "NEW", text: "Added single-column active preview layout for ListsScreen." }
+      {
+        type: "FIX",
+        text: "Resolved mobile/web app bugs and implemented feature parity across platforms."
+      },
+      {
+        type: "FIX",
+        text: "Improved dropdown styling, task duration inputs, list categories, and sub-task hierarchy."
+      }
     ]
   },
   {
     version: "v2.0.0",
-    date: "2026-07-20",
+    date: "2026-07-28",
     changes: [
-      { type: "NEW", text: "Added deep link auto-verification with EAS SHA-256 fingerprints." },
-      { type: "IMPR", text: "Added unsaved settings confirmation sheet." }
+      {
+        type: "NEW",
+        text: "Added mobile app dark/light pastel theming, tactile haptics, and task breakdown UI."
+      },
+      {
+        type: "NEW",
+        text: "Added category support and task duration estimation pickers."
+      },
+      {
+        type: "FIX",
+        text: "Wrapped Mobile App with SafeAreaProvider for notch and status bar bounds."
+      },
+      {
+        type: "IMPR",
+        text: "Single-column active preview layout for mobile lists."
+      }
     ]
   },
   {
-    version: "v1.0.0",
-    date: "2026-07-15",
+    version: "v1.2.0",
+    date: "2026-07-27",
     changes: [
-      { type: "NEW", text: "Initial release of sYnX Mobile App for Android and iOS." }
+      {
+        type: "NEW",
+        text: "Added pull-to-refresh and manual refresh controls."
+      },
+      {
+        type: "FIX",
+        text: "Fixed Android status bar styling and push token retrieval."
+      },
+      {
+        type: "FIX",
+        text: "Added unsaved settings confirmation prompt."
+      },
+      {
+        type: "IMPR",
+        text: "Upgraded mobile runtime to Expo SDK 57, React 19, and React Native 0.86.0."
+      }
+    ]
+  },
+  {
+    version: "v1.1.0",
+    date: "2026-07-26",
+    changes: [
+      {
+        type: "NEW",
+        text: "Initial Android & iOS Mobile App deployment with Expo."
+      },
+      {
+        type: "FIX",
+        text: "Installed react-native-svg peer dependency and excluded typescript from validation."
+      }
     ]
   }
 ];
