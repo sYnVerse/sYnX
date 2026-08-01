@@ -12,11 +12,18 @@ import {
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import * as Haptics from "expo-haptics";
-import { Palette, Vibrate, Bell, Smartphone, LogOut, Check, Save } from "lucide-react-native";
+import { Palette, Vibrate, Bell, Smartphone, LogOut, Check, Save, Calendar as CalendarIcon } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { apiClient, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
 import { registerForPushNotificationsAsync } from "../services/notifications";
 import { useTheme } from "../context/ThemeContext";
+import {
+  isCalendarSyncEnabled,
+  setCalendarSyncEnabled,
+  checkCalendarPermissions,
+  requestCalendarPermissions,
+  getOrCreateSynxCalendar,
+} from "../services/calendar";
 
 interface SettingsScreenProps {
   onDirtyChange?: (isDirty: boolean) => void;
@@ -41,6 +48,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [phoneCarrier, setPhoneCarrier] = useState("");
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
   const [pushStatus, setPushStatus] = useState<string>("Not Registered");
+  const [calendarSync, setCalendarSync] = useState(false);
+  const [calendarPermission, setCalendarPermission] = useState<string>("Not Granted");
 
   const triggerImpact = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -79,6 +88,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         }
       } catch (e) {
         console.error("Failed to read stored push token", e);
+      }
+
+      try {
+        const syncEnabled = await isCalendarSyncEnabled();
+        setCalendarSync(syncEnabled);
+        const hasPermission = await checkCalendarPermissions();
+        setCalendarPermission(hasPermission ? "Granted" : "Not Granted");
+      } catch (e) {
+        console.error("Failed to read calendar settings", e);
       }
     }
     loadSettings();
@@ -147,6 +165,26 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     }
   };
 
+  const handleToggleCalendarSync = async (val: boolean) => {
+    triggerImpact();
+    if (val) {
+      const granted = await requestCalendarPermissions();
+      if (!granted) {
+        setCalendarPermission("Denied");
+        Alert.alert("Permission Denied", "Calendar access is required to sync task reminders to your device calendar.");
+        return;
+      }
+      setCalendarPermission("Granted");
+      await setCalendarSyncEnabled(true);
+      setCalendarSync(true);
+      await getOrCreateSynxCalendar();
+      Alert.alert("Calendar Sync Enabled", "Tasks with reminders will automatically sync to the 'sYnX Tasks' native calendar.");
+    } else {
+      await setCalendarSyncEnabled(false);
+      setCalendarSync(false);
+    }
+  };
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.bg }]}
@@ -209,6 +247,27 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             thumbColor={hapticsEnabled ? theme.accent : "#94A3B8"}
           />
         </View>
+      </View>
+
+      {/* Device Calendar Integration */}
+      <View style={styles.sectionHeader}>
+        <CalendarIcon size={16} color={theme.accent} />
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Device Calendar Integration</Text>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+        <View style={styles.switchRow}>
+          <Text style={[styles.label, { color: theme.textPrimary }]}>Sync Tasks to Device Calendar</Text>
+          <Switch
+            value={calendarSync}
+            onValueChange={handleToggleCalendarSync}
+            trackColor={{ false: theme.inputBg, true: theme.accentLight }}
+            thumbColor={calendarSync ? theme.accent : "#94A3B8"}
+          />
+        </View>
+        <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 4 }]}>
+          TARGET CALENDAR: sYnX Tasks ({calendarPermission})
+        </Text>
       </View>
 
       {/* Notifications Section */}

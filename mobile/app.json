@@ -21,7 +21,9 @@
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "POST_NOTIFICATIONS",
-        "VIBRATE"
+        "VIBRATE",
+        "READ_CALENDAR",
+        "WRITE_CALENDAR"
       ],
       "intentFilters": [
         {
@@ -60,6 +62,12 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#6366f1"
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "Allow sYnX to access your calendar to sync your task reminders."
         }
       ],
       "expo-secure-store",

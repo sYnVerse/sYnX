@@ -8,6 +8,7 @@ import { apiClient } from "../api/client";
 import { TodoItem } from "../../../shared";
 import { useTheme } from "../context/ThemeContext";
 import { TaskModal } from "../components/TaskModal";
+import { syncTaskToNativeCalendar } from "../services/calendar";
 
 export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const { theme, themeMode, hapticsEnabled } = useTheme();
@@ -39,19 +40,27 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
 
   const toggleMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiClient.post(`/api/v1/todos/${id}/toggle`);
+      const res = await apiClient.post(`/api/v1/todos/${id}/toggle`);
+      return res.data.todo as TodoItem;
     },
-    onSuccess: () => {
+    onSuccess: (updatedTodo) => {
+      if (updatedTodo) {
+        syncTaskToNativeCalendar(updatedTodo).catch(() => {});
+      }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
   });
 
   const createMutation = useMutation({
     mutationFn: async (newTodo: any) => {
-      await apiClient.post("/api/v1/todos", { ...newTodo, listId });
+      const res = await apiClient.post("/api/v1/todos", { ...newTodo, listId });
+      return res.data.todo as TodoItem;
     },
-    onSuccess: () => {
+    onSuccess: (createdTodo) => {
       triggerSuccessHaptic();
+      if (createdTodo) {
+        syncTaskToNativeCalendar(createdTodo).catch(() => {});
+      }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
   });
