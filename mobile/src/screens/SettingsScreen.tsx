@@ -12,11 +12,14 @@ import {
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import * as Haptics from "expo-haptics";
-import { Palette, Vibrate, Bell, Smartphone, LogOut, Check, Save, Calendar as CalendarIcon } from "lucide-react-native";
+import { Palette, Vibrate, Bell, Smartphone, LogOut, Check, Save, Calendar as CalendarIcon, Sparkles } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { apiClient, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
 import { registerForPushNotificationsAsync } from "../services/notifications";
 import { useTheme } from "../context/ThemeContext";
+import { ChangelogModal } from "../components/ChangelogModal";
+import { MOBILE_VERSION } from "../../../shared/changelog";
+
 import {
   isCalendarSyncEnabled,
   setCalendarSyncEnabled,
@@ -44,6 +47,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
 
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [smsEnabled, setSmsEnabled] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneCarrier, setPhoneCarrier] = useState("");
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
@@ -353,7 +357,34 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         </TouchableOpacity>
       </View>
 
+      {/* About & Version Log */}
+      <View style={styles.sectionHeader}>
+        <Sparkles size={16} color={theme.accent} />
+        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>About & Release Notes</Text>
+      </View>
+
+      <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+        <TouchableOpacity
+          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 4 }}
+          onPress={() => {
+            triggerImpact();
+            setShowChangelog(true);
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <View style={{ backgroundColor: "rgba(34, 197, 94, 0.15)", borderWidth: 1, borderColor: "rgba(34, 197, 94, 0.3)", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+              <Text style={{ color: "#4ADE80", fontSize: 11, fontWeight: "800" }}>{MOBILE_VERSION}</Text>
+            </View>
+            <Text style={[styles.label, { color: theme.textPrimary, fontWeight: "700" }]}>What's new? / Version Log</Text>
+          </View>
+          <Text style={{ color: theme.accent, fontSize: 13, fontWeight: "700" }}>View</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ChangelogModal visible={showChangelog} onClose={() => setShowChangelog(false)} />
+
       {/* Log Out */}
+
       <TouchableOpacity
         style={[styles.logoutBtn, { backgroundColor: theme.danger }]}
         onPress={() => {

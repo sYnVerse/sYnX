@@ -20,6 +20,10 @@ import { TaskBreakdownModal } from "../components/TaskBreakdownModal";
 import { TaskCardSkeleton } from "../components/SkeletonLoader";
 import { useTheme } from "../context/ThemeContext";
 import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../services/calendar";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { ChangelogModal } from "../components/ChangelogModal";
+import { MOBILE_VERSION } from "../../../shared/changelog";
+
 
 export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const { theme, hapticsEnabled } = useTheme();
@@ -28,6 +32,29 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<TodoItem | null>(null);
   const [selectedTaskForBreakdown, setSelectedTaskForBreakdown] = useState<TodoItem | null>(null);
+  const [showChangelog, setShowChangelog] = useState(false);
+
+  React.useEffect(() => {
+    async function checkChangelogVersion() {
+      try {
+        const lastSeen = await AsyncStorage.getItem("last_seen_changelog_version");
+        if (lastSeen !== MOBILE_VERSION) {
+          setShowChangelog(true);
+        }
+      } catch (e) {
+        console.error("Failed to read changelog version", e);
+      }
+    }
+    checkChangelogVersion();
+  }, []);
+
+  const handleDismissChangelog = async () => {
+    try {
+      await AsyncStorage.setItem("last_seen_changelog_version", MOBILE_VERSION);
+    } catch (e) {}
+    setShowChangelog(false);
+  };
+
 
   const { data: listMeta } = useQuery({
     queryKey: ["list_meta", listId],
@@ -371,9 +398,16 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
         canEdit={canEdit}
         onClose={() => setSelectedTaskForBreakdown(null)}
       />
+
+      {/* Release Notes Changelog Popup */}
+      <ChangelogModal
+        visible={showChangelog}
+        onClose={handleDismissChangelog}
+      />
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: {

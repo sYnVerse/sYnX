@@ -12,6 +12,7 @@ describe("Subtask Hierarchy Tree Builder", () => {
         createdAt: 1000,
         priority: "high",
         recurrence: "none",
+        reminderSent: false,
       },
       {
         id: "sub-1",
@@ -22,6 +23,7 @@ describe("Subtask Hierarchy Tree Builder", () => {
         parentId: "parent-1",
         priority: "none",
         recurrence: "none",
+        reminderSent: false,
       },
       {
         id: "sub-2",
@@ -32,6 +34,7 @@ describe("Subtask Hierarchy Tree Builder", () => {
         parentId: "parent-1",
         priority: "none",
         recurrence: "none",
+        reminderSent: false,
       },
       {
         id: "parent-2",
@@ -41,6 +44,7 @@ describe("Subtask Hierarchy Tree Builder", () => {
         createdAt: 1003,
         priority: "medium",
         recurrence: "none",
+        reminderSent: false,
       },
     ];
 
