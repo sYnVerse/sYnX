@@ -722,46 +722,46 @@ function ReminderPicker({ todo }: { todo: Todo }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl py-1 min-w-[140px] flex flex-col">
+        <div className="absolute right-0 top-full mt-1 z-40 bg-themeSidebar backdrop-blur-xl border border-themeBorder rounded-lg shadow-2xl py-1 min-w-[140px] flex flex-col">
           <span className="px-3 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider select-none">Set Reminder</span>
           <button
             type="button"
-            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.04] transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-themeCardHover transition-colors"
             onClick={() => setDuration(1)}
           >
             ⏱ In 1 min
           </button>
           <button
             type="button"
-            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.04] transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-themeCardHover transition-colors"
             onClick={() => setDuration(5)}
           >
             ⏱ In 5 mins
           </button>
           <button
             type="button"
-            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.04] transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-themeCardHover transition-colors"
             onClick={() => setDuration(15)}
           >
             ⏱ In 15 mins
           </button>
           <button
             type="button"
-            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.04] transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-themeCardHover transition-colors"
             onClick={() => setDuration(30)}
           >
             ⏱ In 30 mins
           </button>
           <button
             type="button"
-            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.04] transition-colors border-b border-white/5"
+            className="w-full text-left px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-themeCardHover transition-colors border-b border-themeBorder"
             onClick={() => setDuration(60)}
           >
             ⏱ In 1 hour
           </button>
           <button
             type="button"
-            className="w-full text-left px-3 py-1.5 text-xs font-medium text-indigo-400 hover:bg-white/[0.04] transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs font-medium text-themeAccentText hover:bg-themeCardHover transition-colors"
             onClick={() => setCustomOpen(true)}
           >
             📅 Specific Time...
@@ -769,7 +769,7 @@ function ReminderPicker({ todo }: { todo: Todo }) {
           {displayText && (
             <button
               type="button"
-              className="w-full text-left px-3 py-1.5 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors border-t border-white/5"
+              className="w-full text-left px-3 py-1.5 text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition-colors border-t border-themeBorder"
               onClick={clearReminder}
             >
               ❌ Clear Reminder
@@ -779,7 +779,7 @@ function ReminderPicker({ todo }: { todo: Todo }) {
       )}
 
       {customOpen && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-slate-900 border border-white/10 rounded-xl shadow-2xl p-3 min-w-[200px]">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-themeSidebar border border-themeBorder rounded-xl shadow-2xl p-3 min-w-[200px]">
           <form onSubmit={handleCustomSubmit} className="flex flex-col gap-2">
             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Choose date & time</span>
             <input
@@ -2554,7 +2554,7 @@ export default function TodoPage() {
           </div>
 
           {showDurationPicker && (
-            <div className="mt-2.5 p-3.5 rounded-xl bg-slate-900 border border-white/10 flex flex-col gap-2.5 animate-fade-in shadow-xl">
+            <div className="mt-2.5 p-3.5 rounded-xl bg-themeSidebar border border-themeBorder flex flex-col gap-2.5 animate-fade-in shadow-xl backdrop-blur-md">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-400">ESTIMATED DURATION</span>
                 <button
@@ -2586,8 +2586,8 @@ export default function TodoPage() {
                     }}
                     className={`px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all ${
                       newDurationMinutes === d.value
-                        ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText"
-                        : "bg-white/[0.04] border-white/[0.06] text-slate-300 hover:bg-white/[0.08]"
+                        ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-semibold"
+                        : "bg-themeCard border-themeBorder text-slate-300 hover:bg-themeCardHover hover:text-white"
                     }`}
                   >
                     {d.label}
@@ -2606,7 +2606,7 @@ export default function TodoPage() {
                       const val = e.target.value ? Number(e.target.value) : null;
                       setNewDurationMinutes(val);
                     }}
-                    className="w-16 px-2 py-1 rounded-lg bg-white/[0.04] border border-white/10 text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 text-center"
+                    className="w-16 px-2 py-1 rounded-lg bg-themeCard border border-themeBorder text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 text-center"
                   />
                 </div>
               </div>
@@ -2614,7 +2614,7 @@ export default function TodoPage() {
           )}
 
           {showReminderPanel && (
-            <div className="mt-2.5 p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] flex flex-col gap-3 animate-fade-in">
+            <div className="mt-2.5 p-3.5 rounded-xl bg-themeSidebar border border-themeBorder flex flex-col gap-3 animate-fade-in shadow-xl backdrop-blur-md">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-400">REMINDER SETTING</span>
                 <button
@@ -2641,8 +2641,8 @@ export default function TodoPage() {
                     }}
                     className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all cursor-pointer
                       ${reminderMode === "duration" && reminderDuration === mins
-                        ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText"
-                        : "bg-white/[0.02] border-white/[0.04] text-slate-400 hover:text-slate-300"
+                        ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-semibold"
+                        : "bg-themeCard border-themeBorder text-slate-400 hover:bg-themeCardHover hover:text-slate-200"
                       }`}
                   >
                     ⏱ {mins < 60 ? `${mins} Min${mins > 1 ? "s" : ""}` : "1 Hour"}
