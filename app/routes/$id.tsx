@@ -177,6 +177,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
         reminderSent: t.reminder_sent !== null ? Boolean(t.reminder_sent) : undefined,
         parentId: t.parent_id || undefined,
         recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
+        durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : null,
       }))
       .sort((a: any, b: any) => b.createdAt - a.createdAt);
     return {
@@ -1551,6 +1552,7 @@ export default function TodoPage() {
             reminderSent: payload.reminderAt ? false : undefined,
             parentId: payload.parentId || undefined,
             recurrence: payload.recurrence || "none",
+            durationMinutes: payload.durationMinutes ?? null,
           };
           if (prevLists.length === 0) {
             const defaultList: GuestList = {
@@ -1648,6 +1650,16 @@ export default function TodoPage() {
             return {
               ...l,
               todos: l.todos.map((t) => (t.id === payload.id ? { ...t, recurrence: payload.recurrence } : t)),
+            };
+          });
+          break;
+        }
+        case "updateDuration": {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            return {
+              ...l,
+              todos: l.todos.map((t) => (t.id === payload.id ? { ...t, durationMinutes: payload.durationMinutes ?? null } : t)),
             };
           });
           break;
