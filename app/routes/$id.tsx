@@ -437,6 +437,14 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       return { success: true };
     }
 
+    case "updateDuration": {
+      const id = formData.get("id") as string;
+      const durationMinutesVal = formData.get("durationMinutes");
+      const durationMinutes = durationMinutesVal ? Number(durationMinutesVal) : null;
+      await todoManager.updateDuration(id, durationMinutes);
+      return { success: true };
+    }
+
     case "updateShareMode": {
       const listId = formData.get("listId") as string;
       const shareMode = formData.get("shareMode") as string;
@@ -1048,6 +1056,105 @@ function RecurrencePicker({
   );
 }
 
+function DurationPicker({
+  currentDurationMinutes,
+  todoId,
+}: {
+  currentDurationMinutes?: number | null;
+  todoId: string;
+}) {
+  const { isLoggedIn, onGuestAction } = useContext(GuestContext);
+  const fetcher = useFetcher();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const optimisticDuration =
+    fetcher.formData?.get("durationMinutes") !== undefined
+      ? (fetcher.formData?.get("durationMinutes") ? Number(fetcher.formData?.get("durationMinutes")) : null)
+      : undefined;
+  const displayDuration = optimisticDuration !== undefined ? optimisticDuration : (currentDurationMinutes ?? null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    if (open) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`text-[10px] font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition-all duration-200 cursor-pointer
+          ${displayDuration !== null
+            ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText"
+            : "bg-transparent border-transparent text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
+          }`}
+        title="Set Duration"
+      >
+        <span>⏱️</span>
+        {displayDuration !== null && <span>{displayDuration}m</span>}
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-45 bg-themeSidebar border border-themeBorder rounded-xl shadow-2xl p-3 min-w-[160px] flex flex-col gap-2 animate-fade-in backdrop-blur-md">
+          <div className="flex items-center justify-between">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider select-none">Duration</span>
+            {displayDuration !== null && (
+              <button
+                type="button"
+                className="text-[10px] font-semibold text-rose-400 hover:underline cursor-pointer bg-transparent"
+                onClick={() => {
+                  if (!isLoggedIn) {
+                    onGuestAction("updateDuration", { id: todoId, durationMinutes: null });
+                  }
+                  fetcher.submit(
+                    { intent: "updateDuration", id: todoId, durationMinutes: "" },
+                    { method: "post" }
+                  );
+                  setOpen(false);
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-1.5">
+            {[5, 15, 30, 45, 60].map((mins) => (
+              <button
+                key={mins}
+                type="button"
+                className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-all cursor-pointer ${
+                  displayDuration === mins
+                    ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-semibold"
+                    : "bg-themeCard border-themeBorder text-slate-300 hover:bg-themeCardHover hover:text-white"
+                }`}
+                onClick={() => {
+                  if (!isLoggedIn) {
+                    onGuestAction("updateDuration", { id: todoId, durationMinutes: mins });
+                  }
+                  fetcher.submit(
+                    { intent: "updateDuration", id: todoId, durationMinutes: String(mins) },
+                    { method: "post" }
+                  );
+                  setOpen(false);
+                }}
+              >
+                {mins}m
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TodoItem({ todo, subtasks = [], isSubtask = false, canEdit = true }: { todo: Todo; subtasks?: Todo[]; isSubtask?: boolean; canEdit?: boolean }) {
   const { isLoggedIn, onGuestAction } = useContext(GuestContext);
   const toggleFetcher = useFetcher();
@@ -1231,9 +1338,11 @@ function TodoItem({ todo, subtasks = [], isSubtask = false, canEdit = true }: { 
           </span>
         )}
 
-        {/* Duration Badge */}
-        {todo.durationMinutes ? (
-          <span className="text-[10px] bg-white/[0.04] text-slate-400 px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 border border-white/[0.06]">
+        {/* Duration Badge & Picker */}
+        {canEdit && !optimisticCompleted ? (
+          <DurationPicker currentDurationMinutes={todo.durationMinutes} todoId={todo.id} />
+        ) : todo.durationMinutes ? (
+          <span className="text-[10px] bg-themeAccentBg text-themeAccentText px-2 py-0.5 rounded-md font-semibold flex items-center gap-1 border border-themeAccentRing/30">
             ⏱ {todo.durationMinutes}m
           </span>
         ) : null}

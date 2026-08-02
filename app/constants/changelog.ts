@@ -9,6 +9,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "NEW",
+        text: "Add DurationPicker to allow viewing/changing task duration of a task."
+      },
+      {
         type: "FIX",
         text: "Removed 'N' avatar icon from desktop What's New modal header for a cleaner header design."
       },
