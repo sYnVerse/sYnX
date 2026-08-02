@@ -14,7 +14,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Search, RefreshCw, Plus, Check, Trash2, Clock, ListTree, Repeat, Pencil, Eye } from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoItem } from "../../../shared";
+import { TodoItem } from "../shared";
 import { TaskModal } from "../components/TaskModal";
 import { TaskBreakdownModal } from "../components/TaskBreakdownModal";
 import { TaskCardSkeleton } from "../components/SkeletonLoader";
@@ -22,7 +22,7 @@ import { useTheme } from "../context/ThemeContext";
 import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../services/calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ChangelogModal } from "../components/ChangelogModal";
-import { MOBILE_VERSION } from "../../../shared/changelog";
+import { MOBILE_VERSION } from "../shared/changelog";
 
 
 export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {

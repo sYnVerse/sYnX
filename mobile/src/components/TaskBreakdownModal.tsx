@@ -13,7 +13,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { X, Plus, Minus, Clock, Check } from "lucide-react-native";
-import { TodoItem } from "../../../shared";
+import { TodoItem } from "../shared";
 import { apiClient } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
 

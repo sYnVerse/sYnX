@@ -11,7 +11,7 @@ import {
   Platform,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { PriorityLevel, RecurrencePattern } from "../../../shared";
+import { PriorityLevel, RecurrencePattern } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 
 interface TaskModalProps {

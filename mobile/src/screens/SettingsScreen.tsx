@@ -18,7 +18,7 @@ import { apiClient, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
 import { registerForPushNotificationsAsync } from "../services/notifications";
 import { useTheme } from "../context/ThemeContext";
 import { ChangelogModal } from "../components/ChangelogModal";
-import { MOBILE_VERSION } from "../../../shared/changelog";
+import { MOBILE_VERSION } from "../shared/changelog";
 
 import {
   isCalendarSyncEnabled,

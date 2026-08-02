@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import * as Calendar from "expo-calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { TodoItem } from "../../../shared";
+import { TodoItem } from "../shared";
 
 const CALENDAR_SYNC_ENABLED_KEY = "@synx_calendar_sync_enabled";
 const SYNX_CALENDAR_ID_KEY = "@synx_calendar_id";

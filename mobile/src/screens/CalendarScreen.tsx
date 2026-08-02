@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Clock, Check, Calendar as CalendarIcon, Plus } from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoItem } from "../../../shared";
+import { TodoItem } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { TaskModal } from "../components/TaskModal";
 import { syncTaskToNativeCalendar } from "../services/calendar";
