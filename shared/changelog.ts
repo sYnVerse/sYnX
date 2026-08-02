@@ -18,7 +18,7 @@ export const MOBILE_VERSION = "v3.1.2";
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
     version: "v5.1.1",
-    date: "2026-08-01",
+    date: "2026-08-02",
     title: "What's new?",
     changes: [
       {
@@ -288,7 +288,7 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     ]
   },
   {
-    version: "v1.0.5",
+    version: "v1.0.4",
     date: "2026-05-29",
     changes: [
       {
@@ -302,7 +302,7 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     ]
   },
   {
-    version: "v1.0.4",
+    version: "v1.0.3",
     date: "2026-05-28",
     changes: [
       {
@@ -312,7 +312,7 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     ]
   },
   {
-    version: "v1.0.3",
+    version: "v1.0.2",
     date: "2026-05-27",
     changes: [
       {
@@ -322,7 +322,7 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     ]
   },
   {
-    version: "v1.0.2",
+    version: "v1.0.1",
     date: "2025-08-03",
     changes: [
       {
@@ -332,7 +332,7 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     ]
   },
   {
-    version: "v1.0.1",
+    version: "v1.0.0",
     date: "2025-05-01",
     changes: [
       {
@@ -345,8 +345,8 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
-    version: "v3.1.2",
-    date: "2026-08-01",
+    version: "v3.0.1",
+    date: "2026-08-02",
     title: "What's new?",
     changes: [
       {
@@ -360,18 +360,7 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     ]
   },
   {
-    version: "v3.1.1",
-    date: "2026-08-01",
-    title: "What's new?",
-    changes: [
-      {
-        type: "FIX",
-        text: "Fixed task creation on selected calendar date in Calendar screen."
-      }
-    ]
-  },
-  {
-    version: "v3.1.0",
+    version: "v3.0.0",
     date: "2026-08-01",
     title: "What's new?",
     changes: [
@@ -382,11 +371,15 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "NEW",
         text: "Added native What's New / Version Log popup and Settings menu launcher."
+      },
+      {
+        type: "FIX",
+        text: "Fixed task creation on selected calendar date in Calendar screen."
       }
     ]
   },
   {
-    version: "v3.0.0",
+    version: "v2.0.2",
     date: "2026-07-30",
     changes: [
       {
@@ -394,8 +387,18 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Resolved mobile/web app bugs and implemented feature parity across platforms."
       },
       {
-        type: "FIX",
+        type: "IMPR",
         text: "Improved dropdown styling, task duration inputs, list categories, and sub-task hierarchy."
+      }
+    ]
+  },
+  {
+    version: "v2.0.1",
+    date: "2026-07-29",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Use list title as push notification subject"
       }
     ]
   },
@@ -422,7 +425,7 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     ]
   },
   {
-    version: "v1.2.0",
+    version: "v1.1.0",
     date: "2026-07-27",
     changes: [
       {
@@ -430,12 +433,12 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Added pull-to-refresh and manual refresh controls."
       },
       {
-        type: "FIX",
-        text: "Fixed Android status bar styling and push token retrieval."
+        type: "NEW",
+        text: "Added unsaved settings confirmation prompt."
       },
       {
         type: "FIX",
-        text: "Added unsaved settings confirmation prompt."
+        text: "Fixed Android status bar styling and push token retrieval."
       },
       {
         type: "IMPR",
@@ -444,7 +447,7 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     ]
   },
   {
-    version: "v1.1.0",
+    version: "v1.0.0",
     date: "2026-07-26",
     changes: [
       {
@@ -452,7 +455,7 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Initial Android & iOS Mobile App deployment with Expo."
       },
       {
-        type: "FIX",
+        type: "NEW",
         text: "Installed react-native-svg peer dependency and excluded typescript from validation."
       }
     ]
