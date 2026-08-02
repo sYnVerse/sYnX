@@ -21,6 +21,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Use theme tokens for task duration UI."
       },
       {
+        type: "FIX",
+        text: "Change z-indexse for DurationPicker, PriorityPicker, ReminderPicker, and RecurrencePicker components."
+      },
+      {
         type: "IMPR",
         text: "Change default value for task duration from 15 minutes to null."
       },

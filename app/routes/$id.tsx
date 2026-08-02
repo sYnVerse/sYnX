@@ -710,7 +710,7 @@ function ReminderPicker({ todo }: { todo: Todo }) {
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className={`relative ${open ? "z-50" : ""}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -730,7 +730,7 @@ function ReminderPicker({ todo }: { todo: Todo }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-40 bg-themeSidebar backdrop-blur-xl border border-themeBorder rounded-lg shadow-2xl py-1 min-w-[140px] flex flex-col">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-themeSidebar backdrop-blur-xl border border-themeBorder rounded-lg shadow-2xl py-1 min-w-[140px] flex flex-col">
           <span className="px-3 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider select-none">Set Reminder</span>
           <button
             type="button"
@@ -934,7 +934,7 @@ function PriorityPicker({
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className={`relative ${open ? "z-50" : ""}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -945,7 +945,7 @@ function PriorityPicker({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl py-1 min-w-[90px]">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-themeSidebar backdrop-blur-xl border border-themeBorder rounded-lg shadow-2xl py-1 min-w-[90px]">
           {(["high", "medium", "low", "none"] as const).map((p) => {
             const c = priorityConfig[p];
             return (
@@ -1009,7 +1009,7 @@ function RecurrencePicker({
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className={`relative ${open ? "z-50" : ""}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -1025,7 +1025,7 @@ function RecurrencePicker({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-45 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-lg shadow-2xl py-1 min-w-[100px] flex flex-col">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-themeSidebar backdrop-blur-xl border border-themeBorder rounded-lg shadow-2xl py-1 min-w-[100px] flex flex-col">
           <span className="px-3 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider select-none">Repeat</span>
           {(["none", "daily", "weekly", "monthly"] as const).map((r) => {
             const conf = recurrenceConfig[r];
@@ -1068,11 +1068,14 @@ function DurationPicker({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const optimisticDuration =
-    fetcher.formData?.get("durationMinutes") !== undefined
-      ? (fetcher.formData?.get("durationMinutes") ? Number(fetcher.formData?.get("durationMinutes")) : null)
-      : undefined;
+  const isFormSubmitting = fetcher.formData?.get("intent") === "updateDuration";
+  const rawOpt = fetcher.formData?.get("durationMinutes");
+  const optimisticDuration = isFormSubmitting
+    ? (rawOpt !== null && rawOpt !== undefined && rawOpt !== "" ? Number(rawOpt) : null)
+    : undefined;
+
   const displayDuration = optimisticDuration !== undefined ? optimisticDuration : (currentDurationMinutes ?? null);
+  const hasDuration = displayDuration !== null && displayDuration !== undefined && !isNaN(displayDuration);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -1085,26 +1088,26 @@ function DurationPicker({
   }, [open]);
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className={`relative ${open ? "z-50" : ""}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={`text-[10px] font-semibold flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition-all duration-200 cursor-pointer
-          ${displayDuration !== null
+          ${hasDuration
             ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText"
             : "bg-transparent border-transparent text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
           }`}
         title="Set Duration"
       >
         <span>⏱️</span>
-        {displayDuration !== null && <span>{displayDuration}m</span>}
+        {hasDuration && <span>{displayDuration}m</span>}
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-45 bg-themeSidebar border border-themeBorder rounded-xl shadow-2xl p-3 min-w-[160px] flex flex-col gap-2 animate-fade-in backdrop-blur-md">
+        <div className="absolute right-0 top-full mt-1 z-50 bg-themeSidebar border border-themeBorder rounded-xl shadow-2xl p-3 min-w-[160px] flex flex-col gap-2 animate-fade-in backdrop-blur-md">
           <div className="flex items-center justify-between">
             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider select-none">Duration</span>
-            {displayDuration !== null && (
+            {hasDuration && (
               <button
                 type="button"
                 className="text-[10px] font-semibold text-rose-400 hover:underline cursor-pointer bg-transparent"
@@ -1241,9 +1244,9 @@ function TodoItem({ todo, subtasks = [], isSubtask = false, canEdit = true }: { 
   };
 
   return (
-    <div className="flex flex-col w-full">
+    <div className="flex flex-col w-full relative">
       <li
-        className={`group flex items-center gap-2 sm:gap-3 border transition-all duration-300 min-w-0 overflow-hidden
+        className={`group flex items-center gap-2 sm:gap-3 border transition-all duration-300 min-w-0 relative focus-within:z-40 hover:z-20
           ${isSubtask 
             ? "bg-transparent border-transparent py-1.5 px-2 hover:bg-white/[0.02] rounded-lg" 
             : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.04] p-3.5 rounded-xl shadow-sm"
