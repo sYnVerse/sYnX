@@ -13,7 +13,7 @@ export interface ReleaseNote {
 }
 
 export const WEB_VERSION = "v5.1.1";
-export const MOBILE_VERSION = "v3.1.1";
+export const MOBILE_VERSION = "v3.1.2";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
@@ -344,6 +344,21 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
 ];
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v3.1.2",
+    date: "2026-08-01",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Added optimistic cache updates across list creations, edits, deletions, and categories."
+      },
+      {
+        type: "NEW",
+        text: "Added pull-to-refresh on Lists screen and automatic data refresh on screen navigation."
+      }
+    ]
+  },
   {
     version: "v3.1.1",
     date: "2026-08-01",

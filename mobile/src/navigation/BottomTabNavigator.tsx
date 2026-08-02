@@ -10,6 +10,7 @@ import { FloatingTabBar, TabType } from "../components/FloatingTabBar";
 import { useAuth } from "../context/AuthContext";
 import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import { apiClient } from "../api/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 async function fetchOrCreateActiveListId(): Promise<string> {
   const res = await apiClient.get("/api/v1/lists");
@@ -29,6 +30,7 @@ async function fetchOrCreateActiveListId(): Promise<string> {
 const MainAppContent: React.FC = () => {
   const { token, login, isLoading } = useAuth();
   const { theme } = useTheme();
+  const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>("tasks");
   const [activeListId, setActiveListId] = useState<string | null>(null);
@@ -61,6 +63,15 @@ const MainAppContent: React.FC = () => {
     };
   }, [handleDeepLink]);
 
+  const switchTabWithRefresh = (targetTab: TabType) => {
+    setActiveTab(targetTab);
+    if (targetTab === "lists") {
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+    } else if ((targetTab === "tasks" || targetTab === "calendar") && activeListId) {
+      queryClient.invalidateQueries({ queryKey: ["todos", activeListId] });
+    }
+  };
+
   const handleTabSwitch = (targetTab: TabType) => {
     if (activeTab === targetTab) return;
     if (activeTab === "settings" && settingsDirty && settingsActions) {
@@ -77,7 +88,7 @@ const MainAppContent: React.FC = () => {
             style: "destructive",
             onPress: () => {
               settingsActions.reset();
-              setActiveTab(targetTab);
+              switchTabWithRefresh(targetTab);
             },
           },
           {
@@ -85,14 +96,14 @@ const MainAppContent: React.FC = () => {
             onPress: async () => {
               const saved = await settingsActions.save();
               if (saved) {
-                setActiveTab(targetTab);
+                switchTabWithRefresh(targetTab);
               }
             },
           },
         ]
       );
     } else {
-      setActiveTab(targetTab);
+      switchTabWithRefresh(targetTab);
     }
   };
 

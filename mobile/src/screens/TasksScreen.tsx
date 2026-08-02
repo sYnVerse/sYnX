@@ -115,6 +115,12 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     }
   };
 
+  React.useEffect(() => {
+    if (listId) {
+      refetch();
+    }
+  }, [listId]);
+
   const toggleMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiClient.post(`/api/v1/todos/${id}/toggle`);
@@ -123,6 +129,9 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     onSuccess: (updatedTodo) => {
       triggerSuccessHaptic();
       if (updatedTodo) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old ? old.map((t) => (t.id === updatedTodo.id ? updatedTodo : t)) : []
+        );
         syncTaskToNativeCalendar(updatedTodo).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
@@ -137,6 +146,9 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     onSuccess: (deletedId) => {
       triggerImpactHaptic();
       if (deletedId) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old ? old.filter((t) => t.id !== deletedId && t.parentId !== deletedId) : []
+        );
         removeTaskFromNativeCalendar(deletedId).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
@@ -151,6 +163,9 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     onSuccess: (createdTodo) => {
       triggerSuccessHaptic();
       if (createdTodo) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old ? [...old, createdTodo] : [createdTodo]
+        );
         syncTaskToNativeCalendar(createdTodo).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
@@ -165,6 +180,9 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     onSuccess: (updatedTodo) => {
       triggerSuccessHaptic();
       if (updatedTodo) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old ? old.map((t) => (t.id === updatedTodo.id ? updatedTodo : t)) : []
+        );
         syncTaskToNativeCalendar(updatedTodo).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Platform,
   Alert,
   Share,
+  RefreshControl,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -52,7 +53,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const [editCategory, setEditCategory] = useState(CATEGORY_OPTIONS[0]);
   const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
 
-  const { data: lists, isLoading } = useQuery({
+  const { data: lists, isLoading, isRefetching, refetch } = useQuery({
     queryKey: ["lists"],
     queryFn: async () => {
       const res = await apiClient.get("/api/v1/lists");
@@ -61,7 +62,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   });
 
   // Query tasks for active list preview
-  const { data: activeListTodos } = useQuery({
+  const { data: activeListTodos, refetch: refetchPreview } = useQuery({
     queryKey: ["active_list_todos_preview", activeListId],
     queryFn: async () => {
       if (!activeListId) return [];
@@ -70,6 +71,21 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
     enabled: !!activeListId,
   });
+
+  // Refetch on screen focus / mount
+  useEffect(() => {
+    refetch();
+    if (activeListId) {
+      refetchPreview();
+    }
+  }, [activeListId]);
+
+  const handleRefresh = () => {
+    refetch();
+    if (activeListId) {
+      refetchPreview();
+    }
+  };
 
   // Group subtasks under their parent tasks for the active list preview
   const mainTasks = React.useMemo(() => {
@@ -107,6 +123,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
     onSuccess: (newList) => {
       triggerImpactHaptic();
+      queryClient.setQueryData<TodoList[]>(["lists"], (old) => (old ? [...old, newList] : [newList]));
       queryClient.invalidateQueries({ queryKey: ["lists"] });
       onSelectList(newList.id);
       setNewListName("");
@@ -119,8 +136,14 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     mutationFn: async ({ id, name, category }: { id: string; name: string; category: string }) => {
       await apiClient.put(`/api/v1/lists/${id}`, { name, category });
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       triggerImpactHaptic();
+      queryClient.setQueryData<TodoList[]>(["lists"], (old) => {
+        if (!old) return [];
+        return old.map((l) =>
+          l.id === variables.id ? { ...l, name: variables.name, category: variables.category } : l
+        );
+      });
       queryClient.invalidateQueries({ queryKey: ["lists"] });
       setEditingList(null);
     },
@@ -133,6 +156,10 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
     onSuccess: (updatedList) => {
       triggerImpactHaptic();
+      queryClient.setQueryData<TodoList[]>(["lists"], (old) => {
+        if (!old) return [];
+        return old.map((l) => (l.id === updatedList.id ? updatedList : l));
+      });
       queryClient.invalidateQueries({ queryKey: ["lists"] });
       if (sharingList && sharingList.id === updatedList.id) {
         setSharingList(updatedList);
@@ -144,9 +171,17 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     mutationFn: async (id: string) => {
       await apiClient.delete(`/api/v1/lists/${id}`);
     },
-    onSuccess: () => {
+    onSuccess: (_, deletedId) => {
       triggerImpactHaptic();
+      queryClient.setQueryData<TodoList[]>(["lists"], (old) => {
+        const remaining = old ? old.filter((l) => l.id !== deletedId) : [];
+        if (deletedId === activeListId && remaining.length > 0) {
+          onSelectList(remaining[0].id);
+        }
+        return remaining;
+      });
       queryClient.invalidateQueries({ queryKey: ["lists"] });
+      queryClient.invalidateQueries({ queryKey: ["todos", deletedId] });
     },
   });
 
@@ -229,6 +264,14 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
           data={lists || []}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 110 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={handleRefresh}
+              tintColor={theme.accent}
+              colors={[theme.accent]}
+            />
+          }
           renderItem={({ item }) => {
             const isActive = item.id === activeListId;
             const categoryTag = item.category || "Checklist";

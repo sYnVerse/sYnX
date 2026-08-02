@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Platform } from "react-native";
+import React, { useState, useEffect } from "react";
+import { View, Text, FlatList, StyleSheet, TouchableOpacity, Platform, RefreshControl } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -26,7 +26,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const [selectedDate, setSelectedDate] = useState(today);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const { data: todos } = useQuery({
+  const { data: todos, isRefetching, refetch } = useQuery({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
@@ -34,6 +34,12 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     },
     enabled: !!listId,
   });
+
+  useEffect(() => {
+    if (listId) {
+      refetch();
+    }
+  }, [listId]);
 
   const triggerImpactHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -54,6 +60,9 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     },
     onSuccess: (updatedTodo) => {
       if (updatedTodo) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old ? old.map((t) => (t.id === updatedTodo.id ? updatedTodo : t)) : []
+        );
         syncTaskToNativeCalendar(updatedTodo).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
@@ -68,6 +77,9 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     onSuccess: (createdTodo) => {
       triggerSuccessHaptic();
       if (createdTodo) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old ? [...old, createdTodo] : [createdTodo]
+        );
         syncTaskToNativeCalendar(createdTodo).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
@@ -157,6 +169,14 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
         data={selectedDateTodos}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingBottom: 110 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor={theme.accent}
+            colors={[theme.accent]}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={[styles.emptyText, { color: theme.textMuted }]}>
