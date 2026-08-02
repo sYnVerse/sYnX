@@ -3263,19 +3263,14 @@ export default function TodoPage() {
 
             {/* Top Header */}
             <div className="flex items-center justify-between mb-4 border-b border-white/[0.08] pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-extrabold text-xs">
-                  N
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-extrabold text-slate-100 font-display">What's new?</h3>
+                  <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                    {WEB_VERSION}
+                  </span>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-extrabold text-slate-100 font-display">What's new?</h3>
-                    <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                      {WEB_VERSION}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400">Latest updates, features & fixes</p>
-                </div>
+                <p className="text-[11px] text-slate-400">Latest updates, features & fixes</p>
               </div>
               <button
                 onClick={handleCloseChangelog}

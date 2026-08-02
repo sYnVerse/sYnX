@@ -12,14 +12,24 @@ export interface ReleaseNote {
   changes: ChangelogItem[];
 }
 
-export const WEB_VERSION = "v5.1.0";
+export const WEB_VERSION = "v5.1.1";
 export const MOBILE_VERSION = "v3.1.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
-    version: "v5.1.0",
+    version: "v5.1.1",
     date: "2026-08-01",
     title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Removed 'N' avatar icon from desktop What's New modal header for a cleaner header design."
+      }
+    ]
+  },
+  {
+    version: "v5.1.0",
+    date: "2026-08-01",
     changes: [
       {
         type: "NEW",

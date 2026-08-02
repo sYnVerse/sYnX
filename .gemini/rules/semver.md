@@ -3,7 +3,7 @@
 Antigravity AI Coding Assistant Rule: Maintain strict Semantic Versioning (SemVer) and track breaking changes across Web and Mobile platforms.
 
 Current Baselines:
-- Web: `v5.1.0`
+- Web: `v5.1.1`
 - Mobile: `v3.1.0`
 
 ## 1. Semantic Versioning (SemVer) Format
