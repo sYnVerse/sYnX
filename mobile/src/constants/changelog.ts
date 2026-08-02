@@ -21,8 +21,12 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Separated mobile changelog constants to dedicated mobile constants module."
       },
       {
+        type: "IMPR",
+        text: "Change default value for task duration from 15 minutes to null."
+      },
+      {
         type: "FIX",
-        text: "resolve Expo SDK 57 version mismatches and EAS monorepo module resolution"
+        text: "Resolve Expo SDK 57 version mismatches and EAS monorepo module resolution."
       }
     ]
   },

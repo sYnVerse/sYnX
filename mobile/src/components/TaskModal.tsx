@@ -22,13 +22,13 @@ interface TaskModalProps {
     priority: PriorityLevel;
     reminderAt?: number;
     recurrence: RecurrencePattern;
-    durationMinutes?: number;
+    durationMinutes?: number | null;
   }) => void;
   initialText?: string;
   initialPriority?: PriorityLevel;
   initialReminderAt?: number;
   initialRecurrence?: RecurrencePattern;
-  initialDurationMinutes?: number;
+  initialDurationMinutes?: number | null;
   isEditing?: boolean;
 }
 
@@ -40,14 +40,16 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   initialPriority = "none",
   initialReminderAt,
   initialRecurrence = "none",
-  initialDurationMinutes = 15,
+  initialDurationMinutes,
   isEditing = false,
 }) => {
   const { theme, hapticsEnabled } = useTheme();
   const [text, setText] = useState(initialText);
   const [priority, setPriority] = useState<PriorityLevel>(initialPriority);
   const [recurrence, setRecurrence] = useState<RecurrencePattern>(initialRecurrence);
-  const [durationMinutes, setDurationMinutes] = useState<string>(String(initialDurationMinutes));
+  const [durationMinutes, setDurationMinutes] = useState<string>(
+    initialDurationMinutes != null ? String(initialDurationMinutes) : ""
+  );
   const [reminderMins, setReminderMins] = useState<number | null>(null);
   const [clearReminder, setClearReminder] = useState<boolean>(false);
 
@@ -55,7 +57,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setText(initialText);
     setPriority(initialPriority);
     setRecurrence(initialRecurrence);
-    setDurationMinutes(String(initialDurationMinutes));
+    setDurationMinutes(initialDurationMinutes != null ? String(initialDurationMinutes) : "");
     setReminderMins(null);
     setClearReminder(false);
   }, [visible, initialText, initialPriority, initialRecurrence, initialDurationMinutes, initialReminderAt]);
@@ -76,13 +78,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     } else if (reminderMins !== null) {
       reminderAt = baseTimestamp + reminderMins * 60 * 1000;
     }
-    const parsedDur = parseInt(durationMinutes.replace(/\D/g, ""), 10);
+    const cleanDur = durationMinutes.trim();
+    const parsedDur = cleanDur ? parseInt(cleanDur.replace(/\D/g, ""), 10) : NaN;
     onSave({
       text: text.trim(),
       priority,
       reminderAt: reminderAt as any,
       recurrence,
-      durationMinutes: isNaN(parsedDur) ? 15 : parsedDur,
+      durationMinutes: isNaN(parsedDur) ? null : parsedDur,
     });
     onClose();
   };
@@ -126,7 +129,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 },
               ]}
               keyboardType="number-pad"
-              placeholder="15"
+              placeholder="Optional (e.g. 15)"
               placeholderTextColor={theme.inputPlaceholder}
               value={durationMinutes}
               onChangeText={setDurationMinutes}

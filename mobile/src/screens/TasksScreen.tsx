@@ -283,7 +283,6 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
           renderItem={({ item }) => {
             const subtaskCount = item.subtasks?.length || 0;
             const completedSubtasks = item.subtasks?.filter((s) => s.completed).length || 0;
-            const duration = item.durationMinutes || 15;
 
             return (
               <TouchableOpacity
@@ -322,10 +321,12 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
                   </Text>
 
                   <View style={styles.badgeRow}>
-                    <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
-                      <Clock size={11} color={theme.accent} />
-                      <Text style={[styles.pillBadgeText, { color: theme.accent }]}>{duration} min</Text>
-                    </View>
+                    {item.durationMinutes ? (
+                      <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
+                        <Clock size={11} color={theme.accent} />
+                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>{item.durationMinutes} min</Text>
+                      </View>
+                    ) : null}
 
                     {item.recurrence !== "none" && (
                       <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
@@ -400,7 +401,7 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
         initialText={editingTask?.text}
         initialPriority={editingTask?.priority}
         initialRecurrence={editingTask?.recurrence}
-        initialDurationMinutes={editingTask?.durationMinutes || 15}
+        initialDurationMinutes={editingTask?.durationMinutes}
         onClose={() => setEditingTask(null)}
         onSave={(updated) => {
           if (editingTask) {

@@ -11,7 +11,11 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Removed 'N' avatar icon from desktop What's New modal header for a cleaner header design."
-      }
+      },
+      {
+        type: "IMPR",
+        text: "Change default value for task duration from 15 minutes to null."
+      },
     ]
   },
   {

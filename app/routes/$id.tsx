@@ -378,7 +378,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const parentId = (formData.get("parentId") as string) || undefined;
       const recurrence = (formData.get("recurrence") as "none" | "daily" | "weekly" | "monthly") || "none";
       const durationMinutesVal = formData.get("durationMinutes");
-      const durationMinutes = durationMinutesVal ? Number(durationMinutesVal) : 15;
+      const durationMinutes = durationMinutesVal ? Number(durationMinutesVal) : null;
       
       if (typeof text !== "string" || !text)
         return Response.json({ error: "Invalid text" }, { status: 400 });

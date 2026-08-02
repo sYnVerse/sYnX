@@ -218,12 +218,14 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
               </Text>
             </View>
 
-            <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
-              <Clock size={11} color={theme.accent} />
-              <Text style={[styles.durationText, { color: theme.accent }]}>
-                {item.durationMinutes || 15}m
-              </Text>
-            </View>
+            {item.durationMinutes ? (
+              <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
+                <Clock size={11} color={theme.accent} />
+                <Text style={[styles.durationText, { color: theme.accent }]}>
+                  {item.durationMinutes}m
+                </Text>
+              </View>
+            ) : null}
           </View>
         )}
       />
