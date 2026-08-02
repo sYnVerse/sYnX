@@ -9,7 +9,7 @@ import { TodoManager, type Todo, type UserSettings } from "~/to-do-manager";
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
 import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
-import { WEB_VERSION, WEB_CHANGELOG } from "../../shared/changelog";
+import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
 
 
 export const GUEST_STORAGE_KEY = "synx_guest_lists";

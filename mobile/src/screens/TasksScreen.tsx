@@ -22,7 +22,7 @@ import { useTheme } from "../context/ThemeContext";
 import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../services/calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ChangelogModal } from "../components/ChangelogModal";
-import { MOBILE_VERSION } from "../shared/changelog";
+import { MOBILE_VERSION } from "../constants/changelog";
 
 
 export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {

@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { X, Sparkles } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
-import { MOBILE_VERSION, MOBILE_CHANGELOG } from "../shared/changelog";
+import { MOBILE_VERSION, MOBILE_CHANGELOG } from "../constants/changelog";
 
 interface ChangelogModalProps {
   visible: boolean;
