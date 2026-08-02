@@ -10,10 +10,19 @@ import { useTheme } from "../context/ThemeContext";
 import { TaskModal } from "../components/TaskModal";
 import { syncTaskToNativeCalendar } from "../services/calendar";
 
+// Helper to convert timestamp or Date to local YYYY-MM-DD string
+const getLocalDateString = (dateInput: Date | number = new Date()) => {
+  const d = typeof dateInput === "number" ? new Date(dateInput) : dateInput;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
 export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const { theme, themeMode, hapticsEnabled } = useTheme();
   const queryClient = useQueryClient();
-  const today = new Date().toISOString().split("T")[0];
+  const today = getLocalDateString();
   const [selectedDate, setSelectedDate] = useState(today);
   const [modalVisible, setModalVisible] = useState(false);
 
@@ -68,7 +77,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const markedDates: Record<string, any> = {};
   (todos || []).forEach((t) => {
     if (t.reminderAt) {
-      const dateStr = new Date(t.reminderAt).toISOString().split("T")[0];
+      const dateStr = getLocalDateString(t.reminderAt);
       markedDates[dateStr] = {
         marked: true,
         dotColor: theme.accent,
@@ -85,7 +94,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
 
   const selectedDateTodos = (todos || []).filter((t) => {
     if (!t.reminderAt) return selectedDate === today;
-    const d = new Date(t.reminderAt).toISOString().split("T")[0];
+    const d = getLocalDateString(t.reminderAt);
     return d === selectedDate;
   });
 

@@ -58,7 +58,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setDurationMinutes(String(initialDurationMinutes));
     setReminderMins(null);
     setClearReminder(false);
-  }, [visible, initialText, initialPriority, initialRecurrence, initialDurationMinutes]);
+  }, [visible, initialText, initialPriority, initialRecurrence, initialDurationMinutes, initialReminderAt]);
 
   const triggerHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -69,11 +69,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const handleSave = () => {
     if (!text.trim()) return;
     triggerHaptic();
+    const baseTimestamp = initialReminderAt || Date.now();
     let reminderAt: number | undefined | null = initialReminderAt;
     if (clearReminder) {
       reminderAt = null;
     } else if (reminderMins !== null) {
-      reminderAt = Date.now() + reminderMins * 60 * 1000;
+      reminderAt = baseTimestamp + reminderMins * 60 * 1000;
     }
     const parsedDur = parseInt(durationMinutes.replace(/\D/g, ""), 10);
     onSave({

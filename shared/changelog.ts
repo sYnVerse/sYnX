@@ -13,7 +13,7 @@ export interface ReleaseNote {
 }
 
 export const WEB_VERSION = "v5.1.1";
-export const MOBILE_VERSION = "v3.1.0";
+export const MOBILE_VERSION = "v3.1.1";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
@@ -344,6 +344,17 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
 ];
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v3.1.1",
+    date: "2026-08-01",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Fixed task creation on selected calendar date in Calendar screen."
+      }
+    ]
+  },
   {
     version: "v3.1.0",
     date: "2026-08-01",
