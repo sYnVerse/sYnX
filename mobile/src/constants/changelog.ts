@@ -54,8 +54,20 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     date: "2026-07-30",
     changes: [
       {
+        type: "NEW",
+        text: "Enabled list sharing via system UI."
+      },
+      {
+        type: "NEW",
+        text: "Enabled adding a reminder to date selected on Calendar."
+      },
+      {
         type: "FIX",
-        text: "Resolved mobile/web app bugs and implemented feature parity across platforms."
+        text: "Grouped subtask items under parent tasks and filtered child items out of top-level views."
+      },
+      {
+        type: "IMPR",
+        text: "Converted from queued database operations to real-time CRUD operations."
       },
       {
         type: "IMPR",

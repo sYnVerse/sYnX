@@ -14,20 +14,20 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       },
       {
         type: "FIX",
-        text: "Removed 'N' avatar icon from desktop What's New modal header for a cleaner header design."
-      },
-      {
-        type: "FIX",
         text: "Use theme tokens for task duration UI."
       },
       {
         type: "FIX",
-        text: "Change z-indexse for DurationPicker, PriorityPicker, ReminderPicker, and RecurrencePicker components."
+        text: "Change z-indexes for DurationPicker, PriorityPicker, ReminderPicker, and RecurrencePicker components."
       },
       {
         type: "IMPR",
-        text: "Change default value for task duration from 15 minutes to null."
+        text: "Change default value for task duration from 15 minutes to optional."
       },
+      {
+        type: "IMPR",
+        text: "Removed 'N' avatar icon from desktop What's New modal header for a cleaner header design."
+      }
     ]
   },
   {
@@ -49,16 +49,28 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     date: "2026-07-30",
     changes: [
       {
+        type: "NEW",
+        text: "Task duration: You can now specify an amount of time you estimate the task will take for you to complete."
+      },
+      {
+        type: "NEW",
+        text: "List category: You can now add a category to lists to better organize your day."
+      },
+      {
         type: "FIX",
-        text: "Resolved mobile/web app bugs and implemented feature parity across platforms."
+        text: "Shared Lists: Hide controls for editing while viewing a non-permissive list."
       },
       {
         type: "FIX",
         text: "Improved dropdown styling, task duration inputs, list categories, and sub-task hierarchy."
       },
       {
+        type: "FIX",
+        text: "Raised z-index of Share List modal to prevent list element overlapping."
+      },
+      {
         type: "IMPR",
-        text: "Added durationMinutes database column and comprehensive test suite."
+        text: "Added  unit tests to catch data integrity issues caused by the front-end."
       },
       {
         type: "IMPR",
@@ -71,7 +83,7 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     date: "2026-07-29",
     changes: [
       {
-        type: "NEW",
+        type: "IMPR",
         text: "Use active list title as notification subject line across email, SMS, and Discord channels."
       }
     ]
