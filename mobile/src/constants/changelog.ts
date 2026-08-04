@@ -19,6 +19,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Updated logout flow to invalidate central OpenAuth server session on sign-out."
+      },
+      {
+        type: "FIX",
+        text: "Fixed task search filtering so searching subtask text displays the parent task and its nested subtasks."
       }
     ]
   },

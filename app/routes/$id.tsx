@@ -2073,27 +2073,39 @@ export default function TodoPage() {
   // Optimistic list update
   const optimisticTodos: Todo[] = [...todos] as Todo[];
 
-  // 1. Filter by status (All, Active, Completed) - applies to parent tasks
-  const statusFilteredTodos = optimisticTodos.filter((t) => {
-    if (t.parentId) return true; // keep subtasks for rendering inside parent
-    if (filter === "active") return !t.completed;
-    if (filter === "completed") return t.completed;
+  // 1. Group all subtasks by parentId from optimisticTodos
+  const allSubtasksByParent = optimisticTodos.reduce((acc, t) => {
+    if (t.parentId) {
+      if (!acc[t.parentId]) acc[t.parentId] = [];
+      acc[t.parentId].push(t);
+    }
+    return acc;
+  }, {} as Record<string, Todo[]>);
+
+  // 2. Get all top-level parent tasks
+  const allParents = optimisticTodos.filter((t) => !t.parentId);
+
+  // 3. Filter parent tasks by status (All, Active, Completed) AND search query (matching parent text OR any subtask text)
+  const filteredParents = allParents.filter((parent) => {
+    if (filter === "active" && parent.completed) return false;
+    if (filter === "completed" && !parent.completed) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const parentMatches = parent.text.toLowerCase().includes(q);
+      const subtasks = allSubtasksByParent[parent.id] || [];
+      const subtaskMatches = subtasks.some((sub) => sub.text.toLowerCase().includes(q));
+
+      if (!parentMatches && !subtaskMatches) {
+        return false;
+      }
+    }
+
     return true;
   });
 
-  // 2. Filter by search query
-  const searchedTodos = statusFilteredTodos.filter((t) => {
-    if (!searchQuery) return true;
-    return t.text.toLowerCase().includes(searchQuery.toLowerCase());
-  });
-
-  // Find parent IDs that have matching subtasks
-  const parentIdsWithMatchingSubtasks = new Set(
-    searchedTodos.filter(t => t.parentId).map(t => t.parentId)
-  );
-
-  // 3. Sort tasks
-  const sortedTodos = [...searchedTodos].sort((a, b) => {
+  // 4. Sort visible parent tasks
+  const visibleParents = [...filteredParents].sort((a, b) => {
     if (sortBy === "priority") {
       const pMap = { high: 3, medium: 2, low: 1, none: 0 };
       const aVal = a.priority ? (pMap[a.priority] ?? 0) : 0;
@@ -2111,27 +2123,11 @@ export default function TodoPage() {
     return b.createdAt - a.createdAt;
   });
 
-  // 4. Extract visible parent tasks
-  const visibleParents = sortedTodos.filter((t) => {
-    if (t.parentId) return false;
-    if (!searchQuery) return true;
-    const parentMatchesText = t.text.toLowerCase().includes(searchQuery.toLowerCase());
-    const hasMatchingSub = parentIdsWithMatchingSubtasks.has(t.id);
-    return parentMatchesText || hasMatchingSub;
-  });
-
-  // 5. Group subtasks by parent
-  const subtasksMap = sortedTodos.reduce((acc, t) => {
-    if (t.parentId) {
-      if (!acc[t.parentId]) acc[t.parentId] = [];
-      acc[t.parentId].push(t);
-    }
-    return acc;
-  }, {} as Record<string, Todo[]>);
-
-  // Sort subtasks chronologically (oldest first)
-  for (const parentId in subtasksMap) {
-    subtasksMap[parentId].sort((a, b) => a.createdAt - b.createdAt);
+  // 5. Group subtasks by parent (sorted chronologically)
+  const subtasksMap: Record<string, Todo[]> = {};
+  for (const parent of visibleParents) {
+    const subs = allSubtasksByParent[parent.id] || [];
+    subtasksMap[parent.id] = [...subs].sort((a, b) => a.createdAt - b.createdAt);
   }
 
   const totalCount = optimisticTodos.filter(t => !t.parentId).length;

@@ -205,9 +205,13 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     );
   };
 
-  const filteredTodos = structuredTodos.filter((t) =>
-    t.text.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredTodos = structuredTodos.filter((parent) => {
+    if (!search.trim()) return true;
+    const q = search.toLowerCase().trim();
+    const parentMatches = parent.text.toLowerCase().includes(q);
+    const subtaskMatches = parent.subtasks?.some((st) => st.text.toLowerCase().includes(q));
+    return parentMatches || subtaskMatches;
+  });
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>

@@ -15,6 +15,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Fixed deep link routing for direct root list URLs."
+      },
+      {
+        type: "FIX",
+        text: "Fixed task search filtering so searching subtask text displays the parent task and its nested subtasks."
       }
     ]
   },
