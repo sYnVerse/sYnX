@@ -1,5 +1,6 @@
 export interface Todo {
   id: string;
+  listId: string;
   text: string;
   completed: boolean;
   createdAt: number;
@@ -51,6 +52,7 @@ export class TodoManager {
   private mapRow(t: any): Todo {
     return {
       id: t.id,
+      listId: t.list_id || this.listId,
       text: t.text,
       completed: Boolean(t.completed),
       createdAt: Number(t.created_at),
@@ -115,6 +117,7 @@ export class TodoManager {
       .run();
     return {
       id,
+      listId: this.listId,
       text,
       completed: false,
       createdAt,

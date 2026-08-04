@@ -40,7 +40,7 @@ describe("TodoManager", () => {
 
       const todos = await manager.list();
       expect(todos).toHaveLength(2);
-      expect(todos).toEqual(expect.arrayContaining([todo2, todo1]));
+      expect(todos).toEqual([todo2, todo1]);
     });
   });
 
