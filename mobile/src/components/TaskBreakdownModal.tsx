@@ -10,7 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { X, Plus, Minus, Clock, Check } from "lucide-react-native";
 import { TodoItem } from "../shared";
@@ -42,15 +42,33 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   const [newSubtaskText, setNewSubtaskText] = useState("");
   const [newSubtaskDuration, setNewSubtaskDuration] = useState("5");
 
+  const { data: listTodos } = useQuery<TodoItem[]>({
+    queryKey: ["todos", task?.listId],
+    enabled: !!task?.listId,
+  });
+
   const subtasks = useMemo(() => {
-    if (!task || !task.subtasks) return [];
-    return task.subtasks.map((st) => ({
-      id: st.id,
-      text: st.text,
-      completed: st.completed,
-      durationMinutes: st.durationMinutes ?? 5,
-    }));
-  }, [task]);
+    if (!task) return [];
+    if (listTodos) {
+      return listTodos
+        .filter((t) => t.parentId === task.id)
+        .map((st) => ({
+          id: st.id,
+          text: st.text,
+          completed: st.completed,
+          durationMinutes: st.durationMinutes ?? 5,
+        }));
+    }
+    if (task.subtasks) {
+      return task.subtasks.map((st) => ({
+        id: st.id,
+        text: st.text,
+        completed: st.completed,
+        durationMinutes: st.durationMinutes ?? 5,
+      }));
+    }
+    return [];
+  }, [task, listTodos]);
 
   const triggerHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {

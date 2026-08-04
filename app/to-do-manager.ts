@@ -88,7 +88,7 @@ export class TodoManager {
   async create(
     text: string,
     priority: "low" | "medium" | "high" | "none" = "none",
-    reminderAt?: number,
+    reminderAt?: number | null,
     parentId?: string,
     recurrence: "none" | "daily" | "weekly" | "monthly" = "none",
     durationMinutes: number | null = null,
@@ -119,7 +119,7 @@ export class TodoManager {
       completed: false,
       createdAt,
       priority,
-      reminderAt,
+      reminderAt: reminderAt || undefined,
       reminderSent: reminderAt ? false : undefined,
       parentId,
       recurrence,

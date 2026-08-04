@@ -74,7 +74,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     const baseTimestamp = initialReminderAt || Date.now();
     let reminderAt: number | undefined | null = initialReminderAt;
     if (clearReminder) {
-      reminderAt = null;
+      reminderAt = isEditing ? null : undefined;
     } else if (reminderMins !== null) {
       reminderAt = baseTimestamp + reminderMins * 60 * 1000;
     }

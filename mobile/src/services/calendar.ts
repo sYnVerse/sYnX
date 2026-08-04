@@ -60,8 +60,8 @@ async function saveEventMappings(mappings: Record<string, string>): Promise<void
 export async function checkCalendarPermissions(): Promise<boolean> {
   if (Platform.OS === "web") return false;
   try {
-    const { status } = await Calendar.getCalendarPermissionsAsync();
-    return status === "granted";
+    const res = await Calendar.getCalendarPermissionsAsync();
+    return res.status === "granted" || res.granted === true;
   } catch {
     return false;
   }
@@ -73,8 +73,12 @@ export async function checkCalendarPermissions(): Promise<boolean> {
 export async function requestCalendarPermissions(): Promise<boolean> {
   if (Platform.OS === "web") return false;
   try {
-    const { status } = await Calendar.requestCalendarPermissionsAsync();
-    return status === "granted";
+    const existing = await Calendar.getCalendarPermissionsAsync();
+    if (existing.status === "granted" || existing.granted === true) {
+      return true;
+    }
+    const res = await Calendar.requestCalendarPermissionsAsync();
+    return res.status === "granted" || res.granted === true;
   } catch {
     return false;
   }

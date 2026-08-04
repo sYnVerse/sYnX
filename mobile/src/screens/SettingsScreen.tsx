@@ -172,7 +172,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const handleToggleCalendarSync = async (val: boolean) => {
     triggerImpact();
     if (val) {
-      const granted = await requestCalendarPermissions();
+      let granted = await checkCalendarPermissions();
+      if (!granted) {
+        granted = await requestCalendarPermissions();
+      }
       if (!granted) {
         setCalendarPermission("Denied");
         Alert.alert("Permission Denied", "Calendar access is required to sync task reminders to your device calendar.");

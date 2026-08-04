@@ -23,6 +23,18 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Fixed task search filtering so searching subtask text displays the parent task and its nested subtasks."
+      },
+      {
+        type: "FIX",
+        text: "Fixed subtask creation in task breakdown modal by subscribing directly to query cache."
+      },
+      {
+        type: "FIX",
+        text: "Fixed Quick Reminder payload validation when selecting 'None' for new task creation."
+      },
+      {
+        type: "FIX",
+        text: "Fixed Calendar Sync toggle to recognize pre-granted OS calendar permissions."
       }
     ]
   },
