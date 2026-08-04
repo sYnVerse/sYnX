@@ -11,6 +11,7 @@ Rules:
 ## Versioning Rules (SemVer)
 - Web baseline version: `v5.1.1`, Mobile baseline version: `v3.0.1`.
 - All code changes must strictly follow Semantic Versioning (SemVer: `MAJOR.MINOR.PATCH`).
+- **Same-Day Fixes**: Do NOT bump version numbers multiple times on the same calendar day for incremental fixes or revisions. Append new changes as additional bullet points under the existing same-day release entry in `app/constants/changelog.ts` and `mobile/src/constants/changelog.ts`.
 - A `MAJOR` bump is required for any breaking change listed in `.claude/rules/versioning.md` (e.g. `schema.sql` mutations, endpoint signature changes, deleted public APIs).
 
 

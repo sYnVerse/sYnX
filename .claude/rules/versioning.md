@@ -27,3 +27,8 @@ A breaking change is any modification requiring downstream users to update their
 * **API Payloads**: Dropping JSON keys or mutating their data types in responses.
 * **Storage Schema**: Dropping DB columns, altering column types, or adding non-null constraints without defaults (`schema.sql`).
 * **Configuration**: Removing or renaming required environment variables or configuration keys.
+
+## 3. Same-Day Versioning Policy
+- **Consolidate Same-Day Fixes**: Do NOT bump version numbers multiple times on the same calendar day for incremental bug fixes, follow-ups, or minor revisions (e.g. do not increment `v5.1.2` -> `v5.1.3` -> `v5.1.4` on the same day).
+- **Same-Day Changelog Appending**: Append new changes as additional bullet points under the existing same-day release entry in `app/constants/changelog.ts` and `mobile/src/constants/changelog.ts`.
+- **Version Incrementing**: Only increment SemVer version numbers when starting work on a new calendar day or when explicitly requested by the user.
