@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.1.1";
+export const WEB_VERSION = "v5.1.2";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.1.2",
+    date: "2026-08-03",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Added 'Open in App' button to mobile header on list pages for seamless mobile app handoff."
+      },
+      {
+        type: "FIX",
+        text: "Fixed deep link routing for direct root list URLs."
+      }
+    ]
+  },
   {
     version: "v5.1.1",
     date: "2026-08-02",

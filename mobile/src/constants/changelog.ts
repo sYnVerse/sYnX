@@ -1,8 +1,27 @@
 import type { ReleaseNote } from "../shared/changelog";
 
-export const MOBILE_VERSION = "v3.0.1";
+export const MOBILE_VERSION = "v3.0.2";
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v3.0.2",
+    date: "2026-08-03",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Fixed deep link URL parsing to support root UUID list links (https://synx.christran.io/:id)."
+      },
+      {
+        type: "FIX",
+        text: "Updated shared list link format to match live web application routes."
+      },
+      {
+        type: "FIX",
+        text: "Updated logout flow to invalidate central OpenAuth server session on sign-out."
+      }
+    ]
+  },
   {
     version: "v3.0.1",
     date: "2026-08-02",

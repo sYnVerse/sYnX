@@ -41,11 +41,45 @@ const MainAppContent: React.FC = () => {
 
   const handleDeepLink = useCallback((url: string | null) => {
     if (!url) return;
-    const match = url.match(/\/list\/([a-zA-Z0-9-]+)/);
-    if (match && match[1]) {
-      const extractedListId = match[1];
-      setActiveListId(extractedListId);
+
+    // Ignore OAuth callback URLs
+    if (url.includes("/mobile/callback") || url.includes("/callback")) return;
+
+    // 1. Check for UUID anywhere in URL (e.g. https://synx.christran.io/26f59db4-3add-4d77-8778-18629c01938e)
+    const uuidMatch = url.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/);
+    if (uuidMatch && uuidMatch[1]) {
+      setActiveListId(uuidMatch[1]);
       setActiveTab("tasks");
+      return;
+    }
+
+    // 2. Check for /list/:id string format
+    const matchPath = url.match(/\/list\/([a-zA-Z0-9_-]+)/);
+    if (matchPath && matchPath[1]) {
+      setActiveListId(matchPath[1]);
+      setActiveTab("tasks");
+      return;
+    }
+
+    // 3. Fallback to path / query params matching
+    try {
+      const parsed = Linking.parse(url);
+      if (parsed.path) {
+        const cleanPath = parsed.path.replace(/^\//, "").trim();
+        const firstSegment = cleanPath.split("/")[0];
+        if (firstSegment && !["login", "logout", "mobile", "callback", "api"].includes(firstSegment)) {
+          setActiveListId(firstSegment);
+          setActiveTab("tasks");
+          return;
+        }
+      }
+      if (parsed.queryParams?.id) {
+        setActiveListId(String(parsed.queryParams.id));
+        setActiveTab("tasks");
+        return;
+      }
+    } catch (e) {
+      console.error("Deep link parsing error", e);
     }
   }, []);
 

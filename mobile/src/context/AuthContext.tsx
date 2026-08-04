@@ -130,6 +130,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await SecureStore.deleteItemAsync(DEVICE_PUSH_TOKEN_KEY);
       }
       await SecureStore.deleteItemAsync(TOKEN_KEY);
+
+      // Trigger central OpenAuth logout session to clear session cookies on auth.christran.io
+      const logoutUrl = `${OPENAUTH_ISSUER}/logout?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+      try {
+        await WebBrowser.openAuthSessionAsync(logoutUrl, REDIRECT_URI);
+      } catch (browserErr) {
+        console.warn("Central OpenAuth logout browser session warning:", browserErr);
+      }
+
       setToken(null);
       setUser(null);
     } catch (e) {

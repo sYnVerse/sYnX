@@ -2247,18 +2247,29 @@ export default function TodoPage() {
           </div>
           <span className="font-extrabold text-lg text-slate-200 tracking-tight font-display">sYnX</span>
         </div>
-        <button
-          onClick={() => setIsSidebarOpen((o) => !o)}
-          className="text-slate-300 p-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08]"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            {isSidebarOpen ? (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            ) : (
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-            )}
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          <a
+            href={`synx://${activeListId || ""}`}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-themeAccentFrom/20 border border-themeAccentFrom/40 text-themeAccentFrom hover:bg-themeAccentFrom/30 text-xs font-semibold transition-all shadow-sm"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+            </svg>
+            Open in App
+          </a>
+          <button
+            onClick={() => setIsSidebarOpen((o) => !o)}
+            className="text-slate-300 p-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08]"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              {isSidebarOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+        </div>
       </header>
 
       {/* ── Mobile Sidebar Overlay ───────────────────────── */}

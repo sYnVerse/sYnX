@@ -1,0 +1,22 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "io.christran.synx",
+        "paths": [
+          "/list/*",
+          "/mobile/callback"
+        ],
+        "components": [
+          {
+            "/": "/list/*"
+          },
+          {
+            "/": "/mobile/callback"
+          }
+        ]
+      }
+    ]
+  }
+}

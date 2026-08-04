@@ -234,7 +234,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 
   const handleShareLink = async (list: TodoList) => {
     try {
-      const link = `https://synx.christran.io/list/${list.id}`;
+      const link = `https://synx.christran.io/${list.id}`;
       await Share.share({
         message: `Check out my list "${list.name}" on sYnX: ${link}`,
         url: link,
