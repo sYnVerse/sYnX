@@ -1,5 +1,6 @@
 import { ActionFunctionArgs, LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
-import { getCookieAttributes, getAuthSettings } from "~/auth.server";
+import { getAuthSettings } from "~/auth.server";
+import { buildAuthClearCookieHeaders } from "~/auth-cookies.server";
 
 export const action = async ({ request, context }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
@@ -8,21 +9,18 @@ export const action = async ({ request, context }: ActionFunctionArgs) => {
 
   const url = new URL(request.url);
   const local = url.searchParams.get("local") === "true";
+  const clearHeaders = buildAuthClearCookieHeaders(request.url);
 
   if (local) {
-    return redirect("/", {
-      headers: {
-        "Set-Cookie": `synx_auth_session=; ${getCookieAttributes(request.url, 0)}`,
-      },
-    });
+    return redirect("/", { headers: clearHeaders });
   }
 
-  // Redirect to central openauth logout page
+  // Clear local session (and any leftover PKCE cookie) before central OpenAuth logout.
   const { clientID, issuer } = getAuthSettings(request, context.cloudflare.env);
   const redirectUri = url.origin + "/";
   const centralLogoutUrl = `${issuer}/logout?client_id=${clientID}&redirect_uri=${encodeURIComponent(redirectUri)}`;
 
-  return redirect(centralLogoutUrl);
+  return redirect(centralLogoutUrl, { headers: clearHeaders });
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -31,9 +29,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   if (local) {
     return redirect("/", {
-      headers: {
-        "Set-Cookie": `synx_auth_session=; ${getCookieAttributes(request.url, 0)}`,
-      },
+      headers: buildAuthClearCookieHeaders(request.url),
     });
   }
 

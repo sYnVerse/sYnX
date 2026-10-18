@@ -1,35 +1,58 @@
 import { LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
-import { getAuthClient, getCookieAttributes } from "~/auth.server";
+import { getAuthClient } from "~/auth.server";
+import {
+  AUTH_SESSION_COOKIE,
+  clearPkceCookie,
+  getCookieAttributes,
+  parsePkceCookie,
+} from "~/auth-cookies.server";
 
 export const loader = async ({ request, context }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
-  if (!code) {
-    return redirect("/login");
+  const state = url.searchParams.get("state");
+  const clearPkce = clearPkceCookie(request.url);
+
+  const reject = () =>
+    redirect("/login", {
+      headers: {
+        "Set-Cookie": clearPkce,
+      },
+    });
+
+  if (!code || !state) {
+    return reject();
+  }
+
+  const challenge = parsePkceCookie(request);
+  if (!challenge || challenge.state !== state || !challenge.verifier) {
+    console.error("OAuth callback rejected: missing or mismatched PKCE state/verifier");
+    return reject();
   }
 
   const client = getAuthClient(request, context.cloudflare.env);
   const callbackUrl = url.origin + "/callback";
 
   try {
-    const exchanged = await client.exchange(code, callbackUrl);
+    const exchanged = await client.exchange(code, callbackUrl, challenge.verifier);
     if (exchanged.err) {
       console.error("Token exchange failed:", exchanged.err);
-      return redirect("/login");
+      return reject();
     }
 
     const { access } = exchanged.tokens;
-    const domain = getCookieAttributes(request.url, 2592000);
+    const headers = new Headers();
+    // Always clear the short-lived PKCE cookie after a successful exchange.
+    headers.append("Set-Cookie", clearPkce);
+    headers.append(
+      "Set-Cookie",
+      `${AUTH_SESSION_COOKIE}=${encodeURIComponent(access)}; ${getCookieAttributes(request.url, 2592000)}`,
+    );
 
-    // Set the cookie with the access token
-    return redirect("/", {
-      headers: {
-        "Set-Cookie": `synx_auth_session=${encodeURIComponent(access)}; ${domain}`, // 30 days
-      },
-    });
+    return redirect("/", { headers });
   } catch (error) {
     console.error("Callback handler error:", error);
-    return redirect("/login");
+    return reject();
   }
 };
 
