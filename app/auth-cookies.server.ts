@@ -63,10 +63,22 @@ export function clearAuthSessionCookie(requestUrl: string): string {
   return `${AUTH_SESSION_COOKIE}=; ${getCookieAttributes(requestUrl, 0)}`;
 }
 
-/** Clear session + any in-flight PKCE cookie (e.g. logout). */
+/** Clear session + any in-flight PKCE cookie (e.g. /logout?local=true). */
 export function buildAuthClearCookieHeaders(requestUrl: string): Headers {
   const headers = new Headers();
   headers.append("Set-Cookie", clearAuthSessionCookie(requestUrl));
+  headers.append("Set-Cookie", clearPkceCookie(requestUrl));
+  return headers;
+}
+
+/**
+ * Headers for redirecting to central sYnID logout.
+ * Clears only the short-lived PKCE cookie — not synx_auth_session — so
+ * "Cancel and return" on sYnID can keep the user signed in locally.
+ * Session clearing is done by sYnID (/logout/all) or by /logout?local=true.
+ */
+export function buildCentralLogoutClearHeaders(requestUrl: string): Headers {
+  const headers = new Headers();
   headers.append("Set-Cookie", clearPkceCookie(requestUrl));
   return headers;
 }
