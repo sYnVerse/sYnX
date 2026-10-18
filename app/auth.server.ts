@@ -2,6 +2,25 @@ import { createClient } from "@openauthjs/openauth/client";
 import { createSubjects } from "@openauthjs/openauth/subject";
 import { object, string } from "valibot";
 import { redirect } from "@remix-run/cloudflare";
+import {
+  AUTH_SESSION_COOKIE,
+  clearAuthSessionCookie,
+} from "./auth-cookies.server";
+
+export {
+  AUTH_SESSION_COOKIE,
+  PKCE_COOKIE_NAME,
+  PKCE_MAX_AGE_SECONDS,
+  buildAuthClearCookieHeaders,
+  clearAuthSessionCookie,
+  clearPkceCookie,
+  getCookieAttributes,
+  getCookieDomain,
+  getPkceCookieAttributes,
+  parsePkceCookie,
+  serializePkceCookie,
+} from "./auth-cookies.server";
+export type { OAuthPkceChallenge } from "./auth-cookies.server";
 
 export const subjects = createSubjects({
   user: object({
@@ -56,26 +75,9 @@ export function getAuthClient(request: Request, env: any) {
   return client;
 }
 
-export function getCookieDomain(requestUrl: string): string {
-  const url = new URL(requestUrl);
-  const hostname = url.hostname;
-  if (hostname.endsWith(".christran.io")) {
-    return ".christran.io";
-  }
-  return "";
-}
-
-export function getCookieAttributes(requestUrl: string, maxAge: number = 0): string {
-  const url = new URL(requestUrl);
-  const domain = getCookieDomain(requestUrl);
-  const domainAttr = domain ? `; Domain=${domain}` : "";
-  const secureAttr = url.protocol === "https:" ? "; Secure" : "";
-  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${domainAttr}${secureAttr}`;
-}
-
 export async function requireUser(request: Request, env: any) {
   const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.match(/synx_auth_session=([^;]+)/);
+  const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
   const token = match ? decodeURIComponent(match[1]) : null;
 
   if (!token) {
@@ -88,7 +90,7 @@ export async function requireUser(request: Request, env: any) {
     if (verified.err) {
       throw redirect("/login", {
         headers: {
-          "Set-Cookie": `synx_auth_session=; ${getCookieAttributes(request.url, 0)}`,
+          "Set-Cookie": clearAuthSessionCookie(request.url),
         },
       });
     }
@@ -103,7 +105,7 @@ export async function requireUser(request: Request, env: any) {
     // Clear cookie and redirect to login
     throw redirect("/login", {
       headers: {
-        "Set-Cookie": `synx_auth_session=; ${getCookieAttributes(request.url, 0)}`,
+        "Set-Cookie": clearAuthSessionCookie(request.url),
       },
     });
   }
@@ -111,7 +113,7 @@ export async function requireUser(request: Request, env: any) {
 
 export async function getOptionalUser(request: Request, env: any) {
   const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.match(/synx_auth_session=([^;]+)/);
+  const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
   const token = match ? decodeURIComponent(match[1]) : null;
 
   if (token) {
@@ -160,7 +162,7 @@ export async function verifyBearerToken(request: Request, env: any) {
 
   if (!token) {
     const cookieHeader = request.headers.get("Cookie") || "";
-    const match = cookieHeader.match(/synx_auth_session=([^;]+)/);
+    const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
     token = match ? decodeURIComponent(match[1]) : null;
   }
 
@@ -181,4 +183,3 @@ export async function verifyBearerToken(request: Request, env: any) {
     return null;
   }
 }
-

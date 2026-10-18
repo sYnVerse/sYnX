@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.1.2";
+export const WEB_VERSION = "v5.1.3";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.1.3",
+    date: "2026-10-18",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Web sign-in now uses PKCE S256 (required by sYnID) and validates OAuth state before exchanging the authorization code."
+      },
+      {
+        type: "FIX",
+        text: "Logout clears the sYnX session cookie before redirecting to central sYnID logout."
+      }
+    ]
+  },
   {
     version: "v5.1.2",
     date: "2026-08-03",
