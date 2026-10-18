@@ -6,6 +6,7 @@ import { getLoadContext } from "./load-context";
 
 import { type PendingReminder } from "./app/to-do-manager";
 import { sendFCMPushNotification } from "./app/fcm.server";
+import { buildReminderEmailHtml, sanitizeEmailSubject } from "./app/html-escape.server";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
@@ -70,6 +71,9 @@ export default {
     for (const reminder of dueReminders) {
       const promises: Promise<any>[] = [];
       const listTitle = (reminder.listName && String(reminder.listName).trim()) || "Reminder";
+      // User-controlled fields for HTML email channels (Resend HTML + subjects).
+      const emailSubject = sanitizeEmailSubject(listTitle);
+      const emailHtml = buildReminderEmailHtml(reminder.text);
 
       const emailEnabled = Boolean(reminder.emailEnabled);
       const smsEnabled = Boolean(reminder.smsEnabled);
@@ -90,8 +94,8 @@ export default {
               body: JSON.stringify({
                 from: "sYnX Reminders <no-reply@synx.christran.io>",
                 to: [reminder.email],
-                subject: listTitle,
-                html: `<p>${reminder.text}</p>`,
+                subject: emailSubject,
+                html: emailHtml,
               }),
             }).then(res => {
               if (!res.ok) {
@@ -138,7 +142,7 @@ export default {
                   body: JSON.stringify({
                     from: "sYnX Reminders <no-reply@synx.christran.io>",
                     to: [gatewayEmail],
-                    subject: listTitle,
+                    subject: emailSubject,
                     text: reminder.text,
                   }),
                 }).then(res => {

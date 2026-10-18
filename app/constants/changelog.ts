@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.1.2";
+export const WEB_VERSION = "v5.1.3";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.1.3",
+    date: "2026-10-18",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Reminder emails HTML-escape task text and list titles so collaborative list content cannot inject markup into notification emails."
+      }
+    ]
+  },
   {
     version: "v5.1.2",
     date: "2026-08-03",
