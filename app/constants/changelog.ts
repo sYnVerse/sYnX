@@ -10,6 +10,14 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     changes: [
       {
         type: "FIX",
+        text: "Web sign-in now uses PKCE S256 (required by sYnID) and validates OAuth state before exchanging the authorization code."
+      },
+      {
+        type: "FIX",
+        text: "Logout clears the sYnX session cookie before redirecting to central sYnID logout."
+      },
+      {
+        type: "FIX",
         text: "Reminder emails HTML-escape task text and list titles so collaborative list content cannot inject markup into notification emails."
       }
     ]

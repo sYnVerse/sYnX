@@ -1544,6 +1544,7 @@ export default function TodoPage() {
         case "create": {
           const newTodo: Todo = {
             id: crypto.randomUUID(),
+            listId: targetListId || userId || "guest_default",
             text: payload.text,
             completed: false,
             createdAt: Date.now(),
