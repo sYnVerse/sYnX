@@ -15,6 +15,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Logout clears the sYnX session cookie before redirecting to central sYnID logout."
+      },
+      {
+        type: "FIX",
+        text: "Reminder emails HTML-escape task text and list titles so collaborative list content cannot inject markup into notification emails."
       }
     ]
   },
