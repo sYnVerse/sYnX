@@ -14,11 +14,15 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       },
       {
         type: "FIX",
-        text: "Logout clears the sYnX session cookie before redirecting to central sYnID logout."
+        text: "Logout clears the sYnX session cookie when logout is confirmed via sYnID or /logout?local=true (not before the central logout redirect)."
       },
       {
         type: "FIX",
         text: "Reminder emails HTML-escape task text and list titles so collaborative list content cannot inject markup into notification emails."
+      },
+      {
+        type: "FIX",
+        text: "Fixed sYnID logout Cancel and return: sYnX no longer clears synx_auth_session before redirecting to central logout."
       }
     ]
   },
