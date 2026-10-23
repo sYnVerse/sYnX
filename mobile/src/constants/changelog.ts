@@ -6,13 +6,20 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
-    date: "2026-10-23",
+    date: "2026-10-24",
     title: "What's new?",
     changes: [
       {
         type: "IMPR",
         text: "Stay signed in for weeks or months — the app quietly renews your session in the background and only asks you to sign in again if renewal fails."
-      },
+      }
+    ]
+  },
+  {
+    version: "v3.2.0",
+    date: "2026-10-23",
+    title: "What's new?",
+    changes: [
       {
         type: "FIX",
         text: "Android / EAS builds now use the same version as What's New (3.2.0) — fixed app config drift that left the store-visible version stuck on 3.0.2."
