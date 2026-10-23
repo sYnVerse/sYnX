@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.1.3";
+export const WEB_VERSION = "v5.1.4";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.1.4",
+    date: "2026-10-23",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "GET /api/v1/lists/:id now returns distinct NOT_FOUND (404) and PRIVATE_LIST (403) codes for clearer client UX."
+      }
+    ]
+  },
   {
     version: "v5.1.3",
     date: "2026-10-18",

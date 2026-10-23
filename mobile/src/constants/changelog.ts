@@ -1,8 +1,31 @@
 import type { ReleaseNote } from "../shared/changelog";
 
-export const MOBILE_VERSION = "v3.0.2";
+export const MOBILE_VERSION = "v3.1.0";
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v3.1.0",
+    date: "2026-10-23",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Clear permission banners on opened lists (Private, View-Only, Collaborative) for owners and shared viewers."
+      },
+      {
+        type: "NEW",
+        text: "Friendly states when a shared list is private, missing, or fails to load, with a path back to your lists."
+      },
+      {
+        type: "IMPR",
+        text: "View-Only mode hides edit affordances on Tasks and Calendar instead of failing after an attempt."
+      },
+      {
+        type: "FIX",
+        text: "Deep-linked shared lists are no longer overwritten by the default owned-list resolver after sign-in."
+      }
+    ]
+  },
   {
     version: "v3.0.2",
     date: "2026-08-03",

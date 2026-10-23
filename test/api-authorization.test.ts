@@ -57,6 +57,14 @@ describe("REST API Authorization & Share Modes", () => {
     expect(access.hasAccess).toBe(false);
     expect(access.canEdit).toBe(false);
     expect(access.isOwner).toBe(false);
+    expect(access.denial).toBe("private");
+  });
+
+  it("marks missing lists as not_found", async () => {
+    const access = await getListAccess(db, "does-not-exist", otherUserId);
+    expect(access.hasAccess).toBe(false);
+    expect(access.list).toBeNull();
+    expect(access.denial).toBe("not_found");
   });
 
   it("grants read-only access for public_read list to non-owners", async () => {

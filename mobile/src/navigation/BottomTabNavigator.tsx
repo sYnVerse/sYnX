@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from "react-native";
 import * as Linking from "expo-linking";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +27,35 @@ async function fetchOrCreateActiveListId(): Promise<string> {
   return newId;
 }
 
+function extractListIdFromUrl(url: string): string | null {
+  if (url.includes("/mobile/callback") || url.includes("/callback")) return null;
+
+  const uuidMatch = url.match(
+    /([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/
+  );
+  if (uuidMatch?.[1]) return uuidMatch[1];
+
+  const matchPath = url.match(/\/list\/([a-zA-Z0-9_-]+)/);
+  if (matchPath?.[1]) return matchPath[1];
+
+  try {
+    const parsed = Linking.parse(url);
+    if (parsed.path) {
+      const cleanPath = parsed.path.replace(/^\//, "").trim();
+      const firstSegment = cleanPath.split("/")[0];
+      if (firstSegment && !["login", "logout", "mobile", "callback", "api"].includes(firstSegment)) {
+        return firstSegment;
+      }
+    }
+    if (parsed.queryParams?.id) {
+      return String(parsed.queryParams.id);
+    }
+  } catch (e) {
+    console.error("Deep link parsing error", e);
+  }
+  return null;
+}
+
 const MainAppContent: React.FC = () => {
   const { token, login, isLoading } = useAuth();
   const { theme } = useTheme();
@@ -39,49 +68,27 @@ const MainAppContent: React.FC = () => {
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsActions, setSettingsActions] = useState<{ save: () => Promise<boolean>; reset: () => void } | null>(null);
 
-  const handleDeepLink = useCallback((url: string | null) => {
-    if (!url) return;
+  /** Survives logout/login so deep-linked shared lists are not overwritten by owned-list resolve. */
+  const pendingDeepLinkListIdRef = useRef<string | null>(null);
 
-    // Ignore OAuth callback URLs
-    if (url.includes("/mobile/callback") || url.includes("/callback")) return;
-
-    // 1. Check for UUID anywhere in URL (e.g. https://synx.christran.io/26f59db4-3add-4d77-8778-18629c01938e)
-    const uuidMatch = url.match(/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/);
-    if (uuidMatch && uuidMatch[1]) {
-      setActiveListId(uuidMatch[1]);
-      setActiveTab("tasks");
-      return;
-    }
-
-    // 2. Check for /list/:id string format
-    const matchPath = url.match(/\/list\/([a-zA-Z0-9_-]+)/);
-    if (matchPath && matchPath[1]) {
-      setActiveListId(matchPath[1]);
-      setActiveTab("tasks");
-      return;
-    }
-
-    // 3. Fallback to path / query params matching
-    try {
-      const parsed = Linking.parse(url);
-      if (parsed.path) {
-        const cleanPath = parsed.path.replace(/^\//, "").trim();
-        const firstSegment = cleanPath.split("/")[0];
-        if (firstSegment && !["login", "logout", "mobile", "callback", "api"].includes(firstSegment)) {
-          setActiveListId(firstSegment);
-          setActiveTab("tasks");
-          return;
-        }
-      }
-      if (parsed.queryParams?.id) {
-        setActiveListId(String(parsed.queryParams.id));
-        setActiveTab("tasks");
-        return;
-      }
-    } catch (e) {
-      console.error("Deep link parsing error", e);
-    }
+  const applyDeepLinkedList = useCallback((listId: string) => {
+    pendingDeepLinkListIdRef.current = listId;
+    setActiveListId(listId);
+    setActiveTab("tasks");
+    setListError(null);
+    setListLoading(false);
   }, []);
+
+  const handleDeepLink = useCallback(
+    (url: string | null) => {
+      if (!url) return;
+      const listId = extractListIdFromUrl(url);
+      if (listId) {
+        applyDeepLinkedList(listId);
+      }
+    },
+    [applyDeepLinkedList]
+  );
 
   useEffect(() => {
     Linking.getInitialURL().then((url) => {
@@ -103,6 +110,7 @@ const MainAppContent: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ["lists"] });
     } else if ((targetTab === "tasks" || targetTab === "calendar") && activeListId) {
       queryClient.invalidateQueries({ queryKey: ["todos", activeListId] });
+      queryClient.invalidateQueries({ queryKey: ["list_meta", activeListId] });
     }
   };
 
@@ -142,11 +150,24 @@ const MainAppContent: React.FC = () => {
   };
 
   const resolveActiveList = useCallback(async () => {
+    // Prefer a pending deep-linked list over inventing/picking an owned list.
+    if (pendingDeepLinkListIdRef.current) {
+      setActiveListId(pendingDeepLinkListIdRef.current);
+      setListLoading(false);
+      setListError(null);
+      return;
+    }
+
     setListLoading(true);
     setListError(null);
     try {
       const id = await fetchOrCreateActiveListId();
-      setActiveListId(id);
+      // Deep link may have arrived while we were resolving.
+      if (pendingDeepLinkListIdRef.current) {
+        setActiveListId(pendingDeepLinkListIdRef.current);
+      } else {
+        setActiveListId(id);
+      }
     } catch (e: any) {
       console.error("Failed to resolve active list", e);
       setActiveListId(null);
@@ -158,6 +179,7 @@ const MainAppContent: React.FC = () => {
 
   useEffect(() => {
     if (!token) {
+      // Keep pendingDeepLinkListIdRef so post-login we reopen the shared list.
       setActiveListId(null);
       setListError(null);
       setListLoading(false);
@@ -165,6 +187,25 @@ const MainAppContent: React.FC = () => {
     }
     resolveActiveList();
   }, [token, resolveActiveList]);
+
+  const selectOwnedOrOtherList = (id: string) => {
+    // Explicit user selection clears deep-link priority.
+    pendingDeepLinkListIdRef.current = null;
+    setActiveListId(id);
+    handleTabSwitch("tasks");
+  };
+
+  const goToMyLists = useCallback(async () => {
+    pendingDeepLinkListIdRef.current = null;
+    setActiveTab("lists");
+    try {
+      const id = await fetchOrCreateActiveListId();
+      setActiveListId(id);
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+    } catch (e) {
+      console.error("Failed to return to owned lists", e);
+    }
+  }, [queryClient]);
 
   if (isLoading) {
     return (
@@ -176,10 +217,15 @@ const MainAppContent: React.FC = () => {
   }
 
   if (!token) {
+    const pendingShared = pendingDeepLinkListIdRef.current;
     return (
       <SafeAreaView style={[styles.centered, { backgroundColor: theme.bg }]}>
         <Text style={[styles.title, { color: theme.textPrimary }]}>sYnX</Text>
-        <Text style={[styles.subtitle, { color: theme.textMuted }]}>Sync your tasks. Execute your day.</Text>
+        <Text style={[styles.subtitle, { color: theme.textMuted }]}>
+          {pendingShared
+            ? "Sign in to open this shared list."
+            : "Sync your tasks. Execute your day."}
+        </Text>
         <TouchableOpacity style={[styles.loginBtn, { backgroundColor: theme.accent }]} onPress={login}>
           <Text style={styles.loginBtnText}>Sign In with sYnID</Text>
         </TouchableOpacity>
@@ -210,15 +256,14 @@ const MainAppContent: React.FC = () => {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
       <View style={styles.content}>
-        {activeTab === "tasks" && <TasksScreen listId={activeListId} />}
+        {activeTab === "tasks" && (
+          <TasksScreen listId={activeListId} onGoToMyLists={goToMyLists} />
+        )}
         {activeTab === "calendar" && <CalendarScreen listId={activeListId} />}
         {activeTab === "lists" && (
           <ListsScreen
             activeListId={activeListId}
-            onSelectList={(id) => {
-              setActiveListId(id);
-              handleTabSwitch("tasks");
-            }}
+            onSelectList={selectOwnedOrOtherList}
           />
         )}
         {activeTab === "settings" && (
