@@ -3,13 +3,14 @@
   "version": "3.2.0",
   "main": "expo/AppEntry.js",
   "scripts": {
-    "prestart": "node ./scripts/sync-shared.js",
-    "prebuild": "node ./scripts/sync-shared.js",
+    "prestart": "node ./scripts/sync-shared.js && node ./scripts/sync-version.js",
+    "prebuild": "node ./scripts/sync-shared.js && node ./scripts/sync-version.js",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "eas-build-pre-install": "node ./scripts/sync-shared.js && node ./scripts/decode-google-services.js",
+    "eas-build-pre-install": "node ./scripts/sync-shared.js && node ./scripts/sync-version.js && node ./scripts/decode-google-services.js",
+    "sync-version": "node ./scripts/sync-shared.js && node ./scripts/sync-version.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

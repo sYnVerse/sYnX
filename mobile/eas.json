@@ -9,14 +9,14 @@
       "distribution": "internal"
     },
     "preview": {
-      "autoIncrement": true,
+      "autoIncrement": "versionCode",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
       }
     },
     "production": {
-      "autoIncrement": true,
+      "autoIncrement": "versionCode",
       "android": {
         "buildType": "app-bundle"
       }

@@ -1,13 +1,18 @@
 import type { ReleaseNote } from "../shared/changelog";
+import { MOBILE_VERSION } from "./version";
 
-export const MOBILE_VERSION = "v3.2.0";
+export { MOBILE_VERSION };
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
-    version: "v3.2.0",
+    version: MOBILE_VERSION,
     date: "2026-10-23",
     title: "What's new?",
     changes: [
+      {
+        type: "FIX",
+        text: "Android / EAS builds now use the same version as What's New (3.2.0) — fixed app config drift that left the store-visible version stuck on 3.0.2."
+      },
       {
         type: "NEW",
         text: "Tasks screen shows which list you're in (Yours vs Shared with you) with a Switch control to jump to My Lists."

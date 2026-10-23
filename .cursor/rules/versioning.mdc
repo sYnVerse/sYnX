@@ -37,3 +37,14 @@ A breaking change is any modification requiring downstream users to update their
 - **Consolidate Same-Day Fixes**: Do NOT bump version numbers multiple times on the same calendar day for incremental bug fixes, follow-ups, or minor revisions (e.g. do not increment `v5.1.2` -> `v5.1.3` -> `v5.1.4` on the same day).
 - **Same-Day Changelog Appending**: Append new changes as additional bullet points under the existing same-day release entry in `app/constants/changelog.ts` and `mobile/src/constants/changelog.ts`.
 - **Version Incrementing**: Only increment SemVer version numbers when starting work on a new calendar day or when explicitly requested by the user.
+
+## 4. Mobile app version (Expo / EAS) — single source of truth
+User-facing SemVer (Android `versionName` / iOS short version / What's New) lives **only** in `shared/mobile-version.ts` (`MOBILE_APP_VERSION`).
+
+Bump checklist:
+1. Edit `MOBILE_APP_VERSION` in `shared/mobile-version.ts`.
+2. Update `mobile/src/constants/changelog.ts` What's New (uses `MOBILE_VERSION` from shared via `version.ts`).
+3. Run `npm run sync-version` in `mobile/` (sync-shared + mirror into `package.json` / `app.json`; also on prestart / prebuild / eas-build-pre-install).
+4. `mobile/app.config.js` forces Expo `version` from that SSOT at EAS build time.
+
+Android `versionCode` / iOS `buildNumber` are EAS-remote (`eas.json` `appVersionSource: "remote"` + `autoIncrement: "versionCode"`). No committed `android/` dir — do not use `expo prebuild` just to bump versions.

@@ -15,6 +15,7 @@ import {
   buildCategorizedListName,
   contrastRatio,
 } from "../shared/mobile-ux";
+import { MOBILE_APP_VERSION, MOBILE_VERSION } from "../shared/mobile-version";
 
 describe("evaluateSoftAskPolicy", () => {
   const base = {
@@ -157,6 +158,15 @@ describe("date / priority / list name formatting", () => {
     expect(stripLeadingCategoryEmoji("🎓 French HW", "🎓")).toBe("French HW");
     expect(buildCategorizedListName("🎓", "Study", "French HW")).toBe("🎓 French HW");
     expect(buildCategorizedListName("✏️", "Custom", "Project X")).toBe("Project X");
+  });
+});
+
+describe("mobile version single source of truth", () => {
+  it("exports a valid SemVer and matching display form", () => {
+    expect(MOBILE_APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(MOBILE_VERSION).toBe(`v${MOBILE_APP_VERSION}`);
+    // Current release for this PR
+    expect(MOBILE_APP_VERSION).toBe("3.2.0");
   });
 });
 
