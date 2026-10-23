@@ -1,17 +1,28 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, FlatList, StyleSheet, TouchableOpacity, Platform, RefreshControl } from "react-native";
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  Platform,
+  RefreshControl,
+} from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Clock, Check, Calendar as CalendarIcon, Plus } from "lucide-react-native";
+import { Clock, Check, Calendar as CalendarIcon, Plus, Bell, Flag } from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoItem, TodoList } from "../shared";
+import { TodoItem, TodoList, type PriorityLevel } from "../shared";
 import { useTheme } from "../context/ThemeContext";
+import { useToast } from "../context/ToastContext";
 import { TaskModal } from "../components/TaskModal";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
 import { syncTaskToNativeCalendar } from "../services/calendar";
+import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
+import { formatFriendlyDate, formatReminderTime, priorityColor, priorityLabel } from "../utils/format";
+import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 
-// Helper to convert timestamp or Date to local YYYY-MM-DD string
 const getLocalDateString = (dateInput: Date | number = new Date()) => {
   const d = typeof dateInput === "number" ? new Date(dateInput) : dateInput;
   const y = d.getFullYear();
@@ -21,7 +32,8 @@ const getLocalDateString = (dateInput: Date | number = new Date()) => {
 };
 
 export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
-  const { theme, themeMode, hapticsEnabled } = useTheme();
+  const { theme, resolvedMode, hapticsEnabled } = useTheme();
+  const { showError } = useToast();
   const queryClient = useQueryClient();
   const today = getLocalDateString();
   const [selectedDate, setSelectedDate] = useState(today);
@@ -41,12 +53,11 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     },
   });
 
-  // Fail closed until list meta confirms edit access.
   const canEdit = listMeta?.canEdit === true;
   const isOwner = listMeta?.isOwner === true;
   const shareMode = listMeta?.shareMode ?? "private";
 
-  const { data: todos, isRefetching, refetch } = useQuery({
+  const { data: todos, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
@@ -73,6 +84,11 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     }
   };
 
+  const onMutationError = (e: unknown, fallback: string) => {
+    triggerErrorHaptic(hapticsEnabled);
+    showError(getErrorMessage(e, fallback));
+  };
+
   const toggleMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiClient.post(`/api/v1/todos/${id}/toggle`);
@@ -87,6 +103,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
+    onError: (e) => onMutationError(e, "Couldn't update task"),
   });
 
   const createMutation = useMutation({
@@ -104,6 +121,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
+    onError: (e) => onMutationError(e, "Couldn't create task"),
   });
 
   const markedDates: Record<string, any> = {};
@@ -130,7 +148,6 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     return d === selectedDate;
   });
 
-  // Calculate default 9:00 AM timestamp for selected date
   const getSelectedDate9AMTimestamp = () => {
     const parts = selectedDate.split("-").map(Number);
     if (parts.length === 3) {
@@ -143,16 +160,12 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {listMeta ? (
-        <ListPermissionBanner
-          shareMode={shareMode}
-          isOwner={isOwner}
-          canEdit={canEdit}
-        />
+        <ListPermissionBanner shareMode={shareMode} isOwner={isOwner} canEdit={canEdit} />
       ) : null}
 
       <View style={styles.calendarCard}>
         <Calendar
-          key={themeMode}
+          key={resolvedMode}
           current={selectedDate}
           onDayPress={(day: DateData) => {
             triggerImpactHaptic();
@@ -188,80 +201,129 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
 
       <View style={styles.scheduleHeader}>
         <CalendarIcon size={16} color={theme.accent} />
-        <Text style={[styles.scheduleTitle, { color: theme.textPrimary }]}>
-          Schedule for {selectedDate}
+        <Text style={[styles.scheduleTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
+          Schedule for {formatFriendlyDate(selectedDate)}
         </Text>
       </View>
 
-      <FlatList
-        data={selectedDateTodos}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 110 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching}
-            onRefresh={refetch}
-            tintColor={theme.accent}
-            colors={[theme.accent]}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-              No tasks scheduled for this date.
-            </Text>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.todoCard,
-              {
-                backgroundColor: theme.cardBg,
-                borderColor: theme.cardBorder,
-                shadowColor: theme.shadowColor,
-              },
-            ]}
+      {isError && !todos ? (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+            {getErrorMessage(error, "Couldn't load schedule.")}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: theme.accent }]}
+            onPress={() => refetch()}
+            accessibilityRole="button"
+            accessibilityLabel="Retry"
           >
-            <TouchableOpacity
-              disabled={!canEdit}
-              style={[
-                styles.checkbox,
-                { borderColor: theme.accent },
-                item.completed && { backgroundColor: theme.accent },
-                !canEdit && { opacity: 0.7 },
-              ]}
-              onPress={() => {
-                if (!canEdit) return;
-                toggleMutation.mutate(item.id);
-              }}
-            >
-              {item.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-            </TouchableOpacity>
-
-            <View style={{ flex: 1 }}>
-              <Text
-                style={[
-                  styles.todoText,
-                  { color: theme.textPrimary },
-                  item.completed && { textDecorationLine: "line-through", color: theme.textMuted },
-                ]}
-              >
-                {item.text}
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={selectedDateTodos}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingBottom: 110 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              tintColor={theme.accent}
+              colors={[theme.accent]}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: theme.textMuted }]}>
+                No tasks scheduled for this date.
               </Text>
             </View>
+          }
+          renderItem={({ item }) => {
+            const prio = (item.priority || "none") as PriorityLevel;
+            return (
+              <View
+                style={[
+                  styles.todoCard,
+                  {
+                    backgroundColor: theme.cardBg,
+                    borderColor: theme.cardBorder,
+                    shadowColor: theme.shadowColor,
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  disabled={!canEdit}
+                  style={[styles.checkboxHit, !canEdit && { opacity: 0.7 }]}
+                  onPress={() => {
+                    if (!canEdit) return;
+                    toggleMutation.mutate(item.id);
+                  }}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: item.completed, disabled: !canEdit }}
+                  accessibilityLabel={`Mark ${item.text} ${item.completed ? "incomplete" : "complete"}`}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      { borderColor: theme.accent },
+                      item.completed && { backgroundColor: theme.accent },
+                    ]}
+                  >
+                    {item.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+                  </View>
+                </TouchableOpacity>
 
-            {item.durationMinutes ? (
-              <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
-                <Clock size={11} color={theme.accent} />
-                <Text style={[styles.durationText, { color: theme.accent }]}>
-                  {item.durationMinutes}m
-                </Text>
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={[
+                      styles.todoText,
+                      { color: theme.textPrimary },
+                      item.completed && { textDecorationLine: "line-through", color: theme.textMuted },
+                    ]}
+                    maxFontSizeMultiplier={1.4}
+                  >
+                    {item.text}
+                  </Text>
+                  <View style={styles.badgeRow}>
+                    {prio !== "none" && (
+                      <View
+                        style={[
+                          styles.pillBadge,
+                          { backgroundColor: priorityColor(prio, theme) + "22" },
+                        ]}
+                      >
+                        <Flag size={11} color={priorityColor(prio, theme)} />
+                        <Text style={[styles.pillBadgeText, { color: priorityColor(prio, theme) }]}>
+                          {priorityLabel(prio)}
+                        </Text>
+                      </View>
+                    )}
+                    {item.reminderAt ? (
+                      <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
+                        <Bell size={11} color={theme.accent} />
+                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
+                          {formatReminderTime(item.reminderAt)}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+
+                {item.durationMinutes ? (
+                  <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
+                    <Clock size={11} color={theme.accent} />
+                    <Text style={[styles.durationText, { color: theme.accent }]}>
+                      {item.durationMinutes}m
+                    </Text>
+                  </View>
+                ) : null}
               </View>
-            ) : null}
-          </View>
-        )}
-      />
+            );
+          }}
+        />
+      )}
 
       {canEdit && (
         <TouchableOpacity
@@ -270,6 +332,8 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
             triggerImpactHaptic();
             setModalVisible(true);
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Add task for selected date"
         >
           <Plus size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -279,9 +343,9 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         initialReminderAt={getSelectedDate9AMTimestamp()}
-        onSave={(newTodo) => {
+        onSave={async (newTodo) => {
           if (!canEdit) return;
-          createMutation.mutate(newTodo);
+          await createMutation.mutateAsync(newTodo);
         }}
       />
     </View>
@@ -291,13 +355,13 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
   calendarCard: {
     borderRadius: 20,
     overflow: "hidden",
-    marginBottom: 16,
+    marginBottom: spacing.md,
     elevation: 4,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -310,7 +374,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   scheduleTitle: {
-    fontSize: 16,
+    fontSize: typography.md,
     fontWeight: "700",
   },
   emptyContainer: {
@@ -318,7 +382,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: {
-    fontSize: 13,
+    fontSize: typography.sm,
+  },
+  retryBtn: {
+    marginTop: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 12,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: "center",
+  },
+  retryText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   todoCard: {
     flexDirection: "row",
@@ -327,7 +403,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     marginBottom: 10,
-    gap: 12,
+    gap: 8,
+  },
+  checkboxHit: {
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    alignItems: "center",
+    justifyContent: "center",
   },
   checkbox: {
     width: 20,
@@ -338,8 +420,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   todoText: {
-    fontSize: 14,
+    fontSize: typography.sm,
     fontWeight: "500",
+  },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+  },
+  pillBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    gap: 4,
+  },
+  pillBadgeText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
   },
   durationBadge: {
     flexDirection: "row",
@@ -350,7 +450,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   durationText: {
-    fontSize: 11,
+    fontSize: typography.xs,
     fontWeight: "700",
   },
   fab: {

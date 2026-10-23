@@ -1,8 +1,48 @@
 import type { ReleaseNote } from "../shared/changelog";
+import { MOBILE_VERSION } from "./version";
 
-export const MOBILE_VERSION = "v3.1.0";
+export { MOBILE_VERSION };
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
+  {
+    version: MOBILE_VERSION,
+    date: "2026-10-23",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Android / EAS builds now use the same version as What's New (3.2.0) — fixed app config drift that left the store-visible version stuck on 3.0.2."
+      },
+      {
+        type: "NEW",
+        text: "Tasks screen shows which list you're in (Yours vs Shared with you) with a Switch control to jump to My Lists."
+      },
+      {
+        type: "NEW",
+        text: "Friendly notification prompt after sign-in — enable reminders without digging into Settings; tokens refresh automatically when permission is already granted."
+      },
+      {
+        type: "NEW",
+        text: "Settings includes your sYnID account, a System theme option, autosaved reminder channels, and a simple Push notifications toggle."
+      },
+      {
+        type: "IMPR",
+        text: "Failed saves show a toast and keep the sheet open; task load errors offer Retry instead of looking empty; offline shows a cached-copy note."
+      },
+      {
+        type: "IMPR",
+        text: "Larger tap targets, clearer priority and reminder pills, friendlier calendar dates, and better contrast for muted text and version badges."
+      },
+      {
+        type: "IMPR",
+        text: "Subtask minutes and titles edit locally and save on blur; list create/edit/share use bottom sheets with keyboard avoidance."
+      },
+      {
+        type: "IMPR",
+        text: "Readable type scale and centered wide-screen layout for tablets."
+      }
+    ]
+  },
   {
     version: "v3.1.0",
     date: "2026-10-23",

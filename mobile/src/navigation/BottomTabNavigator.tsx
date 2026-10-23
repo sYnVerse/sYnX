@@ -8,9 +8,12 @@ import { ListsScreen } from "../screens/ListsScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { FloatingTabBar, TabType } from "../components/FloatingTabBar";
 import { useAuth } from "../context/AuthContext";
-import { ThemeProvider, useTheme } from "../context/ThemeContext";
+import { useTheme } from "../context/ThemeContext";
 import { apiClient } from "../api/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { ScreenContainer } from "../components/ScreenContainer";
+import { PushPromptProvider } from "../context/PushPromptContext";
+import { typography } from "../theme/theme";
 
 async function fetchOrCreateActiveListId(): Promise<string> {
   const res = await apiClient.get("/api/v1/lists");
@@ -221,7 +224,7 @@ const MainAppContent: React.FC = () => {
     return (
       <SafeAreaView style={[styles.centered, { backgroundColor: theme.bg }]}>
         <Text style={[styles.title, { color: theme.textPrimary }]}>sYnX</Text>
-        <Text style={[styles.subtitle, { color: theme.textMuted }]}>
+        <Text style={[styles.subtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
           {pendingShared
             ? "Sign in to open this shared list."
             : "Sync your tasks. Execute your day."}
@@ -253,38 +256,42 @@ const MainAppContent: React.FC = () => {
     );
   }
 
+  // Soft-ask / silent token refresh only once the authenticated main shell is up
+  // (not over login or list-loading), and PushPromptProvider itself waits for What's New.
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
-      <View style={styles.content}>
-        {activeTab === "tasks" && (
-          <TasksScreen listId={activeListId} onGoToMyLists={goToMyLists} />
-        )}
-        {activeTab === "calendar" && <CalendarScreen listId={activeListId} />}
-        {activeTab === "lists" && (
-          <ListsScreen
-            activeListId={activeListId}
-            onSelectList={selectOwnedOrOtherList}
-          />
-        )}
-        {activeTab === "settings" && (
-          <SettingsScreen
-            onDirtyChange={setSettingsDirty}
-            onRegisterActions={setSettingsActions}
-          />
-        )}
-      </View>
+    <PushPromptProvider enabled>
+      <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
+        <ScreenContainer style={styles.content} maxWidth={840}>
+          {activeTab === "tasks" && (
+            <TasksScreen
+              listId={activeListId}
+              onGoToMyLists={goToMyLists}
+              onSwitchLists={() => handleTabSwitch("lists")}
+            />
+          )}
+          {activeTab === "calendar" && <CalendarScreen listId={activeListId} />}
+          {activeTab === "lists" && (
+            <ListsScreen
+              activeListId={activeListId}
+              onSelectList={selectOwnedOrOtherList}
+            />
+          )}
+          {activeTab === "settings" && (
+            <SettingsScreen
+              onDirtyChange={setSettingsDirty}
+              onRegisterActions={setSettingsActions}
+            />
+          )}
+        </ScreenContainer>
 
-      <FloatingTabBar activeTab={activeTab} onTabChange={handleTabSwitch} />
-    </View>
+        <FloatingTabBar activeTab={activeTab} onTabChange={handleTabSwitch} />
+      </View>
+    </PushPromptProvider>
   );
 };
 
 export const BottomTabNavigator: React.FC = () => {
-  return (
-    <ThemeProvider>
-      <MainAppContent />
-    </ThemeProvider>
-  );
+  return <MainAppContent />;
 };
 
 const styles = StyleSheet.create({
@@ -301,13 +308,13 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   title: {
-    fontSize: 32,
+    fontSize: typography.display,
     fontWeight: "800",
     marginBottom: 8,
     letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: typography.md,
     textAlign: "center",
     marginBottom: 24,
   },

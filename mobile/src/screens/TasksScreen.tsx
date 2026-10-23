@@ -13,23 +13,41 @@ import {
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Search, RefreshCw, Plus, Check, Trash2, Clock, ListTree, Repeat, Pencil } from "lucide-react-native";
+import {
+  Search,
+  RefreshCw,
+  Plus,
+  Check,
+  Trash2,
+  Clock,
+  ListTree,
+  Repeat,
+  Pencil,
+  FolderKanban,
+  Bell,
+  Flag,
+} from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoItem, TodoList, type ListAccessDenialCode } from "../shared";
+import { TodoItem, TodoList, type ListAccessDenialCode, type PriorityLevel } from "../shared";
 import { TaskModal } from "../components/TaskModal";
 import { TaskBreakdownModal } from "../components/TaskBreakdownModal";
 import { TaskCardSkeleton } from "../components/SkeletonLoader";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
 import { ListAccessErrorState, type ListAccessErrorKind } from "../components/ListAccessErrorState";
 import { useTheme } from "../context/ThemeContext";
+import { useToast } from "../context/ToastContext";
 import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../services/calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
+import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
+import { formatReminderTime, priorityColor, priorityLabel, listOwnershipLabel } from "../utils/format";
+import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 
 export interface TasksScreenProps {
   listId: string;
   onGoToMyLists?: () => void;
+  onSwitchLists?: () => void;
 }
 
 function classifyListMetaError(error: unknown): {
@@ -59,8 +77,13 @@ function classifyListMetaError(error: unknown): {
   return { kind: "UNKNOWN" };
 }
 
-export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists }) => {
+export const TasksScreen: React.FC<TasksScreenProps> = ({
+  listId,
+  onGoToMyLists,
+  onSwitchLists,
+}) => {
   const { theme, hapticsEnabled } = useTheme();
+  const { showError } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -109,14 +132,21 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
     },
   });
 
-  // Fail closed: until meta loads successfully, treat as non-editable.
   const canEdit = listMeta?.canEdit === true;
   const isOwner = listMeta?.isOwner === true;
   const shareMode = listMeta?.shareMode ?? "private";
 
   const accessError = listMetaIsError ? classifyListMetaError(listMetaError) : null;
 
-  const { data: rawTodos, refetch, isRefetching, isLoading, isError: todosIsError, error: todosError } = useQuery({
+  const {
+    data: rawTodos,
+    refetch,
+    isRefetching,
+    isLoading,
+    isError: todosIsError,
+    error: todosError,
+    isFetching,
+  } = useQuery({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
@@ -130,7 +160,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
     },
   });
 
-  // Group subtasks under their parent tasks and filter child tasks out of the top-level list
+  const showingCachedWhileOffline = Boolean(todosIsError && rawTodos);
+
   const structuredTodos = useMemo(() => {
     if (!rawTodos) return [];
     const parentMap: Record<string, TodoItem & { subtasks: TodoItem[] }> = {};
@@ -165,6 +196,11 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
     }
   };
 
+  const onMutationError = (error: unknown, fallback: string) => {
+    triggerErrorHaptic(hapticsEnabled);
+    showError(getErrorMessage(error, fallback));
+  };
+
   React.useEffect(() => {
     if (listId && listMeta) {
       refetch();
@@ -186,6 +222,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
+    onError: (e) => onMutationError(e, "Couldn't update task"),
   });
 
   const deleteMutation = useMutation({
@@ -203,6 +240,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
+    onError: (e) => onMutationError(e, "Couldn't delete task"),
   });
 
   const createMutation = useMutation({
@@ -220,6 +258,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
+    onError: (e) => onMutationError(e, "Couldn't create task"),
   });
 
   const updateMutation = useMutation({
@@ -237,23 +276,20 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
+    onError: (e) => onMutationError(e, "Couldn't update task"),
   });
 
   const handleDeleteTask = (task: TodoItem) => {
     if (!canEdit) return;
     triggerImpactHaptic();
-    Alert.alert(
-      "Delete Task",
-      `Are you sure you want to delete "${task.text}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteMutation.mutate(task.id),
-        },
-      ]
-    );
+    Alert.alert("Delete Task", `Are you sure you want to delete "${task.text}"?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => deleteMutation.mutate(task.id),
+      },
+    ]);
   };
 
   const filteredTodos = structuredTodos.filter((parent) => {
@@ -263,6 +299,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
     const subtaskMatches = parent.subtasks?.some((st) => st.text.toLowerCase().includes(q));
     return parentMatches || subtaskMatches;
   });
+
+  const ownershipLabel = listOwnershipLabel(isOwner);
 
   if (listMetaLoading && !listMeta) {
     return (
@@ -303,7 +341,6 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      {/* Header & Search */}
       <View style={styles.searchRow}>
         <View
           style={[
@@ -321,6 +358,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
             placeholderTextColor={theme.inputPlaceholder}
             value={search}
             onChangeText={setSearch}
+            accessibilityLabel="Search tasks"
           />
         </View>
         <TouchableOpacity
@@ -330,28 +368,60 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
             refetchListMeta();
             refetch();
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Refresh tasks"
         >
           <RefreshCw size={18} color={theme.textSecondary} />
         </TouchableOpacity>
       </View>
 
-      {/* List title + permission indicator */}
-      {listMeta?.name ? (
-        <Text style={[styles.listTitle, { color: theme.textPrimary }]} numberOfLines={1}>
-          {listMeta.name}
-        </Text>
-      ) : null}
+      {/* List context header */}
+      <View style={styles.listHeader}>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={[styles.listTitle, { color: theme.textPrimary }]}
+            numberOfLines={2}
+            maxFontSizeMultiplier={1.4}
+          >
+            {listMeta?.name || "List"}
+          </Text>
+          <Text style={[styles.ownershipText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+            {ownershipLabel}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.switchListBtn, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
+          onPress={() => {
+            triggerImpactHaptic();
+            onSwitchLists?.();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Switch lists"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <FolderKanban size={16} color={theme.accent} />
+          <Text style={[styles.switchListText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
+            Switch
+          </Text>
+        </TouchableOpacity>
+      </View>
 
       {listMeta ? (
-        <ListPermissionBanner
-          shareMode={shareMode}
-          isOwner={isOwner}
-          canEdit={canEdit}
-        />
+        <ListPermissionBanner shareMode={shareMode} isOwner={isOwner} canEdit={canEdit} />
       ) : null}
 
-      {/* Task List */}
-      {isLoading ? (
+      {showingCachedWhileOffline ? (
+        <View
+          style={[styles.offlineBanner, { backgroundColor: theme.accentLight }]}
+          accessibilityRole="text"
+        >
+          <Text style={[styles.offlineText, { color: theme.accent }]}>
+            Offline — showing a cached copy. Pull to retry.
+          </Text>
+        </View>
+      ) : null}
+
+      {isLoading && !rawTodos ? (
         <View style={{ paddingTop: 8 }}>
           <TaskCardSkeleton />
           <TaskCardSkeleton />
@@ -364,7 +434,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
           contentContainerStyle={{ paddingBottom: 110 }}
           refreshControl={
             <RefreshControl
-              refreshing={isRefetching}
+              refreshing={isRefetching || (isFetching && !isLoading)}
               onRefresh={() => {
                 refetchListMeta();
                 refetch();
@@ -375,17 +445,37 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No tasks found</Text>
-              <Text style={[styles.emptySub, { color: theme.textMuted }]}>
-                {canEdit
-                  ? "Tap the + button to add your first task to this list."
-                  : "No tasks in this shared list yet."}
-              </Text>
+              {todosIsError ? (
+                <>
+                  <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Couldn't load tasks</Text>
+                  <Text style={[styles.emptySub, { color: theme.textMuted }]}>
+                    Check your connection and try again.
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.retryBtn, { backgroundColor: theme.accent }]}
+                    onPress={() => refetch()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading tasks"
+                  >
+                    <Text style={styles.retryBtnText}>Retry</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No tasks found</Text>
+                  <Text style={[styles.emptySub, { color: theme.textMuted }]}>
+                    {canEdit
+                      ? "Tap the + button to add your first task to this list."
+                      : "No tasks in this shared list yet."}
+                  </Text>
+                </>
+              )}
             </View>
           }
           renderItem={({ item }) => {
             const subtaskCount = item.subtasks?.length || 0;
             const completedSubtasks = item.subtasks?.filter((s) => s.completed).length || 0;
+            const prio = (item.priority || "none") as PriorityLevel;
 
             return (
               <TouchableOpacity
@@ -399,21 +489,33 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
                   },
                 ]}
                 onPress={() => setSelectedTaskForBreakdown(item)}
+                accessibilityRole="button"
+                accessibilityLabel={`Task ${item.text}`}
               >
                 <TouchableOpacity
                   disabled={!canEdit}
                   style={[
-                    styles.checkbox,
-                    { borderColor: theme.accent },
-                    item.completed && { backgroundColor: theme.accent },
+                    styles.checkboxHit,
                     !canEdit && { opacity: 0.7 },
                   ]}
                   onPress={() => {
                     if (!canEdit) return;
                     toggleMutation.mutate(item.id);
                   }}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: item.completed, disabled: !canEdit }}
+                  accessibilityLabel={`Mark ${item.text} ${item.completed ? "incomplete" : "complete"}`}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  {item.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+                  <View
+                    style={[
+                      styles.checkbox,
+                      { borderColor: theme.accent },
+                      item.completed && { backgroundColor: theme.accent },
+                    ]}
+                  >
+                    {item.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+                  </View>
                 </TouchableOpacity>
 
                 <View style={{ flex: 1 }}>
@@ -423,15 +525,41 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
                       { color: theme.textPrimary },
                       item.completed && [styles.todoTextCompleted, { color: theme.textMuted }],
                     ]}
+                    maxFontSizeMultiplier={1.45}
                   >
                     {item.text}
                   </Text>
 
                   <View style={styles.badgeRow}>
+                    {prio !== "none" && (
+                      <View
+                        style={[
+                          styles.pillBadge,
+                          { backgroundColor: priorityColor(prio, theme) + "22" },
+                        ]}
+                      >
+                        <Flag size={11} color={priorityColor(prio, theme)} />
+                        <Text style={[styles.pillBadgeText, { color: priorityColor(prio, theme) }]}>
+                          {priorityLabel(prio)}
+                        </Text>
+                      </View>
+                    )}
+
+                    {item.reminderAt ? (
+                      <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
+                        <Bell size={11} color={theme.accent} />
+                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
+                          {formatReminderTime(item.reminderAt)}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     {item.durationMinutes ? (
                       <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
                         <Clock size={11} color={theme.accent} />
-                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>{item.durationMinutes} min</Text>
+                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
+                          {item.durationMinutes} min
+                        </Text>
                       </View>
                     ) : null}
 
@@ -460,13 +588,19 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
                     <TouchableOpacity
                       style={styles.actionBtn}
                       onPress={() => setEditingTask(item)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit ${item.text}`}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Pencil size={15} color={theme.textMuted} />
+                      <Pencil size={16} color={theme.textMuted} />
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.actionBtn}
                       onPress={() => handleDeleteTask(item)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete ${item.text}`}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                       <Trash2 size={16} color={theme.danger} />
                     </TouchableOpacity>
@@ -478,7 +612,6 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
         />
       )}
 
-      {/* Floating Add Task Action Button */}
       {canEdit && (
         <TouchableOpacity
           style={[styles.fab, { backgroundColor: theme.accent }]}
@@ -487,6 +620,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
             setEditingTask(null);
             setModalVisible(true);
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Add task"
         >
           <Plus size={26} color="#FFFFFF" />
         </TouchableOpacity>
@@ -495,9 +630,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
       <TaskModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        onSave={(task) => {
+        onSave={async (task) => {
           if (!canEdit) return;
-          createMutation.mutate(task);
+          await createMutation.mutateAsync(task);
         }}
       />
 
@@ -508,10 +643,11 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
         initialPriority={editingTask?.priority}
         initialRecurrence={editingTask?.recurrence}
         initialDurationMinutes={editingTask?.durationMinutes}
+        initialReminderAt={editingTask?.reminderAt}
         onClose={() => setEditingTask(null)}
-        onSave={(updated) => {
+        onSave={async (updated) => {
           if (editingTask && canEdit) {
-            updateMutation.mutate({ id: editingTask.id, payload: updated });
+            await updateMutation.mutateAsync({ id: editingTask.id, payload: updated });
           }
         }}
       />
@@ -523,28 +659,24 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists 
         onClose={() => setSelectedTaskForBreakdown(null)}
       />
 
-      <ChangelogModal
-        visible={showChangelog}
-        onClose={handleDismissChangelog}
-      />
+      <ChangelogModal visible={showChangelog} onClose={handleDismissChangelog} />
     </View>
   );
 };
 
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
   centered: {
     alignItems: "center",
     justifyContent: "center",
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 14,
+    marginTop: spacing.sm,
+    fontSize: typography.sm,
     fontWeight: "500",
   },
   searchRow: {
@@ -553,11 +685,46 @@ const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 10,
   },
+  listHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
   listTitle: {
-    fontSize: 20,
+    fontSize: typography.xl,
     fontWeight: "800",
     letterSpacing: -0.3,
-    marginBottom: 8,
+  },
+  ownershipText: {
+    fontSize: typography.sm,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  switchListBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  switchListText: {
+    fontSize: typography.sm,
+    fontWeight: "700",
+  },
+  offlineBanner: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    marginBottom: 10,
+  },
+  offlineText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+    textAlign: "center",
   },
   searchInputWrapper: {
     flex: 1,
@@ -571,12 +738,12 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: typography.sm,
     height: "100%",
   },
   iconBtn: {
-    width: 46,
-    height: 46,
+    width: MIN_TOUCH_TARGET + 2,
+    height: MIN_TOUCH_TARGET + 2,
     borderRadius: 16,
     borderWidth: 1,
     alignItems: "center",
@@ -588,19 +755,31 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: typography.lg,
     fontWeight: "700",
     marginBottom: 6,
   },
   emptySub: {
-    fontSize: 13,
+    fontSize: typography.sm,
     textAlign: "center",
     maxWidth: 240,
+  },
+  retryBtn: {
+    marginTop: spacing.md,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: "center",
+  },
+  retryBtnText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   todoCard: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 16,
+    padding: spacing.md,
     borderRadius: 20,
     borderWidth: 1,
     marginBottom: 12,
@@ -609,6 +788,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
+  },
+  checkboxHit: {
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    alignItems: "center",
+    justifyContent: "center",
   },
   checkbox: {
     width: 22,
@@ -619,7 +804,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   todoText: {
-    fontSize: 15,
+    fontSize: typography.md,
     fontWeight: "600",
   },
   todoTextCompleted: {
@@ -640,11 +825,14 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   pillBadgeText: {
-    fontSize: 11,
+    fontSize: typography.xs,
     fontWeight: "600",
   },
   actionBtn: {
-    padding: 6,
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    alignItems: "center",
+    justifyContent: "center",
   },
   fab: {
     position: "absolute",

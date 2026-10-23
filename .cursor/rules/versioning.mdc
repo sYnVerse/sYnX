@@ -3,37 +3,19 @@ description: Semantic Versioning (SemVer) and Breaking Change Rules
 globs: **/*
 ---
 
-# Software Versioning & Breaking Change Rules
+# Versioning
 
-## 1. Semantic Versioning (SemVer) Format
-Format: **MAJOR.MINOR.PATCH**
-* **MAJOR**: Bumps for incompatible API changes (breaking changes). Resets Minor/Patch to 0. (e.g., `1.5.3` -> `2.0.0`)
-* **MINOR**: Bumps for backward-compatible features. Resets Patch to 0. (e.g., `1.5.3` -> `1.6.0`)
-* **PATCH**: Bumps for backward-compatible bug fixes. (e.g., `1.5.3` -> `1.5.4`)
-* **Qualifiers**: Pre-releases use hyphens (`1.0.0-beta.1`); build metadata uses plus signs (`1.0.0+build12`).
+Follow the canonical rules in `.claude/rules/versioning.md`. Do not invent a parallel policy here.
 
-## 2. Breaking Change Checklist (Requires MAJOR Bump)
-A breaking change is any modification requiring downstream users to update their code to prevent compilation or runtime failures.
+**Quick reminders:**
 
-### Compile-Time / Code Level
-* **Deletions**: Removing a public class, function, method, variable, or endpoint.
-* **Renamings**: Changing the name or casing of any public identifier.
-* **Signature Mutations**: Changing argument types, return types, or removing arguments.
-* **Strict Parameters**: Adding required arguments to existing functions without default values.
-* **Access Restrictions**: Changing public exposure to private, protected, or internal.
-
-### Runtime / Behavioral
-* **Input Tightening**: Rejecting data formats or inputs that were previously accepted.
-* **Error Mutations**: Throwing new, unhandled exception types, or altering existing error models.
-* **Output Structural Changes**: Changing return data shapes, keys, or formats (e.g., date formats).
-* **Side-Effect Shifts**: Changing the default execution logic or outcome of an existing routine.
-
-### Data & Architecture
-* **API Payloads**: Dropping JSON keys or mutating their data types in responses.
-* **Storage Schema**: Dropping DB columns, altering column types, or adding non-null constraints without defaults (`schema.sql`).
-* **Configuration**: Removing or renaming required environment variables or configuration keys.
-
-## 3. Same-Day Versioning Policy
-- **Consolidate Same-Day Fixes**: Do NOT bump version numbers multiple times on the same calendar day for incremental bug fixes, follow-ups, or minor revisions (e.g. do not increment `v5.1.2` -> `v5.1.3` -> `v5.1.4` on the same day).
-- **Same-Day Changelog Appending**: Append new changes as additional bullet points under the existing same-day release entry in `app/constants/changelog.ts` and `mobile/src/constants/changelog.ts`.
-- **Version Incrementing**: Only increment SemVer version numbers when starting work on a new calendar day or when explicitly requested by the user.
+- **SemVer:** feature batch → minor; fixes → patch; breaking → major (full checklist in the canonical doc).
+- **Same day:** append changelog bullets; do not bump again. **New day** (or PR merging on a different day than the last release): new version + dated What's New entry.
+- **Mobile single source of truth:** `shared/mobile-version.ts` (`MOBILE_APP_VERSION`). Then run:
+  ```bash
+  cd mobile && npm run sync-version
+  ```
+  so `mobile/package.json` and `mobile/app.json` match. `mobile/app.config.js` feeds Expo `version` (Android `versionName` / iOS `CFBundleShortVersionString`).
+- **Do not hand-edit** Android `versionCode` / iOS `buildNumber` — EAS remote + `autoIncrement`.
+- **Web** (`WEB_VERSION` in `app/constants/changelog.ts`) is separate; bump only for user-facing web changes.
+- **Before finish:** version file → sync → changelog → tests (see checklist in `.claude/rules/versioning.md`).

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import * as WebBrowser from "expo-web-browser";
 import * as SecureStore from "expo-secure-store";
 import { useAuthRequest } from "expo-auth-session";
@@ -10,12 +10,18 @@ const OPENAUTH_ISSUER = "https://auth.christran.io";
 const CLIENT_ID = "synx";
 const REDIRECT_URI = "https://synx.christran.io/mobile/callback";
 
+export interface AuthUser {
+  userId: string;
+  email: string;
+}
+
 interface AuthContextType {
   token: string | null;
-  user: { userId: string; email: string } | null;
+  user: AuthUser | null;
   isLoading: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -24,11 +30,33 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   login: async () => {},
   logout: async () => {},
+  refreshUser: async () => {},
 });
+
+/** Best-effort decode of JWT payload (OpenAuth access tokens are often JWTs). */
+function tryDecodeJwtUser(token: string): AuthUser | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length < 2) return null;
+    const padded = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padLen = (4 - (padded.length % 4)) % 4;
+    const b64 = padded + "=".repeat(padLen);
+    if (typeof atob !== "function") return null;
+    const json = atob(b64);
+    const payload = JSON.parse(json) as Record<string, unknown>;
+    const props = (payload.properties as Record<string, unknown>) || payload;
+    const userId = String(props.id || props.sub || props.userId || "");
+    const email = String(props.email || "");
+    if (!userId && !email) return null;
+    return { userId: userId || email, email: email || userId };
+  } catch {
+    return null;
+  }
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<{ userId: string; email: string } | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const discovery = {
@@ -46,12 +74,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     discovery
   );
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const res = await apiClient.get("/api/v1/settings");
+      const settings = res.data?.settings;
+      if (settings?.userId || settings?.email) {
+        setUser({
+          userId: settings.userId || "",
+          email: settings.email || "",
+        });
+        return;
+      }
+    } catch {
+      // fall through to JWT decode
+    }
+    const stored = await SecureStore.getItemAsync(TOKEN_KEY);
+    if (stored) {
+      const decoded = tryDecodeJwtUser(stored);
+      if (decoded) setUser(decoded);
+    }
+  }, []);
+
   useEffect(() => {
     async function loadToken() {
       try {
         const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
         if (storedToken) {
           setToken(storedToken);
+          const decoded = tryDecodeJwtUser(storedToken);
+          if (decoded) setUser(decoded);
         }
       } catch (e) {
         console.error("Failed to load token from SecureStore", e);
@@ -61,6 +112,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     loadToken();
   }, []);
+
+  useEffect(() => {
+    if (token) {
+      refreshUser().catch(() => {});
+    }
+  }, [token, refreshUser]);
 
   useEffect(() => {
     if (response?.type === "success") {
@@ -105,6 +162,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.access_token) {
         await SecureStore.setItemAsync(TOKEN_KEY, data.access_token);
         setToken(data.access_token);
+        const decoded = tryDecodeJwtUser(data.access_token);
+        if (decoded) setUser(decoded);
       }
     } catch (e) {
       console.error("Code exchange failed", e);
@@ -119,7 +178,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     try {
-      // Unregister the FCM/device push token (not the OAuth access token)
       const devicePushToken = await SecureStore.getItemAsync(DEVICE_PUSH_TOKEN_KEY);
       if (devicePushToken) {
         try {
@@ -131,7 +189,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       await SecureStore.deleteItemAsync(TOKEN_KEY);
 
-      // Trigger central OpenAuth logout session to clear session cookies on auth.christran.io
       const logoutUrl = `${OPENAUTH_ISSUER}/logout?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
       try {
         await WebBrowser.openAuthSessionAsync(logoutUrl, REDIRECT_URI);
@@ -147,7 +204,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ token, user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ token, user, isLoading, login, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

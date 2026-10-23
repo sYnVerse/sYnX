@@ -1,4 +1,4 @@
-export type ThemeMode = "dark" | "light";
+export type ThemeMode = "dark" | "light" | "system";
 
 export interface ThemeColors {
   bg: string;
@@ -18,7 +18,36 @@ export interface ThemeColors {
   danger: string;
   success: string;
   shadowColor: string;
+  /** Version / status badge — WCAG AA on card surfaces */
+  badgeSuccessBg: string;
+  badgeSuccessFg: string;
+  badgeSuccessBorder: string;
 }
+
+/** Readable type scale (pt). Prefer these over one-off magic numbers. */
+export const typography = {
+  xs: 12,
+  sm: 13,
+  md: 15,
+  lg: 17,
+  xl: 20,
+  xxl: 24,
+  display: 32,
+} as const;
+
+/** Spacing scale (pt). */
+export const spacing = {
+  xxs: 4,
+  xs: 8,
+  sm: 12,
+  md: 16,
+  lg: 20,
+  xl: 24,
+  xxl: 32,
+} as const;
+
+/** Minimum touch target (Apple HIG / Material). */
+export const MIN_TOUCH_TARGET = 44;
 
 export const darkTheme: ThemeColors = {
   bg: "#0F172A",
@@ -26,38 +55,46 @@ export const darkTheme: ThemeColors = {
   cardBg: "rgba(30, 41, 59, 0.85)",
   cardBorder: "rgba(255, 255, 255, 0.08)",
   textPrimary: "#F8FAFC",
-  textSecondary: "#94A3B8",
-  textMuted: "#64748B",
+  textSecondary: "#CBD5E1",
+  // Was #64748B (~3.1:1 on surface). #94A3B8 ≈ 4.6:1 on #1E293B / ~5.2:1 on #0F172A.
+  textMuted: "#94A3B8",
   accent: "#6366F1",
   accentLight: "rgba(99, 102, 241, 0.15)",
   tabBarBg: "rgba(15, 23, 42, 0.85)",
   tabBarBorder: "rgba(255, 255, 255, 0.12)",
   inputBg: "#1E293B",
   inputBorder: "rgba(255, 255, 255, 0.1)",
-  inputPlaceholder: "#64748B",
+  inputPlaceholder: "#94A3B8",
   danger: "#F43F5E",
-  success: "#10B981",
+  success: "#34D399",
   shadowColor: "#000000",
+  badgeSuccessBg: "rgba(16, 185, 129, 0.2)",
+  badgeSuccessFg: "#6EE7B7",
+  badgeSuccessBorder: "rgba(52, 211, 153, 0.45)",
 };
 
 export const lightTheme: ThemeColors = {
-  bg: "#FAF7F2", // warm soft cream background
+  bg: "#FAF7F2",
   surface: "#FFFFFF",
   cardBg: "#FFFFFF",
   cardBorder: "rgba(0, 0, 0, 0.06)",
   textPrimary: "#1E293B",
   textSecondary: "#475569",
-  textMuted: "#94A3B8",
+  // Was #94A3B8 (~2.4:1 on cream). #5B6B7C ≈ 4.8:1 on #FAF7F2 / #FFFFFF (AA).
+  textMuted: "#5B6B7C",
   accent: "#4F46E5",
   accentLight: "rgba(79, 70, 229, 0.1)",
   tabBarBg: "rgba(255, 255, 255, 0.9)",
   tabBarBorder: "rgba(0, 0, 0, 0.08)",
   inputBg: "#F1F5F9",
   inputBorder: "rgba(0, 0, 0, 0.08)",
-  inputPlaceholder: "#94A3B8",
+  inputPlaceholder: "#5B6B7C",
   danger: "#E11D48",
-  success: "#059669",
+  success: "#047857",
   shadowColor: "#64748B",
+  badgeSuccessBg: "rgba(4, 120, 87, 0.12)",
+  badgeSuccessFg: "#047857",
+  badgeSuccessBorder: "rgba(4, 120, 87, 0.35)",
 };
 
 export interface CardThemePreset {
@@ -129,3 +166,12 @@ export const cardThemePresets: CardThemePreset[] = [
     accent: "#6366F1",
   },
 ];
+
+/** Known SMS email-gateway carriers (matches web settings). */
+export const PHONE_CARRIERS = [
+  { value: "verizon", label: "Verizon" },
+  { value: "att", label: "AT&T" },
+  { value: "tmobile", label: "T-Mobile" },
+] as const;
+
+export type PhoneCarrierValue = (typeof PHONE_CARRIERS)[number]["value"];

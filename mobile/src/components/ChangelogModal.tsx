@@ -11,6 +11,7 @@ import {
 import { X, Sparkles } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
 import { MOBILE_VERSION, MOBILE_CHANGELOG } from "../constants/changelog";
+import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 
 interface ChangelogModalProps {
   visible: boolean;
@@ -25,35 +26,63 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
       <View style={styles.overlay}>
         <SafeAreaView style={styles.safeContainer}>
           <View style={[styles.modalCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-            {/* Header */}
             <View style={[styles.header, { borderBottomColor: theme.cardBorder }]}>
               <View style={styles.headerLeft}>
-                <View style={[styles.iconCircle, { backgroundColor: "rgba(34, 197, 94, 0.15)", borderColor: "rgba(34, 197, 94, 0.3)" }]}>
-                  <Sparkles size={18} color="#4ADE80" />
+                <View
+                  style={[
+                    styles.iconCircle,
+                    {
+                      backgroundColor: theme.badgeSuccessBg,
+                      borderColor: theme.badgeSuccessBorder,
+                    },
+                  ]}
+                >
+                  <Sparkles size={18} color={theme.badgeSuccessFg} />
                 </View>
                 <View>
                   <View style={styles.titleRow}>
                     <Text style={[styles.title, { color: theme.textPrimary }]}>What's new?</Text>
-                    <View style={styles.versionBadge}>
-                      <Text style={styles.versionBadgeText}>{MOBILE_VERSION}</Text>
+                    <View
+                      style={[
+                        styles.versionBadge,
+                        {
+                          backgroundColor: theme.badgeSuccessBg,
+                          borderColor: theme.badgeSuccessBorder,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.versionBadgeText, { color: theme.badgeSuccessFg }]}>
+                        {MOBILE_VERSION}
+                      </Text>
                     </View>
                   </View>
-                  <Text style={[styles.subtitle, { color: theme.textMuted }]}>Latest features, fixes & improvements</Text>
+                  <Text style={[styles.subtitle, { color: theme.textMuted }]}>
+                    Latest features, fixes & improvements
+                  </Text>
                 </View>
               </View>
 
-              <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity
+                style={styles.closeBtn}
+                onPress={onClose}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
                 <X size={20} color={theme.textMuted} />
               </TouchableOpacity>
             </View>
 
-            {/* List of Releases & Notes */}
             <ScrollView style={styles.scrollList} contentContainerStyle={{ paddingVertical: 12 }}>
               {MOBILE_CHANGELOG.map((release) => (
                 <View key={release.version} style={styles.releaseSection}>
                   <View style={[styles.releaseHeader, { borderBottomColor: theme.inputBorder }]}>
-                    <Text style={styles.releaseVersion}>{release.version}</Text>
-                    {release.date && <Text style={[styles.releaseDate, { color: theme.textMuted }]}>{release.date}</Text>}
+                    <Text style={[styles.releaseVersion, { color: theme.badgeSuccessFg }]}>
+                      {release.version}
+                    </Text>
+                    {release.date && (
+                      <Text style={[styles.releaseDate, { color: theme.textMuted }]}>{release.date}</Text>
+                    )}
                   </View>
                   <View style={styles.itemsList}>
                     {release.changes.map((item, index) => {
@@ -61,22 +90,28 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
                       const isImpr = item.type === "IMPR";
 
                       const badgeBg = isNew
-                        ? "rgba(34, 197, 94, 0.18)"
+                        ? theme.badgeSuccessBg
                         : isImpr
-                        ? "rgba(56, 189, 248, 0.18)"
-                        : "rgba(245, 158, 11, 0.18)";
+                        ? theme.accentLight
+                        : "rgba(217, 119, 6, 0.15)";
 
-                      const badgeText = isNew ? "#4ADE80" : isImpr ? "#38BDF8" : "#FBBF24";
+                      const badgeText = isNew
+                        ? theme.badgeSuccessFg
+                        : isImpr
+                        ? theme.accent
+                        : "#B45309";
 
                       const badgeBorder = isNew
-                        ? "rgba(34, 197, 94, 0.3)"
+                        ? theme.badgeSuccessBorder
                         : isImpr
-                        ? "rgba(56, 189, 248, 0.3)"
-                        : "rgba(245, 158, 11, 0.3)";
+                        ? theme.accent + "55"
+                        : "rgba(180, 83, 9, 0.35)";
 
                       return (
                         <View key={index} style={styles.changeItemRow}>
-                          <View style={[styles.tagBadge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
+                          <View
+                            style={[styles.tagBadge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}
+                          >
                             <Text style={[styles.tagText, { color: badgeText }]}>{item.type}</Text>
                           </View>
                           <Text style={[styles.changeText, { color: theme.textPrimary }]}>{item.text}</Text>
@@ -88,8 +123,12 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
               ))}
             </ScrollView>
 
-            {/* Dismiss Button */}
-            <TouchableOpacity style={[styles.dismissBtn, { backgroundColor: theme.accent }]} onPress={onClose}>
+            <TouchableOpacity
+              style={[styles.dismissBtn, { backgroundColor: theme.accent }]}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Got it"
+            >
               <Text style={styles.dismissBtnText}>Got it!</Text>
             </TouchableOpacity>
           </View>
@@ -105,7 +144,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(15, 23, 42, 0.75)",
     justifyContent: "center",
     alignItems: "center",
-    padding: 16,
+    padding: spacing.md,
   },
   safeContainer: {
     width: "100%",
@@ -114,7 +153,7 @@ const styles = StyleSheet.create({
   modalCard: {
     borderRadius: 24,
     borderWidth: 1,
-    padding: 20,
+    padding: spacing.lg,
     maxHeight: "82%",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
@@ -133,6 +172,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    flex: 1,
   },
   iconCircle: {
     width: 36,
@@ -146,30 +186,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    flexWrap: "wrap",
   },
   title: {
-    fontSize: 18,
+    fontSize: typography.lg,
     fontWeight: "800",
   },
   versionBadge: {
-    backgroundColor: "rgba(34, 197, 94, 0.15)",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: "rgba(34, 197, 94, 0.3)",
   },
   versionBadgeText: {
-    color: "#4ADE80",
-    fontSize: 11,
+    fontSize: typography.xs,
     fontWeight: "800",
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: typography.xs,
     marginTop: 2,
   },
   closeBtn: {
-    padding: 4,
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollList: {
     marginVertical: 4,
@@ -186,12 +227,11 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   releaseVersion: {
-    fontSize: 13,
+    fontSize: typography.sm,
     fontWeight: "800",
-    color: "#4ADE80",
   },
   releaseDate: {
-    fontSize: 10,
+    fontSize: typography.xs,
   },
   itemsList: {
     gap: 10,
@@ -209,13 +249,13 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   tagText: {
-    fontSize: 9,
+    fontSize: typography.xs,
     fontWeight: "800",
     letterSpacing: 0.5,
   },
   changeText: {
     flex: 1,
-    fontSize: 13,
+    fontSize: typography.sm,
     lineHeight: 18,
   },
   dismissBtn: {
@@ -223,10 +263,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
     marginTop: 12,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: "center",
   },
   dismissBtnText: {
     color: "#FFFFFF",
-    fontSize: 14,
+    fontSize: typography.sm,
     fontWeight: "800",
   },
 });
