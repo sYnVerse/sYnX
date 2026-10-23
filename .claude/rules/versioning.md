@@ -1,56 +1,75 @@
 # Software Versioning & Breaking Change Rules
 
-## 1. Semantic Versioning (SemVer) Format
+Canonical versioning rules for this repo. Other agent instruction files should point here rather than duplicating policy.
+
+## 1. Semantic Versioning (SemVer)
+
 Format: **MAJOR.MINOR.PATCH**
-* **MAJOR**: Bumps for incompatible API changes (breaking changes). Resets Minor/Patch to 0. (e.g., `1.5.3` -> `2.0.0`)
-* **MINOR**: Bumps for backward-compatible features. Resets Patch to 0. (e.g., `1.5.3` -> `1.6.0`)
-* **PATCH**: Bumps for backward-compatible bug fixes. (e.g., `1.5.3` -> `1.5.4`)
-* **Qualifiers**: Pre-releases use hyphens (`1.0.0-beta.1`); build metadata uses plus signs (`1.0.0+build12`).
 
-## 2. Breaking Change Checklist (Requires MAJOR Bump)
-A breaking change is any modification requiring downstream users to update their code to prevent compilation or runtime failures.
+| Bump | When |
+|------|------|
+| **MAJOR** | Breaking changes (see checklist below). Resets minor/patch to 0. |
+| **MINOR** | Backward-compatible feature batch (new UX, settings flows, etc.). Resets patch to 0. |
+| **PATCH** | Backward-compatible fixes only. |
 
-### Compile-Time / Code Level
-* **Deletions**: Removing a public class, function, method, variable, or endpoint.
-* **Renamings**: Changing the name or casing of any public identifier.
-* **Signature Mutations**: Changing argument types, return types, or removing arguments.
-* **Strict Parameters**: Adding required arguments to existing functions without default values.
-* **Access Restrictions**: Changing public exposure to private, protected, or internal.
+Pre-releases use hyphens (`1.0.0-beta.1`); build metadata uses plus signs (`1.0.0+build12`).
 
-### Runtime / Behavioral
-* **Input Tightening**: Rejecting data formats or inputs that were previously accepted.
-* **Error Mutations**: Throwing new, unhandled exception types, or altering existing error models.
-* **Output Structural Changes**: Changing return data shapes, keys, or formats (e.g., date formats).
-* **Side-Effect Shifts**: Changing the default execution logic or outcome of an existing routine.
+## 2. Breaking Change Checklist (Requires MAJOR)
 
-### Data & Architecture
-* **API Payloads**: Dropping JSON keys or mutating their data types in responses.
-* **Storage Schema**: Dropping DB columns, altering column types, or adding non-null constraints without defaults (`schema.sql`).
-* **Configuration**: Removing or renaming required environment variables or configuration keys.
+Any change that requires downstream users to update code to avoid compile or runtime failures:
 
-## 3. Same-Day Versioning Policy
-- **Consolidate Same-Day Fixes**: Do NOT bump version numbers multiple times on the same calendar day for incremental bug fixes, follow-ups, or minor revisions (e.g. do not increment `v5.1.2` -> `v5.1.3` -> `v5.1.4` on the same day).
-- **Same-Day Changelog Appending**: Append new changes as additional bullet points under the existing same-day release entry in `app/constants/changelog.ts` and `mobile/src/constants/changelog.ts`.
-- **Version Incrementing**: Only increment SemVer version numbers when starting work on a new calendar day or when explicitly requested by the user.
+### Compile-time / code level
+- Deleting or renaming a public class, function, method, variable, or endpoint
+- Changing argument types, return types, or removing arguments
+- Adding required arguments without defaults
+- Narrowing public exposure to private/protected/internal
 
-## 4. Mobile app version (Expo / EAS) — single source of truth
-User-facing SemVer (Android `versionName` / iOS `CFBundleShortVersionString` / in-app What's New) is defined **only** in:
+### Runtime / behavioral
+- Rejecting inputs that were previously accepted
+- Throwing new unhandled exception types or changing error models
+- Changing return shapes, keys, or formats
+- Changing default execution logic of an existing routine
 
-* `shared/mobile-version.ts` → `MOBILE_APP_VERSION` (e.g. `"3.2.0"`)
+### Data & architecture
+- Dropping JSON keys or mutating response field types
+- `schema.sql` mutations: dropping columns, altering types, or adding non-null constraints without defaults
+- Removing or renaming required environment variables or config keys
 
-Then:
+## 3. When to bump vs append (same calendar day)
 
-1. Edit `MOBILE_APP_VERSION` in `shared/mobile-version.ts`.
-2. Add / append What's New under `mobile/src/constants/changelog.ts` (imports `MOBILE_VERSION` via `version.ts` → shared).
-3. Run `npm run sync-version` in `mobile/` (runs `sync-shared` then mirrors into `package.json` + `app.json`; also on `prestart` / `prebuild` / `eas-build-pre-install`).
-4. `mobile/app.config.js` forces Expo/EAS `version` from that SSOT at build time (overrides any stale `app.json`).
+- **Same day as the last release for that surface (web or mobile):** do **not** bump again. Append bullets under the existing same-day entry in the relevant changelog.
+- **Different calendar day than the last release** (including a PR that will merge on a later day): bump to a **new** version and add a **new dated** What's New entry.
+- Only increment when starting work on a new calendar day relative to the last release, or when the user explicitly requests a bump.
 
-**Do not** bump only `package.json` or only a changelog string — that is how Android stayed on `3.0.2` while What's New showed `v3.1.0`.
+## 4. Mobile vs web (separate version lines)
+
+| Surface | Single source of truth | Changelog |
+|---------|------------------------|-----------|
+| **Mobile** | `shared/mobile-version.ts` → `MOBILE_APP_VERSION` (e.g. `"3.2.0"`) | `mobile/src/constants/changelog.ts` |
+| **Web** | `WEB_VERSION` in `app/constants/changelog.ts` | same file |
+
+Bump **web** only for user-facing web changes. Bump **mobile** only for user-facing mobile changes. Do not keep them in lockstep.
+
+### Mobile release steps
+
+1. Set `MOBILE_APP_VERSION` in `shared/mobile-version.ts`.
+2. Add or append What's New in `mobile/src/constants/changelog.ts` (imports `MOBILE_VERSION` via shared).
+3. Sync mirrored files:
+   ```bash
+   cd mobile && npm run sync-version
+   ```
+   This runs `sync-shared` then updates `mobile/package.json` and `mobile/app.json` to match. The same sync also runs on `prestart` / `prebuild` / `eas-build-pre-install`.
+4. `mobile/app.config.js` reads the shared version at build time and sets Expo `version` (Android `versionName` / iOS `CFBundleShortVersionString`). Do not rely on editing `app.json` alone.
+
+**Do not** bump only `package.json` or only a changelog string — that is how Android can ship a stale store-visible version while What's New shows a newer one.
 
 ### Android `versionCode` / iOS `buildNumber`
-These are **developer-facing** build numbers, managed by EAS **remotely** (`eas.json` → `cli.appVersionSource: "remote"` + `autoIncrement: "versionCode"`). They are not the store-visible SemVer. EAS increments them on each preview/production build; no repo edit required for normal releases.
 
-Optional (Chris, outside the repo) if remote build numbers need a one-time sync with Play Console / TestFlight:
+These are developer-facing build numbers, managed by EAS remotely (`eas.json`: `cli.appVersionSource: "remote"` + `autoIncrement: "versionCode"`). They are **not** the store-visible SemVer. Do **not** hand-edit them in the repo for normal releases. EAS increments them on each preview/production build.
+
+There is no committed `android/` directory — do not run `npx expo prebuild --clean` just to bump versions.
+
+Optional (outside the repo) if remote build numbers need a one-time sync with Play Console / TestFlight:
 
 ```bash
 cd mobile
@@ -58,4 +77,12 @@ eas build:version:get -p android
 eas build:version:set -p android   # only if re-initializing remote versionCode
 ```
 
-There is **no** committed `android/` directory (`mobile/.gitignore`); do **not** run `npx expo prebuild --clean` for version bumps — managed EAS builds read `app.config.js` / `app.json` directly.
+## 5. Pre-finish checklist
+
+Before marking mobile versioning work done:
+
+- [ ] `shared/mobile-version.ts` has the intended `MOBILE_APP_VERSION`
+- [ ] Ran `cd mobile && npm run sync-version` (`package.json` + `app.json` match)
+- [ ] What's New entry exists / was appended in `mobile/src/constants/changelog.ts`
+- [ ] Web left unchanged unless there were user-facing web changes (`WEB_VERSION`)
+- [ ] Tests pass (`npm test -- --run`; mobile typecheck if mobile code changed)
