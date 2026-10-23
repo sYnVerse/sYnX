@@ -10,19 +10,23 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     changes: [
       {
         type: "NEW",
-        text: "Clear permission banners on opened lists (Private, View-Only, Collaborative) for owners and shared viewers."
+        text: "Opened lists show a clear permission banner on Tasks and Calendar — Private, View-Only, or Collaborative — whether you own the list or opened a shared link."
       },
       {
         type: "NEW",
-        text: "Friendly states when a shared list is private, missing, or fails to load, with a path back to your lists."
+        text: "If a shared list is private, missing, or can't load, you'll see a friendly message with a Go to my lists button instead of a blank screen."
+      },
+      {
+        type: "NEW",
+        text: "Each list card on My Lists now shows its share mode (Private, View-Only, or Collaborative)."
       },
       {
         type: "IMPR",
-        text: "View-Only mode hides edit affordances on Tasks and Calendar instead of failing after an attempt."
+        text: "View-Only lists hide add, edit, delete, and check-off controls on Tasks and Calendar so you can't start an edit that would fail."
       },
       {
         type: "FIX",
-        text: "Deep-linked shared lists are no longer overwritten by the default owned-list resolver after sign-in."
+        text: "Opening a shared list link keeps that list open after you sign in, instead of jumping back to one of your own lists."
       }
     ]
   },
