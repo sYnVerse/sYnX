@@ -65,7 +65,7 @@ Bump **web** only for user-facing web changes. Bump **mobile** only for user-fac
 
 ### Android `versionCode` / iOS `buildNumber`
 
-These are developer-facing build numbers, managed by EAS remotely (`eas.json`: `cli.appVersionSource: "remote"` + `autoIncrement: "versionCode"`). They are **not** the store-visible SemVer. Do **not** hand-edit them in the repo for normal releases. EAS increments them on each preview/production build.
+These are developer-facing build numbers, managed by EAS remotely (`eas.json`: `cli.appVersionSource: "remote"` + `autoIncrement: true`). With remote app version source, `autoIncrement` must be boolean `true` (not a string) — EAS then increments Android `versionCode` / iOS `buildNumber` remotely. They are **not** the store-visible SemVer. Do **not** hand-edit them in the repo for normal releases.
 
 There is no committed `android/` directory — do not run `npx expo prebuild --clean` just to bump versions.
 
