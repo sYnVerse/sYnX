@@ -20,6 +20,7 @@ import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
 import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
+import { parseSubtaskDurationMinutes } from "../shared/mobile-ux";
 
 interface TaskBreakdownModalProps {
   visible: boolean;
@@ -170,13 +171,8 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   });
 
   const saveDuration = (id: string, durationText: string) => {
-    const cleaned = durationText.trim();
-    if (!cleaned) {
-      updateSubtaskMutation.mutate({ id, durationMinutes: null });
-      return;
-    }
-    const parsed = parseInt(cleaned.replace(/\D/g, ""), 10);
-    if (isNaN(parsed)) return;
+    const parsed = parseSubtaskDurationMinutes(durationText);
+    if (parsed === undefined) return;
     updateSubtaskMutation.mutate({ id, durationMinutes: parsed });
   };
 

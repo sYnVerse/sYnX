@@ -80,15 +80,15 @@ export const lightTheme: ThemeColors = {
   cardBorder: "rgba(0, 0, 0, 0.06)",
   textPrimary: "#1E293B",
   textSecondary: "#475569",
-  // Was #94A3B8 (~2.4:1 on cream). #64748B ≈ 4.6:1 on #FAF7F2 / #FFFFFF.
-  textMuted: "#64748B",
+  // Was #94A3B8 (~2.4:1 on cream). #5B6B7C ≈ 4.8:1 on #FAF7F2 / #FFFFFF (AA).
+  textMuted: "#5B6B7C",
   accent: "#4F46E5",
   accentLight: "rgba(79, 70, 229, 0.1)",
   tabBarBg: "rgba(255, 255, 255, 0.9)",
   tabBarBorder: "rgba(0, 0, 0, 0.08)",
   inputBg: "#F1F5F9",
   inputBorder: "rgba(0, 0, 0, 0.08)",
-  inputPlaceholder: "#64748B",
+  inputPlaceholder: "#5B6B7C",
   danger: "#E11D48",
   success: "#047857",
   shadowColor: "#64748B",

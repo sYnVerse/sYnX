@@ -3,6 +3,15 @@ import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Linking, Platform } from "react-native";
 import { apiClient, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
+import {
+  SOFT_ASK_REASK_MS,
+  evaluateSoftAskPolicy,
+  mapExpoPermissionToStatus,
+  type PushPermissionStatus,
+} from "../shared/mobile-ux";
+
+export { SOFT_ASK_REASK_MS };
+export type { PushPermissionStatus };
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -16,14 +25,6 @@ Notifications.setNotificationHandler({
 
 const SOFT_ASK_DECLINED_AT_KEY = "SYNX_PUSH_SOFT_ASK_DECLINED_AT";
 const SOFT_ASK_REMINDER_NUDGED_KEY = "SYNX_PUSH_SOFT_ASK_REMINDER_NUDGED";
-/** Re-offer soft ask at most once every 14 days after "Not now". */
-export const SOFT_ASK_REASK_MS = 14 * 24 * 60 * 60 * 1000;
-
-export type PushPermissionStatus =
-  | "undetermined"
-  | "granted"
-  | "denied"
-  | "blocked";
 
 export async function ensureAndroidReminderChannel(): Promise<void> {
   if (Platform.OS === "android") {
@@ -38,11 +39,7 @@ export async function ensureAndroidReminderChannel(): Promise<void> {
 
 export async function getPushPermissionStatus(): Promise<PushPermissionStatus> {
   const { status, canAskAgain } = await Notifications.getPermissionsAsync();
-  if (status === "granted") return "granted";
-  if (status === "undetermined") return "undetermined";
-  // iOS/Android: denied and cannot ask again → treat as blocked (open Settings)
-  if (!canAskAgain) return "blocked";
-  return "denied";
+  return mapExpoPermissionToStatus({ status, canAskAgain });
 }
 
 /** Obtain device token and register with API. Assumes OS permission already granted. */
@@ -132,32 +129,23 @@ export async function shouldShowSoftAsk(options?: {
   /** Contextual re-ask when user first sets a reminder after declining */
   contextualReminder?: boolean;
 }): Promise<boolean> {
-  const status = await getPushPermissionStatus();
-  if (status === "granted" || status === "blocked") {
-    return false;
-  }
-  // Only soft-ask when OS would still show a system dialog (undetermined),
-  // or denied-but-canAskAgain on some Android versions.
+  let status = await getPushPermissionStatus();
+  // denied + cannot ask again → treat as blocked for policy
   if (status === "denied") {
     const perms = await Notifications.getPermissionsAsync();
-    if (perms.canAskAgain === false) return false;
+    if (perms.canAskAgain === false) status = "blocked";
   }
 
   const declinedAtRaw = await AsyncStorage.getItem(SOFT_ASK_DECLINED_AT_KEY);
-  if (!declinedAtRaw) return true;
+  const declinedAt = declinedAtRaw != null ? Number(declinedAtRaw) : null;
+  const nudged = await AsyncStorage.getItem(SOFT_ASK_REMINDER_NUDGED_KEY);
 
-  const declinedAt = Number(declinedAtRaw);
-  if (Number.isNaN(declinedAt)) return true;
-
-  const elapsed = Date.now() - declinedAt;
-  if (elapsed >= SOFT_ASK_REASK_MS) return true;
-
-  if (options?.contextualReminder) {
-    const nudged = await AsyncStorage.getItem(SOFT_ASK_REMINDER_NUDGED_KEY);
-    if (!nudged) return true;
-  }
-
-  return false;
+  return evaluateSoftAskPolicy({
+    permission: status,
+    declinedAt,
+    contextualReminderNudged: Boolean(nudged),
+    contextualReminder: options?.contextualReminder,
+  });
 }
 
 export async function markContextualReminderNudgeShown(): Promise<void> {

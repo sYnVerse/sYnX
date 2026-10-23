@@ -41,7 +41,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
-import { formatReminderTime, priorityColor, priorityLabel } from "../utils/format";
+import { formatReminderTime, priorityColor, priorityLabel, listOwnershipLabel } from "../utils/format";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 
 export interface TasksScreenProps {
@@ -300,7 +300,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     return parentMatches || subtaskMatches;
   });
 
-  const ownershipLabel = isOwner ? "Yours" : "Shared with you";
+  const ownershipLabel = listOwnershipLabel(isOwner);
 
   if (listMetaLoading && !listMeta) {
     return (

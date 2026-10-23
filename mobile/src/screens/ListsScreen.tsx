@@ -38,6 +38,10 @@ import { ListCardSkeleton } from "../components/SkeletonLoader";
 import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { stripLeadingCategoryEmoji } from "../utils/format";
+import {
+  buildCategorizedListName,
+  shouldWarnBeforeSharingPrivateList,
+} from "../shared/mobile-ux";
 
 function ShareModeIcon({ mode, color, size = 10 }: { mode: ShareMode; color: string; size?: number }) {
   if (mode === "public_read") return <Eye size={size} color={color} />;
@@ -61,13 +65,6 @@ const CATEGORY_OPTIONS = [
   { name: "Fitness", emoji: "💪" },
   { name: "Custom", emoji: "✏️" },
 ];
-
-function buildListName(emoji: string, categoryName: string, title: string): string {
-  const cleaned = title.trim();
-  if (!cleaned) return cleaned;
-  if (categoryName === "Custom") return cleaned;
-  return `${emoji} ${cleaned}`;
-}
 
 export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelectList }) => {
   const { theme, hapticsEnabled } = useTheme();
@@ -229,7 +226,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     if (!newListName.trim() || createListMutation.isPending) return;
     const categoryName =
       selectedCategory.name === "Custom" ? customCategoryText.trim() || "Custom" : selectedCategory.name;
-    const fullName = buildListName(selectedCategory.emoji, selectedCategory.name, newListName);
+    const fullName = buildCategorizedListName(
+      selectedCategory.emoji,
+      selectedCategory.name,
+      newListName
+    );
     createListMutation.mutate({ name: fullName, category: categoryName });
   };
 
@@ -237,7 +238,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     if (!editingList || !editName.trim() || updateListMutation.isPending) return;
     const categoryName =
       editCategory.name === "Custom" ? editCustomCategoryText.trim() || "Custom" : editCategory.name;
-    const fullName = buildListName(editCategory.emoji, editCategory.name, editName);
+    const fullName = buildCategorizedListName(editCategory.emoji, editCategory.name, editName);
     updateListMutation.mutate({
       id: editingList.id,
       name: fullName,
@@ -270,7 +271,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const listLink = (list: TodoList) => `https://synx.christran.io/${list.id}`;
 
   const handleShareLink = async (list: TodoList) => {
-    if (list.shareMode === "private") {
+    if (shouldWarnBeforeSharingPrivateList(list.shareMode || "private")) {
       Alert.alert(
         "List is private",
         "Others can't open this link while the list is Private. Change sharing to View-Only or Collaborative first?",
@@ -324,7 +325,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 
   const handleCopyLink = async (list: TodoList) => {
     const link = listLink(list);
-    if (list.shareMode === "private") {
+    if (shouldWarnBeforeSharingPrivateList(list.shareMode || "private")) {
       Alert.alert(
         "List is private",
         "Copied links won't work for others while this list is Private. Change sharing so others can open it?",
