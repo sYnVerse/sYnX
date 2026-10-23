@@ -56,7 +56,7 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
   },
   {
     version: "v3.1.0",
-    date: "2026-10-23",
+    date: "2026-10-22",
     title: "What's new?",
     changes: [
       {
