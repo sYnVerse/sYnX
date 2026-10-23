@@ -27,6 +27,34 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Opening a shared list link keeps that list open after you sign in, instead of jumping back to one of your own lists."
+      },
+      {
+        type: "NEW",
+        text: "Tasks screen shows which list you're in (Yours vs Shared with you) with a Switch control to jump to My Lists."
+      },
+      {
+        type: "NEW",
+        text: "Friendly notification prompt after sign-in — enable reminders without digging into Settings; tokens refresh automatically when permission is already granted."
+      },
+      {
+        type: "NEW",
+        text: "Settings includes your sYnID account, a System theme option, autosaved reminder channels, and a simple Push notifications toggle."
+      },
+      {
+        type: "IMPR",
+        text: "Failed saves show a toast and keep the sheet open; task load errors offer Retry instead of looking empty; offline shows a cached-copy note."
+      },
+      {
+        type: "IMPR",
+        text: "Larger tap targets, clearer priority and reminder pills, friendlier calendar dates, and better contrast for muted text and version badges."
+      },
+      {
+        type: "IMPR",
+        text: "Subtask minutes and titles edit locally and save on blur; list create/edit/share use bottom sheets with keyboard avoidance."
+      },
+      {
+        type: "IMPR",
+        text: "Readable type scale and centered wide-screen layout for tablets."
       }
     ]
   },

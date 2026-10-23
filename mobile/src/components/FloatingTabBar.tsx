@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { CheckSquare, Calendar as CalendarIcon, FolderKanban, Settings as SettingsIcon } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
+import { typography, MIN_TOUCH_TARGET } from "../theme/theme";
 
 export type TabType = "tasks" | "calendar" | "lists" | "settings";
 
@@ -15,7 +16,7 @@ interface FloatingTabBarProps {
 
 export const FloatingTabBar: React.FC<FloatingTabBarProps> = ({ activeTab, onTabChange }) => {
   const insets = useSafeAreaInsets();
-  const { theme, themeMode, hapticsEnabled } = useTheme();
+  const { theme, resolvedMode, hapticsEnabled } = useTheme();
 
   const handlePress = (tab: TabType) => {
     if (tab !== activeTab) {
@@ -37,7 +38,7 @@ export const FloatingTabBar: React.FC<FloatingTabBarProps> = ({ activeTab, onTab
     <View style={[styles.outerContainer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
       <BlurView
         intensity={Platform.OS === "ios" ? 75 : 90}
-        tint={themeMode === "light" ? "light" : "dark"}
+        tint={resolvedMode === "light" ? "light" : "dark"}
         style={[
           styles.floatingBar,
           {
@@ -46,6 +47,7 @@ export const FloatingTabBar: React.FC<FloatingTabBarProps> = ({ activeTab, onTab
             shadowColor: theme.shadowColor,
           },
         ]}
+        accessibilityRole="tablist"
       >
         {tabs.map(({ id, label, Icon }) => {
           const isActive = activeTab === id;
@@ -53,6 +55,9 @@ export const FloatingTabBar: React.FC<FloatingTabBarProps> = ({ activeTab, onTab
             <TouchableOpacity
               key={id}
               activeOpacity={0.7}
+              accessibilityRole="tab"
+              accessibilityLabel={label}
+              accessibilityState={{ selected: isActive }}
               style={[
                 styles.tabItem,
                 isActive && [styles.activeTabItem, { backgroundColor: theme.accentLight }],
@@ -70,6 +75,8 @@ export const FloatingTabBar: React.FC<FloatingTabBarProps> = ({ activeTab, onTab
                   { color: isActive ? theme.accent : theme.textMuted },
                   isActive && styles.activeTabLabel,
                 ]}
+                maxFontSizeMultiplier={1.2}
+                allowFontScaling
               >
                 {label}
               </Text>
@@ -112,6 +119,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 8,
+    minHeight: MIN_TOUCH_TARGET,
     borderRadius: 16,
     gap: 4,
   },
@@ -119,7 +127,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: typography.xs,
     fontWeight: "500",
   },
   activeTabLabel: {

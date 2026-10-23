@@ -12,14 +12,32 @@ import {
   Alert,
   Share,
   RefreshControl,
+  KeyboardAvoidingView,
+  ActivityIndicator,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { FolderPlus, Trash2, Tag, CheckCircle2, Circle, Pencil, Share2, Lock, Eye, Users } from "lucide-react-native";
+import {
+  FolderPlus,
+  Trash2,
+  Tag,
+  CheckCircle2,
+  Circle,
+  Pencil,
+  Share2,
+  Lock,
+  Eye,
+  Users,
+  Copy,
+} from "lucide-react-native";
 import { apiClient } from "../api/client";
 import { TodoList, TodoItem, ShareMode, getShareModeLabel } from "../shared";
 import { useTheme } from "../context/ThemeContext";
+import { useToast } from "../context/ToastContext";
 import { ListCardSkeleton } from "../components/SkeletonLoader";
+import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
+import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
+import { stripLeadingCategoryEmoji } from "../utils/format";
 
 function ShareModeIcon({ mode, color, size = 10 }: { mode: ShareMode; color: string; size?: number }) {
   if (mode === "public_read") return <Eye size={size} color={color} />;
@@ -44,8 +62,16 @@ const CATEGORY_OPTIONS = [
   { name: "Custom", emoji: "✏️" },
 ];
 
+function buildListName(emoji: string, categoryName: string, title: string): string {
+  const cleaned = title.trim();
+  if (!cleaned) return cleaned;
+  if (categoryName === "Custom") return cleaned;
+  return `${emoji} ${cleaned}`;
+}
+
 export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelectList }) => {
   const { theme, hapticsEnabled } = useTheme();
+  const { showError, showSuccess } = useToast();
   const queryClient = useQueryClient();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
@@ -59,7 +85,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const [editCategory, setEditCategory] = useState(CATEGORY_OPTIONS[0]);
   const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
 
-  const { data: lists, isLoading, isRefetching, refetch } = useQuery({
+  const { data: lists, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ["lists"],
     queryFn: async () => {
       const res = await apiClient.get("/api/v1/lists");
@@ -67,7 +93,6 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
   });
 
-  // Query tasks for active list preview
   const { data: activeListTodos, refetch: refetchPreview } = useQuery({
     queryKey: ["active_list_todos_preview", activeListId],
     queryFn: async () => {
@@ -78,7 +103,6 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     enabled: !!activeListId,
   });
 
-  // Refetch on screen focus / mount
   useEffect(() => {
     refetch();
     if (activeListId) {
@@ -93,7 +117,6 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     }
   };
 
-  // Group subtasks under their parent tasks for the active list preview
   const mainTasks = React.useMemo(() => {
     if (!activeListTodos) return [];
     const parentMap: Record<string, TodoItem & { subtasks: TodoItem[] }> = {};
@@ -122,6 +145,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     }
   };
 
+  const onMutationError = (e: unknown, fallback: string) => {
+    triggerErrorHaptic(hapticsEnabled);
+    showError(getErrorMessage(e, fallback));
+  };
+
   const createListMutation = useMutation({
     mutationFn: async ({ name, category }: { name: string; category: string }) => {
       const res = await apiClient.post("/api/v1/lists", { name, category });
@@ -136,6 +164,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       setCustomCategoryText("");
       setModalVisible(false);
     },
+    onError: (e) => onMutationError(e, "Couldn't create list"),
   });
 
   const updateListMutation = useMutation({
@@ -151,8 +180,10 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
         );
       });
       queryClient.invalidateQueries({ queryKey: ["lists"] });
+      queryClient.invalidateQueries({ queryKey: ["list_meta", variables.id] });
       setEditingList(null);
     },
+    onError: (e) => onMutationError(e, "Couldn't update list"),
   });
 
   const shareModeMutation = useMutation({
@@ -167,10 +198,12 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
         return old.map((l) => (l.id === updatedList.id ? updatedList : l));
       });
       queryClient.invalidateQueries({ queryKey: ["lists"] });
+      queryClient.invalidateQueries({ queryKey: ["list_meta", updatedList.id] });
       if (sharingList && sharingList.id === updatedList.id) {
         setSharingList(updatedList);
       }
     },
+    onError: (e) => onMutationError(e, "Couldn't update sharing"),
   });
 
   const deleteListMutation = useMutation({
@@ -189,72 +222,163 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       queryClient.invalidateQueries({ queryKey: ["lists"] });
       queryClient.invalidateQueries({ queryKey: ["todos", deletedId] });
     },
+    onError: (e) => onMutationError(e, "Couldn't delete list"),
   });
 
   const handleCreateList = () => {
-    if (!newListName.trim()) return;
-    const categoryName = selectedCategory.name === "Custom" ? (customCategoryText.trim() || "Custom") : selectedCategory.name;
-    const fullName = selectedCategory.name === "Custom" ? newListName.trim() : `${selectedCategory.emoji} ${newListName.trim()}`;
+    if (!newListName.trim() || createListMutation.isPending) return;
+    const categoryName =
+      selectedCategory.name === "Custom" ? customCategoryText.trim() || "Custom" : selectedCategory.name;
+    const fullName = buildListName(selectedCategory.emoji, selectedCategory.name, newListName);
     createListMutation.mutate({ name: fullName, category: categoryName });
   };
 
   const handleUpdateList = () => {
-    if (!editingList || !editName.trim()) return;
-    const categoryName = editCategory.name === "Custom" ? (editCustomCategoryText.trim() || "Custom") : editCategory.name;
+    if (!editingList || !editName.trim() || updateListMutation.isPending) return;
+    const categoryName =
+      editCategory.name === "Custom" ? editCustomCategoryText.trim() || "Custom" : editCategory.name;
+    const fullName = buildListName(editCategory.emoji, editCategory.name, editName);
     updateListMutation.mutate({
       id: editingList.id,
-      name: editName.trim(),
+      name: fullName,
       category: categoryName,
     });
   };
 
   const handleDeleteList = (list: TodoList) => {
     triggerImpactHaptic();
-    Alert.alert(
-      "Delete List",
-      `Are you sure you want to delete "${list.name}" and all its tasks?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteListMutation.mutate(list.id),
-        },
-      ]
-    );
+    Alert.alert("Delete List", `Are you sure you want to delete "${list.name}" and all its tasks?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => deleteListMutation.mutate(list.id),
+      },
+    ]);
   };
 
   const openEditModal = (list: TodoList) => {
     triggerImpactHaptic();
     setEditingList(list);
-    setEditName(list.name);
     const matchingCat = CATEGORY_OPTIONS.find((c) => c.name === list.category);
-    if (matchingCat) {
-      setEditCategory(matchingCat);
-      setEditCustomCategoryText("");
-    } else {
-      setEditCategory(CATEGORY_OPTIONS.find((c) => c.name === "Custom") || CATEGORY_OPTIONS[0]);
-      setEditCustomCategoryText(list.category || "");
-    }
+    const cat = matchingCat || CATEGORY_OPTIONS.find((c) => c.name === "Custom") || CATEGORY_OPTIONS[0];
+    setEditCategory(cat);
+    setEditCustomCategoryText(matchingCat ? "" : list.category || "");
+    setEditName(stripLeadingCategoryEmoji(list.name, matchingCat?.emoji || ""));
   };
 
+  const listLink = (list: TodoList) => `https://synx.christran.io/${list.id}`;
+
   const handleShareLink = async (list: TodoList) => {
+    if (list.shareMode === "private") {
+      Alert.alert(
+        "List is private",
+        "Others can't open this link while the list is Private. Change sharing to View-Only or Collaborative first?",
+        [
+          { text: "Keep Private", style: "cancel" },
+          {
+            text: "Make View-Only",
+            onPress: () => {
+              shareModeMutation.mutate(
+                { id: list.id, shareMode: "public_read" },
+                {
+                  onSuccess: (updated) => {
+                    Share.share({
+                      message: `Check out my list "${updated.name}" on sYnX: ${listLink(updated)}`,
+                      url: listLink(updated),
+                    }).catch(() => {});
+                  },
+                }
+              );
+            },
+          },
+          {
+            text: "Make Collaborative",
+            onPress: () => {
+              shareModeMutation.mutate(
+                { id: list.id, shareMode: "public_edit" },
+                {
+                  onSuccess: (updated) => {
+                    Share.share({
+                      message: `Check out my list "${updated.name}" on sYnX: ${listLink(updated)}`,
+                      url: listLink(updated),
+                    }).catch(() => {});
+                  },
+                }
+              );
+            },
+          },
+        ]
+      );
+      return;
+    }
     try {
-      const link = `https://synx.christran.io/${list.id}`;
       await Share.share({
-        message: `Check out my list "${list.name}" on sYnX: ${link}`,
-        url: link,
+        message: `Check out my list "${list.name}" on sYnX: ${listLink(list)}`,
+        url: listLink(list),
       });
     } catch (e) {
       console.error("Failed to share link", e);
     }
   };
 
+  const handleCopyLink = async (list: TodoList) => {
+    const link = listLink(list);
+    if (list.shareMode === "private") {
+      Alert.alert(
+        "List is private",
+        "Copied links won't work for others while this list is Private. Change sharing so others can open it?",
+        [
+          { text: "Copy anyway", onPress: () => copyText(link) },
+          {
+            text: "Make View-Only",
+            onPress: () => {
+              shareModeMutation.mutate(
+                { id: list.id, shareMode: "public_read" },
+                { onSuccess: () => copyText(link) }
+              );
+            },
+          },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
+      return;
+    }
+    await copyText(link);
+  };
+
+  const copyText = async (text: string) => {
+    try {
+      // Prefer Share sheet with the link (works without extra clipboard dependency)
+      await Share.share({ message: text, url: text });
+      showSuccess("Link ready — choose Copy in the share sheet");
+    } catch {
+      // Fallback: show selectable alert
+      Alert.alert("List link", text);
+    }
+  };
+
+  const sheetOverlay = (children: React.ReactNode, onClose: () => void) => (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={styles.sheetOverlay}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <TouchableOpacity style={styles.sheetDismiss} activeOpacity={1} onPress={onClose} />
+        <View style={[styles.sheetContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+          {children}
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>My Lists</Text>
-        <Text style={[styles.headerSubtitle, { color: theme.textMuted }]}>
+        <Text style={[styles.headerTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
+          My Lists
+        </Text>
+        <Text style={[styles.headerSubtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
           Manage and switch between your task workspaces
         </Text>
       </View>
@@ -264,6 +388,21 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
           <ListCardSkeleton />
           <ListCardSkeleton />
           <ListCardSkeleton />
+        </View>
+      ) : isError && !lists ? (
+        <View style={styles.errorBox}>
+          <Text style={[styles.errorTitle, { color: theme.textPrimary }]}>Couldn't load lists</Text>
+          <Text style={[styles.errorBody, { color: theme.textMuted }]}>
+            {getErrorMessage(error, "Check your connection and try again.")}
+          </Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: theme.accent }]}
+            onPress={() => refetch()}
+            accessibilityRole="button"
+            accessibilityLabel="Retry"
+          >
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : (
         <FlatList
@@ -298,13 +437,16 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                   triggerImpactHaptic();
                   onSelectList(item.id);
                 }}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                accessibilityLabel={`List ${item.name}`}
               >
-                {/* Header Row of List */}
                 <View style={styles.listRowHeader}>
                   <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <Text style={[styles.listTitle, { color: theme.textPrimary }]}>{item.name}</Text>
-                    
-                    {/* D1 Categorized Tag Badge */}
+                    <Text style={[styles.listTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
+                      {item.name}
+                    </Text>
+
                     <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
                       <Tag size={10} color={theme.accent} />
                       <Text style={[styles.categoryPillText, { color: theme.accent }]}>{categoryTag}</Text>
@@ -324,28 +466,37 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                     )}
                   </View>
 
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
                     <TouchableOpacity
                       style={styles.actionIconBtn}
                       onPress={() => {
                         triggerImpactHaptic();
                         setSharingList(item);
                       }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Share ${item.name}`}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Share2 size={15} color={theme.accent} />
+                      <Share2 size={16} color={theme.accent} />
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.actionIconBtn}
                       onPress={() => openEditModal(item)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Edit ${item.name}`}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Pencil size={15} color={theme.textMuted} />
+                      <Pencil size={16} color={theme.textMuted} />
                     </TouchableOpacity>
 
                     {(lists?.length || 0) > 1 && (
                       <TouchableOpacity
                         style={styles.actionIconBtn}
                         onPress={() => handleDeleteList(item)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${item.name}`}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
                         <Trash2 size={16} color={theme.danger} />
                       </TouchableOpacity>
@@ -353,7 +504,6 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                   </View>
                 </View>
 
-                {/* Expanded Item Preview for Active List */}
                 {isActive && (
                   <View style={[styles.previewSection, { borderTopColor: theme.cardBorder }]}>
                     <Text style={[styles.previewSectionTitle, { color: theme.textMuted }]}>
@@ -379,38 +529,36 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                             >
                               {t.text}
                             </Text>
-                            {t.durationMinutes && (
+                            {t.durationMinutes ? (
                               <Text style={[styles.durationBadge, { color: theme.textMuted }]}>
                                 {t.durationMinutes}m
                               </Text>
-                            )}
+                            ) : null}
                           </View>
 
-                          {/* Subtasks nested under main task */}
-                          {t.subtasks && t.subtasks.map((st) => (
-                            <View key={st.id} style={[styles.todoPreviewItem, { paddingLeft: 28, marginTop: 2 }]}>
-                              {st.completed ? (
-                                <CheckCircle2 size={13} color={theme.accent} />
-                              ) : (
-                                <Circle size={13} color={theme.textMuted} />
-                              )}
-                              <Text
-                                style={[
-                                  styles.todoPreviewText,
-                                  { color: theme.textMuted, fontSize: 12 },
-                                  st.completed && styles.completedText,
-                                ]}
-                                numberOfLines={1}
+                          {t.subtasks &&
+                            t.subtasks.map((st) => (
+                              <View
+                                key={st.id}
+                                style={[styles.todoPreviewItem, { paddingLeft: 28, marginTop: 2 }]}
                               >
-                                {st.text}
-                              </Text>
-                              {st.durationMinutes && (
-                                <Text style={[styles.durationBadge, { color: theme.textMuted, fontSize: 10 }]}>
-                                  {st.durationMinutes}m
+                                {st.completed ? (
+                                  <CheckCircle2 size={13} color={theme.accent} />
+                                ) : (
+                                  <Circle size={13} color={theme.textMuted} />
+                                )}
+                                <Text
+                                  style={[
+                                    styles.todoPreviewText,
+                                    { color: theme.textMuted, fontSize: typography.xs },
+                                    st.completed && styles.completedText,
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  {st.text}
                                 </Text>
-                              )}
-                            </View>
-                          ))}
+                              </View>
+                            ))}
                         </View>
                       ))
                     ) : (
@@ -426,21 +574,22 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
         />
       )}
 
-      {/* FAB Add List */}
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: theme.accent }]}
         onPress={() => {
           triggerImpactHaptic();
           setModalVisible(true);
         }}
+        accessibilityRole="button"
+        accessibilityLabel="Create list"
       >
         <FolderPlus size={24} color="#FFFFFF" />
       </TouchableOpacity>
 
-      {/* Create New List Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+      {/* Create sheet */}
+      {modalVisible &&
+        sheetOverlay(
+          <>
             <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Create Categorized List</Text>
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Select List Category Tag</Text>
@@ -448,6 +597,8 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
               {CATEGORY_OPTIONS.map((cat) => (
                 <TouchableOpacity
                   key={cat.name}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: selectedCategory.name === cat.name }}
                   style={[
                     styles.catBtn,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
@@ -477,7 +628,10 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
               <View style={{ marginTop: 4 }}>
                 <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
                 <TextInput
-                  style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                  style={[
+                    styles.input,
+                    { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  ]}
                   placeholder="e.g. Project X, Home Chores..."
                   placeholderTextColor={theme.inputPlaceholder}
                   value={customCategoryText}
@@ -488,29 +642,52 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 
             <Text style={[styles.label, { color: theme.textMuted }]}>List Title</Text>
             <TextInput
-              style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+              style={[
+                styles.input,
+                { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+              ]}
               placeholder="e.g. Supermarket, French HW, Big Movies..."
               placeholderTextColor={theme.inputPlaceholder}
               value={newListName}
               onChangeText={setNewListName}
+              autoFocus
             />
 
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
                 <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.accent }]} onPress={handleCreateList}>
-                <Text style={styles.createBtnText}>Create List</Text>
+              <TouchableOpacity
+                style={[
+                  styles.createBtn,
+                  {
+                    backgroundColor: theme.accent,
+                    opacity: !newListName.trim() || createListMutation.isPending ? 0.5 : 1,
+                  },
+                ]}
+                onPress={handleCreateList}
+                disabled={!newListName.trim() || createListMutation.isPending}
+                accessibilityRole="button"
+                accessibilityState={{
+                  disabled: !newListName.trim() || createListMutation.isPending,
+                  busy: createListMutation.isPending,
+                }}
+              >
+                {createListMutation.isPending ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.createBtnText}>Create List</Text>
+                )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
+          </>,
+          () => setModalVisible(false)
+        )}
 
-      {/* Edit List Modal */}
-      <Modal visible={!!editingList} animationType="slide" transparent onRequestClose={() => setEditingList(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+      {/* Edit sheet */}
+      {!!editingList &&
+        sheetOverlay(
+          <>
             <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Edit List Details</Text>
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Category Tag</Text>
@@ -518,6 +695,8 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
               {CATEGORY_OPTIONS.map((cat) => (
                 <TouchableOpacity
                   key={cat.name}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: editCategory.name === cat.name }}
                   style={[
                     styles.catBtn,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
@@ -547,7 +726,10 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
               <View style={{ marginTop: 4 }}>
                 <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
                 <TextInput
-                  style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                  style={[
+                    styles.input,
+                    { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  ]}
                   placeholder="e.g. Project X, Home Chores..."
                   placeholderTextColor={theme.inputPlaceholder}
                   value={editCustomCategoryText}
@@ -558,60 +740,114 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 
             <Text style={[styles.label, { color: theme.textMuted }]}>List Title</Text>
             <TextInput
-              style={[styles.input, { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+              style={[
+                styles.input,
+                { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+              ]}
               value={editName}
               onChangeText={setEditName}
+              autoFocus
             />
 
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingList(null)}>
                 <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.accent }]} onPress={handleUpdateList}>
-                <Text style={styles.createBtnText}>Save Changes</Text>
+              <TouchableOpacity
+                style={[
+                  styles.createBtn,
+                  {
+                    backgroundColor: theme.accent,
+                    opacity: !editName.trim() || updateListMutation.isPending ? 0.5 : 1,
+                  },
+                ]}
+                onPress={handleUpdateList}
+                disabled={!editName.trim() || updateListMutation.isPending}
+              >
+                {updateListMutation.isPending ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.createBtnText}>Save Changes</Text>
+                )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
-      </Modal>
+          </>,
+          () => setEditingList(null)
+        )}
 
-      {/* Share List Modal */}
-      <Modal visible={!!sharingList} animationType="slide" transparent onRequestClose={() => setSharingList(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+      {/* Share sheet */}
+      {!!sharingList &&
+        sheetOverlay(
+          <>
             <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Share List Access</Text>
-            <Text style={[styles.label, { color: theme.textMuted }]}>
-              {sharingList?.name}
-            </Text>
+            <Text style={[styles.label, { color: theme.textMuted }]}>{sharingList?.name}</Text>
+
+            {sharingList?.shareMode === "private" ? (
+              <View
+                style={[styles.warnBox, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
+              >
+                <Text style={[styles.warnText, { color: theme.accent }]}>
+                  This list is Private — others can't open a shared link until you change access below.
+                </Text>
+              </View>
+            ) : null}
 
             <Text style={[styles.label, { color: theme.textMuted, marginTop: 12 }]}>Access Permission</Text>
             <View style={{ gap: 8, marginVertical: 8 }}>
               {[
                 { mode: "private" as ShareMode, label: "Private", desc: "Only you can view and edit", Icon: Lock },
-                { mode: "public_read" as ShareMode, label: "View-Only", desc: "Anyone with link can view, no edits", Icon: Eye },
-                { mode: "public_edit" as ShareMode, label: "Collaborative", desc: "Anyone with link can view and edit", Icon: Users },
+                {
+                  mode: "public_read" as ShareMode,
+                  label: "View-Only",
+                  desc: "Anyone with link can view, no edits",
+                  Icon: Eye,
+                },
+                {
+                  mode: "public_edit" as ShareMode,
+                  label: "Collaborative",
+                  desc: "Anyone with link can view and edit",
+                  Icon: Users,
+                },
               ].map(({ mode, label, desc, Icon }) => {
                 const isSelected = sharingList?.shareMode === mode;
                 return (
                   <TouchableOpacity
                     key={mode}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: isSelected }}
                     style={[
                       styles.catBtn,
-                      { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, width: "100%", justifyContent: "flex-start" },
-                      isSelected && { backgroundColor: theme.accentLight, borderColor: theme.accent, borderWidth: 2 },
+                      {
+                        backgroundColor: theme.inputBg,
+                        borderColor: theme.inputBorder,
+                        width: "100%",
+                        justifyContent: "flex-start",
+                        minHeight: MIN_TOUCH_TARGET,
+                      },
+                      isSelected && {
+                        backgroundColor: theme.accentLight,
+                        borderColor: theme.accent,
+                        borderWidth: 2,
+                      },
                     ]}
                     onPress={() => {
                       if (sharingList) {
                         shareModeMutation.mutate({ id: sharingList.id, shareMode: mode });
                       }
                     }}
+                    disabled={shareModeMutation.isPending}
                   >
                     <Icon size={16} color={isSelected ? theme.accent : theme.textMuted} />
                     <View style={{ flex: 1, marginLeft: 8 }}>
-                      <Text style={[{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }, isSelected && { color: theme.accent }]}>
+                      <Text
+                        style={[
+                          { fontSize: typography.sm, fontWeight: "700", color: theme.textPrimary },
+                          isSelected && { color: theme.accent },
+                        ]}
+                      >
                         {label}
                       </Text>
-                      <Text style={{ fontSize: 11, color: theme.textMuted }}>{desc}</Text>
+                      <Text style={{ fontSize: typography.xs, color: theme.textMuted }}>{desc}</Text>
                     </View>
                   </TouchableOpacity>
                 );
@@ -619,23 +855,37 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
             </View>
 
             <TouchableOpacity
-              style={[styles.createBtn, { backgroundColor: theme.accent, marginTop: 12 }]}
+              style={[styles.createBtn, { backgroundColor: theme.accent, marginTop: 8 }]}
               onPress={() => {
                 if (sharingList) handleShareLink(sharingList);
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Share link"
             >
               <Text style={styles.createBtnText}>Share Link via App / System</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.cancelBtn, { marginTop: 8 }]}
-              onPress={() => setSharingList(null)}
+              style={[
+                styles.copyBtn,
+                { borderColor: theme.inputBorder, backgroundColor: theme.inputBg, marginTop: 8 },
+              ]}
+              onPress={() => {
+                if (sharingList) handleCopyLink(sharingList);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Copy link"
             >
+              <Copy size={16} color={theme.accent} />
+              <Text style={[styles.copyBtnText, { color: theme.accent }]}>Copy Link</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.cancelBtn, { marginTop: 8, alignSelf: "center" }]} onPress={() => setSharingList(null)}>
               <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Close</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+          </>,
+          () => setSharingList(null)
+        )}
     </View>
   );
 };
@@ -643,23 +893,49 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
   header: {
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: typography.xxl - 2,
     fontWeight: "700",
   },
   headerSubtitle: {
-    fontSize: 13,
+    fontSize: typography.sm,
     marginTop: 2,
+  },
+  errorBox: {
+    alignItems: "center",
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  errorTitle: {
+    fontSize: typography.lg,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  errorBody: {
+    fontSize: typography.sm,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  retryBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: "center",
+  },
+  retryText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
   },
   listRow: {
     width: "100%",
-    padding: 16,
+    padding: spacing.md,
     borderRadius: 20,
     marginBottom: 12,
     elevation: 3,
@@ -673,7 +949,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   listTitle: {
-    fontSize: 17,
+    fontSize: typography.lg,
     fontWeight: "700",
   },
   categoryPill: {
@@ -685,7 +961,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   categoryPillText: {
-    fontSize: 10,
+    fontSize: typography.xs,
     fontWeight: "700",
   },
   activeBadge: {
@@ -695,12 +971,15 @@ const styles = StyleSheet.create({
   },
   activeBadgeText: {
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: typography.xs,
     fontWeight: "800",
     letterSpacing: 0.5,
   },
   actionIconBtn: {
-    padding: 6,
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    alignItems: "center",
+    justifyContent: "center",
   },
   previewSection: {
     marginTop: 14,
@@ -709,7 +988,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   previewSectionTitle: {
-    fontSize: 10,
+    fontSize: typography.xs,
     fontWeight: "700",
     letterSpacing: 0.8,
     marginBottom: 4,
@@ -722,18 +1001,18 @@ const styles = StyleSheet.create({
   },
   todoPreviewText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: typography.sm,
     fontWeight: "500",
   },
   completedText: {
     textDecorationLine: "line-through",
   },
   durationBadge: {
-    fontSize: 11,
+    fontSize: typography.xs,
     fontWeight: "600",
   },
   emptyPreviewText: {
-    fontSize: 13,
+    fontSize: typography.sm,
     fontStyle: "italic",
     paddingVertical: 4,
   },
@@ -751,25 +1030,29 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 12,
   },
-  modalOverlay: {
+  sheetOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    justifyContent: "center",
-    paddingHorizontal: 20,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+    justifyContent: "flex-end",
   },
-  modalContent: {
-    borderRadius: 24,
-    padding: 20,
+  sheetDismiss: {
+    flex: 1,
+  },
+  sheetContent: {
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: spacing.lg,
     borderWidth: 1,
+    maxHeight: "88%",
     elevation: 10,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: typography.lg,
     fontWeight: "700",
     marginBottom: 14,
   },
   label: {
-    fontSize: 11,
+    fontSize: typography.xs,
     fontWeight: "700",
     textTransform: "uppercase",
     marginBottom: 8,
@@ -782,45 +1065,78 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
     marginRight: 8,
     gap: 6,
+    minHeight: MIN_TOUCH_TARGET - 4,
   },
   catEmoji: {
     fontSize: 16,
   },
   catName: {
-    fontSize: 12,
+    fontSize: typography.xs,
     fontWeight: "600",
   },
   input: {
     padding: 12,
     borderRadius: 12,
-    fontSize: 14,
+    fontSize: typography.sm,
     borderWidth: 1,
     marginBottom: 16,
+    minHeight: MIN_TOUCH_TARGET,
   },
   modalActions: {
     flexDirection: "row",
     justifyContent: "flex-end",
+    alignItems: "center",
     gap: 10,
   },
   cancelBtn: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 14,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: "center",
   },
   cancelBtnText: {
     fontWeight: "600",
   },
   createBtn: {
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 18,
     borderRadius: 12,
+    minHeight: MIN_TOUCH_TARGET,
+    minWidth: 120,
+    alignItems: "center",
+    justifyContent: "center",
   },
   createBtnText: {
     color: "#FFFFFF",
     fontWeight: "700",
+  },
+  copyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  copyBtnText: {
+    fontWeight: "700",
+  },
+  warnBox: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 4,
+  },
+  warnText: {
+    fontSize: typography.sm,
+    fontWeight: "600",
+    lineHeight: 18,
   },
 });

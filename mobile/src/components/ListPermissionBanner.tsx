@@ -14,9 +14,10 @@ interface ListPermissionBannerProps {
 }
 
 const TONE_COLORS = {
-  private: { fg: "#94A3B8", bg: "rgba(148, 163, 184, 0.14)" },
-  view_only: { fg: "#818CF8", bg: "rgba(99, 102, 241, 0.14)" },
-  collaborative: { fg: "#34D399", bg: "rgba(16, 185, 129, 0.14)" },
+  // Prefer theme textMuted via fg override in light/dark for AA contrast
+  private: { fg: "#64748B", bg: "rgba(100, 116, 139, 0.14)" },
+  view_only: { fg: "#6366F1", bg: "rgba(99, 102, 241, 0.14)" },
+  collaborative: { fg: "#059669", bg: "rgba(16, 185, 129, 0.14)" },
 } as const;
 
 export const ListPermissionBanner: React.FC<ListPermissionBannerProps> = ({
@@ -27,8 +28,12 @@ export const ListPermissionBanner: React.FC<ListPermissionBannerProps> = ({
   const { theme } = useTheme();
   const presentation = getListPermissionPresentation({ shareMode, isOwner, canEdit });
   const tone = TONE_COLORS[presentation.tone];
-  // Prefer theme accent for view-only to stay on-brand; keep distinct tones otherwise
-  const fg = presentation.tone === "view_only" ? theme.accent : tone.fg;
+  const fg =
+    presentation.tone === "view_only"
+      ? theme.accent
+      : presentation.tone === "private"
+      ? theme.textMuted
+      : tone.fg;
   const bg = presentation.tone === "view_only" ? theme.accentLight : tone.bg;
 
   const Icon =

@@ -9,21 +9,27 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { PriorityLevel, RecurrencePattern } from "../shared";
 import { useTheme } from "../context/ThemeContext";
+import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
+import { getErrorMessage } from "../utils/feedback";
+import { useToast } from "../context/ToastContext";
+import { usePushPrompt } from "../context/PushPromptContext";
 
 interface TaskModalProps {
   visible: boolean;
   onClose: () => void;
+  /** May return a Promise — sheet stays open until it resolves; closes only on success. */
   onSave: (task: {
     text: string;
     priority: PriorityLevel;
     reminderAt?: number;
     recurrence: RecurrencePattern;
     durationMinutes?: number | null;
-  }) => void;
+  }) => void | Promise<void>;
   initialText?: string;
   initialPriority?: PriorityLevel;
   initialReminderAt?: number;
@@ -44,6 +50,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   isEditing = false,
 }) => {
   const { theme, hapticsEnabled } = useTheme();
+  const { showError } = useToast();
+  const { maybeAskOnReminder } = usePushPrompt();
   const [text, setText] = useState(initialText);
   const [priority, setPriority] = useState<PriorityLevel>(initialPriority);
   const [recurrence, setRecurrence] = useState<RecurrencePattern>(initialRecurrence);
@@ -52,14 +60,17 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   );
   const [reminderMins, setReminderMins] = useState<number | null>(null);
   const [clearReminder, setClearReminder] = useState<boolean>(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!visible) return;
     setText(initialText);
     setPriority(initialPriority);
     setRecurrence(initialRecurrence);
     setDurationMinutes(initialDurationMinutes != null ? String(initialDurationMinutes) : "");
     setReminderMins(null);
     setClearReminder(false);
+    setSaving(false);
   }, [visible, initialText, initialPriority, initialRecurrence, initialDurationMinutes, initialReminderAt]);
 
   const triggerHaptic = () => {
@@ -68,8 +79,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     }
   };
 
-  const handleSave = () => {
-    if (!text.trim()) return;
+  const triggerErrorHaptic = () => {
+    if (hapticsEnabled && Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    }
+  };
+
+  const handleSave = async () => {
+    if (!text.trim() || saving) return;
     triggerHaptic();
     const baseTimestamp = initialReminderAt || Date.now();
     let reminderAt: number | undefined | null = initialReminderAt;
@@ -80,24 +97,37 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     }
     const cleanDur = durationMinutes.trim();
     const parsedDur = cleanDur ? parseInt(cleanDur.replace(/\D/g, ""), 10) : NaN;
-    onSave({
-      text: text.trim(),
-      priority,
-      reminderAt: reminderAt as any,
-      recurrence,
-      durationMinutes: isNaN(parsedDur) ? null : parsedDur,
-    });
-    onClose();
+
+    setSaving(true);
+    try {
+      await onSave({
+        text: text.trim(),
+        priority,
+        reminderAt: reminderAt as any,
+        recurrence,
+        durationMinutes: isNaN(parsedDur) ? null : parsedDur,
+      });
+      onClose();
+      // Contextual soft-ask when user first sets a reminder after declining
+      if (reminderAt != null && reminderMins !== null && !clearReminder) {
+        maybeAskOnReminder().catch(() => {});
+      }
+    } catch (e) {
+      triggerErrorHaptic();
+      showError(getErrorMessage(e, "Couldn't save task"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={saving ? undefined : onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <View style={[styles.modalContainer, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
-          <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>
+          <Text style={[styles.modalTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
             {isEditing ? "Edit Task" : "New Task"}
           </Text>
           <ScrollView keyboardShouldPersistTaps="handled">
@@ -116,6 +146,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               value={text}
               onChangeText={setText}
               autoFocus
+              editable={!saving}
+              accessibilityLabel="Task description"
             />
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Est. Duration (Minutes)</Text>
@@ -133,13 +165,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               placeholderTextColor={theme.inputPlaceholder}
               value={durationMinutes}
               onChangeText={setDurationMinutes}
+              editable={!saving}
+              accessibilityLabel="Estimated duration in minutes"
             />
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Priority Level</Text>
-            <View style={styles.row}>
+            <View style={styles.row} accessibilityRole="radiogroup">
               {(["none", "low", "medium", "high"] as PriorityLevel[]).map((p) => (
                 <TouchableOpacity
                   key={p}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: priority === p }}
+                  accessibilityLabel={`Priority ${p}`}
                   style={[
                     styles.pill,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
@@ -149,6 +186,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     triggerHaptic();
                     setPriority(p);
                   }}
+                  disabled={saving}
                 >
                   <Text
                     style={[
@@ -156,6 +194,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       { color: theme.textSecondary },
                       priority === p && { color: "#FFFFFF", fontWeight: "700" },
                     ]}
+                    maxFontSizeMultiplier={1.3}
                   >
                     {p.toUpperCase()}
                   </Text>
@@ -164,10 +203,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             </View>
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Recurrence Pattern</Text>
-            <View style={styles.row}>
+            <View style={styles.row} accessibilityRole="radiogroup">
               {(["none", "daily", "weekly", "monthly"] as RecurrencePattern[]).map((r) => (
                 <TouchableOpacity
                   key={r}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: recurrence === r }}
+                  accessibilityLabel={`Recurrence ${r}`}
                   style={[
                     styles.pill,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
@@ -177,6 +219,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     triggerHaptic();
                     setRecurrence(r);
                   }}
+                  disabled={saving}
                 >
                   <Text
                     style={[
@@ -184,6 +227,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       { color: theme.textSecondary },
                       recurrence === r && { color: "#FFFFFF", fontWeight: "700" },
                     ]}
+                    maxFontSizeMultiplier={1.3}
                   >
                     {r.toUpperCase()}
                   </Text>
@@ -194,22 +238,31 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             <Text style={[styles.label, { color: theme.textMuted }]}>Set Quick Reminder</Text>
             <View style={styles.row}>
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityState={{ selected: clearReminder || (!reminderMins && !initialReminderAt) }}
                 style={[
                   styles.pill,
                   { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                  (clearReminder || (!reminderMins && !initialReminderAt)) && { backgroundColor: theme.accent, borderColor: theme.accent },
+                  (clearReminder || (!reminderMins && !initialReminderAt)) && {
+                    backgroundColor: theme.accent,
+                    borderColor: theme.accent,
+                  },
                 ]}
                 onPress={() => {
                   triggerHaptic();
                   setReminderMins(null);
                   setClearReminder(true);
                 }}
+                disabled={saving}
               >
                 <Text
                   style={[
                     styles.pillText,
                     { color: theme.textSecondary },
-                    (clearReminder || (!reminderMins && !initialReminderAt)) && { color: "#FFFFFF", fontWeight: "700" },
+                    (clearReminder || (!reminderMins && !initialReminderAt)) && {
+                      color: "#FFFFFF",
+                      fontWeight: "700",
+                    },
                   ]}
                 >
                   None
@@ -218,16 +271,21 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               {[5, 15, 30, 60].map((mins) => (
                 <TouchableOpacity
                   key={mins}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: !clearReminder && reminderMins === mins }}
+                  accessibilityLabel={`Reminder plus ${mins} minutes`}
                   style={[
                     styles.pill,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                    !clearReminder && reminderMins === mins && { backgroundColor: theme.accent, borderColor: theme.accent },
+                    !clearReminder &&
+                      reminderMins === mins && { backgroundColor: theme.accent, borderColor: theme.accent },
                   ]}
                   onPress={() => {
                     triggerHaptic();
                     setClearReminder(false);
                     setReminderMins(reminderMins === mins ? null : mins);
                   }}
+                  disabled={saving}
                 >
                   <Text
                     style={[
@@ -244,14 +302,31 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           </ScrollView>
 
           <View style={styles.actions}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={onClose}
+              disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel"
+            >
               <Text style={[styles.cancelText, { color: theme.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.saveButton, { backgroundColor: theme.accent }]}
+              style={[
+                styles.saveButton,
+                { backgroundColor: theme.accent, opacity: !text.trim() || saving ? 0.6 : 1 },
+              ]}
               onPress={handleSave}
+              disabled={!text.trim() || saving}
+              accessibilityRole="button"
+              accessibilityLabel={isEditing ? "Save task" : "Create task"}
+              accessibilityState={{ disabled: !text.trim() || saving, busy: saving }}
             >
-              <Text style={styles.saveText}>Save Task</Text>
+              {saving ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.saveText}>Save Task</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -269,7 +344,7 @@ const styles = StyleSheet.create({
   modalContainer: {
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    padding: 20,
+    padding: spacing.lg,
     maxHeight: "85%",
     borderWidth: 1,
     shadowOffset: { width: 0, height: -4 },
@@ -278,24 +353,25 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: typography.xl,
     fontWeight: "700",
-    marginBottom: 16,
+    marginBottom: spacing.md,
   },
   label: {
-    fontSize: 11,
+    fontSize: typography.xs,
     fontWeight: "700",
-    marginTop: 12,
+    marginTop: spacing.sm,
     marginBottom: 6,
     textTransform: "uppercase",
     letterSpacing: 0.5,
   },
   input: {
-    padding: 12,
+    padding: spacing.sm,
     borderRadius: 12,
-    fontSize: 15,
+    fontSize: typography.md,
     borderWidth: 1,
     marginBottom: 4,
+    minHeight: MIN_TOUCH_TARGET,
   },
   row: {
     flexDirection: "row",
@@ -304,24 +380,28 @@ const styles = StyleSheet.create({
   },
   pill: {
     paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
+    minHeight: MIN_TOUCH_TARGET - 4,
+    justifyContent: "center",
   },
   pillText: {
-    fontSize: 12,
+    fontSize: typography.xs,
     fontWeight: "600",
   },
   actions: {
     flexDirection: "row",
     justifyContent: "flex-end",
     gap: 12,
-    marginTop: 20,
+    marginTop: spacing.lg,
   },
   cancelButton: {
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: "center",
   },
   cancelText: {
     fontWeight: "600",
@@ -330,6 +410,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 22,
     borderRadius: 12,
+    minHeight: MIN_TOUCH_TARGET,
+    minWidth: 110,
+    alignItems: "center",
+    justifyContent: "center",
   },
   saveText: {
     color: "#ffffff",
