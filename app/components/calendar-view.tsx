@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useFetcher } from "@remix-run/react";
 import type { Todo } from "~/to-do-manager";
+import { applySetCompletedLocal, formatRescheduledToast } from "../../shared";
 
 // Redefining priority config for local styling
 const priorityConfig = {
@@ -41,10 +42,11 @@ const priorityConfig = {
 interface CalendarViewProps {
   todos: Todo[];
   activeListId: string;
+  onNotify?: (message: string) => void;
 }
 
-export function CalendarView({ todos, activeListId }: CalendarViewProps) {
-  const fetcher = useFetcher();
+export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProps) {
+  const fetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
   
   // Navigation states
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -61,6 +63,43 @@ export function CalendarView({ todos, activeListId }: CalendarViewProps) {
 
   // Collapsible sidebar state on mobile
   const [isUnscheduledOpen, setIsUnscheduledOpen] = useState(true);
+
+  const lastRescheduleToastKey = useRef<string | null>(null);
+  const [flashCompleteId, setFlashCompleteId] = useState<string | null>(null);
+
+  const pendingSetCompleted =
+    fetcher.state !== "idle" && fetcher.formData?.get("intent") === "setCompleted"
+      ? {
+          id: String(fetcher.formData.get("id") || ""),
+          completed: fetcher.formData.get("completed") === "true",
+        }
+      : null;
+
+  const displayTodos = useMemo(() => {
+    if (!pendingSetCompleted?.id) return todos;
+    return todos.map((t) => {
+      if (t.id !== pendingSetCompleted.id) return t;
+      return applySetCompletedLocal(t, pendingSetCompleted.completed).todo;
+    });
+  }, [todos, pendingSetCompleted]);
+
+  useEffect(() => {
+    if (fetcher.state !== "idle") return;
+    const data = fetcher.data;
+    if (!data) return;
+    if (data.error) {
+      onNotify?.(data.error);
+      return;
+    }
+    if (data.rescheduled && data.todo?.reminderAt) {
+      const key = `${data.todo.id}:${data.todo.reminderAt}`;
+      if (lastRescheduleToastKey.current === key) return;
+      lastRescheduleToastKey.current = key;
+      setFlashCompleteId(data.todo.id);
+      window.setTimeout(() => setFlashCompleteId(null), 450);
+      onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+    }
+  }, [fetcher.state, fetcher.data, onNotify]);
 
   // Month navigation helpers
   const handlePrevMonth = () => {
@@ -155,7 +194,7 @@ export function CalendarView({ todos, activeListId }: CalendarViewProps) {
     const sMap: Record<string, Todo[]> = {};
     const uList: Todo[] = [];
 
-    todos.forEach((todo) => {
+    displayTodos.forEach((todo) => {
       if (todo.parentId) return; // skip subtasks in main calendar rendering
 
       if (todo.reminderAt) {
@@ -187,7 +226,7 @@ export function CalendarView({ todos, activeListId }: CalendarViewProps) {
       scheduledMap: sMap,
       unscheduledList: uList,
     };
-  }, [todos]);
+  }, [displayTodos]);
 
   // HTML5 Drag-and-drop drop handlers
   const handleDropOnDate = (todoId: string, dateStr: string) => {
@@ -217,12 +256,16 @@ export function CalendarView({ todos, activeListId }: CalendarViewProps) {
     );
   };
 
-  // Toggle todo completion
+  // Set explicit done state (idempotent); block while this task's request is in flight
   const handleToggleTodo = (todoId: string) => {
+    if (pendingSetCompleted?.id === todoId) return;
+    const current = todos.find((t) => t.id === todoId);
+    if (!current) return;
     fetcher.submit(
       {
-        intent: "toggle",
+        intent: "setCompleted",
         id: todoId,
+        completed: String(!current.completed),
       },
       { method: "post" }
     );
@@ -353,14 +396,17 @@ export function CalendarView({ todos, activeListId }: CalendarViewProps) {
                           
                           <button
                             type="button"
+                            disabled={pendingSetCompleted?.id === todo.id}
+                            aria-busy={pendingSetCompleted?.id === todo.id}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleTodo(todo.id);
                             }}
-                            className={`w-3.5 h-3.5 rounded border border-slate-700 flex items-center justify-center flex-shrink-0 cursor-pointer
-                              ${todo.completed ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText" : "hover:border-themeAccentRing"}`}
+                            className={`w-3.5 h-3.5 rounded border border-slate-700 flex items-center justify-center flex-shrink-0
+                              ${pendingSetCompleted?.id === todo.id ? "cursor-default opacity-80" : "cursor-pointer"}
+                              ${todo.completed || flashCompleteId === todo.id ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText" : "hover:border-themeAccentRing"}`}
                           >
-                            {todo.completed && (
+                            {(todo.completed || flashCompleteId === todo.id) && (
                               <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                               </svg>
@@ -454,11 +500,14 @@ export function CalendarView({ todos, activeListId }: CalendarViewProps) {
                         
                         <button
                           type="button"
+                          disabled={pendingSetCompleted?.id === todo.id}
+                          aria-busy={pendingSetCompleted?.id === todo.id}
                           onClick={() => handleToggleTodo(todo.id)}
-                          className={`w-4 h-4 rounded border border-slate-700 flex items-center justify-center flex-shrink-0 cursor-pointer
-                            ${todo.completed ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText" : "hover:border-themeAccentRing"}`}
+                          className={`w-4 h-4 rounded border border-slate-700 flex items-center justify-center flex-shrink-0
+                            ${pendingSetCompleted?.id === todo.id ? "cursor-default opacity-80" : "cursor-pointer"}
+                            ${todo.completed || flashCompleteId === todo.id ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText" : "hover:border-themeAccentRing"}`}
                         >
-                          {todo.completed && (
+                          {(todo.completed || flashCompleteId === todo.id) && (
                             <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                             </svg>

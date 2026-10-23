@@ -78,6 +78,13 @@ export const UpdateTodoSchema = v.object({
 
 export type UpdateTodoInput = v.InferOutput<typeof UpdateTodoSchema>;
 
+/** Explicit done-state payload for POST /api/v1/todos/:id/completed */
+export const SetTodoCompletedSchema = v.object({
+  completed: v.boolean(),
+});
+
+export type SetTodoCompletedInput = v.InferOutput<typeof SetTodoCompletedSchema>;
+
 export const CreateListSchema = v.object({
   name: v.pipe(v.string(), v.minLength(1, "List name cannot be empty")),
   category: v.optional(v.string(), "Checklist"),
@@ -112,3 +119,5 @@ export * from "./list-permissions";
 export * from "./mobile-ux";
 
 export * from "./mobile-version";
+
+export * from "./todo-completed";
