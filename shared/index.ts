@@ -31,6 +31,13 @@ export interface TodoItem {
   subtasks?: TodoItem[];
 }
 
+/** Public owner summary on list payloads — display name only (never email). */
+export interface ListOwner {
+  displayName: string;
+}
+
+export type ListScope = "mine" | "shared" | "all";
+
 // List data structure
 export interface TodoList {
   id: string;
@@ -42,12 +49,17 @@ export interface TodoList {
   category?: string;
   isOwner?: boolean;
   canEdit?: boolean;
+  /** Additive: present on newer API responses */
+  owner?: ListOwner;
 }
 
 // User settings data structure
 export interface UserSettings {
   userId: string;
   email?: string;
+  /** Resolved display name (default "sYnX user" when unset) */
+  displayName?: string;
+  displayNameSet?: boolean;
   emailEnabled: boolean;
   smsEnabled: boolean;
   phoneNumber: string;

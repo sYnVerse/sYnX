@@ -29,6 +29,17 @@ describe("getListPermissionPresentation", () => {
     expect(p.description).toMatch(/Editing is disabled/i);
   });
 
+  it("includes owner display name in non-owner view-only copy", () => {
+    const p = getListPermissionPresentation({
+      shareMode: "public_read",
+      isOwner: false,
+      canEdit: false,
+      ownerDisplayName: "Chris",
+    });
+    expect(p.description).toMatch(/Shared by Chris/i);
+    expect(p.description).not.toContain("@");
+  });
+
   it("shows owner-facing view-only sharing status", () => {
     const p = getListPermissionPresentation({
       shareMode: "public_read",
@@ -48,7 +59,17 @@ describe("getListPermissionPresentation", () => {
     expect(p.label).toBe("Collaborative");
     expect(p.icon).toBe("users");
     expect(p.tone).toBe("collaborative");
-    expect(p.description).toMatch(/shared collaborative/i);
+    expect(p.description).toMatch(/shared collaborative|collaborative list/i);
+  });
+
+  it("includes owner display name in non-owner collaborative copy", () => {
+    const p = getListPermissionPresentation({
+      shareMode: "public_edit",
+      isOwner: false,
+      canEdit: true,
+      ownerDisplayName: "Ada",
+    });
+    expect(p.description).toMatch(/Shared by Ada/i);
   });
 
   it("shows collaborative sharing status for owners", () => {

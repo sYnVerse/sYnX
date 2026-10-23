@@ -20,6 +20,8 @@ export interface ListPermissionInput {
   shareMode: ShareMode;
   isOwner: boolean;
   canEdit: boolean;
+  /** Owner's display name for non-owner copy (never email). */
+  ownerDisplayName?: string | null;
 }
 
 /**
@@ -29,7 +31,8 @@ export interface ListPermissionInput {
 export function getListPermissionPresentation(
   input: ListPermissionInput
 ): ListPermissionPresentation {
-  const { shareMode, isOwner, canEdit } = input;
+  const { shareMode, isOwner, canEdit, ownerDisplayName } = input;
+  const ownerLabel = ownerDisplayName?.trim() || null;
 
   if (shareMode === "private") {
     return {
@@ -47,7 +50,9 @@ export function getListPermissionPresentation(
       label: "View-Only",
       description: isOwner
         ? "Anyone with the link can view — they cannot edit."
-        : "You are viewing a shared list. Editing is disabled.",
+        : ownerLabel
+          ? `Shared by ${ownerLabel}. Editing is disabled.`
+          : "You are viewing a shared list. Editing is disabled.",
       tone: "view_only",
       icon: "eye",
     };
@@ -58,7 +63,9 @@ export function getListPermissionPresentation(
     label: "Collaborative",
     description: isOwner
       ? "Anyone with the link can view and edit this list."
-      : "You're editing a shared collaborative list.",
+      : ownerLabel
+        ? `Shared by ${ownerLabel}. You're editing a collaborative list.`
+        : "You're editing a shared collaborative list.",
     tone: "collaborative",
     icon: "users",
   };

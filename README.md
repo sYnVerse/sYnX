@@ -36,6 +36,16 @@ ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist';
 ALTER TABLE todos ADD COLUMN parent_id TEXT REFERENCES todos(id) ON DELETE CASCADE;
 ALTER TABLE todos ADD COLUMN recurrence TEXT DEFAULT 'none';
 ALTER TABLE todos ADD COLUMN duration_minutes INTEGER DEFAULT NULL;
+
+-- 3. Display names + Shared with me tracking
+ALTER TABLE user_settings ADD COLUMN display_name TEXT;
+CREATE TABLE IF NOT EXISTS shared_list_access (
+  user_id TEXT NOT NULL,
+  list_id TEXT NOT NULL,
+  opened_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, list_id),
+  FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE
+);
 ```
 
 ### Apply Locally
@@ -46,6 +56,8 @@ npx wrangler d1 execute synx-db --local --command "ALTER TABLE lists ADD COLUMN 
 npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN parent_id TEXT REFERENCES todos(id) ON DELETE CASCADE;"
 npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN recurrence TEXT DEFAULT 'none';"
 npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN duration_minutes INTEGER DEFAULT NULL;"
+npx wrangler d1 execute synx-db --local --command "ALTER TABLE user_settings ADD COLUMN display_name TEXT;"
+npx wrangler d1 execute synx-db --local --command "CREATE TABLE IF NOT EXISTS shared_list_access (user_id TEXT NOT NULL, list_id TEXT NOT NULL, opened_at INTEGER NOT NULL, PRIMARY KEY (user_id, list_id), FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE);"
 ```
 
 ---

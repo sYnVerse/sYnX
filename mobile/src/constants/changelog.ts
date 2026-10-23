@@ -40,6 +40,18 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Readable type scale and centered wide-screen layout for tablets."
+      },
+      {
+        type: "NEW",
+        text: "Lists screen splits into My lists and Shared with me — opening a shared link remembers it across devices."
+      },
+      {
+        type: "NEW",
+        text: "Shared lists show the owner's display name on Tasks (instead of a generic “Shared with you”)."
+      },
+      {
+        type: "NEW",
+        text: "Settings lets you set a display name shown on lists you share (your email stays private)."
       }
     ]
   },

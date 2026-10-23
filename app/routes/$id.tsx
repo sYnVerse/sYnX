@@ -10,6 +10,14 @@ import { useState, useRef, useEffect, useCallback, createContext, useContext } f
 import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
+import {
+  DEFAULT_DISPLAY_NAME,
+  getDisplayNamesForUsers,
+  resolveDisplayName,
+  sanitizeDisplayNameInput,
+  syncUserProfileOnSignIn,
+} from "~/user-profile.server";
+import { listSharedWithMe, recordSharedListAccess, removeSharedListAccess } from "~/shared-lists.server";
 
 
 export const GUEST_STORAGE_KEY = "synx_guest_lists";
@@ -78,15 +86,12 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     headers.append("Set-Cookie", `guest_session=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
   }
 
-  // Auto-sync user email in settings if logged in
-  if (isLoggedIn && email) {
+  // Keep profile (email) in sync on signed-in page loads — display name is never derived from email
+  if (isLoggedIn) {
     try {
-      await db.prepare(
-        `INSERT INTO user_settings (user_id, email) VALUES (?, ?)
-         ON CONFLICT(user_id) DO UPDATE SET email = excluded.email`
-      ).bind(userId, email).run();
+      await syncUserProfileOnSignIn(db, userId, email);
     } catch (e) {
-      console.error("Failed to sync user email in settings:", e);
+      console.error("Failed to sync user profile:", e);
     }
   }
 
@@ -95,12 +100,23 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
   let activeListExists = false;
 
   if (isLoggedIn) {
-    // Load lists from D1 for logged-in user
+    // Load owned lists from D1
     try {
       const { results: listRows } = await db.prepare("SELECT * FROM lists WHERE owner_id = ? ORDER BY created_at ASC").bind(userId).all();
       lists = listRows || [];
     } catch (e) {
       console.error("Failed to load lists:", e);
+    }
+
+    // Load previously opened shared lists (still public); private lists drop out here
+    try {
+      const sharedRows = await listSharedWithMe(db, userId);
+      const ownedIds = new Set(lists.map((l: any) => l.id));
+      for (const row of sharedRows) {
+        if (!ownedIds.has(row.id)) lists.push(row);
+      }
+    } catch (e) {
+      console.error("Failed to load shared-with-me lists:", e);
     }
 
     activeListExists = lists.some((l: any) => l.id === activeListId);
@@ -111,9 +127,15 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
         if (sharedList && sharedList.share_mode && sharedList.share_mode !== "private") {
           lists.push(sharedList);
           activeListExists = true;
+          await recordSharedListAccess(db, userId, activeListId, sharedList.owner_id === userId);
         }
       } catch (e) {
         console.error("Failed to query shared list:", e);
+      }
+    } else if (activeListExists && activeListId) {
+      const active = lists.find((l: any) => l.id === activeListId);
+      if (active && active.owner_id !== userId) {
+        await recordSharedListAccess(db, userId, activeListId, false);
       }
     }
 
@@ -147,6 +169,24 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
         console.error("Failed to query shared list for guest:", e);
       }
     }
+  }
+
+  // Attach owner display names (never email) for shared-list UI
+  try {
+    const ownerNames = await getDisplayNamesForUsers(
+      db,
+      lists.map((l: any) => l.owner_id)
+    );
+    lists = lists.map((l: any) => ({
+      ...l,
+      owner_display_name: ownerNames.get(l.owner_id) || DEFAULT_DISPLAY_NAME,
+    }));
+  } catch (e) {
+    console.error("Failed to resolve owner display names:", e);
+    lists = lists.map((l: any) => ({
+      ...l,
+      owner_display_name: DEFAULT_DISPLAY_NAME,
+    }));
   }
 
   // Load all todos for any lists loaded from D1 (logged in user or shared list)
@@ -203,7 +243,9 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     smsEnabled: false,
     phoneNumber: "",
     phoneCarrier: "",
-    discordWebhookUrl: ""
+    discordWebhookUrl: "",
+    displayName: DEFAULT_DISPLAY_NAME,
+    displayNameSet: false,
   };
   if (userId && isLoggedIn) {
     try {
@@ -214,7 +256,9 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
           smsEnabled: Boolean(settingsVal.sms_enabled),
           phoneNumber: settingsVal.phone_number || "",
           phoneCarrier: settingsVal.phone_carrier || "",
-          discordWebhookUrl: settingsVal.discord_webhook_url || ""
+          discordWebhookUrl: settingsVal.discord_webhook_url || "",
+          displayName: resolveDisplayName(settingsVal.display_name),
+          displayNameSet: Boolean(settingsVal.display_name && String(settingsVal.display_name).trim()),
         };
       }
     } catch (e) {
@@ -307,6 +351,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     const phoneCarrier = (formData.get("phoneCarrier") as string) || "";
     const discordWebhookUrlRaw = (formData.get("discordWebhookUrl") as string) || "";
     const discordWebhookUrl = discordWebhookUrlRaw.trim();
+    const displayName = sanitizeDisplayNameInput(formData.get("displayName"));
 
     if (discordWebhookUrl) {
       const DISCORD_WEBHOOK_REGEX = /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
@@ -317,15 +362,16 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     try {
       await db.prepare(
-        `INSERT INTO user_settings (user_id, email, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO user_settings (user_id, email, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url, display_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(user_id) DO UPDATE SET
            email = excluded.email,
            email_enabled = excluded.email_enabled,
            sms_enabled = excluded.sms_enabled,
            phone_number = excluded.phone_number,
            phone_carrier = excluded.phone_carrier,
-           discord_webhook_url = excluded.discord_webhook_url`
+           discord_webhook_url = excluded.discord_webhook_url,
+           display_name = excluded.display_name`
       ).bind(
         userId,
         email || "",
@@ -333,12 +379,32 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         smsEnabled ? 1 : 0,
         phoneNumber.trim(),
         phoneCarrier.trim(),
-        discordWebhookUrl
+        discordWebhookUrl,
+        displayName
       ).run();
     } catch (e) {
       console.error("Failed to update settings in database:", e);
     }
 
+    return json({ success: true });
+  }
+
+  if (intent === "removeSharedList") {
+    if (!isLoggedIn) {
+      return Response.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const listId = (formData.get("listId") as string) || "";
+    if (!listId) {
+      return Response.json({ error: "List ID is required" }, { status: 400 });
+    }
+    await removeSharedListAccess(db, userId, listId);
+    const remainingOwned = await db
+      .prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1")
+      .bind(userId)
+      .first<{ id: string }>();
+    if (activeListId === listId) {
+      return redirect(remainingOwned?.id ? `/${remainingOwned.id}` : "/");
+    }
     return json({ success: true });
   }
 
@@ -1791,6 +1857,9 @@ export default function TodoPage() {
   const [phoneCarrier, setPhoneCarrier] = useState(settings?.phoneCarrier ?? "");
   const [discordEnabled, setDiscordEnabled] = useState(!!settings?.discordWebhookUrl);
   const [discordInput, setDiscordInput] = useState(settings?.discordWebhookUrl ?? "");
+  const [displayNameInput, setDisplayNameInput] = useState(
+    settings?.displayNameSet ? (settings?.displayName ?? "") : ""
+  );
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
 
@@ -1800,6 +1869,7 @@ export default function TodoPage() {
   const initialPhoneCarrier = settings?.phoneCarrier ?? "";
   const initialDiscordEnabled = !!settings?.discordWebhookUrl;
   const initialDiscordInput = settings?.discordWebhookUrl ?? "";
+  const initialDisplayNameInput = settings?.displayNameSet ? (settings?.displayName ?? "") : "";
 
   const isSettingsDirty =
     emailEnabled !== initialEmailEnabled ||
@@ -1807,7 +1877,8 @@ export default function TodoPage() {
     phoneInput !== initialPhoneInput ||
     phoneCarrier !== initialPhoneCarrier ||
     discordEnabled !== initialDiscordEnabled ||
-    discordInput !== initialDiscordInput;
+    discordInput !== initialDiscordInput ||
+    displayNameInput !== initialDisplayNameInput;
 
   const resetSettings = () => {
     setEmailEnabled(initialEmailEnabled);
@@ -1816,6 +1887,7 @@ export default function TodoPage() {
     setPhoneCarrier(initialPhoneCarrier);
     setDiscordEnabled(initialDiscordEnabled);
     setDiscordInput(initialDiscordInput);
+    setDisplayNameInput(initialDisplayNameInput);
   };
 
   const handleSaveSettings = () => {
@@ -1831,6 +1903,7 @@ export default function TodoPage() {
       phoneNumber: smsEnabled ? `+1${cleanPhone}` : "",
       phoneCarrier: smsEnabled ? phoneCarrier : "",
       discordWebhookUrl: discordEnabled ? discordInput : "",
+      displayName: displayNameInput.trim(),
     }, { method: "post" });
     showToast("✓ Saved Preferences!");
     return true;
@@ -1861,6 +1934,7 @@ export default function TodoPage() {
     setPhoneCarrier(settings?.phoneCarrier ?? "");
     setDiscordEnabled(!!settings?.discordWebhookUrl);
     setDiscordInput(settings?.discordWebhookUrl ?? "");
+    setDisplayNameInput(settings?.displayNameSet ? (settings?.displayName ?? "") : "");
   }, [settings]);
 
   useEffect(() => {
@@ -2303,25 +2377,14 @@ export default function TodoPage() {
             </div>
           )}
 
-          {/* Lists Section */}
+          {/* Lists Section — My lists vs Shared with me */}
           <div className="flex-1 flex flex-col min-h-0">
-            <div className="flex items-center justify-between mb-2 px-1">
-              <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">My Lists</h3>
-              <button
-                onClick={() => setIsCreateListOpen(true)}
-                className="text-slate-500 hover:text-themeAccentText p-1 rounded-md hover:bg-white/[0.04] transition-all duration-205 cursor-pointer bg-transparent"
-                title="Create new list"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-              </button>
-            </div>
-            <nav className="space-y-1 overflow-y-auto flex-1 min-h-0 pr-1 scrollbar-thin overscroll-contain">
-              {lists.map((list: any) => {
+            {(() => {
+              const myLists = lists.filter((l: any) => l.owner_id === userId);
+              const sharedLists = lists.filter((l: any) => l.owner_id !== userId);
+              const renderListRow = (list: any, opts: { shared?: boolean }) => {
                 const isActive = list.id === activeListId;
-                const remainingCount = list.todos.filter((t: any) => !t.completed).length;
-
+                const remainingCount = (list.todos || []).filter((t: any) => !t.completed).length;
                 return (
                   <div
                     key={list.id}
@@ -2340,11 +2403,15 @@ export default function TodoPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
                       <span className="text-xs font-semibold truncate">{list.name}</span>
-                      {list.category && (
+                      {opts.shared && list.owner_display_name ? (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-slate-400 font-medium shrink-0 truncate max-w-[7rem]">
+                          {list.owner_display_name}
+                        </span>
+                      ) : list.category ? (
                         <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-slate-400 font-medium shrink-0">
                           {list.category}
                         </span>
-                      )}
+                      ) : null}
                     </a>
 
                     <div className="flex items-center gap-1.5">
@@ -2354,37 +2421,93 @@ export default function TodoPage() {
                         </span>
                       )}
 
-                      {/* Options (Rename & Delete) */}
                       <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity duration-200 bg-slate-900/80 px-1 py-0.5 rounded-md border border-white/5 shadow-sm absolute right-2">
-                        <button
-                          onClick={() => {
-                            setListToRename({ id: list.id, name: list.name });
-                            setRenameInput(list.name);
-                          }}
-                          className="text-slate-500 hover:text-themeAccentText p-0.5 rounded transition-colors"
-                          title="Rename list"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                          </svg>
-                        </button>
-                        {lists.length > 1 && (
+                        {opts.shared ? (
                           <button
-                            onClick={() => setListToDelete({ id: list.id, name: list.name })}
+                            onClick={() => {
+                              settingsFetcher.submit(
+                                { intent: "removeSharedList", listId: list.id },
+                                { method: "post" }
+                              );
+                            }}
                             className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
-                            title="Delete list"
+                            title="Remove from Shared with me"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => {
+                                setListToRename({ id: list.id, name: list.name });
+                                setRenameInput(list.name);
+                              }}
+                              className="text-slate-500 hover:text-themeAccentText p-0.5 rounded transition-colors"
+                              title="Rename list"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                            {myLists.length > 1 && (
+                              <button
+                                onClick={() => setListToDelete({ id: list.id, name: list.name })}
+                                className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
+                                title="Delete list"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
                   </div>
                 );
-              })}
-            </nav>
+              };
+
+              return (
+                <nav className="space-y-4 overflow-y-auto flex-1 min-h-0 pr-1 scrollbar-thin overscroll-contain">
+                  <div>
+                    <div className="flex items-center justify-between mb-2 px-1">
+                      <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">My lists</h3>
+                      <button
+                        onClick={() => setIsCreateListOpen(true)}
+                        className="text-slate-500 hover:text-themeAccentText p-1 rounded-md hover:bg-white/[0.04] transition-all duration-205 cursor-pointer bg-transparent"
+                        title="Create new list"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="space-y-1">
+                      {myLists.map((list: any) => renderListRow(list, {}))}
+                      {myLists.length === 0 && (
+                        <p className="text-[10px] text-slate-500 px-1 py-2">No lists yet</p>
+                      )}
+                    </div>
+                  </div>
+                  {(isLoggedIn || sharedLists.length > 0) && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2 px-1">
+                        <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Shared with me</h3>
+                      </div>
+                      <div className="space-y-1">
+                        {sharedLists.map((list: any) => renderListRow(list, { shared: true }))}
+                        {sharedLists.length === 0 && (
+                          <p className="text-[10px] text-slate-500 px-1 py-2">Open a shared link to add lists here</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </nav>
+              );
+            })()}
           </div>
         </div>
 
@@ -2537,9 +2660,14 @@ export default function TodoPage() {
               </div>
             )}
             <p className="text-xs text-slate-500 mt-1">
-              {activeCount === 0 && totalCount > 0
-                ? "🎉 All tasks completed!"
-                : `${activeCount} task${activeCount !== 1 ? "s" : ""} remaining`}
+              {!isOwner && activeListMeta?.owner_display_name
+                ? `Shared by ${activeListMeta.owner_display_name}`
+                : activeCount === 0 && totalCount > 0
+                  ? "🎉 All tasks completed!"
+                  : `${activeCount} task${activeCount !== 1 ? "s" : ""} remaining`}
+              {!isOwner && activeListMeta?.owner_display_name
+                ? ` · ${activeCount} task${activeCount !== 1 ? "s" : ""} remaining`
+                : null}
             </p>
           </div>
 
@@ -2553,7 +2681,12 @@ export default function TodoPage() {
           <div className="mb-6 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-3.5 flex items-center justify-between">
             <div className="flex items-center gap-2 text-indigo-300 text-xs font-semibold">
               <span>👁 View-Only Access</span>
-              <span className="text-indigo-400/70 font-normal">— You are viewing a shared list with read-only permissions.</span>
+              <span className="text-indigo-400/70 font-normal">
+                —{" "}
+                {activeListMeta?.owner_display_name
+                  ? `Shared by ${activeListMeta.owner_display_name}. Editing is disabled.`
+                  : "You are viewing a shared list with read-only permissions."}
+              </span>
             </div>
           </div>
         ) : (
@@ -3098,7 +3231,10 @@ export default function TodoPage() {
                 {email.split("@")[0].substring(0, 2).toUpperCase()}
                 <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full" />
               </div>
-              <h3 className="text-base font-bold text-slate-200 font-display">{email}</h3>
+              <h3 className="text-base font-bold text-slate-200 font-display">
+                {displayNameInput.trim() || settings?.displayName || "sYnX user"}
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5 truncate max-w-full">{email}</p>
               <div className="flex items-center gap-1.5 mt-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2.5 py-1">
                 <span className="text-[10px] font-mono text-slate-400 select-all">User ID: {userId}</span>
                 <button
@@ -3114,6 +3250,22 @@ export default function TodoPage() {
                   </svg>
                 </button>
               </div>
+            </div>
+
+            {/* Display name */}
+            <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Display name</h4>
+            <div className="mb-6">
+              <input
+                type="text"
+                value={displayNameInput}
+                onChange={(e) => setDisplayNameInput(e.target.value.slice(0, 64))}
+                placeholder="sYnX user"
+                maxLength={64}
+                className="w-full rounded-lg bg-slate-950 border border-white/[0.08] text-slate-200 text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50"
+              />
+              <p className="text-[10px] text-slate-500 mt-1.5">
+                Shown to people who open your shared lists. Your email is never shared.
+              </p>
             </div>
 
             {/* Statistics */}
@@ -3287,6 +3439,7 @@ export default function TodoPage() {
                         phoneNumber: smsEnabled ? `+1${cleanPhone}` : "",
                         phoneCarrier: smsEnabled ? phoneCarrier : "",
                         discordWebhookUrl: discordEnabled ? discordInput : "",
+                        displayName: displayNameInput.trim(),
                       }, { method: "post" });
                       showToast("✓ Saved Preferences!");
                     }}

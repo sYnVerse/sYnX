@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
-  FlatList,
+  SectionList,
   TouchableOpacity,
   StyleSheet,
   Modal,
@@ -83,12 +83,29 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
 
   const { data: lists, isLoading, isRefetching, refetch, isError, error } = useQuery({
-    queryKey: ["lists"],
+    queryKey: ["lists", "all"],
     queryFn: async () => {
-      const res = await apiClient.get("/api/v1/lists");
+      const res = await apiClient.get("/api/v1/lists?scope=all");
       return res.data.lists as TodoList[];
     },
   });
+
+  const ownedLists = React.useMemo(
+    () => (lists || []).filter((l) => l.isOwner !== false),
+    [lists]
+  );
+  const sharedLists = React.useMemo(
+    () => (lists || []).filter((l) => l.isOwner === false),
+    [lists]
+  );
+
+  const listSections = React.useMemo(
+    () => [
+      { title: "My lists", data: ownedLists, shared: false },
+      { title: "Shared with me", data: sharedLists, shared: true },
+    ],
+    [ownedLists, sharedLists]
+  );
 
   const { data: activeListTodos, refetch: refetchPreview } = useQuery({
     queryKey: ["active_list_todos_preview", activeListId],
@@ -154,7 +171,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
     onSuccess: (newList) => {
       triggerImpactHaptic();
-      queryClient.setQueryData<TodoList[]>(["lists"], (old) => (old ? [...old, newList] : [newList]));
+      queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => (old ? [...old, newList] : [newList]));
       queryClient.invalidateQueries({ queryKey: ["lists"] });
       onSelectList(newList.id);
       setNewListName("");
@@ -170,7 +187,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
     onSuccess: (_, variables) => {
       triggerImpactHaptic();
-      queryClient.setQueryData<TodoList[]>(["lists"], (old) => {
+      queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
         if (!old) return [];
         return old.map((l) =>
           l.id === variables.id ? { ...l, name: variables.name, category: variables.category } : l
@@ -190,7 +207,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
     onSuccess: (updatedList) => {
       triggerImpactHaptic();
-      queryClient.setQueryData<TodoList[]>(["lists"], (old) => {
+      queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
         if (!old) return [];
         return old.map((l) => (l.id === updatedList.id ? updatedList : l));
       });
@@ -209,7 +226,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     },
     onSuccess: (_, deletedId) => {
       triggerImpactHaptic();
-      queryClient.setQueryData<TodoList[]>(["lists"], (old) => {
+      queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
         const remaining = old ? old.filter((l) => l.id !== deletedId) : [];
         if (deletedId === activeListId && remaining.length > 0) {
           onSelectList(remaining[0].id);
@@ -220,6 +237,26 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       queryClient.invalidateQueries({ queryKey: ["todos", deletedId] });
     },
     onError: (e) => onMutationError(e, "Couldn't delete list"),
+  });
+
+  const removeSharedMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/api/v1/lists/${id}/shared`);
+    },
+    onSuccess: (_, removedId) => {
+      triggerImpactHaptic();
+      queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
+        const remaining = old ? old.filter((l) => l.id !== removedId) : [];
+        if (removedId === activeListId) {
+          const nextOwned = remaining.find((l) => l.isOwner !== false);
+          if (nextOwned) onSelectList(nextOwned.id);
+        }
+        return remaining;
+      });
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+      showSuccess("Removed from Shared with me");
+    },
+    onError: (e) => onMutationError(e, "Couldn't remove shared list"),
   });
 
   const handleCreateList = () => {
@@ -377,10 +414,10 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
-          My Lists
+          Lists
         </Text>
         <Text style={[styles.headerSubtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-          Manage and switch between your task workspaces
+          Your lists and lists shared with you
         </Text>
       </View>
 
@@ -406,10 +443,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
           </TouchableOpacity>
         </View>
       ) : (
-        <FlatList
-          data={lists || []}
+        <SectionList
+          sections={listSections}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingBottom: 110 }}
+          stickySectionHeadersEnabled={false}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -418,10 +456,24 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
               colors={[theme.accent]}
             />
           }
-          renderItem={({ item }) => {
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionHeaderText, { color: theme.textMuted }]}>
+                {section.title}
+              </Text>
+              {section.shared && section.data.length === 0 ? (
+                <Text style={[styles.sectionEmptyHint, { color: theme.textMuted }]}>
+                  Open a shared link to add lists here
+                </Text>
+              ) : null}
+            </View>
+          )}
+          renderItem={({ item, section }) => {
             const isActive = item.id === activeListId;
             const categoryTag = item.category || "Checklist";
             const shareMode = item.shareMode || "private";
+            const isShared = section.shared;
+            const ownerName = item.owner?.displayName;
 
             return (
               <TouchableOpacity
@@ -448,10 +500,18 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                       {item.name}
                     </Text>
 
-                    <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
-                      <Tag size={10} color={theme.accent} />
-                      <Text style={[styles.categoryPillText, { color: theme.accent }]}>{categoryTag}</Text>
-                    </View>
+                    {isShared && ownerName ? (
+                      <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
+                        <Text style={[styles.categoryPillText, { color: theme.accent }]}>
+                          {ownerName}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
+                        <Tag size={10} color={theme.accent} />
+                        <Text style={[styles.categoryPillText, { color: theme.accent }]}>{categoryTag}</Text>
+                      </View>
+                    )}
 
                     <View style={[styles.categoryPill, { backgroundColor: theme.inputBg }]}>
                       <ShareModeIcon mode={shareMode} color={theme.textSecondary} />
@@ -468,39 +528,67 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                   </View>
 
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-                    <TouchableOpacity
-                      style={styles.actionIconBtn}
-                      onPress={() => {
-                        triggerImpactHaptic();
-                        setSharingList(item);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Share ${item.name}`}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Share2 size={16} color={theme.accent} />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.actionIconBtn}
-                      onPress={() => openEditModal(item)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Edit ${item.name}`}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Pencil size={16} color={theme.textMuted} />
-                    </TouchableOpacity>
-
-                    {(lists?.length || 0) > 1 && (
+                    {isShared ? (
                       <TouchableOpacity
                         style={styles.actionIconBtn}
-                        onPress={() => handleDeleteList(item)}
+                        onPress={() => {
+                          triggerImpactHaptic();
+                          Alert.alert(
+                            "Remove from Shared with me",
+                            `Stop showing "${item.name}" in Shared with me? You can open the link again later.`,
+                            [
+                              { text: "Cancel", style: "cancel" },
+                              {
+                                text: "Remove",
+                                style: "destructive",
+                                onPress: () => removeSharedMutation.mutate(item.id),
+                              },
+                            ]
+                          );
+                        }}
                         accessibilityRole="button"
-                        accessibilityLabel={`Delete ${item.name}`}
+                        accessibilityLabel={`Remove ${item.name} from Shared with me`}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
                         <Trash2 size={16} color={theme.danger} />
                       </TouchableOpacity>
+                    ) : (
+                      <>
+                        <TouchableOpacity
+                          style={styles.actionIconBtn}
+                          onPress={() => {
+                            triggerImpactHaptic();
+                            setSharingList(item);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Share ${item.name}`}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Share2 size={16} color={theme.accent} />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={styles.actionIconBtn}
+                          onPress={() => openEditModal(item)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Edit ${item.name}`}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Pencil size={16} color={theme.textMuted} />
+                        </TouchableOpacity>
+
+                        {ownedLists.length > 1 && (
+                          <TouchableOpacity
+                            style={styles.actionIconBtn}
+                            onPress={() => handleDeleteList(item)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Delete ${item.name}`}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Trash2 size={16} color={theme.danger} />
+                          </TouchableOpacity>
+                        )}
+                      </>
                     )}
                   </View>
                 </View>
@@ -907,6 +995,21 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: typography.sm,
     marginTop: 2,
+  },
+  sectionHeaderRow: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.xs,
+    paddingHorizontal: 2,
+  },
+  sectionHeaderText: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  sectionEmptyHint: {
+    fontSize: typography.xs,
+    marginTop: 4,
   },
   errorBox: {
     alignItems: "center",

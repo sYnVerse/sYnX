@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   sms_enabled INTEGER DEFAULT 0,
   phone_number TEXT DEFAULT '',
   discord_webhook_url TEXT DEFAULT '',
-  phone_carrier TEXT DEFAULT ''
+  phone_carrier TEXT DEFAULT '',
+  display_name TEXT
 );
 
 CREATE TABLE IF NOT EXISTS lists (
@@ -32,4 +33,14 @@ CREATE TABLE IF NOT EXISTS todos (
   duration_minutes INTEGER DEFAULT NULL,
   FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE,
   FOREIGN KEY(parent_id) REFERENCES todos(id) ON DELETE CASCADE
+);
+
+-- Tracks signed-in users who opened a list they don't own (Shared with me).
+-- Rows for lists that later go private are filtered out at query time.
+CREATE TABLE IF NOT EXISTS shared_list_access (
+  user_id TEXT NOT NULL,
+  list_id TEXT NOT NULL,
+  opened_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, list_id),
+  FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE
 );
