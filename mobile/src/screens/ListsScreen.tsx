@@ -17,9 +17,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { FolderPlus, Trash2, Tag, CheckCircle2, Circle, Pencil, Share2, Lock, Eye, Users } from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoList, TodoItem, ShareMode } from "../shared";
+import { TodoList, TodoItem, ShareMode, getShareModeLabel } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { ListCardSkeleton } from "../components/SkeletonLoader";
+
+function ShareModeIcon({ mode, color, size = 10 }: { mode: ShareMode; color: string; size?: number }) {
+  if (mode === "public_read") return <Eye size={size} color={color} />;
+  if (mode === "public_edit") return <Users size={size} color={color} />;
+  return <Lock size={size} color={color} />;
+}
 
 interface ListsScreenProps {
   activeListId: string;
@@ -275,6 +281,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
           renderItem={({ item }) => {
             const isActive = item.id === activeListId;
             const categoryTag = item.category || "Checklist";
+            const shareMode = item.shareMode || "private";
 
             return (
               <TouchableOpacity
@@ -301,6 +308,13 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                     <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
                       <Tag size={10} color={theme.accent} />
                       <Text style={[styles.categoryPillText, { color: theme.accent }]}>{categoryTag}</Text>
+                    </View>
+
+                    <View style={[styles.categoryPill, { backgroundColor: theme.inputBg }]}>
+                      <ShareModeIcon mode={shareMode} color={theme.textSecondary} />
+                      <Text style={[styles.categoryPillText, { color: theme.textSecondary }]}>
+                        {getShareModeLabel(shareMode)}
+                      </Text>
                     </View>
 
                     {isActive && (

@@ -17,7 +17,21 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const userId = user ? user.userId : "";
   const access = await getListAccess(db, listId, userId);
   if (!access.hasAccess || !access.list) {
-    return Response.json({ error: "List not found or access denied" }, { status: 403 });
+    if (access.denial === "not_found" || !access.list) {
+      return Response.json(
+        { error: "List not found", code: "NOT_FOUND" },
+        { status: 404 }
+      );
+    }
+    return Response.json(
+      {
+        error: "This list is private",
+        code: "PRIVATE_LIST",
+        // Hint for signed-out / wrong-account UX on clients
+        requiresAuth: !user,
+      },
+      { status: 403 }
+    );
   }
 
   return Response.json({

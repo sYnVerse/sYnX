@@ -1,8 +1,35 @@
 import type { ReleaseNote } from "../shared/changelog";
 
-export const MOBILE_VERSION = "v3.0.2";
+export const MOBILE_VERSION = "v3.1.0";
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v3.1.0",
+    date: "2026-10-23",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Opened lists show a clear permission banner on Tasks and Calendar — Private, View-Only, or Collaborative — whether you own the list or opened a shared link."
+      },
+      {
+        type: "NEW",
+        text: "If a shared list is private, missing, or can't load, you'll see a friendly message with a Go to my lists button instead of a blank screen."
+      },
+      {
+        type: "NEW",
+        text: "Each list card on My Lists now shows its share mode (Private, View-Only, or Collaborative)."
+      },
+      {
+        type: "IMPR",
+        text: "View-Only lists hide add, edit, delete, and check-off controls on Tasks and Calendar so you can't start an edit that would fail."
+      },
+      {
+        type: "FIX",
+        text: "Opening a shared list link keeps that list open after you sign in, instead of jumping back to one of your own lists."
+      }
+    ]
+  },
   {
     version: "v3.0.2",
     date: "2026-08-03",

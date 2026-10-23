@@ -5,9 +5,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { Clock, Check, Calendar as CalendarIcon, Plus } from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoItem } from "../shared";
+import { TodoItem, TodoList } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { TaskModal } from "../components/TaskModal";
+import { ListPermissionBanner } from "../components/ListPermissionBanner";
 import { syncTaskToNativeCalendar } from "../services/calendar";
 
 // Helper to convert timestamp or Date to local YYYY-MM-DD string
@@ -26,20 +27,39 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const [selectedDate, setSelectedDate] = useState(today);
   const [modalVisible, setModalVisible] = useState(false);
 
+  const { data: listMeta } = useQuery({
+    queryKey: ["list_meta", listId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/v1/lists/${listId}`);
+      return res.data.list as TodoList;
+    },
+    enabled: !!listId,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 403 || status === 404) return false;
+      return failureCount < 2;
+    },
+  });
+
+  // Fail closed until list meta confirms edit access.
+  const canEdit = listMeta?.canEdit === true;
+  const isOwner = listMeta?.isOwner === true;
+  const shareMode = listMeta?.shareMode ?? "private";
+
   const { data: todos, isRefetching, refetch } = useQuery({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
       return res.data.todos as TodoItem[];
     },
-    enabled: !!listId,
+    enabled: !!listId && !!listMeta,
   });
 
   useEffect(() => {
-    if (listId) {
+    if (listId && listMeta) {
       refetch();
     }
-  }, [listId]);
+  }, [listId, listMeta]);
 
   const triggerImpactHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -122,6 +142,14 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
+      {listMeta ? (
+        <ListPermissionBanner
+          shareMode={shareMode}
+          isOwner={isOwner}
+          canEdit={canEdit}
+        />
+      ) : null}
+
       <View style={styles.calendarCard}>
         <Calendar
           key={themeMode}
@@ -196,12 +224,17 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
             ]}
           >
             <TouchableOpacity
+              disabled={!canEdit}
               style={[
                 styles.checkbox,
                 { borderColor: theme.accent },
                 item.completed && { backgroundColor: theme.accent },
+                !canEdit && { opacity: 0.7 },
               ]}
-              onPress={() => toggleMutation.mutate(item.id)}
+              onPress={() => {
+                if (!canEdit) return;
+                toggleMutation.mutate(item.id);
+              }}
             >
               {item.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
             </TouchableOpacity>
@@ -230,22 +263,24 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
         )}
       />
 
-      {/* FAB Add Task for Selected Date */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: theme.accent }]}
-        onPress={() => {
-          triggerImpactHaptic();
-          setModalVisible(true);
-        }}
-      >
-        <Plus size={24} color="#FFFFFF" />
-      </TouchableOpacity>
+      {canEdit && (
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: theme.accent }]}
+          onPress={() => {
+            triggerImpactHaptic();
+            setModalVisible(true);
+          }}
+        >
+          <Plus size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
 
       <TaskModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
         initialReminderAt={getSelectedDate9AMTimestamp()}
         onSave={(newTodo) => {
+          if (!canEdit) return;
           createMutation.mutate(newTodo);
         }}
       />

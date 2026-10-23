@@ -9,23 +9,57 @@ import {
   RefreshControl,
   Platform,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Search, RefreshCw, Plus, Check, Trash2, Clock, ListTree, Repeat, Pencil, Eye } from "lucide-react-native";
+import { Search, RefreshCw, Plus, Check, Trash2, Clock, ListTree, Repeat, Pencil } from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoItem } from "../shared";
+import { TodoItem, TodoList, type ListAccessDenialCode } from "../shared";
 import { TaskModal } from "../components/TaskModal";
 import { TaskBreakdownModal } from "../components/TaskBreakdownModal";
 import { TaskCardSkeleton } from "../components/SkeletonLoader";
+import { ListPermissionBanner } from "../components/ListPermissionBanner";
+import { ListAccessErrorState, type ListAccessErrorKind } from "../components/ListAccessErrorState";
 import { useTheme } from "../context/ThemeContext";
 import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../services/calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
 
+export interface TasksScreenProps {
+  listId: string;
+  onGoToMyLists?: () => void;
+}
 
-export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
+function classifyListMetaError(error: unknown): {
+  kind: ListAccessErrorKind;
+  requiresAuth?: boolean;
+} {
+  const err = error as {
+    response?: { status?: number; data?: { code?: string; requiresAuth?: boolean; error?: string } };
+    message?: string;
+    code?: string;
+  };
+  const status = err?.response?.status;
+  const code = err?.response?.data?.code as ListAccessDenialCode | undefined;
+
+  if (!err?.response) {
+    return { kind: "NETWORK" };
+  }
+  if (status === 404 || code === "NOT_FOUND") {
+    return { kind: "NOT_FOUND" };
+  }
+  if (status === 403 || code === "PRIVATE_LIST" || code === "ACCESS_DENIED") {
+    return {
+      kind: code === "ACCESS_DENIED" ? "ACCESS_DENIED" : "PRIVATE_LIST",
+      requiresAuth: Boolean(err.response?.data?.requiresAuth),
+    };
+  }
+  return { kind: "UNKNOWN" };
+}
+
+export const TasksScreen: React.FC<TasksScreenProps> = ({ listId, onGoToMyLists }) => {
   const { theme, hapticsEnabled } = useTheme();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -55,29 +89,45 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     setShowChangelog(false);
   };
 
-
-  const { data: listMeta } = useQuery({
+  const {
+    data: listMeta,
+    error: listMetaError,
+    isLoading: listMetaLoading,
+    isError: listMetaIsError,
+    refetch: refetchListMeta,
+  } = useQuery({
     queryKey: ["list_meta", listId],
     queryFn: async () => {
-      try {
-        const res = await apiClient.get(`/api/v1/lists/${listId}`);
-        return res.data.list;
-      } catch (e) {
-        return null;
-      }
+      const res = await apiClient.get(`/api/v1/lists/${listId}`);
+      return res.data.list as TodoList;
     },
     enabled: !!listId,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 403 || status === 404) return false;
+      return failureCount < 2;
+    },
   });
 
-  const canEdit = listMeta ? listMeta.canEdit !== false : true;
+  // Fail closed: until meta loads successfully, treat as non-editable.
+  const canEdit = listMeta?.canEdit === true;
+  const isOwner = listMeta?.isOwner === true;
+  const shareMode = listMeta?.shareMode ?? "private";
 
-  const { data: rawTodos, refetch, isRefetching, isLoading } = useQuery({
+  const accessError = listMetaIsError ? classifyListMetaError(listMetaError) : null;
+
+  const { data: rawTodos, refetch, isRefetching, isLoading, isError: todosIsError, error: todosError } = useQuery({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
       return res.data.todos as TodoItem[];
     },
-    enabled: !!listId,
+    enabled: !!listId && !!listMeta,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 403 || status === 404) return false;
+      return failureCount < 2;
+    },
   });
 
   // Group subtasks under their parent tasks and filter child tasks out of the top-level list
@@ -116,10 +166,10 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
   };
 
   React.useEffect(() => {
-    if (listId) {
+    if (listId && listMeta) {
       refetch();
     }
-  }, [listId]);
+  }, [listId, listMeta]);
 
   const toggleMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -190,6 +240,7 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
   });
 
   const handleDeleteTask = (task: TodoItem) => {
+    if (!canEdit) return;
     triggerImpactHaptic();
     Alert.alert(
       "Delete Task",
@@ -212,6 +263,43 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
     const subtaskMatches = parent.subtasks?.some((st) => st.text.toLowerCase().includes(q));
     return parentMatches || subtaskMatches;
   });
+
+  if (listMetaLoading && !listMeta) {
+    return (
+      <View style={[styles.container, styles.centered, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator color={theme.accent} size="large" />
+        <Text style={[styles.loadingText, { color: theme.textMuted }]}>Loading list...</Text>
+      </View>
+    );
+  }
+
+  if (accessError) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.bg }]}>
+        <ListAccessErrorState
+          kind={accessError.kind}
+          requiresAuth={accessError.requiresAuth}
+          onRetry={() => {
+            refetchListMeta();
+          }}
+          onGoToMyLists={onGoToMyLists}
+        />
+      </View>
+    );
+  }
+
+  if (todosIsError && !rawTodos) {
+    const classified = classifyListMetaError(todosError);
+    return (
+      <View style={[styles.container, { backgroundColor: theme.bg }]}>
+        <ListAccessErrorState
+          kind={classified.kind}
+          onRetry={() => refetch()}
+          onGoToMyLists={onGoToMyLists}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -239,6 +327,7 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
           style={[styles.iconBtn, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
           onPress={() => {
             triggerImpactHaptic();
+            refetchListMeta();
             refetch();
           }}
         >
@@ -246,15 +335,20 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
         </TouchableOpacity>
       </View>
 
-      {/* View Only Banner */}
-      {!canEdit && (
-        <View style={[styles.viewOnlyBanner, { backgroundColor: theme.accentLight }]}>
-          <Eye size={14} color={theme.accent} />
-          <Text style={[styles.viewOnlyText, { color: theme.accent }]}>
-            View-Only Access — You cannot modify tasks in this list.
-          </Text>
-        </View>
-      )}
+      {/* List title + permission indicator */}
+      {listMeta?.name ? (
+        <Text style={[styles.listTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+          {listMeta.name}
+        </Text>
+      ) : null}
+
+      {listMeta ? (
+        <ListPermissionBanner
+          shareMode={shareMode}
+          isOwner={isOwner}
+          canEdit={canEdit}
+        />
+      ) : null}
 
       {/* Task List */}
       {isLoading ? (
@@ -271,7 +365,10 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={() => {
+                refetchListMeta();
+                refetch();
+              }}
               tintColor={theme.accent}
               colors={[theme.accent]}
             />
@@ -280,7 +377,9 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
             <View style={styles.emptyContainer}>
               <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>No tasks found</Text>
               <Text style={[styles.emptySub, { color: theme.textMuted }]}>
-                {canEdit ? "Tap the + button to add your first task to this list." : "No tasks in this shared list yet."}
+                {canEdit
+                  ? "Tap the + button to add your first task to this list."
+                  : "No tasks in this shared list yet."}
               </Text>
             </View>
           }
@@ -307,8 +406,12 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
                     styles.checkbox,
                     { borderColor: theme.accent },
                     item.completed && { backgroundColor: theme.accent },
+                    !canEdit && { opacity: 0.7 },
                   ]}
-                  onPress={() => toggleMutation.mutate(item.id)}
+                  onPress={() => {
+                    if (!canEdit) return;
+                    toggleMutation.mutate(item.id);
+                  }}
                 >
                   {item.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
                 </TouchableOpacity>
@@ -354,7 +457,6 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
 
                 {canEdit && (
                   <>
-                    {/* Edit Task Action */}
                     <TouchableOpacity
                       style={styles.actionBtn}
                       onPress={() => setEditingTask(item)}
@@ -362,7 +464,6 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
                       <Pencil size={15} color={theme.textMuted} />
                     </TouchableOpacity>
 
-                    {/* Delete Task Action with Confirmation */}
                     <TouchableOpacity
                       style={styles.actionBtn}
                       onPress={() => handleDeleteTask(item)}
@@ -391,14 +492,15 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
         </TouchableOpacity>
       )}
 
-      {/* Create New Task Modal */}
       <TaskModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        onSave={(task) => createMutation.mutate(task)}
+        onSave={(task) => {
+          if (!canEdit) return;
+          createMutation.mutate(task);
+        }}
       />
 
-      {/* Edit Existing Task Modal */}
       <TaskModal
         visible={!!editingTask}
         isEditing
@@ -408,13 +510,12 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
         initialDurationMinutes={editingTask?.durationMinutes}
         onClose={() => setEditingTask(null)}
         onSave={(updated) => {
-          if (editingTask) {
+          if (editingTask && canEdit) {
             updateMutation.mutate({ id: editingTask.id, payload: updated });
           }
         }}
       />
 
-      {/* Subtask Breakdown View */}
       <TaskBreakdownModal
         visible={!!selectedTaskForBreakdown}
         task={selectedTaskForBreakdown}
@@ -422,7 +523,6 @@ export const TasksScreen: React.FC<{ listId: string }> = ({ listId }) => {
         onClose={() => setSelectedTaskForBreakdown(null)}
       />
 
-      {/* Release Notes Changelog Popup */}
       <ChangelogModal
         visible={showChangelog}
         onClose={handleDismissChangelog}
@@ -438,24 +538,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 12,
   },
+  centered: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    fontWeight: "500",
+  },
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 12,
+    marginBottom: 10,
   },
-  viewOnlyBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 12,
-  },
-  viewOnlyText: {
-    fontSize: 12,
-    fontWeight: "600",
+  listTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    marginBottom: 8,
   },
   searchInputWrapper: {
     flex: 1,

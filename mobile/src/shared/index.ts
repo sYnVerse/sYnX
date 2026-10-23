@@ -60,7 +60,7 @@ export const CreateTodoSchema = v.object({
   text: v.pipe(v.string(), v.minLength(1, "Text cannot be empty")),
   listId: v.pipe(v.string(), v.minLength(1, "List ID is required")),
   priority: v.optional(PriorityLevelSchema, "none"),
-  reminderAt: v.optional(v.number()),
+  reminderAt: v.optional(v.nullable(v.number())),
   parentId: v.optional(v.string()),
   recurrence: v.optional(RecurrencePatternSchema, "none"),
   durationMinutes: v.optional(v.nullable(v.number())),
@@ -107,3 +107,4 @@ export type RegisterDeviceTokenInput = v.InferOutput<typeof RegisterDeviceTokenS
 
 export * from "./changelog";
 
+export * from "./list-permissions";
