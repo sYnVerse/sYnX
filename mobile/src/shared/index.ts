@@ -110,3 +110,5 @@ export * from "./changelog";
 export * from "./list-permissions";
 
 export * from "./mobile-ux";
+
+export * from "./mobile-version";
