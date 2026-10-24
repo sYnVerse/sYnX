@@ -27,7 +27,7 @@ const ThemeContext = createContext<ThemeContextType>({
   setHapticsEnabled: () => {},
 });
 
-function resolveMode(preference: ThemeMode, system: ColorSchemeName): "dark" | "light" {
+function resolveMode(preference: ThemeMode, system: ColorSchemeName | null): "dark" | "light" {
   if (preference === "system") {
     return system === "light" ? "light" : "dark";
   }

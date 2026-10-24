@@ -77,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const appStateRef = useRef<AppStateStatus>((AppState.currentState ?? "active") as AppStateStatus);
   const silentRefreshInflight = useRef<Promise<void> | null>(null);
 
   const discovery = {
