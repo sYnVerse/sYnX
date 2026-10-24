@@ -11,6 +11,17 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     changes: [
       {
         type: "IMPR",
+        text: "Upgraded mobile runtime to Expo SDK 58, React 19.3, and React Native 0.88.0."
+      }
+    ]
+  },
+  {
+    version: "v3.2.1",
+    date: "2026-10-24",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
         text: "Stay signed in for weeks or months — the app quietly renews your session in the background and only asks you to sign in again if renewal fails."
       },
       {
@@ -36,10 +47,6 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "NEW",
         text: "Settings lets you set a display name shown on lists you share (your email stays private)."
-      },
-      {
-        type: "IMPR",
-        text: "Upgraded mobile runtime to Expo SDK 58, React 19.3, and React Native 0.88.0."
       }
     ]
   },
