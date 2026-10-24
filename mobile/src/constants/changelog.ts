@@ -36,6 +36,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "NEW",
         text: "Settings lets you set a display name shown on lists you share (your email stays private)."
+      },
+      {
+        type: "IMPR",
+        text: "Upgraded mobile runtime to Expo SDK 58, React 19.3, and React Native 0.88.0."
       }
     ]
   },
