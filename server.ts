@@ -7,6 +7,7 @@ import { getLoadContext } from "./load-context";
 import { type PendingReminder } from "./app/to-do-manager";
 import { sendFCMPushNotification } from "./app/fcm.server";
 import { buildReminderEmailHtml, sanitizeEmailSubject } from "./app/html-escape.server";
+import { getRefreshedCookies } from "./app/auth.server";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
@@ -25,7 +26,20 @@ export default {
           },
         },
       });
-      return await handleRemixRequest(request, loadContext);
+      const response = await handleRemixRequest(request, loadContext);
+      const refreshedCookies = getRefreshedCookies(request);
+      if (refreshedCookies && refreshedCookies.length > 0) {
+        const headers = new Headers(response.headers);
+        for (const cookie of refreshedCookies) {
+          headers.append("Set-Cookie", cookie);
+        }
+        return new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+      return response;
     } catch (error) {
       console.log(error);
       return new Response("An unexpected error occurred", { status: 500 });

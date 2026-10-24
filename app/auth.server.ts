@@ -1,23 +1,36 @@
 import { createClient } from "@openauthjs/openauth/client";
 import { createSubjects } from "@openauthjs/openauth/subject";
 import { object, string } from "valibot";
-import { redirect } from "@remix-run/cloudflare";
 import {
+  AUTH_REFRESH_COOKIE,
   AUTH_SESSION_COOKIE,
+  buildAuthClearCookieHeaders,
+  clearAuthRefreshCookie,
   clearAuthSessionCookie,
+  parseRefreshCookie,
+  serializeAuthRefreshCookie,
+  serializeAuthSessionCookie,
 } from "./auth-cookies.server";
 
 export {
+  AUTH_REFRESH_COOKIE,
   AUTH_SESSION_COOKIE,
   PKCE_COOKIE_NAME,
   PKCE_MAX_AGE_SECONDS,
+  ACCESS_TOKEN_MAX_AGE_SECONDS,
+  REFRESH_TOKEN_MAX_AGE_SECONDS,
   buildAuthClearCookieHeaders,
+  buildCentralLogoutClearHeaders,
+  clearAuthRefreshCookie,
   clearAuthSessionCookie,
   clearPkceCookie,
   getCookieAttributes,
   getCookieDomain,
   getPkceCookieAttributes,
   parsePkceCookie,
+  parseRefreshCookie,
+  serializeAuthRefreshCookie,
+  serializeAuthSessionCookie,
   serializePkceCookie,
 } from "./auth-cookies.server";
 export type { OAuthPkceChallenge } from "./auth-cookies.server";
@@ -30,6 +43,30 @@ export const subjects = createSubjects({
 });
 
 const clients = new Map<string, ReturnType<typeof createClient>>();
+
+function redirect(url: string, init?: ResponseInit): Response {
+  const headers = new Headers(init?.headers);
+  headers.set("Location", url);
+  return new Response(null, {
+    status: init?.status ?? 302,
+    headers,
+  });
+}
+
+/**
+ * Request-scoped storage for refreshed session cookies minted during SSR.
+ * Collected by server.ts to append Set-Cookie headers onto outgoing responses.
+ */
+const requestRefreshedCookiesMap = new WeakMap<Request, string[]>();
+
+export function getRefreshedCookies(request: Request): string[] {
+  return requestRefreshedCookiesMap.get(request) || [];
+}
+
+export function recordRefreshedCookies(request: Request, cookies: string[]) {
+  const existing = requestRefreshedCookiesMap.get(request) || [];
+  requestRefreshedCookiesMap.set(request, [...existing, ...cookies]);
+}
 
 function getClientID(request: Request, env: any, defaultClientID: string): string {
   const url = new URL(request.url);
@@ -75,40 +112,89 @@ export function getAuthClient(request: Request, env: any) {
   return client;
 }
 
+/**
+ * Attempts silent session renewal using the synx_refresh_session cookie.
+ * On success, verifies the new access token, records refreshed Set-Cookie headers,
+ * and returns the authenticated user payload.
+ */
+export async function trySilentRefresh(
+  request: Request,
+  env: any,
+  expiredToken?: string | null,
+): Promise<{ userId: string; email: string; token: string } | null> {
+  const refreshToken = parseRefreshCookie(request);
+  if (!refreshToken) return null;
+
+  const client = getAuthClient(request, env);
+  try {
+    const refreshed = await client.refresh(refreshToken, {
+      access: expiredToken || undefined,
+    });
+    if (refreshed.err || !refreshed.tokens) {
+      return null;
+    }
+
+    const newAccessToken = refreshed.tokens.access;
+    const verified = await client.verify(subjects as any, newAccessToken);
+    if (verified.err) {
+      return null;
+    }
+
+    const cookieHeaders: string[] = [
+      serializeAuthSessionCookie(request.url, newAccessToken),
+    ];
+    if (refreshed.tokens.refresh) {
+      cookieHeaders.push(
+        serializeAuthRefreshCookie(request.url, refreshed.tokens.refresh),
+      );
+    }
+    recordRefreshedCookies(request, cookieHeaders);
+
+    const properties = (verified.subject as any).properties;
+    return {
+      userId: properties.id as string,
+      email: properties.email as string,
+      token: newAccessToken,
+    };
+  } catch (err) {
+    console.error("Web silent refresh failed:", err);
+    return null;
+  }
+}
+
 export async function requireUser(request: Request, env: any) {
   const cookieHeader = request.headers.get("Cookie") || "";
   const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
   const token = match ? decodeURIComponent(match[1]) : null;
 
-  if (!token) {
-    throw redirect("/login");
+  const client = getAuthClient(request, env);
+
+  if (token) {
+    try {
+      const verified = await client.verify(subjects as any, token);
+      if (!verified.err) {
+        const properties = (verified.subject as any).properties;
+        return {
+          userId: properties.id as string,
+          email: properties.email as string,
+          token,
+        };
+      }
+    } catch {
+      // Verification failed (e.g. token expired) — fall through to silent refresh
+    }
   }
 
-  const client = getAuthClient(request, env);
-  try {
-    const verified = await client.verify(subjects as any, token);
-    if (verified.err) {
-      throw redirect("/login", {
-        headers: {
-          "Set-Cookie": clearAuthSessionCookie(request.url),
-        },
-      });
-    }
-    const properties = (verified.subject as any).properties;
-    return {
-      userId: properties.id as string,
-      email: properties.email as string,
-      token,
-    };
-  } catch (error) {
-    console.error("Token verification failed:", error);
-    // Clear cookie and redirect to login
-    throw redirect("/login", {
-      headers: {
-        "Set-Cookie": clearAuthSessionCookie(request.url),
-      },
-    });
+  // Attempt silent renewal if access token is missing or expired
+  const renewed = await trySilentRefresh(request, env, token);
+  if (renewed) {
+    return renewed;
   }
+
+  // Both token verification and refresh failed: clear cookies and redirect to login
+  throw redirect("/login", {
+    headers: buildAuthClearCookieHeaders(request.url),
+  });
 }
 
 export async function getOptionalUser(request: Request, env: any) {
@@ -116,8 +202,9 @@ export async function getOptionalUser(request: Request, env: any) {
   const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
   const token = match ? decodeURIComponent(match[1]) : null;
 
+  const client = getAuthClient(request, env);
+
   if (token) {
-    const client = getAuthClient(request, env);
     try {
       const verified = await client.verify(subjects as any, token);
       if (!verified.err) {
@@ -133,6 +220,18 @@ export async function getOptionalUser(request: Request, env: any) {
     } catch (error) {
       console.error("Token verification failed in optional check:", error);
     }
+  }
+
+  // Attempt silent renewal if access token is missing or expired
+  const renewed = await trySilentRefresh(request, env, token);
+  if (renewed) {
+    return {
+      userId: renewed.userId,
+      email: renewed.email,
+      isLoggedIn: true,
+      guestId: null,
+      isNewGuest: false,
+    };
   }
 
   // Handle guest fallback
@@ -156,30 +255,48 @@ export async function getOptionalUser(request: Request, env: any) {
 export async function verifyBearerToken(request: Request, env: any) {
   const authHeader = request.headers.get("Authorization") || "";
   let token: string | null = null;
-  if (authHeader.startsWith("Bearer ")) {
+  const isBearer = authHeader.startsWith("Bearer ");
+  if (isBearer) {
     token = authHeader.substring(7).trim();
   }
 
-  if (!token) {
-    const cookieHeader = request.headers.get("Cookie") || "";
-    const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
-    token = match ? decodeURIComponent(match[1]) : null;
-  }
+  const cookieHeader = request.headers.get("Cookie") || "";
+  const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
+  const cookieToken = match ? decodeURIComponent(match[1]) : null;
 
-  if (!token) return null;
+  if (!token && cookieToken) {
+    token = cookieToken;
+  }
 
   const client = getAuthClient(request, env);
-  try {
-    const verified = await client.verify(subjects as any, token);
-    if (verified.err) return null;
-    const properties = (verified.subject as any).properties;
-    return {
-      userId: properties.id as string,
-      email: properties.email as string,
-      token,
-    };
-  } catch (error) {
-    console.error("Bearer token verification error:", error);
-    return null;
+
+  if (token) {
+    try {
+      const verified = await client.verify(subjects as any, token);
+      if (!verified.err) {
+        const properties = (verified.subject as any).properties;
+        return {
+          userId: properties.id as string,
+          email: properties.email as string,
+          token,
+        };
+      }
+    } catch {
+      // Verification error
+    }
   }
+
+  // If this was a cookie-backed session and the access token expired, try silent refresh
+  if (!isBearer) {
+    const renewed = await trySilentRefresh(request, env, token);
+    if (renewed) {
+      return {
+        userId: renewed.userId,
+        email: renewed.email,
+        token: renewed.token,
+      };
+    }
+  }
+
+  return null;
 }
