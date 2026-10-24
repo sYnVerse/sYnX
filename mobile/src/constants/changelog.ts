@@ -6,6 +6,17 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-10-24",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Stay signed in for weeks or months — the app quietly renews your session in the background and only asks you to sign in again if renewal fails."
+      }
+    ]
+  },
+  {
+    version: "v3.2.0",
     date: "2026-10-23",
     title: "What's new?",
     changes: [
@@ -45,7 +56,7 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
   },
   {
     version: "v3.1.0",
-    date: "2026-10-23",
+    date: "2026-10-22",
     title: "What's new?",
     changes: [
       {
