@@ -7,10 +7,12 @@ import { ThemeProvider } from "./src/context/ThemeContext";
 import { ToastProvider } from "./src/context/ToastContext";
 import { BottomTabNavigator } from "./src/navigation/BottomTabNavigator";
 import { startWidgetSyncService } from "./src/services/widgetSync";
+import { registerWidgetBackgroundSync } from "./src/services/widgetBackgroundTask";
 
 export default function App() {
   useEffect(() => {
     const unsub = startWidgetSyncService(queryClient);
+    registerWidgetBackgroundSync().catch(() => {});
     return unsub;
   }, []);
 
