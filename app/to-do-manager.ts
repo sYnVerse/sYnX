@@ -131,27 +131,34 @@ export class TodoManager {
   }
 
   /**
-   * Toggles the completed status of a todo item
-   * @param id - The unique identifier of the todo item to toggle
-   * @returns Promise containing the updated Todo item
-   * @throws Error if the todo item with the specified ID is not found
+   * Sets the completed status of a todo to an explicit value (idempotent).
+   * Recurring tasks marked done advance the reminder and stay uncompleted.
    */
-  async toggle(id: string): Promise<Todo> {
-    const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
+  async setCompleted(
+    id: string,
+    completed: boolean
+  ): Promise<{ todo: Todo; rescheduled: boolean }> {
+    const todo = await this.db
+      .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
+      .bind(id, this.listId)
+      .first<any>();
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
 
-    const willBeCompleted = !todo.completed;
-    if (willBeCompleted && todo.recurrence && todo.recurrence !== "none") {
+    const currentlyCompleted = Boolean(todo.completed);
+    const recurrence = todo.recurrence as string | undefined;
+    const isRecurring = Boolean(recurrence && recurrence !== "none");
+
+    if (completed && isRecurring) {
       const currentReminder = todo.reminder_at ? Number(todo.reminder_at) : Date.now();
       let nextReminder = currentReminder;
       const oneDay = 24 * 60 * 60 * 1000;
-      if (todo.recurrence === "daily") {
+      if (recurrence === "daily") {
         nextReminder = currentReminder + oneDay;
-      } else if (todo.recurrence === "weekly") {
+      } else if (recurrence === "weekly") {
         nextReminder = currentReminder + 7 * oneDay;
-      } else if (todo.recurrence === "monthly") {
+      } else if (recurrence === "monthly") {
         const date = new Date(currentReminder);
         date.setMonth(date.getMonth() + 1);
         nextReminder = date.getTime();
@@ -161,16 +168,44 @@ export class TodoManager {
         .prepare("UPDATE todos SET reminder_at = ?, reminder_sent = 0, completed = 0 WHERE id = ? AND list_id = ?")
         .bind(nextReminder, id, this.listId)
         .run();
-    } else {
-      const newCompleted = willBeCompleted ? 1 : 0;
-      await this.db
-        .prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?")
-        .bind(newCompleted, id, this.listId)
-        .run();
+
+      const updated = await this.db
+        .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
+        .bind(id, this.listId)
+        .first<any>();
+      return { todo: this.mapRow(updated), rescheduled: true };
     }
 
-    const updated = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<any>();
-    return this.mapRow(updated);
+    if (currentlyCompleted === Boolean(completed)) {
+      return { todo: this.mapRow(todo), rescheduled: false };
+    }
+
+    await this.db
+      .prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?")
+      .bind(completed ? 1 : 0, id, this.listId)
+      .run();
+
+    const updated = await this.db
+      .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
+      .bind(id, this.listId)
+      .first<any>();
+    return { todo: this.mapRow(updated), rescheduled: false };
+  }
+
+  /**
+   * Toggles the completed status of a todo item (legacy flip).
+   * Prefer setCompleted for idempotent clients.
+   */
+  async toggle(id: string): Promise<Todo> {
+    const todo = await this.db
+      .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
+      .bind(id, this.listId)
+      .first<any>();
+    if (!todo) {
+      throw new Error(`Todo with id ${id} not found in this list`);
+    }
+    const result = await this.setCompleted(id, !Boolean(todo.completed));
+    return result.todo;
   }
 
   /**

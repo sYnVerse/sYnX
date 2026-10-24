@@ -5,7 +5,7 @@ export const WEB_VERSION = "v5.2.0";
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
     version: "v5.2.0",
-    date: "2026-10-23",
+    date: "2026-10-24",
     title: "What's new?",
     changes: [
       {
@@ -19,6 +19,25 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Shared list views show the owner's display name in the header and view-only banner."
+      }
+    ]
+  },
+  {
+    version: "v5.1.4",
+    date: "2026-10-23",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Marking a task done now sends the intended done/undone state instead of blindly flipping, so a double tap no longer cancels itself."
+      },
+      {
+        type: "FIX",
+        text: "The checkbox stays locked while a mark-done request is in flight, with an optimistic update and an error toast if the save fails."
+      },
+      {
+        type: "IMPR",
+        text: "Recurring tasks still reschedule when marked done; you now get a short check animation and a \"Rescheduled for …\" toast so it does not look like the check snapped back."
       }
     ]
   },

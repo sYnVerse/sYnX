@@ -130,6 +130,11 @@ export function formatReminderTime(reminderAt: number, locale?: string): string 
   });
 }
 
+/** User-facing toast when a recurring task is marked done and advanced. */
+export function formatRescheduledToast(reminderAt: number, locale?: string): string {
+  return `Rescheduled for ${formatFriendlyDate(reminderAt, locale)}`;
+}
+
 export function priorityLabel(priority: PriorityLevel): string {
   if (priority === "none") return "";
   return priority.charAt(0).toUpperCase() + priority.slice(1);

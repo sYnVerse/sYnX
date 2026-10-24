@@ -1,6 +1,7 @@
 export {
   formatFriendlyDate,
   formatReminderTime,
+  formatRescheduledToast,
   priorityLabel,
   priorityColor,
   stripLeadingCategoryEmoji,

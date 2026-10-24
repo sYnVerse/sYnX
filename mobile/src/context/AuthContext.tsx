@@ -1,13 +1,25 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as SecureStore from "expo-secure-store";
 import { useAuthRequest } from "expo-auth-session";
-import { apiClient, TOKEN_KEY, DEVICE_PUSH_TOKEN_KEY } from "../api/client";
+import {
+  apiClient,
+  TOKEN_KEY,
+  REFRESH_TOKEN_KEY,
+  DEVICE_PUSH_TOKEN_KEY,
+  OPENAUTH_ISSUER,
+  OPENAUTH_CLIENT_ID,
+  OPENAUTH_TOKEN_ENDPOINT,
+  sessionRefresh,
+  secureSessionStore,
+  setAuthFailureHandler,
+} from "../api/client";
+import { shouldSignOutAfterRefreshFailure } from "../shared/mobile-session";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const OPENAUTH_ISSUER = "https://auth.christran.io";
-const CLIENT_ID = "synx";
+const CLIENT_ID = OPENAUTH_CLIENT_ID;
 const REDIRECT_URI = "https://synx.christran.io/mobile/callback";
 
 export interface AuthUser {
@@ -54,14 +66,23 @@ function tryDecodeJwtUser(token: string): AuthUser | null {
   }
 }
 
+async function persistTokenPair(accessToken: string, refreshToken?: string | null) {
+  await SecureStore.setItemAsync(TOKEN_KEY, accessToken);
+  if (typeof refreshToken === "string" && refreshToken.length > 0) {
+    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const silentRefreshInflight = useRef<Promise<void> | null>(null);
 
   const discovery = {
     authorizationEndpoint: `${OPENAUTH_ISSUER}/authorize`,
-    tokenEndpoint: `${OPENAUTH_ISSUER}/token`,
+    tokenEndpoint: OPENAUTH_TOKEN_ENDPOINT,
   };
 
   const [request, response, promptAsync] = useAuthRequest(
@@ -73,6 +94,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
     discovery
   );
+
+  const applyAccessToken = useCallback((accessToken: string) => {
+    setToken(accessToken);
+    const decoded = tryDecodeJwtUser(accessToken);
+    if (decoded) setUser(decoded);
+  }, []);
+
+  const clearLocalSessionState = useCallback(async () => {
+    await secureSessionStore.clearSessionTokens();
+    setToken(null);
+    setUser(null);
+  }, []);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -95,23 +128,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  /**
+   * Silent refresh via refresh_token grant. Shared single-flight with the Axios interceptor.
+   * Returns whether an access token is available afterward.
+   */
+  const silentRefresh = useCallback(async (): Promise<boolean> => {
+    if (silentRefreshInflight.current) {
+      await silentRefreshInflight.current;
+      const access = await SecureStore.getItemAsync(TOKEN_KEY);
+      return !!access;
+    }
+
+    silentRefreshInflight.current = (async () => {
+      const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+      if (!refreshToken) {
+        return;
+      }
+
+      const result = await sessionRefresh.refresh();
+      if (result.ok) {
+        applyAccessToken(result.tokens.accessToken);
+        return;
+      }
+
+      if (shouldSignOutAfterRefreshFailure(result.reason)) {
+        await clearLocalSessionState();
+      }
+    })().finally(() => {
+      silentRefreshInflight.current = null;
+    });
+
+    await silentRefreshInflight.current;
+    const access = await SecureStore.getItemAsync(TOKEN_KEY);
+    return !!access;
+  }, [applyAccessToken, clearLocalSessionState]);
+
   useEffect(() => {
-    async function loadToken() {
+    async function loadSession() {
       try {
+        const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+        if (refreshToken) {
+          const ok = await silentRefresh();
+          if (ok) return;
+        }
+
+        // Legacy installs: access token only — keep working until it expires.
         const storedToken = await SecureStore.getItemAsync(TOKEN_KEY);
         if (storedToken) {
-          setToken(storedToken);
-          const decoded = tryDecodeJwtUser(storedToken);
-          if (decoded) setUser(decoded);
+          applyAccessToken(storedToken);
         }
       } catch (e) {
-        console.error("Failed to load token from SecureStore", e);
+        console.error("Failed to load session from SecureStore", e);
       } finally {
         setIsLoading(false);
       }
     }
-    loadToken();
-  }, []);
+    loadSession();
+  }, [applyAccessToken, silentRefresh]);
 
   useEffect(() => {
     if (token) {
@@ -128,66 +201,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [response]);
 
+  // Refresh when returning to the foreground (weeks/months of stay-signed-in).
   useEffect(() => {
-    const interceptor = apiClient.interceptors.response.use(
-      (res) => res,
-      async (error) => {
-        if (error.response?.status === 401) {
-          await logout();
-        }
-        return Promise.reject(error);
+    const onChange = (next: AppStateStatus) => {
+      const prev = appStateRef.current;
+      appStateRef.current = next;
+      if (prev.match(/inactive|background/) && next === "active") {
+        silentRefresh().catch(() => {});
       }
-    );
-    return () => {
-      apiClient.interceptors.response.eject(interceptor);
     };
-  }, []);
+    const sub = AppState.addEventListener("change", onChange);
+    return () => sub.remove();
+  }, [silentRefresh]);
 
-  async function exchangeCodeForToken(code: string, codeVerifier: string) {
-    try {
-      setIsLoading(true);
-      const res = await fetch(`${OPENAUTH_ISSUER}/token`, {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          client_id: CLIENT_ID,
-          code,
-          redirect_uri: REDIRECT_URI,
-          code_verifier: codeVerifier,
-        }).toString(),
-      });
-
-      const data = await res.json();
-      if (data.access_token) {
-        await SecureStore.setItemAsync(TOKEN_KEY, data.access_token);
-        setToken(data.access_token);
-        const decoded = tryDecodeJwtUser(data.access_token);
-        if (decoded) setUser(decoded);
-      }
-    } catch (e) {
-      console.error("Code exchange failed", e);
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  const login = async () => {
-    await promptAsync({ preferEphemeralSession: true });
-  };
-
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       const devicePushToken = await SecureStore.getItemAsync(DEVICE_PUSH_TOKEN_KEY);
       if (devicePushToken) {
         try {
           await apiClient.delete("/api/v1/devices", { data: { token: devicePushToken } });
-        } catch (e) {
+        } catch {
           // ignore network error on logout
         }
         await SecureStore.deleteItemAsync(DEVICE_PUSH_TOKEN_KEY);
       }
-      await SecureStore.deleteItemAsync(TOKEN_KEY);
+      await secureSessionStore.clearSessionTokens();
 
       const logoutUrl = `${OPENAUTH_ISSUER}/logout?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
       try {
@@ -201,6 +239,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.error("Logout error", e);
     }
+  }, []);
+
+  // Axios 401 → refresh failed permanently → clear local session (no extra browser).
+  useEffect(() => {
+    setAuthFailureHandler(async () => {
+      await clearLocalSessionState();
+    });
+    return () => setAuthFailureHandler(null);
+  }, [clearLocalSessionState]);
+
+  async function exchangeCodeForToken(code: string, codeVerifier: string) {
+    try {
+      setIsLoading(true);
+      const res = await fetch(OPENAUTH_TOKEN_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: CLIENT_ID,
+          code,
+          redirect_uri: REDIRECT_URI,
+          code_verifier: codeVerifier,
+        }).toString(),
+      });
+
+      const data = await res.json();
+      if (data.access_token) {
+        await persistTokenPair(data.access_token, data.refresh_token ?? null);
+        applyAccessToken(data.access_token);
+      }
+    } catch (e) {
+      console.error("Code exchange failed", e);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const login = async () => {
+    // Persist the sYnID browser session so a rare full re-auth can be a quick sign-in.
+    await promptAsync({ preferEphemeralSession: false });
   };
 
   return (
