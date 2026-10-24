@@ -47,6 +47,7 @@ import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
 
 export interface TasksScreenProps {
   listId: string;
+  initialOpenNewTask?: number;
   onGoToMyLists?: () => void;
   onSwitchLists?: () => void;
 }
@@ -80,6 +81,7 @@ function classifyListMetaError(error: unknown): {
 
 export const TasksScreen: React.FC<TasksScreenProps> = ({
   listId,
+  initialOpenNewTask,
   onGoToMyLists,
   onSwitchLists,
 }) => {
@@ -136,6 +138,20 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const canEdit = listMeta?.canEdit === true;
   const isOwner = listMeta?.isOwner === true;
   const shareMode = listMeta?.shareMode ?? "private";
+
+  const lastHandledNewTaskRef = React.useRef(0);
+  React.useEffect(() => {
+    if (!initialOpenNewTask || initialOpenNewTask === lastHandledNewTaskRef.current) {
+      return;
+    }
+    if (!listMetaLoading && listMeta) {
+      lastHandledNewTaskRef.current = initialOpenNewTask;
+      if (canEdit) {
+        setEditingTask(null);
+        setModalVisible(true);
+      }
+    }
+  }, [initialOpenNewTask, listMeta, listMetaLoading, canEdit]);
 
   const accessError = listMetaIsError ? classifyListMetaError(listMetaError) : null;
 

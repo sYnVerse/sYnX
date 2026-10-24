@@ -29,7 +29,13 @@ import {
   Eye,
   Users,
   Copy,
+  Pin,
 } from "lucide-react-native";
+import {
+  getPinnedWidgetConfig,
+  setPinnedWidgetConfig,
+  type PinnedWidgetConfig,
+} from "../services/widgetPreferences";
 import { apiClient } from "../api/client";
 import { TodoList, TodoItem, ShareMode, getShareModeLabel } from "../shared";
 import { useTheme } from "../context/ThemeContext";
@@ -73,6 +79,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const [modalVisible, setModalVisible] = useState(false);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [sharingList, setSharingList] = useState<TodoList | null>(null);
+  const [pinnedConfig, setPinnedConfig] = useState<PinnedWidgetConfig | null>(null);
+
+  useEffect(() => {
+    getPinnedWidgetConfig().then(setPinnedConfig);
+  }, []);
 
   const [newListName, setNewListName] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(CATEGORY_OPTIONS[0]);
@@ -474,6 +485,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
             const shareMode = item.shareMode || "private";
             const isShared = section.shared;
             const ownerName = item.owner?.displayName;
+            const isPinned = pinnedConfig?.listId === item.id;
 
             return (
               <TouchableOpacity
@@ -525,9 +537,41 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                         <Text style={styles.activeBadgeText}>ACTIVE</Text>
                       </View>
                     )}
+
+                    {isPinned && (
+                      <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
+                        <Pin size={10} color={theme.accent} fill={theme.accent} />
+                        <Text style={[styles.categoryPillText, { color: theme.accent }]}>PINNED</Text>
+                      </View>
+                    )}
                   </View>
 
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                    <TouchableOpacity
+                      style={styles.actionIconBtn}
+                      onPress={async () => {
+                        triggerImpactHaptic();
+                        if (isPinned) {
+                          await setPinnedWidgetConfig(null);
+                          setPinnedConfig(null);
+                          showSuccess("Unpinned from widget");
+                        } else {
+                          const newConfig: PinnedWidgetConfig = { mode: "list", listId: item.id };
+                          await setPinnedWidgetConfig(newConfig);
+                          setPinnedConfig(newConfig);
+                          showSuccess(`Pinned "${item.name}" to widget`);
+                        }
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={isPinned ? `Unpin ${item.name} from widget` : `Pin ${item.name} to widget`}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Pin
+                        size={16}
+                        color={isPinned ? theme.accent : theme.textMuted}
+                        fill={isPinned ? theme.accent : "none"}
+                      />
+                    </TouchableOpacity>
                     {isShared ? (
                       <TouchableOpacity
                         style={styles.actionIconBtn}
