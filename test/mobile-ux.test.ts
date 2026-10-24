@@ -99,6 +99,8 @@ describe("share private warning + ownership label", () => {
   it("labels ownership for list header", () => {
     expect(listOwnershipLabel(true)).toBe("Yours");
     expect(listOwnershipLabel(false)).toBe("Shared with you");
+    expect(listOwnershipLabel(false, "Chris")).toBe("Shared by Chris");
+    expect(listOwnershipLabel(false, "  ")).toBe("Shared with you");
   });
 });
 

@@ -2,12 +2,15 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudfla
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { CreateListSchema } from "../../shared";
+import { parseListScope, serializeListRows } from "../api-helpers.server";
+import { listSharedWithMe } from "../shared-lists.server";
+import { ensureUserProfileSchema, ownerPayload, resolveDisplayName } from "../user-profile.server";
 
 async function ensureCategoryColumn(db: D1Database) {
   try {
     await db.prepare("ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist'").run();
-  } catch (e) {
-    // Column already exists, ignore error
+  } catch {
+    // Column already exists
   }
 }
 
@@ -21,31 +24,36 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 
   await ensureCategoryColumn(db);
+  await ensureUserProfileSchema(db);
 
-  // Only return lists the user owns. Shared lists are opened by explicit list ID
-  // (deep link / known URL), matching web behavior — never enumerate all public lists.
-  const { results } = await db
-    .prepare(
-      `SELECT * FROM lists 
-       WHERE owner_id = ? 
-       ORDER BY created_at DESC`
-    )
-    .bind(user.userId)
-    .all<any>();
+  const url = new URL(request.url);
+  const scope = parseListScope(url.searchParams.get("scope"));
 
-  const lists = results.map((row) => ({
-    id: row.id,
-    name: row.name,
-    ownerId: row.owner_id,
-    createdAt: Number(row.created_at),
-    expirationTtl: row.expiration_ttl ? Number(row.expiration_ttl) : null,
-    shareMode: row.share_mode || "private",
-    category: row.category || "Checklist",
-    isOwner: row.owner_id === user.userId,
-    canEdit: true,
-  }));
+  let rows: any[] = [];
 
-  return Response.json({ success: true, lists });
+  if (scope === "mine" || scope === "all") {
+    const { results } = await db
+      .prepare(
+        `SELECT * FROM lists
+         WHERE owner_id = ?
+         ORDER BY created_at DESC`
+      )
+      .bind(user.userId)
+      .all<any>();
+    rows = rows.concat(results || []);
+  }
+
+  if (scope === "shared" || scope === "all") {
+    const shared = await listSharedWithMe(db, user.userId);
+    // Avoid duplicates if somehow an owned list appears in shared access
+    const ownedIds = new Set(rows.map((r) => r.id));
+    for (const row of shared) {
+      if (!ownedIds.has(row.id)) rows.push(row);
+    }
+  }
+
+  const lists = await serializeListRows(db, rows, user.userId);
+  return Response.json({ success: true, lists, scope });
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
@@ -62,6 +70,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   await ensureCategoryColumn(db);
+  await ensureUserProfileSchema(db);
 
   try {
     const body = await request.json();
@@ -71,9 +80,20 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const category = parsed.category || "Checklist";
 
     await db
-      .prepare("INSERT INTO lists (id, name, owner_id, created_at, share_mode, category) VALUES (?, ?, ?, ?, ?, ?)")
+      .prepare(
+        "INSERT INTO lists (id, name, owner_id, created_at, share_mode, category) VALUES (?, ?, ?, ?, ?, ?)"
+      )
       .bind(id, parsed.name, user.userId, createdAt, "private", category)
       .run();
+
+    const displayName = resolveDisplayName(
+      (
+        await db
+          .prepare("SELECT display_name FROM user_settings WHERE user_id = ?")
+          .bind(user.userId)
+          .first<{ display_name?: string | null }>()
+      )?.display_name
+    );
 
     const newList = {
       id,
@@ -84,6 +104,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
       shareMode: "private",
       category,
       isOwner: true,
+      canEdit: true,
+      owner: ownerPayload(displayName),
     };
 
     return Response.json({ success: true, list: newList }, { status: 201 });

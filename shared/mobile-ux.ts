@@ -66,8 +66,18 @@ export function shouldWarnBeforeSharingPrivateList(shareMode: ShareMode): boolea
   return shareMode === "private";
 }
 
-export function listOwnershipLabel(isOwner: boolean): "Yours" | "Shared with you" {
-  return isOwner ? "Yours" : "Shared with you";
+/**
+ * Tasks header ownership line.
+ * When not owner, prefer "Shared by {displayName}" over the generic fallback.
+ */
+export function listOwnershipLabel(
+  isOwner: boolean,
+  ownerDisplayName?: string | null
+): string {
+  if (isOwner) return "Yours";
+  const name = ownerDisplayName?.trim();
+  if (name) return `Shared by ${name}`;
+  return "Shared with you";
 }
 
 /** Parse subtask duration field: empty → null (clear); digits → number; invalid → undefined (skip save). */

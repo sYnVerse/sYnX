@@ -11,6 +11,7 @@ interface ListPermissionBannerProps {
   shareMode: ShareMode;
   isOwner: boolean;
   canEdit: boolean;
+  ownerDisplayName?: string | null;
 }
 
 const TONE_COLORS = {
@@ -24,9 +25,15 @@ export const ListPermissionBanner: React.FC<ListPermissionBannerProps> = ({
   shareMode,
   isOwner,
   canEdit,
+  ownerDisplayName,
 }) => {
   const { theme } = useTheme();
-  const presentation = getListPermissionPresentation({ shareMode, isOwner, canEdit });
+  const presentation = getListPermissionPresentation({
+    shareMode,
+    isOwner,
+    canEdit,
+    ownerDisplayName,
+  });
   const tone = TONE_COLORS[presentation.tone];
   const fg =
     presentation.tone === "view_only"

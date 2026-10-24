@@ -57,6 +57,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const canEdit = listMeta?.canEdit === true;
   const isOwner = listMeta?.isOwner === true;
   const shareMode = listMeta?.shareMode ?? "private";
+  const ownerDisplayName = listMeta?.owner?.displayName ?? null;
 
   const { data: todos, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ["todos", listId],
@@ -146,7 +147,12 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {listMeta ? (
-        <ListPermissionBanner shareMode={shareMode} isOwner={isOwner} canEdit={canEdit} />
+        <ListPermissionBanner
+          shareMode={shareMode}
+          isOwner={isOwner}
+          canEdit={canEdit}
+          ownerDisplayName={ownerDisplayName}
+        />
       ) : null}
 
       <View style={styles.calendarCard}>

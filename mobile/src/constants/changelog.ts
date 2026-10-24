@@ -12,6 +12,30 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Stay signed in for weeks or months — the app quietly renews your session in the background and only asks you to sign in again if renewal fails."
+      },
+      {
+        type: "FIX",
+        text: "Marking a task done sends the intended done/undone state (not a blind flip), so a double tap on Tasks, Calendar, or a subtask no longer cancels itself."
+      },
+      {
+        type: "FIX",
+        text: "The checkbox locks while saving, updates immediately, and rolls back with an error toast if the request fails."
+      },
+      {
+        type: "IMPR",
+        text: "Recurring tasks still move to the next reminder when marked done; a \"Rescheduled for …\" toast makes that clear instead of looking like the check snapped back."
+      },
+      {
+        type: "NEW",
+        text: "Lists screen splits into My lists and Shared with me — opening a shared link remembers it across devices."
+      },
+      {
+        type: "NEW",
+        text: "Shared lists show the owner's display name on Tasks (instead of a generic “Shared with you”)."
+      },
+      {
+        type: "NEW",
+        text: "Settings lets you set a display name shown on lists you share (your email stays private)."
       }
     ]
   },
@@ -51,18 +75,6 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Readable type scale and centered wide-screen layout for tablets."
-      },
-      {
-        type: "FIX",
-        text: "Marking a task done sends the intended done/undone state (not a blind flip), so a double tap on Tasks, Calendar, or a subtask no longer cancels itself."
-      },
-      {
-        type: "FIX",
-        text: "The checkbox locks while saving, updates immediately, and rolls back with an error toast if the request fails."
-      },
-      {
-        type: "IMPR",
-        text: "Recurring tasks still move to the next reminder when marked done; a \"Rescheduled for …\" toast makes that clear instead of looking like the check snapped back."
       }
     ]
   },

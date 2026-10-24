@@ -65,6 +65,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneCarrier, setPhoneCarrier] = useState("");
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [savingRemote, setSavingRemote] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushStatus, setPushStatus] = useState<PushPermissionStatus>("undetermined");
@@ -80,6 +81,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     phoneNumber: "",
     phoneCarrier: "",
     discordWebhookUrl: "",
+    displayName: "",
   });
 
   const triggerImpact = () => {
@@ -111,6 +113,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             phoneNumber: res.data.settings.phoneNumber || "",
             phoneCarrier: res.data.settings.phoneCarrier || "",
             discordWebhookUrl: res.data.settings.discordWebhookUrl || "",
+            displayName: res.data.settings.displayNameSet
+              ? String(res.data.settings.displayName || "")
+              : "",
           };
           latestRemote.current = loaded;
           setEmailEnabled(loaded.emailEnabled);
@@ -118,6 +123,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           setPhoneNumber(loaded.phoneNumber);
           setPhoneCarrier(loaded.phoneCarrier);
           setDiscordWebhookUrl(loaded.discordWebhookUrl);
+          setDisplayName(loaded.displayName);
           onDirtyChange?.(false);
         }
       } catch (e) {
@@ -153,6 +159,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         phoneNumber,
         phoneCarrier,
         discordWebhookUrl,
+        displayName: displayName.trim(),
       };
       await apiClient.put("/api/v1/settings", payload);
       latestRemote.current = payload;
@@ -164,7 +171,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     } finally {
       setSavingRemote(false);
     }
-  }, [emailEnabled, smsEnabled, phoneNumber, phoneCarrier, discordWebhookUrl, onDirtyChange, showError]);
+  }, [emailEnabled, smsEnabled, phoneNumber, phoneCarrier, discordWebhookUrl, displayName, onDirtyChange, showError]);
 
   // Autosave notification settings (debounced)
   useEffect(() => {
@@ -174,7 +181,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       smsEnabled !== latestRemote.current.smsEnabled ||
       phoneNumber !== latestRemote.current.phoneNumber ||
       phoneCarrier !== latestRemote.current.phoneCarrier ||
-      discordWebhookUrl !== latestRemote.current.discordWebhookUrl;
+      discordWebhookUrl !== latestRemote.current.discordWebhookUrl ||
+      displayName !== latestRemote.current.displayName;
     onDirtyChange?.(dirty);
     if (!dirty) return;
 
@@ -192,6 +200,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     phoneNumber,
     phoneCarrier,
     discordWebhookUrl,
+    displayName,
     persistRemoteSettings,
     onDirtyChange,
   ]);
@@ -203,6 +212,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     setPhoneNumber(s.phoneNumber);
     setPhoneCarrier(s.phoneCarrier);
     setDiscordWebhookUrl(s.discordWebhookUrl);
+    setDisplayName(s.displayName);
     onDirtyChange?.(false);
   };
 
@@ -331,6 +341,29 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             ID: {user.userId}
           </Text>
         ) : null}
+
+        <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 16 }]}>DISPLAY NAME</Text>
+        <TextInput
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.inputBorder,
+              color: theme.textPrimary,
+            },
+          ]}
+          value={displayName}
+          onChangeText={(t) => setDisplayName(t.slice(0, 64))}
+          placeholder="sYnX user"
+          placeholderTextColor={theme.inputPlaceholder}
+          maxLength={64}
+          autoCapitalize="words"
+          autoCorrect={false}
+          accessibilityLabel="Display name"
+        />
+        <Text style={[styles.hint, { color: theme.textMuted }]}>
+          Shown on lists you share. Your email is never shared with others.
+        </Text>
       </View>
 
       {/* Appearance */}

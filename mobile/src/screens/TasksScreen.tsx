@@ -285,7 +285,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     return parentMatches || subtaskMatches;
   });
 
-  const ownershipLabel = listOwnershipLabel(isOwner);
+  const ownerDisplayName = listMeta?.owner?.displayName ?? null;
+  const ownershipLabel = listOwnershipLabel(isOwner, ownerDisplayName);
 
   if (listMetaLoading && !listMeta) {
     return (
@@ -392,7 +393,12 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       </View>
 
       {listMeta ? (
-        <ListPermissionBanner shareMode={shareMode} isOwner={isOwner} canEdit={canEdit} />
+        <ListPermissionBanner
+          shareMode={shareMode}
+          isOwner={isOwner}
+          canEdit={canEdit}
+          ownerDisplayName={ownerDisplayName}
+        />
       ) : null}
 
       {showingCachedWhileOffline ? (

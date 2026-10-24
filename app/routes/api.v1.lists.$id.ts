@@ -2,7 +2,9 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudfla
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { UpdateListSchema } from "../../shared";
-import { getListAccess } from "../api-helpers.server";
+import { getListAccess, serializeListRow } from "../api-helpers.server";
+import { recordSharedListAccess } from "../shared-lists.server";
+import { ensureUserProfileSchema } from "../user-profile.server";
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
@@ -13,6 +15,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   if (!listId) {
     return Response.json({ error: "List ID is required" }, { status: 400 });
   }
+
+  await ensureUserProfileSchema(db);
 
   const userId = user ? user.userId : "";
   const access = await getListAccess(db, listId, userId);
@@ -27,25 +31,25 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
       {
         error: "This list is private",
         code: "PRIVATE_LIST",
-        // Hint for signed-out / wrong-account UX on clients
         requiresAuth: !user,
       },
       { status: 403 }
     );
   }
 
+  // Signed-in non-owners who can access → remember for "Shared with me"
+  if (user && !access.isOwner) {
+    await recordSharedListAccess(db, user.userId, listId, access.isOwner);
+  }
+
+  const list = await serializeListRow(db, access.list, {
+    viewerUserId: userId,
+    canEdit: access.canEdit,
+  });
+
   return Response.json({
     success: true,
-    list: {
-      id: access.list.id,
-      name: access.list.name,
-      ownerId: access.list.owner_id,
-      createdAt: Number(access.list.created_at),
-      shareMode: access.list.share_mode || "private",
-      category: access.list.category || "Checklist",
-      isOwner: access.isOwner,
-      canEdit: access.canEdit,
-    },
+    list,
   });
 }
 
@@ -62,6 +66,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   if (!listId) {
     return Response.json({ error: "List ID is required" }, { status: 400 });
   }
+
+  await ensureUserProfileSchema(db);
 
   const listRow = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
   if (!listRow) {
@@ -86,18 +92,11 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         .run();
 
       const updated = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
+      const list = await serializeListRow(db, updated, { viewerUserId: user.userId });
 
       return Response.json({
         success: true,
-        list: {
-          id: updated.id,
-          name: updated.name,
-          ownerId: updated.owner_id,
-          createdAt: Number(updated.created_at),
-          shareMode: updated.share_mode || "private",
-          category: updated.category || "Checklist",
-          isOwner: true,
-        },
+        list,
       });
     } catch (err: any) {
       return Response.json({ error: err.message || "Invalid payload" }, { status: 400 });

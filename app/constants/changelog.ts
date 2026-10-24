@@ -1,8 +1,27 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.1.4";
+export const WEB_VERSION = "v5.2.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.2.0",
+    date: "2026-10-24",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Set a display name in your profile — shared lists show your name instead of a generic label (your email is never shared)."
+      },
+      {
+        type: "NEW",
+        text: "Sidebar splits into My lists and Shared with me. Opening a shared link remembers it across devices; you can remove a list from Shared with me anytime."
+      },
+      {
+        type: "IMPR",
+        text: "Shared list views show the owner's display name in the header and view-only banner."
+      }
+    ]
+  },
   {
     version: "v5.1.4",
     date: "2026-10-23",
