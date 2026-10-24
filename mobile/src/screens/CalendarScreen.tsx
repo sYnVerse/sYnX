@@ -22,6 +22,7 @@ import { syncTaskToNativeCalendar } from "../services/calendar";
 import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 import { formatFriendlyDate, formatReminderTime, priorityColor, priorityLabel } from "../utils/format";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
+import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
 
 const getLocalDateString = (dateInput: Date | number = new Date()) => {
   const d = typeof dateInput === "number" ? new Date(dateInput) : dateInput;
@@ -89,22 +90,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     showError(getErrorMessage(e, fallback));
   };
 
-  const toggleMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiClient.post(`/api/v1/todos/${id}/toggle`);
-      return res.data.todo as TodoItem;
-    },
-    onSuccess: (updatedTodo) => {
-      if (updatedTodo) {
-        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          old ? old.map((t) => (t.id === updatedTodo.id ? updatedTodo : t)) : []
-        );
-        syncTaskToNativeCalendar(updatedTodo).catch(() => {});
-      }
-      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
-    },
-    onError: (e) => onMutationError(e, "Couldn't update task"),
-  });
+  const { setCompleted, isPendingId } = useSetTodoCompleted(listId);
 
   const createMutation = useMutation({
     mutationFn: async (newTodo: any) => {
@@ -254,14 +240,17 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
                 ]}
               >
                 <TouchableOpacity
-                  disabled={!canEdit}
-                  style={[styles.checkboxHit, !canEdit && { opacity: 0.7 }]}
+                  disabled={!canEdit || isPendingId(item.id)}
+                  style={[styles.checkboxHit, (!canEdit || isPendingId(item.id)) && { opacity: 0.7 }]}
                   onPress={() => {
-                    if (!canEdit) return;
-                    toggleMutation.mutate(item.id);
+                    if (!canEdit || isPendingId(item.id)) return;
+                    setCompleted(item);
                   }}
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: item.completed, disabled: !canEdit }}
+                  accessibilityState={{
+                    checked: item.completed,
+                    disabled: !canEdit || isPendingId(item.id),
+                  }}
                   accessibilityLabel={`Mark ${item.text} ${item.completed ? "incomplete" : "complete"}`}
                 >
                   <View

@@ -21,6 +21,7 @@ import { useToast } from "../context/ToastContext";
 import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { parseSubtaskDurationMinutes } from "../shared/mobile-ux";
+import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
 
 interface TaskBreakdownModalProps {
   visible: boolean;
@@ -121,18 +122,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
     onError: (e) => onErr(e, "Couldn't add subtask"),
   });
 
-  const toggleSubtaskMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiClient.post(`/api/v1/todos/${id}/toggle`);
-    },
-    onSuccess: () => {
-      triggerHaptic();
-      if (task) {
-        queryClient.invalidateQueries({ queryKey: ["todos", task.listId] });
-      }
-    },
-    onError: (e) => onErr(e, "Couldn't update subtask"),
-  });
+  const { setCompleted, isPendingId } = useSetTodoCompleted(task?.listId);
 
   const removeSubtaskMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -294,11 +284,17 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
                   ]}
                 >
                   <TouchableOpacity
-                    disabled={!canEdit}
-                    style={styles.checkboxHit}
-                    onPress={() => toggleSubtaskMutation.mutate(st.id)}
+                    disabled={!canEdit || isPendingId(st.id)}
+                    style={[styles.checkboxHit, isPendingId(st.id) && { opacity: 0.7 }]}
+                    onPress={() => {
+                      if (!canEdit || isPendingId(st.id)) return;
+                      setCompleted({ id: st.id, completed: st.completed });
+                    }}
                     accessibilityRole="checkbox"
-                    accessibilityState={{ checked: st.completed, disabled: !canEdit }}
+                    accessibilityState={{
+                      checked: st.completed,
+                      disabled: !canEdit || isPendingId(st.id),
+                    }}
                     accessibilityLabel={`Mark subtask ${st.completed ? "incomplete" : "complete"}`}
                   >
                     <View

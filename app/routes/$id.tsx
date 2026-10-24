@@ -10,6 +10,7 @@ import { useState, useRef, useEffect, useCallback, createContext, useContext } f
 import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
+import { applySetCompletedLocal, formatRescheduledToast } from "../../shared";
 
 
 export const GUEST_STORAGE_KEY = "synx_guest_lists";
@@ -390,8 +391,16 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "toggle": {
       const id = formData.get("id") as string;
-      await todoManager.toggle(id);
-      return { success: true };
+      const todo = await todoManager.toggle(id);
+      return { success: true, todo };
+    }
+
+    case "setCompleted": {
+      const id = formData.get("id") as string;
+      const completedRaw = formData.get("completed");
+      const completed = completedRaw === "true" || completedRaw === "1";
+      const { todo, rescheduled } = await todoManager.setCompleted(id, completed);
+      return { success: true, todo, rescheduled };
     }
 
     case "delete": {
@@ -1159,9 +1168,21 @@ function DurationPicker({
   );
 }
 
-function TodoItem({ todo, subtasks = [], isSubtask = false, canEdit = true }: { todo: Todo; subtasks?: Todo[]; isSubtask?: boolean; canEdit?: boolean }) {
+function TodoItem({
+  todo,
+  subtasks = [],
+  isSubtask = false,
+  canEdit = true,
+  onNotify,
+}: {
+  todo: Todo;
+  subtasks?: Todo[];
+  isSubtask?: boolean;
+  canEdit?: boolean;
+  onNotify?: (message: string) => void;
+}) {
   const { isLoggedIn, onGuestAction } = useContext(GuestContext);
-  const toggleFetcher = useFetcher();
+  const toggleFetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
   const deleteFetcher = useFetcher();
   const subtaskFetcher = useFetcher();
   const editFetcher = useFetcher();
@@ -1173,10 +1194,38 @@ function TodoItem({ todo, subtasks = [], isSubtask = false, canEdit = true }: { 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(todo.text);
   const editInputRef = useRef<HTMLInputElement>(null);
+  const [flashComplete, setFlashComplete] = useState(false);
+  const lastRescheduleToastKey = useRef<string | null>(null);
 
-  const isToggling = toggleFetcher.formData?.get("intent") === "toggle";
+  const isSetCompletedPending =
+    toggleFetcher.state !== "idle" && toggleFetcher.formData?.get("intent") === "setCompleted";
+  const desiredCompleted =
+    isSetCompletedPending && toggleFetcher.formData
+      ? toggleFetcher.formData.get("completed") === "true"
+      : null;
+  const optimistic =
+    desiredCompleted !== null ? applySetCompletedLocal(todo, desiredCompleted) : { todo, rescheduled: false };
+  const optimisticCompleted = optimistic.todo.completed;
+  const isToggling = isSetCompletedPending;
   const isDeleting = deleteFetcher.formData?.get("intent") === "delete";
-  const optimisticCompleted = isToggling ? !todo.completed : todo.completed;
+
+  useEffect(() => {
+    if (toggleFetcher.state !== "idle") return;
+    const data = toggleFetcher.data;
+    if (!data) return;
+    if (data.error) {
+      onNotify?.(data.error);
+      return;
+    }
+    if (data.rescheduled && data.todo?.reminderAt) {
+      const key = `${data.todo.id}:${data.todo.reminderAt}`;
+      if (lastRescheduleToastKey.current === key) return;
+      lastRescheduleToastKey.current = key;
+      setFlashComplete(true);
+      window.setTimeout(() => setFlashComplete(false), 450);
+      onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+    }
+  }, [toggleFetcher.state, toggleFetcher.data, onNotify]);
 
   useEffect(() => {
     if (showAddSubtask && subtaskInputRef.current) {
@@ -1252,30 +1301,35 @@ function TodoItem({ todo, subtasks = [], isSubtask = false, canEdit = true }: { 
             ? "bg-transparent border-transparent py-1.5 px-2 hover:bg-white/[0.02] rounded-lg" 
             : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.04] p-3.5 rounded-xl shadow-sm"
           }
-          ${optimisticCompleted ? "opacity-60" : "opacity-100"}`}
+          ${optimisticCompleted || flashComplete ? "opacity-60" : "opacity-100"}`}
       >
         <toggleFetcher.Form
           method="post"
           className="flex-shrink-0"
-          onSubmit={() => {
-            if (!canEdit) return;
+          onSubmit={(e) => {
+            if (!canEdit || isToggling) {
+              e.preventDefault();
+              return;
+            }
             if (!isLoggedIn) {
-              onGuestAction("toggle", { id: todo.id });
+              onGuestAction("setCompleted", { id: todo.id, completed: !todo.completed });
             }
           }}
         >
           <input type="hidden" name="id" value={todo.id} />
-          <input type="hidden" name="intent" value="toggle" />
+          <input type="hidden" name="intent" value="setCompleted" />
+          <input type="hidden" name="completed" value={String(!todo.completed)} />
           <button
             type="submit"
-            disabled={!canEdit}
-            className={`rounded-md border-2 flex items-center justify-center transition-all duration-200 ${canEdit ? "cursor-pointer" : "cursor-default opacity-80"}
+            disabled={!canEdit || isToggling}
+            aria-busy={isToggling}
+            className={`rounded-md border-2 flex items-center justify-center transition-all duration-200 ${canEdit && !isToggling ? "cursor-pointer" : "cursor-default opacity-80"}
               ${isSubtask ? "w-4 h-4 border-slate-700" : "w-5 h-5 border-slate-700"}
-              ${canEdit ? "hover:border-themeAccentFrom" : ""}
+              ${canEdit && !isToggling ? "hover:border-themeAccentFrom" : ""}
               data-[checked=true]:bg-themeAccentFrom data-[checked=true]:border-themeAccentFrom`}
-            data-checked={optimisticCompleted}
+            data-checked={optimisticCompleted || flashComplete}
           >
-            {optimisticCompleted && (
+            {(optimisticCompleted || flashComplete) && (
               <svg
                 className={`text-white animate-scale-up ${isSubtask ? "w-2.5 h-2.5" : "w-3 h-3"}`}
                 fill="none"
@@ -1442,7 +1496,7 @@ function TodoItem({ todo, subtasks = [], isSubtask = false, canEdit = true }: { 
       {!isSubtask && (
         <div className="pl-6 mt-1 flex flex-col gap-1 border-l border-white/[0.04] ml-5">
           {subtasks.map((sub) => (
-            <TodoItem key={sub.id} todo={sub} isSubtask={true} canEdit={canEdit} />
+            <TodoItem key={sub.id} todo={sub} isSubtask={true} canEdit={canEdit} onNotify={onNotify} />
           ))}
 
           {/* Inline Add Subtask Input Form */}
@@ -1577,21 +1631,18 @@ export default function TodoPage() {
             if (l.id !== targetListId) return l;
             const updatedTodos = l.todos.map((t) => {
               if (t.id !== payload.id) return t;
-              const willBeCompleted = !t.completed;
-              if (willBeCompleted && t.recurrence && t.recurrence !== "none") {
-                const currentReminder = t.reminderAt || Date.now();
-                const oneDay = 24 * 60 * 60 * 1000;
-                let nextReminder = currentReminder;
-                if (t.recurrence === "daily") nextReminder += oneDay;
-                else if (t.recurrence === "weekly") nextReminder += 7 * oneDay;
-                else if (t.recurrence === "monthly") {
-                  const d = new Date(currentReminder);
-                  d.setMonth(d.getMonth() + 1);
-                  nextReminder = d.getTime();
-                }
-                return { ...t, completed: false, reminderAt: nextReminder, reminderSent: false };
-              }
-              return { ...t, completed: willBeCompleted };
+              return applySetCompletedLocal(t, !t.completed).todo;
+            });
+            return { ...l, todos: updatedTodos };
+          });
+          break;
+        }
+        case "setCompleted": {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            const updatedTodos = l.todos.map((t) => {
+              if (t.id !== payload.id) return t;
+              return applySetCompletedLocal(t, Boolean(payload.completed)).todo;
             });
             return { ...l, todos: updatedTodos };
           });
@@ -3011,7 +3062,7 @@ export default function TodoPage() {
         {/* Todo List Area */}
         <div className="flex-1 min-h-0 mb-6 flex flex-col">
           {viewMode === "calendar" ? (
-            <CalendarView todos={optimisticTodos} activeListId={activeListId || ""} />
+            <CalendarView todos={optimisticTodos} activeListId={activeListId || ""} onNotify={showToast} />
           ) : visibleParents.length === 0 && totalCount === 0 ? (
             <div className="flex-1 overflow-y-auto scrollbar-thin flex flex-col justify-center">
               <EmptyState />
@@ -3028,6 +3079,7 @@ export default function TodoPage() {
                   todo={todo} 
                   subtasks={subtasksMap[todo.id] || []}
                   canEdit={canEdit}
+                  onNotify={showToast}
                 />
               ))}
             </ul>
