@@ -4,7 +4,7 @@ import { addUserInteractionListener } from 'expo-widgets';
 import CurrentListWidget, { initialSnapshot as initialCurrentSnapshot } from '../widgets/CurrentListWidget';
 import PinnedListWidget, { initialSnapshot as initialPinnedSnapshot } from '../widgets/PinnedListWidget';
 import ListProgressWidget, { initialProgressSnapshot } from '../widgets/ListProgressWidget';
-import { getLastActiveListId, getPinnedWidgetConfig } from './widgetPreferences';
+import { getLastActiveListId, getPinnedWidgetConfig, type PinnedWidgetConfig } from './widgetPreferences';
 import {
   buildListWidgetSnapshot,
   buildUpNextWidgetSnapshot,
@@ -14,7 +14,7 @@ import {
   type TodoItem,
   type TodoList,
 } from '../shared';
-import { apiClient } from '../api/client';
+import { apiClient, secureSessionStore } from '../api/client';
 
 let isDrainingOps = false;
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -96,55 +96,185 @@ export async function drainAndReplayPendingWidgetOps(queryClient: QueryClient): 
 }
 
 /**
- * Syncs the current React Query cached list and todo state into widget snapshots.
+ * Resolves list metadata from React Query cache if present; otherwise fetches from API.
  */
-export async function syncWidgetsFromCache(queryClient: QueryClient): Promise<void> {
+export async function resolveListMeta(
+  listId: string,
+  queryClient?: QueryClient
+): Promise<TodoList | null> {
+  if (queryClient) {
+    const cached = queryClient.getQueryData<TodoList>(['list_meta', listId]);
+    if (cached) return cached;
+
+    // Check if it exists in the lists list queries
+    const listsAll = queryClient.getQueryData<TodoList[]>(['lists', 'all']);
+    const foundAll = listsAll?.find((l) => l.id === listId);
+    if (foundAll) {
+      queryClient.setQueryData(['list_meta', listId], foundAll);
+      return foundAll;
+    }
+
+    const listsGeneric = queryClient.getQueryData<TodoList[]>(['lists']);
+    const foundGeneric = listsGeneric?.find((l) => l.id === listId);
+    if (foundGeneric) {
+      queryClient.setQueryData(['list_meta', listId], foundGeneric);
+      return foundGeneric;
+    }
+  }
+
+  // If no auth token, avoid making unauthenticated API calls
+  const token = await secureSessionStore.getAccessToken();
+  if (!token) return null;
+
   try {
-    const activeListId = await getLastActiveListId();
-    const pinnedConfig = await getPinnedWidgetConfig();
-
-    if (activeListId) {
-      const activeMeta = queryClient.getQueryData<TodoList>(['list_meta', activeListId]);
-      const activeTodos = queryClient.getQueryData<TodoItem[]>(['todos', activeListId]);
-
-      if (activeMeta) {
-        const currentSnap = buildListWidgetSnapshot(activeMeta, activeTodos);
-        CurrentListWidget.updateSnapshot(currentSnap);
-
-        const progressSnap = buildProgressWidgetSnapshot(activeMeta, activeTodos);
-        ListProgressWidget.updateSnapshot(progressSnap);
-      }
+    const res = await apiClient.get(`/api/v1/lists/${listId}`);
+    const list = res.data?.list as TodoList | undefined;
+    if (list) {
+      queryClient?.setQueryData(['list_meta', listId], list);
+      return list;
     }
+  } catch (err: any) {
+    console.warn(`[widgetSync] Failed to resolve list meta for ${listId}:`, err?.message);
+  }
 
-    const pinnedListId = pinnedConfig?.listId || activeListId;
-    if (pinnedListId) {
-      const pinnedMeta = queryClient.getQueryData<TodoList>(['list_meta', pinnedListId]);
-      const pinnedTodos = queryClient.getQueryData<TodoItem[]>(['todos', pinnedListId]);
+  return null;
+}
 
-      if (pinnedMeta) {
-        if (pinnedConfig?.mode === 'reminders') {
-          const upNextSnap = buildUpNextWidgetSnapshot(pinnedMeta, pinnedTodos);
-          PinnedListWidget.updateSnapshot(upNextSnap);
-        } else {
-          const pinnedSnap = buildListWidgetSnapshot(pinnedMeta, pinnedTodos);
-          PinnedListWidget.updateSnapshot(pinnedSnap);
-        }
-      }
+/**
+ * Resolves list todos from React Query cache if present; otherwise fetches from API.
+ */
+export async function resolveListTodos(
+  listId: string,
+  queryClient?: QueryClient
+): Promise<TodoItem[]> {
+  if (queryClient) {
+    const cached = queryClient.getQueryData<TodoItem[]>(['todos', listId]);
+    if (cached) return cached;
+
+    const preview = queryClient.getQueryData<TodoItem[]>(['active_list_todos_preview', listId]);
+    if (preview) {
+      queryClient.setQueryData(['todos', listId], preview);
+      return preview;
     }
-  } catch (e) {
-    console.warn('[widgetSync] Error updating widget snapshots from cache:', e);
+  }
+
+  const token = await secureSessionStore.getAccessToken();
+  if (!token) return [];
+
+  try {
+    const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
+    const todos = (res.data?.todos || []) as TodoItem[];
+    queryClient?.setQueryData(['todos', listId], todos);
+    return todos;
+  } catch (err: any) {
+    console.warn(`[widgetSync] Failed to resolve todos for ${listId}:`, err?.message);
+    return [];
   }
 }
 
 /**
+ * Syncs the active list to CurrentListWidget and ListProgressWidget snapshots.
+ */
+export async function syncActiveList(
+  listId?: string | null,
+  providedMeta?: TodoList,
+  providedTodos?: TodoItem[],
+  queryClient?: QueryClient
+): Promise<void> {
+  try {
+    const targetId = listId || (await getLastActiveListId());
+    if (!targetId) return;
+
+    const meta = providedMeta || (await resolveListMeta(targetId, queryClient));
+    if (!meta) return;
+
+    const todos =
+      providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
+
+    const currentSnap = buildListWidgetSnapshot(meta, todos);
+    CurrentListWidget.updateSnapshot(currentSnap);
+
+    const progressSnap = buildProgressWidgetSnapshot(meta, todos);
+    ListProgressWidget.updateSnapshot(progressSnap);
+  } catch (e) {
+    console.warn('[widgetSync] Error syncing active list widgets:', e);
+  }
+}
+
+/**
+ * Syncs the pinned list to PinnedListWidget snapshot.
+ * Pass listId: null to reset PinnedListWidget to its empty/unpinned state.
+ */
+export async function syncPinnedList(
+  listId?: string | null,
+  providedMeta?: TodoList,
+  providedTodos?: TodoItem[],
+  queryClient?: QueryClient
+): Promise<void> {
+  try {
+    if (listId === null) {
+      PinnedListWidget.updateSnapshot(initialPinnedSnapshot);
+      return;
+    }
+
+    const pinnedConfig = await getPinnedWidgetConfig();
+    const targetId = listId || pinnedConfig?.listId;
+    if (!targetId) {
+      PinnedListWidget.updateSnapshot(initialPinnedSnapshot);
+      return;
+    }
+
+    const meta = providedMeta || (await resolveListMeta(targetId, queryClient));
+    if (!meta) return;
+
+    const todos =
+      providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
+
+    if (pinnedConfig?.mode === 'reminders') {
+      const upNextSnap = buildUpNextWidgetSnapshot(meta, todos);
+      PinnedListWidget.updateSnapshot(upNextSnap);
+    } else {
+      const pinnedSnap = buildListWidgetSnapshot(meta, todos);
+      PinnedListWidget.updateSnapshot(pinnedSnap);
+    }
+  } catch (e) {
+    console.warn('[widgetSync] Error syncing pinned list widget:', e);
+  }
+}
+
+/**
+ * Syncs both active and pinned widgets immediately.
+ */
+export async function syncAllWidgets(queryClient?: QueryClient): Promise<void> {
+  try {
+    const pinnedConfig = await getPinnedWidgetConfig();
+    await Promise.allSettled([
+      syncActiveList(undefined, undefined, undefined, queryClient),
+      syncPinnedList(pinnedConfig?.listId ?? null, undefined, undefined, queryClient),
+    ]);
+  } catch (e) {
+    console.warn('[widgetSync] Error syncing all widgets:', e);
+  }
+}
+
+/**
+ * Syncs the current React Query cached list and todo state into widget snapshots.
+ */
+export async function syncWidgetsFromCache(queryClient: QueryClient): Promise<void> {
+  await syncAllWidgets(queryClient);
+}
+
+/**
  * Starts the real-time widget synchronization service.
+ * - Drains pending ops and pushes initial widget snapshots on launch
  * - Listens for live widget interactions to immediately drain completions
  * - Observes React Query cache mutations to update widget snapshots
- * - Listens for AppState foreground transitions to replay pending ops
+ * - Listens for AppState foreground transitions to replay pending ops and refresh widgets
  */
 export function startWidgetSyncService(queryClient: QueryClient): () => void {
-  // 1. Drain pending ops on initial launch
+  // 1. Drain pending ops and immediately push initial snapshot sync
   drainAndReplayPendingWidgetOps(queryClient);
+  syncAllWidgets(queryClient);
 
   // 2. Listen for widget taps while the app is active
   let widgetInteractionSub: { remove: () => void } | null = null;
@@ -160,7 +290,7 @@ export function startWidgetSyncService(queryClient: QueryClient): () => void {
   const appStateSub = AppState.addEventListener('change', (nextState) => {
     if (nextState === 'active') {
       drainAndReplayPendingWidgetOps(queryClient);
-      syncWidgetsFromCache(queryClient);
+      syncAllWidgets(queryClient);
     }
   });
 
@@ -169,13 +299,13 @@ export function startWidgetSyncService(queryClient: QueryClient): () => void {
     if (
       event?.type === 'updated' &&
       Array.isArray(event.query.queryKey) &&
-      ['todos', 'list_meta', 'lists'].includes(String(event.query.queryKey[0]))
+      ['todos', 'list_meta', 'lists', 'active_list_todos_preview'].includes(String(event.query.queryKey[0]))
     ) {
       if (syncDebounceTimer) {
         clearTimeout(syncDebounceTimer);
       }
       syncDebounceTimer = setTimeout(() => {
-        syncWidgetsFromCache(queryClient);
+        syncAllWidgets(queryClient);
       }, 300);
     }
   });
