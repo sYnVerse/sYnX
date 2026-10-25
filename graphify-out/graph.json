@@ -3927,7 +3927,7 @@
       "label": "styles",
       "file_type": "code",
       "source_file": "mobile/src/screens/CalendarScreen.tsx",
-      "source_location": "L352",
+      "source_location": "L350",
       "_origin": "ast",
       "id": "screens_calendarscreen_styles",
       "community": 32,
@@ -20788,5 +20788,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "9aacad28221558a21a4dd349923fe1e097c4a992"
+  "built_at_commit": "78e0a4bfb39756e89dada19ea8bffa8d892dc602"
 }
