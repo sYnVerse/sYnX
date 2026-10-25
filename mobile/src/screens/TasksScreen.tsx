@@ -44,9 +44,15 @@ import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 import { formatReminderTime, priorityColor, priorityLabel, listOwnershipLabel } from "../utils/format";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
+import { syncActiveList, syncPinnedList } from "../services/widgetSync";
+import { getPinnedWidgetConfig } from "../services/widgetPreferences";
 
 export interface TasksScreenProps {
   listId: string;
+  /** Set when a widget or quick-add link asked to open the new task form. */
+  newTaskRequestId?: number;
+  /** Called once the request has been handled so it isn't replayed on the next list open. */
+  onNewTaskRequestHandled?: () => void;
   onGoToMyLists?: () => void;
   onSwitchLists?: () => void;
 }
@@ -80,6 +86,8 @@ function classifyListMetaError(error: unknown): {
 
 export const TasksScreen: React.FC<TasksScreenProps> = ({
   listId,
+  newTaskRequestId,
+  onNewTaskRequestHandled,
   onGoToMyLists,
   onSwitchLists,
 }) => {
@@ -137,6 +145,21 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const isOwner = listMeta?.isOwner === true;
   const shareMode = listMeta?.shareMode ?? "private";
 
+  const lastHandledNewTaskRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!newTaskRequestId || newTaskRequestId === lastHandledNewTaskRef.current) {
+      return;
+    }
+    // Wait until the list has loaded (or failed) before using up the request.
+    if (listMetaLoading || (!listMeta && !listMetaIsError)) return;
+    lastHandledNewTaskRef.current = newTaskRequestId;
+    if (listMeta && canEdit) {
+      setEditingTask(null);
+      setModalVisible(true);
+    }
+    onNewTaskRequestHandled?.();
+  }, [newTaskRequestId, listMeta, listMetaLoading, listMetaIsError, canEdit, onNewTaskRequestHandled]);
+
   const accessError = listMetaIsError ? classifyListMetaError(listMetaError) : null;
 
   const {
@@ -160,6 +183,19 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       return failureCount < 2;
     },
   });
+
+  React.useEffect(() => {
+    if (listMeta && rawTodos) {
+      syncActiveList(listId, listMeta, rawTodos, queryClient).catch(() => {});
+      getPinnedWidgetConfig()
+        .then((cfg) => {
+          if (cfg?.listId === listId) {
+            syncPinnedList(listId, listMeta, rawTodos, queryClient).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+  }, [listId, listMeta, rawTodos, queryClient]);
 
   const showingCachedWhileOffline = Boolean(todosIsError && rawTodos);
 
