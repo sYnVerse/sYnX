@@ -1,4 +1,4 @@
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 import * as Calendar from "expo-calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { TodoItem } from "../shared";
@@ -126,8 +126,97 @@ export async function requestCalendarPermissions(): Promise<CalendarPermissionRe
   }
 }
 
-const SYNX_CALENDAR_TITLE = "sYnX Tasks";
-const SYNX_CALENDAR_COLOR = "#6366F1";
+export const SYNX_CALENDAR_TITLE = "sYnX Tasks";
+export const SYNX_CALENDAR_COLOR = "#6366F1";
+
+export interface AvailableCalendar {
+  id: string;
+  title: string;
+  sourceName?: string;
+  isPrimary?: boolean;
+  isLocal?: boolean;
+  isDedicated?: boolean;
+  color?: string;
+}
+
+/**
+ * Query writable calendars available on the device for syncing tasks.
+ */
+export async function getAvailableCalendars(): Promise<AvailableCalendar[]> {
+  if (Platform.OS === "web") return [];
+
+  try {
+    const permission = await checkCalendarPermissions();
+    if (!permission.granted) return [];
+
+    const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
+
+    const isWritable = (c: Calendar.ExpoCalendar) => {
+      if (c.allowsModifications !== false) return true;
+      const lvl = c.accessLevel;
+      return (
+        lvl === Calendar.CalendarAccessLevel.OWNER ||
+        lvl === Calendar.CalendarAccessLevel.EDITOR ||
+        lvl === Calendar.CalendarAccessLevel.CONTRIBUTOR ||
+        lvl === Calendar.CalendarAccessLevel.ROOT
+      );
+    };
+
+    const writable = calendars.filter(isWritable);
+
+    return writable.map((c) => {
+      const isDedicated = c.title === SYNX_CALENDAR_TITLE || c.name === SYNX_CALENDAR_TITLE;
+      const isLocal =
+        c.source?.isLocalAccount === true ||
+        c.source?.type?.toLowerCase() === "local";
+      const sourceName =
+        c.source?.name || c.ownerAccount || (isLocal ? "Local Device" : undefined);
+
+      return {
+        id: c.id,
+        title: c.title || c.name || "Untitled Calendar",
+        sourceName,
+        isPrimary: Boolean(c.isPrimary),
+        isLocal,
+        isDedicated,
+        color: c.color,
+      };
+    });
+  } catch (error) {
+    console.warn("Failed to get available calendars:", error);
+    return [];
+  }
+}
+
+/**
+ * Retrieve the currently configured target calendar ID from AsyncStorage.
+ */
+export async function getSelectedCalendarId(): Promise<string | null> {
+  try {
+    return await AsyncStorage.getItem(SYNX_CALENDAR_ID_KEY);
+  } catch (e) {
+    console.warn("Failed to read selected calendar id:", e);
+    return null;
+  }
+}
+
+/**
+ * Set the target calendar ID in AsyncStorage.
+ * Clears event mappings so subsequent sync creates fresh events in the chosen calendar.
+ */
+export async function setSelectedCalendarId(calendarId: string): Promise<boolean> {
+  try {
+    const currentId = await AsyncStorage.getItem(SYNX_CALENDAR_ID_KEY);
+    if (currentId !== calendarId) {
+      await AsyncStorage.setItem(SYNX_CALENDAR_ID_KEY, calendarId);
+      await saveEventMappings({});
+    }
+    return true;
+  } catch (e) {
+    console.error("Failed to save selected calendar id:", e);
+    return false;
+  }
+}
 
 /**
  * Pick a source for a new calendar on iOS: prefer a local source, then Default / iCloud.
@@ -150,7 +239,7 @@ function pickIosSource(calendars: Calendar.ExpoCalendar[]): Calendar.Source | un
 }
 
 /**
- * Get existing "sYnX Tasks" calendar or create a new dedicated calendar.
+ * Get existing "sYnX Tasks" dedicated calendar or create a new one.
  */
 export async function getOrCreateSynxCalendar(): Promise<string | null> {
   if (Platform.OS === "web") return null;
@@ -224,6 +313,138 @@ export async function getOrCreateSynxCalendar(): Promise<string | null> {
 }
 
 /**
+ * Resolve the target calendar for syncing:
+ * 1. User's explicitly selected calendar (if still valid)
+ * 2. Pre-existing "sYnX Tasks" dedicated calendar (if present)
+ * 3. On Android: default primary writable calendar (e.g. Google Calendar) for zero-friction sync
+ * 4. Fallback: creates or fetches the dedicated "sYnX Tasks" calendar
+ */
+export async function resolveTargetCalendar(): Promise<string | null> {
+  if (Platform.OS === "web") return null;
+
+  try {
+    const permission = await requestCalendarPermissions();
+    if (!permission.granted) return null;
+
+    const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
+
+    // 1. Check if user explicitly selected a calendar that still exists
+    const storedCalendarId = await AsyncStorage.getItem(SYNX_CALENDAR_ID_KEY);
+    if (storedCalendarId) {
+      const existing = calendars.find((c) => c.id === storedCalendarId);
+      if (existing) {
+        return existing.id;
+      }
+      // Stale ID, clear it
+      await AsyncStorage.removeItem(SYNX_CALENDAR_ID_KEY);
+    }
+
+    // 2. Check if a dedicated "sYnX Tasks" calendar already exists on the device
+    const existingSynxCalendar = calendars.find(
+      (c) => c.title === SYNX_CALENDAR_TITLE || c.name === SYNX_CALENDAR_TITLE
+    );
+    if (existingSynxCalendar) {
+      await AsyncStorage.setItem(SYNX_CALENDAR_ID_KEY, existingSynxCalendar.id);
+      return existingSynxCalendar.id;
+    }
+
+    // 3. On Android: default to the primary writable calendar (e.g. Google Calendar)
+    // to avoid the unmanaged "Non-Google accounts" issue out of the box
+    if (Platform.OS === "android") {
+      const primaryWritable =
+        calendars.find((c) => c.isPrimary && c.allowsModifications !== false) ||
+        calendars.find(
+          (c) => c.source?.type === "com.google" && c.allowsModifications !== false
+        );
+
+      if (primaryWritable) {
+        await AsyncStorage.setItem(SYNX_CALENDAR_ID_KEY, primaryWritable.id);
+        return primaryWritable.id;
+      }
+    }
+
+    // 4. Fall back to creating or returning the dedicated calendar
+    return await getOrCreateSynxCalendar();
+  } catch (error) {
+    console.error("Error resolving target calendar:", error);
+    return null;
+  }
+}
+
+/**
+ * Get details of the current target calendar.
+ */
+export async function getTargetCalendar(): Promise<AvailableCalendar | null> {
+  if (Platform.OS === "web") return null;
+
+  try {
+    const calendarId = await resolveTargetCalendar();
+    if (!calendarId) return null;
+
+    const calendars = await Calendar.getCalendars(Calendar.EntityTypes.EVENT);
+    const target = calendars.find((c) => c.id === calendarId);
+    if (!target) return null;
+
+    const isDedicated = target.title === SYNX_CALENDAR_TITLE || target.name === SYNX_CALENDAR_TITLE;
+    const isLocal =
+      target.source?.isLocalAccount === true ||
+      target.source?.type?.toLowerCase() === "local";
+    const sourceName =
+      target.source?.name || target.ownerAccount || (isLocal ? "Local Device" : undefined);
+
+    return {
+      id: target.id,
+      title: target.title || target.name || "Untitled Calendar",
+      sourceName,
+      isPrimary: Boolean(target.isPrimary),
+      isLocal,
+      isDedicated,
+      color: target.color,
+    };
+  } catch (error) {
+    console.warn("Failed to get target calendar details:", error);
+    return null;
+  }
+}
+
+/**
+ * Open the native calendar app on the device.
+ * On Android, attempts to open the system calendar intent or Google Calendar.
+ * On iOS, attempts to open Apple Calendar.
+ */
+export async function openCalendarApp(): Promise<boolean> {
+  if (Platform.OS === "android") {
+    try {
+      const url = `content://com.android.calendar/time/${Date.now()}`;
+      await Linking.openURL(url);
+      return true;
+    } catch {
+      try {
+        await Linking.openURL("https://calendar.google.com/calendar/r");
+        return true;
+      } catch (err) {
+        console.warn("Failed to open calendar app on Android:", err);
+        return false;
+      }
+    }
+  } else if (Platform.OS === "ios") {
+    try {
+      await Linking.openURL("calshow:");
+      return true;
+    } catch {
+      try {
+        await Linking.openURL("https://calendar.google.com/calendar/r");
+        return true;
+      } catch (err) {
+        console.warn("Failed to open calendar app on iOS:", err);
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Sync a single task to the device's native calendar.
  * If task has no reminderAt or is completed, any existing synced native event will be removed.
  */
@@ -245,7 +466,7 @@ export async function syncTaskToNativeCalendar(task: TodoItem): Promise<string |
       return null;
     }
 
-    const calendarId = await getOrCreateSynxCalendar();
+    const calendarId = await resolveTargetCalendar();
     if (!calendarId) return null;
 
     const startDate = new Date(task.reminderAt);
@@ -331,7 +552,7 @@ export async function syncAllTasksToNativeCalendar(tasks: TodoItem[]): Promise<v
   if (Platform.OS === "web") return;
 
   try {
-    const calendarId = await getOrCreateSynxCalendar();
+    const calendarId = await resolveTargetCalendar();
     if (!calendarId) return;
 
     for (const task of tasks) {

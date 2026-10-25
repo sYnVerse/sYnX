@@ -200,3 +200,22 @@ export function contrastRatio(fgHex: string, bgHex: string): number {
   const darker = Math.min(L1, L2);
   return (lighter + 0.05) / (darker + 0.05);
 }
+
+/** Approximate rendered height of the floating tab bar (excluding bottom insets). */
+export const FLOATING_TAB_BAR_HEIGHT = 72;
+
+/**
+ * Calculates bottom offset for floating action buttons (FAB) so they always float
+ * comfortably above the floating tab bar, accounting for safe area insets.
+ */
+export function getFabBottomOffset(insetsBottom: number, margin = 16): number {
+  return FLOATING_TAB_BAR_HEIGHT + Math.max(insetsBottom, 12) + margin;
+}
+
+/**
+ * Calculates list content padding bottom so scrollable content isn't obscured by the
+ * floating tab bar or FAB.
+ */
+export function getListBottomPadding(insetsBottom: number): number {
+  return FLOATING_TAB_BAR_HEIGHT + Math.max(insetsBottom, 12) + 76;
+}

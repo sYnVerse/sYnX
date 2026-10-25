@@ -175,3 +175,9 @@ export const PHONE_CARRIERS = [
 ] as const;
 
 export type PhoneCarrierValue = (typeof PHONE_CARRIERS)[number]["value"];
+
+export {
+  FLOATING_TAB_BAR_HEIGHT,
+  getFabBottomOffset,
+  getListBottomPadding,
+} from "../shared";

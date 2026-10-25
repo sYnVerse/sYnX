@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Clock, Check, Calendar as CalendarIcon, Plus, Bell, Flag } from "lucide-react-native";
 import { apiClient } from "../api/client";
@@ -19,7 +20,7 @@ import { useToast } from "../context/ToastContext";
 import { TaskModal } from "../components/TaskModal";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
 import { syncTaskToNativeCalendar } from "../services/calendar";
-import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
+import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
 import { formatFriendlyDate, formatReminderTime, priorityColor, priorityLabel } from "../utils/format";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
@@ -35,6 +36,8 @@ const getLocalDateString = (dateInput: Date | number = new Date()) => {
 export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const { theme, resolvedMode, hapticsEnabled } = useTheme();
   const { showError } = useToast();
+  const insets = useSafeAreaInsets();
+  const fabBottom = getFabBottomOffset(insets.bottom);
   const queryClient = useQueryClient();
   const today = getLocalDateString();
   const [selectedDate, setSelectedDate] = useState(today);
@@ -216,7 +219,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
         <FlatList
           data={selectedDateTodos}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 110 }}
+          contentContainerStyle={{ paddingBottom: getListBottomPadding(insets.bottom) }}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
@@ -322,7 +325,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
 
       {canEdit && (
         <TouchableOpacity
-          style={[styles.fab, { backgroundColor: theme.accent }]}
+          style={[styles.fab, { backgroundColor: theme.accent, bottom: fabBottom }]}
           onPress={() => {
             triggerImpactHaptic();
             setModalVisible(true);
@@ -451,7 +454,7 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 20,
-    bottom: 90,
+    bottom: getFabBottomOffset(0),
     width: 56,
     height: 56,
     borderRadius: 28,

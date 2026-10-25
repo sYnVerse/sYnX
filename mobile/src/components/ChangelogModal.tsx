@@ -242,7 +242,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   tagBadge: {
-    paddingHorizontal: 7,
+    width: 48,
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 3,
     borderRadius: 6,
     borderWidth: 1,
@@ -252,6 +254,7 @@ const styles = StyleSheet.create({
     fontSize: typography.xs,
     fontWeight: "800",
     letterSpacing: 0.5,
+    textAlign: "center",
   },
   changeText: {
     flex: 1,

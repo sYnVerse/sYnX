@@ -14,6 +14,9 @@ import {
   stripLeadingCategoryEmoji,
   buildCategorizedListName,
   contrastRatio,
+  getFabBottomOffset,
+  getListBottomPadding,
+  FLOATING_TAB_BAR_HEIGHT,
 } from "../shared/mobile-ux";
 import { MOBILE_APP_VERSION, MOBILE_VERSION } from "../shared/mobile-version";
 
@@ -168,7 +171,7 @@ describe("mobile version single source of truth", () => {
     expect(MOBILE_APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
     expect(MOBILE_VERSION).toBe(`v${MOBILE_APP_VERSION}`);
     // Current release for this PR
-    expect(MOBILE_APP_VERSION).toBe("3.3.0");
+    expect(MOBILE_APP_VERSION).toBe("3.3.1");
   });
 });
 
@@ -190,5 +193,20 @@ describe("theme contrast tokens (WCAG AA text)", () => {
   it("version badge foregrounds beat the old #4ADE80-on-light failure (~1.7:1)", () => {
     expect(contrastRatio(light.badgeFg, light.surface)).toBeGreaterThanOrEqual(4.5);
     expect(contrastRatio(dark.badgeFg, dark.surface)).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe("floating action button and tab bar layout math", () => {
+  it("calculates fab bottom offset safely above floating bar across inset heights", () => {
+    expect(getFabBottomOffset(0)).toBe(100);
+    expect(getFabBottomOffset(28)).toBe(116);
+    expect(getFabBottomOffset(34)).toBe(122);
+    expect(getFabBottomOffset(48)).toBe(136);
+  });
+
+  it("calculates list bottom padding to clear both tab bar and fab", () => {
+    expect(getListBottomPadding(0)).toBe(160);
+    expect(getListBottomPadding(28)).toBe(176);
+    expect(getListBottomPadding(34)).toBe(182);
   });
 });

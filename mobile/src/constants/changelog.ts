@@ -6,6 +6,25 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-10-26",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Standardized changelog category badge widths (NEW, IMPR, FIX) so tags align uniformly across all items."
+      },
+      {
+        type: "IMPR",
+        text: "Flexible device calendar selection: Choose which calendar to sync tasks to, with zero-friction Google Calendar sync, local account guidance, and a 1-tap shortcut to open the calendar app."
+      },
+      {
+        type: "FIX",
+        text: "Raised the floating action button (+) across Tasks, Calendar, and Lists to float comfortably above the navigation bar with safe-area insets."
+      }
+    ]
+  },
+  {
+    version: "v3.3.0",
     date: "2026-10-25",
     title: "What's new?",
     changes: [

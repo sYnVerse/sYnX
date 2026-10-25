@@ -25,6 +25,8 @@ import {
   Sparkles,
   User,
   ExternalLink,
+  Info,
+  ChevronRight,
 } from "lucide-react-native";
 import { useAuth } from "../context/AuthContext";
 import { apiClient } from "../api/client";
@@ -38,7 +40,10 @@ import {
   type PushPermissionStatus,
 } from "../services/notifications";
 import { useTheme } from "../context/ThemeContext";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../context/ToastContext";
+import type { TodoItem } from "../shared";
+import { CalendarPickerModal } from "../components/CalendarPickerModal";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET, PHONE_CARRIERS, type ThemeMode } from "../theme/theme";
@@ -50,6 +55,12 @@ import {
   requestCalendarPermissions,
   getOrCreateSynxCalendar,
   describeCalendarPermission,
+  getAvailableCalendars,
+  getTargetCalendar,
+  setSelectedCalendarId,
+  openCalendarApp,
+  syncAllTasksToNativeCalendar,
+  type AvailableCalendar,
 } from "../services/calendar";
 
 interface SettingsScreenProps {
@@ -75,6 +86,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [pushBusy, setPushBusy] = useState(false);
   const [calendarSync, setCalendarSync] = useState(false);
   const [calendarPermission, setCalendarPermission] = useState<string>("Not Granted");
+  const queryClient = useQueryClient();
+  const [targetCalendar, setTargetCalendar] = useState<AvailableCalendar | null>(null);
+  const [availableCalendars, setAvailableCalendars] = useState<AvailableCalendar[]>([]);
+  const [showCalendarPicker, setShowCalendarPicker] = useState(false);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydrated = useRef(false);
@@ -144,6 +159,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         setCalendarSync(syncEnabled);
         const permission = await checkCalendarPermissions();
         setCalendarPermission(describeCalendarPermission(permission));
+        if (syncEnabled && permission.granted) {
+          const target = await getTargetCalendar();
+          setTargetCalendar(target);
+        }
       } catch (e) {
         console.error("Failed to read calendar settings", e);
       }
@@ -266,16 +285,101 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     }
   };
 
+  const syncExistingTasks = useCallback(async () => {
+    try {
+      const allQueries = queryClient.getQueriesData<TodoItem[]>({ queryKey: ["todos"] });
+      const allTasks: TodoItem[] = [];
+      for (const [, tasks] of allQueries) {
+        if (Array.isArray(tasks)) {
+          allTasks.push(...tasks);
+        }
+      }
+      if (allTasks.length > 0) {
+        await syncAllTasksToNativeCalendar(allTasks);
+      }
+    } catch (e) {
+      console.warn("Failed to sync existing tasks to native calendar", e);
+    }
+  }, [queryClient]);
+
   const enableCalendarSync = useCallback(async () => {
     setCalendarPermission("Granted");
     await setCalendarSyncEnabled(true);
     setCalendarSync(true);
-    await getOrCreateSynxCalendar();
-    Alert.alert(
-      "Calendar Sync Enabled",
-      "Tasks with reminders will automatically sync to the 'sYnX Tasks' native calendar."
-    );
-  }, []);
+    const target = await getTargetCalendar();
+    setTargetCalendar(target);
+
+    await syncExistingTasks();
+
+    if (Platform.OS === "android" && (target?.isDedicated || target?.isLocal)) {
+      Alert.alert(
+        "Calendar Sync Enabled",
+        "Tasks with reminders will sync to 'sYnX Tasks'.\n\nGoogle Calendar hides local calendars by default. In Google Calendar: go to Settings → Manage accounts → Non-Google accounts, and toggle on sYnX.",
+        [
+          { text: "OK" },
+          { text: "Open Calendar", onPress: () => openCalendarApp() },
+        ]
+      );
+    } else {
+      Alert.alert(
+        "Calendar Sync Enabled",
+        `Tasks with reminders will automatically sync to your "${target?.title || "device"}" calendar.`
+      );
+    }
+  }, [syncExistingTasks]);
+
+  const handleOpenCalendarPicker = async () => {
+    triggerImpact();
+    const cals = await getAvailableCalendars();
+    setAvailableCalendars(cals);
+    setShowCalendarPicker(true);
+  };
+
+  const handleSelectCalendar = async (cal: AvailableCalendar) => {
+    triggerImpact();
+    setShowCalendarPicker(false);
+    await setSelectedCalendarId(cal.id);
+    setTargetCalendar(cal);
+    await syncExistingTasks();
+
+    if (Platform.OS === "android" && (cal.isDedicated || cal.isLocal)) {
+      Alert.alert(
+        "Target Calendar Updated",
+        `Target set to "${cal.title}".\n\nGoogle Calendar hides local calendars by default. In Google Calendar: go to Settings → Manage accounts → Non-Google accounts, and toggle on sYnX.`,
+        [
+          { text: "OK" },
+          { text: "Open Calendar", onPress: () => openCalendarApp() },
+        ]
+      );
+    } else {
+      showSuccess(`Target calendar set to "${cal.title}"`);
+    }
+  };
+
+  const handleCreateDedicatedCalendar = async () => {
+    triggerImpact();
+    setShowCalendarPicker(false);
+    const dedicatedId = await getOrCreateSynxCalendar();
+    if (dedicatedId) {
+      await setSelectedCalendarId(dedicatedId);
+      const target = await getTargetCalendar();
+      setTargetCalendar(target);
+      await syncExistingTasks();
+
+      if (Platform.OS === "android") {
+        Alert.alert(
+          "Dedicated Calendar Created",
+          "Tasks will sync to 'sYnX Tasks'.\n\nGoogle Calendar hides local calendars by default. In Google Calendar: go to Settings → Manage accounts → Non-Google accounts, and toggle on sYnX.",
+          [
+            { text: "OK" },
+            { text: "Open Calendar", onPress: () => openCalendarApp() },
+          ]
+        );
+      } else {
+        showSuccess("Dedicated 'sYnX Tasks' calendar created");
+      }
+    }
+  };
 
   // Set when the user leaves for system settings to grant calendar access, so sync turns on
   // automatically once they come back with access granted.
@@ -507,9 +611,90 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             accessibilityLabel="Sync tasks to device calendar"
           />
         </View>
-        <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 4 }]}>
-          Target calendar: sYnX Tasks ({calendarPermission})
-        </Text>
+        {calendarSync ? (
+          <>
+            <TouchableOpacity
+              style={[
+                styles.calendarTargetRow,
+                { borderTopColor: theme.cardBorder, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+              ]}
+              onPress={handleOpenCalendarPicker}
+              accessibilityRole="button"
+              accessibilityLabel="Change target calendar"
+            >
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={[styles.subLabel, { color: theme.textMuted }]}>TARGET CALENDAR</Text>
+                <Text style={[styles.calendarTargetName, { color: theme.textPrimary }]} numberOfLines={1}>
+                  {targetCalendar?.title || "sYnX Tasks"}
+                  {targetCalendar?.sourceName ? ` (${targetCalendar.sourceName})` : ""}
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.changeBadge,
+                  { backgroundColor: theme.accentLight, borderColor: theme.accent },
+                ]}
+              >
+                <Text style={[styles.changeBadgeText, { color: theme.accent }]}>Change</Text>
+                <ChevronRight size={14} color={theme.accent} />
+              </View>
+            </TouchableOpacity>
+
+            {/* Guidance banner for Android when syncing to a dedicated local calendar */}
+            {Platform.OS === "android" && (targetCalendar?.isDedicated || targetCalendar?.isLocal) ? (
+              <View
+                style={[
+                  styles.calendarGuidanceCard,
+                  {
+                    backgroundColor: "rgba(245, 158, 11, 0.08)",
+                    borderColor: "rgba(245, 158, 11, 0.3)",
+                  },
+                ]}
+              >
+                <View style={styles.guidanceHeader}>
+                  <Info size={16} color="#D97706" />
+                  <Text style={[styles.guidanceTitle, { color: "#D97706" }]}>
+                    Google Calendar Setup Required
+                  </Text>
+                </View>
+                <Text style={[styles.guidanceText, { color: theme.textPrimary }]}>
+                  Google Calendar hides local calendars by default. To display sYnX tasks:
+                </Text>
+                <View style={styles.guidanceSteps}>
+                  <Text style={[styles.guidanceStep, { color: theme.textMuted }]}>
+                    1. Open the Google Calendar app
+                  </Text>
+                  <Text style={[styles.guidanceStep, { color: theme.textMuted }]}>
+                    2. Tap <Text style={{ fontWeight: "700", color: theme.textPrimary }}>☰ Menu → Settings → Manage accounts</Text>
+                  </Text>
+                  <Text style={[styles.guidanceStep, { color: theme.textMuted }]}>
+                    3. Under <Text style={{ fontWeight: "700", color: theme.textPrimary }}>Non-Google accounts</Text>, toggle on{" "}
+                    <Text style={{ fontWeight: "700", color: theme.textPrimary }}>sYnX</Text>
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.openCalendarBtn, { backgroundColor: theme.accent }]}
+                  onPress={() => openCalendarApp()}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open Calendar App"
+                >
+                  <ExternalLink size={14} color="#FFFFFF" />
+                  <Text style={styles.openCalendarBtnText}>Open Calendar App</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={[styles.hint, { color: theme.textMuted, marginTop: 8 }]}>
+                {targetCalendar?.title
+                  ? `Tasks with reminders automatically sync to "${targetCalendar.title}".`
+                  : "Tasks with reminders will automatically sync to your selected calendar."}
+              </Text>
+            )}
+          </>
+        ) : (
+          <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 4 }]}>
+            Permission status: {calendarPermission}
+          </Text>
+        )}
       </View>
 
       {/* Push notifications */}
@@ -715,6 +900,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         </TouchableOpacity>
       </View>
 
+      <CalendarPickerModal
+        visible={showCalendarPicker}
+        onClose={() => setShowCalendarPicker(false)}
+        calendars={availableCalendars}
+        selectedCalendarId={targetCalendar?.id}
+        onSelectCalendar={handleSelectCalendar}
+        onCreateDedicatedCalendar={handleCreateDedicatedCalendar}
+      />
+
       <ChangelogModal visible={showChangelog} onClose={() => setShowChangelog(false)} />
 
       <TouchableOpacity
@@ -874,5 +1068,78 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontSize: typography.md,
     fontWeight: "700",
+  },
+  calendarTargetRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 12,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  calendarTargetName: {
+    fontSize: typography.sm,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  changeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  changeBadgeText: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+  },
+  calendarGuidanceCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  guidanceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
+  guidanceTitle: {
+    fontSize: typography.sm,
+    fontWeight: "700",
+  },
+  guidanceText: {
+    fontSize: typography.xs,
+    lineHeight: 16,
+    marginBottom: 6,
+  },
+  guidanceSteps: {
+    gap: 4,
+    marginBottom: 10,
+    paddingLeft: 4,
+  },
+  guidanceStep: {
+    fontSize: typography.xs,
+    lineHeight: 16,
+  },
+  openCalendarBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  openCalendarBtnText: {
+    fontSize: typography.sm,
+    fontWeight: "700",
+    color: "#FFFFFF",
   },
 });
