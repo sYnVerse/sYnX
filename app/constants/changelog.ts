@@ -19,6 +19,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Shared list views show the owner's display name in the header and view-only banner."
+      },
+      {
+        type: "IMPR",
+        text: "Seamless 14-day stay-signed-in with silent session renewal and 15-minute access token rotation."
       }
     ]
   },

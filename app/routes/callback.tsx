@@ -1,10 +1,10 @@
 import { LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
 import { getAuthClient } from "~/auth.server";
 import {
-  AUTH_SESSION_COOKIE,
   clearPkceCookie,
-  getCookieAttributes,
   parsePkceCookie,
+  serializeAuthRefreshCookie,
+  serializeAuthSessionCookie,
 } from "~/auth-cookies.server";
 
 export const loader = async ({ request, context }: LoaderFunctionArgs) => {
@@ -40,14 +40,14 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
       return reject();
     }
 
-    const { access } = exchanged.tokens;
+    const { access, refresh } = exchanged.tokens;
     const headers = new Headers();
     // Always clear the short-lived PKCE cookie after a successful exchange.
     headers.append("Set-Cookie", clearPkce);
-    headers.append(
-      "Set-Cookie",
-      `${AUTH_SESSION_COOKIE}=${encodeURIComponent(access)}; ${getCookieAttributes(request.url, 2592000)}`,
-    );
+    headers.append("Set-Cookie", serializeAuthSessionCookie(request.url, access));
+    if (refresh) {
+      headers.append("Set-Cookie", serializeAuthRefreshCookie(request.url, refresh));
+    }
 
     return redirect("/", { headers });
   } catch (error) {
