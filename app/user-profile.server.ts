@@ -103,6 +103,6 @@ export async function getDisplayNamesForUsers(
   return map;
 }
 
-export function ownerPayload(displayName: string): { displayName: string } {
+export function ownerPayload(displayName?: string | null): { displayName: string } {
   return { displayName: resolveDisplayName(displayName) };
 }
