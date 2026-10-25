@@ -6,7 +6,7 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
-    date: "2026-10-24",
+    date: "2026-10-25",
     title: "What's new?",
     changes: [
       {
