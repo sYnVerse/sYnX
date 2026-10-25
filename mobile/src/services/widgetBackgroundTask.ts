@@ -12,6 +12,7 @@ import {
   buildProgressWidgetSnapshot,
   extractPendingWidgetOps,
   reconcileWidgetPendingOps,
+  toNativeWidgetProps,
   type TodoItem,
   type TodoList,
 } from '../shared';
@@ -44,10 +45,10 @@ TaskManager.defineTask(WIDGET_BACKGROUND_SYNC_TASK, async () => {
       }
 
       if (currentSnap && Array.isArray(currentSnap.pendingOps) && currentSnap.pendingOps.length > 0) {
-        CurrentListWidget.updateSnapshot({ ...currentSnap, pendingOps: [] } as any);
+        CurrentListWidget.updateSnapshot(toNativeWidgetProps({ ...currentSnap, pendingOps: [] } as any));
       }
       if (pinnedSnap && Array.isArray(pinnedSnap.pendingOps) && pinnedSnap.pendingOps.length > 0) {
-        PinnedListWidget.updateSnapshot({ ...pinnedSnap, pendingOps: [] } as any);
+        PinnedListWidget.updateSnapshot(toNativeWidgetProps({ ...pinnedSnap, pendingOps: [] } as any));
       }
     }
 
@@ -58,14 +59,14 @@ TaskManager.defineTask(WIDGET_BACKGROUND_SYNC_TASK, async () => {
     if (activeListId) {
       try {
         const [metaRes, todosRes] = await Promise.all([
-          apiClient.get(`/api/v1/lists/${activeListId}/meta`),
+          apiClient.get(`/api/v1/lists/${activeListId}`),
           apiClient.get(`/api/v1/todos?listId=${activeListId}`),
         ]);
         const listMeta = metaRes.data?.list as TodoList | undefined;
         const todos = (todosRes.data?.todos || []) as TodoItem[];
         if (listMeta) {
-          CurrentListWidget.updateSnapshot(buildListWidgetSnapshot(listMeta, todos));
-          ListProgressWidget.updateSnapshot(buildProgressWidgetSnapshot(listMeta, todos));
+          CurrentListWidget.updateSnapshot(toNativeWidgetProps(buildListWidgetSnapshot(listMeta, todos)));
+          ListProgressWidget.updateSnapshot(toNativeWidgetProps(buildProgressWidgetSnapshot(listMeta, todos)));
         }
       } catch {
         // Network or token refresh error
@@ -77,16 +78,16 @@ TaskManager.defineTask(WIDGET_BACKGROUND_SYNC_TASK, async () => {
     if (pinnedListId && pinnedListId !== activeListId) {
       try {
         const [metaRes, todosRes] = await Promise.all([
-          apiClient.get(`/api/v1/lists/${pinnedListId}/meta`),
+          apiClient.get(`/api/v1/lists/${pinnedListId}`),
           apiClient.get(`/api/v1/todos?listId=${pinnedListId}`),
         ]);
         const pinnedMeta = metaRes.data?.list as TodoList | undefined;
         const pinnedTodos = (todosRes.data?.todos || []) as TodoItem[];
         if (pinnedMeta) {
           if (pinnedConfig?.mode === 'reminders') {
-            PinnedListWidget.updateSnapshot(buildUpNextWidgetSnapshot(pinnedMeta, pinnedTodos));
+            PinnedListWidget.updateSnapshot(toNativeWidgetProps(buildUpNextWidgetSnapshot(pinnedMeta, pinnedTodos)));
           } else {
-            PinnedListWidget.updateSnapshot(buildListWidgetSnapshot(pinnedMeta, pinnedTodos));
+            PinnedListWidget.updateSnapshot(toNativeWidgetProps(buildListWidgetSnapshot(pinnedMeta, pinnedTodos)));
           }
         }
       } catch {

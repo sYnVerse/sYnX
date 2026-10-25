@@ -118,18 +118,19 @@ export function ListProgressWidget(
         </Text>
       </Button>
 
-      {/* Progress Ring with Centered Percentage */}
-      <Box modifiers={[size(68, 68)]} contentAlignment="center">
-        <CircularProgressIndicator
-          progress={progressRatio}
-          color={accent}
-          trackColor={cardBg}
-          modifiers={[size(68, 68)]}
-        />
-        <Text style={{ fontSize: 14, fontWeight: 'bold' }} color={textPrimary}>
+      {/* Progress ring with the percentage beside it. On Android the widget renderer
+          draws the ring at its default 32dp and doesn't center it inside a larger Box,
+          so overlaying the text on the ring ends up misaligned. */}
+      <Row verticalAlignment="center">
+        <CircularProgressIndicator progress={progressRatio} color={accent} trackColor={cardBg} />
+        <Text
+          style={{ fontSize: 20, fontWeight: 'bold' }}
+          color={textPrimary}
+          modifiers={[padding(8, 0, 0, 0)]}
+        >
           {`${props.progressPercent || 0}%`}
         </Text>
-      </Box>
+      </Row>
 
       {/* Counts & Preview */}
       <Column horizontalAlignment="center">

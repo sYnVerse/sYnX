@@ -1,16 +1,16 @@
 # Graph Report - to-do-list  (2026-10-24)
 
 ## Corpus Check
-- 124 files · ~235,844 words
+- 124 files · ~236,362 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 854 nodes · 1344 edges · 68 communities (54 shown, 14 thin omitted)
+- 859 nodes · 1369 edges · 70 communities (56 shown, 14 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 2 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `44c23857`
+- Built from commit: `aa95a362`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -73,6 +73,8 @@
 - [[_COMMUNITY_Community 62|Community 62]]
 - [[_COMMUNITY_Community 63|Community 63]]
 - [[_COMMUNITY_Community 67|Community 67]]
+- [[_COMMUNITY_Community 68|Community 68]]
+- [[_COMMUNITY_Community 69|Community 69]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `useTheme()` - 32 edges
@@ -101,7 +103,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (68 total, 14 thin omitted)
+## Communities (70 total, 14 thin omitted)
 
 ### Community 0 - "$id.tsx"
 Cohesion: 0.05
@@ -139,10 +141,6 @@ Nodes (25): CreateListInput, CreateListSchema, CreateTodoInput, CreateTodoSchema
 Cohesion: 0.25
 Nodes (8): dependencies, isbot, @openauthjs/openauth, react, react-dom, @remix-run/cloudflare, @remix-run/react, valibot
 
-### Community 18 - "BottomTabNavigator.tsx"
-Cohesion: 0.09
-Nodes (22): devDependencies, @babel/core, @types/react, typescript, expo, install, exclude, main (+14 more)
-
 ### Community 19 - "expo"
 Cohesion: 0.08
 Nodes (24): backgroundColor, foregroundImage, adaptiveIcon, googleServicesFile, intentFilters, package, permissions, projectId (+16 more)
@@ -167,6 +165,10 @@ Nodes (4): config, { getDefaultConfig }, path, workspaceRoot
 Cohesion: 0.09
 Nodes (35): PushPromptContext, PushPromptContextType, PushPromptProvider(), PushPromptProviderProps, SettingsScreenProps, styles, CalendarPermissionResult, CalendarPermissionStatus (+27 more)
 
+### Community 25 - "decode-google-services.js"
+Cohesion: 0.15
+Nodes (10): buildListWidgetSnapshot(), BuildSnapshotOptions, buildUpNextWidgetSnapshot(), CATEGORY_EMOJIS, getCategoryEmoji(), ListWidgetSnapshot, PRIORITY_ORDER, ProgressWidgetSnapshot (+2 more)
+
 ### Community 29 - "expo-auth-session"
 Cohesion: 0.11
 Nodes (8): contrastRatio(), formatFriendlyDate(), formatRescheduledToast(), PriorityLevel, PushPermissionStatus, relativeLuminance(), ShareMode, SoftAskPolicyInput
@@ -177,7 +179,7 @@ Nodes (8): contrastRatio(), formatFriendlyDate(), formatRescheduledToast(), Prio
 
 ### Community 31 - "expo-constants"
 Cohesion: 0.07
-Nodes (28): REFRESH_TOKEN_KEY, RetriableConfig, secureSessionStore, sessionRefresh, setAuthFailureHandler(), TOKEN_KEY, AuthContext, AuthContextType (+20 more)
+Nodes (33): REFRESH_TOKEN_KEY, RetriableConfig, secureSessionStore, sessionRefresh, setAuthFailureHandler(), TOKEN_KEY, AuthContext, AuthContextType (+25 more)
 
 ### Community 32 - "expo-haptics"
 Cohesion: 0.15
@@ -192,8 +194,8 @@ Cohesion: 0.17
 Nodes (11): 1. Semantic Versioning (SemVer), 2. Breaking Change Checklist (Requires MAJOR), 3. When to bump vs append (same calendar day), 4. Mobile vs web (separate version lines), 5. Pre-finish checklist, Android `versionCode` / iOS `buildNumber`, Compile-time / code level, Data & architecture (+3 more)
 
 ### Community 35 - "expo-secure-store"
-Cohesion: 0.15
-Nodes (10): buildListWidgetSnapshot(), BuildSnapshotOptions, buildUpNextWidgetSnapshot(), CATEGORY_EMOJIS, getCategoryEmoji(), ListWidgetSnapshot, PRIORITY_ORDER, ProgressWidgetSnapshot (+2 more)
+Cohesion: 0.18
+Nodes (11): scripts, android, eas-build-pre-install, ios, postinstall, prebuild, prestart, start (+3 more)
 
 ### Community 36 - "expo-splash-screen"
 Cohesion: 0.18
@@ -206,6 +208,10 @@ Nodes (11): 1. Semantic Versioning (SemVer) Format, 2. Breaking Change Checklist
 ### Community 38 - "expo-system-ui"
 Cohesion: 0.17
 Nodes (10): appJson, appJsonPath, fs, mobileShared, path, pkg, pkgPath, repoShared (+2 more)
+
+### Community 39 - "expo-web-browser"
+Cohesion: 0.25
+Nodes (7): expo, install, exclude, main, name, private, version
 
 ### Community 40 - "lucide-react-native"
 Cohesion: 0.20
@@ -251,6 +257,10 @@ Nodes (6): 1. Semantic Versioning (SemVer) Format, 2. Breaking Change Checklist 
 Cohesion: 0.33
 Nodes (5): b64url(), codes, PORT, s256(), server
 
+### Community 51 - "Community 51"
+Cohesion: 0.50
+Nodes (4): devDependencies, @babel/core, @types/react, typescript
+
 ### Community 52 - "Community 52"
 Cohesion: 0.47
 Nodes (5): applySetCompletedLocal(), isRecurring(), nextReminderAt(), SetCompletedFields, SetCompletedLocalResult
@@ -287,12 +297,12 @@ Nodes (3): ChangelogCategory, ChangelogItem, ReleaseNote
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `TodoManager` connect `decode-google-services.js` to `TodoManager`, `auth.server.ts`?**
+- **Why does `TodoManager` connect `BottomTabNavigator.tsx` to `TodoManager`, `auth.server.ts`?**
   _High betweenness centrality (0.006) - this node is a cross-community bridge._
 - **Why does `useTheme()` connect `$id.tsx` to `mobile.callback.tsx`?**
   _High betweenness centrality (0.004) - this node is a cross-community bridge._
 - **Why does `verifyBearerToken()` connect `TodoManager` to `auth.server.ts`?**
-  _High betweenness centrality (0.004) - this node is a cross-community bridge._
+  _High betweenness centrality (0.003) - this node is a cross-community bridge._
 - **What connects `ListAccessDenial`, `ListScope`, `SerializeListOptions` to the rest of the system?**
   _392 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `$id.tsx` be split into smaller, more focused modules?**

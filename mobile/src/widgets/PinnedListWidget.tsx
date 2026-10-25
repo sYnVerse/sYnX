@@ -6,7 +6,7 @@ import {
   Text,
   Button,
   Checkbox,
-  Spacer,
+  LazyColumn,
 } from '@expo/ui/jetpack-compose';
 import {
   padding,
@@ -14,6 +14,7 @@ import {
   fillMaxSize,
   fillMaxWidth,
   size,
+  width,
   background,
   cornerRadius,
 } from '@expo/ui/jetpack-compose/modifiers';
@@ -25,6 +26,25 @@ export function PinnedListWidget(
 ) {
   'widget';
   const isDark = environment?.colorScheme !== 'light';
+
+  // Header sizing. Android widget rows can't share leftover space, so a long
+  // title would push the count and the add button off the edge. Give the
+  // title a width that leaves room for both, and use a compact "+" button
+  // when the widget is narrow.
+  const widgetWidth = environment?.width ?? 300;
+  const isNarrowHeader = widgetWidth < 240;
+  const countLabel = `${props.doneCount}/${props.totalCount}`;
+  const countWidth = countLabel.length * 7 + 12;
+  const addButtonWidth = props.canEdit ? (isNarrowHeader ? 36 : 64) : 0;
+  const titleWidth = Math.max(48, widgetWidth - 24 - countWidth - addButtonWidth - 12);
+
+  // Task rows: the text column gets a fixed width so long task names truncate
+  // instead of squeezing the reminder label into a tall, wrapped column.
+  // Widget padding (24) + row padding (12) + checkbox (40) + priority dot (6) + gaps.
+  const taskTextWidth = Math.max(
+    60,
+    widgetWidth - 24 - 12 - (props.canEdit ? 40 : 0) - 6 - 8
+  );
   const bg = isDark ? '#18181B' : '#FFFFFF';
   const cardBg = isDark ? '#27272A' : '#F4F4F5';
   const textPrimary = isDark ? '#F4F4F5' : '#18181B';
@@ -67,21 +87,19 @@ export function PinnedListWidget(
   }
 
   const tasks = props.tasks || [];
-  const displayTasks = tasks.slice(0, 5);
+  // Scrollable list, so show everything in the snapshot (the builder caps it at 20).
+  const displayTasks = tasks;
 
   return (
     <Column
       modifiers={[fillMaxSize(), paddingAll(12), background(bg), cornerRadius(16)]}
     >
       {/* Header bar */}
-      <Row
-        modifiers={[fillMaxWidth(), padding(0, 0, 0, 8)]}
-        verticalAlignment="center"
-        horizontalArrangement="spaceBetween"
-      >
+      <Row modifiers={[fillMaxWidth(), padding(0, 0, 0, 8)]} verticalAlignment="center">
         <Button
           target={`open:synx://list/${props.listId}`}
           colors={{ containerColor: 'transparent', contentColor: textPrimary }}
+          modifiers={[width(titleWidth)]}
         >
           <Row verticalAlignment="center">
             <Text
@@ -107,7 +125,9 @@ export function PinnedListWidget(
           </Row>
         </Button>
 
-        <Row verticalAlignment="center">
+        {/* Android widget rows don't support spaceBetween, so the count and add
+            button sit in a row that fills the rest of the header, aligned to the end. */}
+        <Row modifiers={[fillMaxWidth()]} verticalAlignment="center" horizontalArrangement="end">
           <Box
             modifiers={[
               padding(6, 2, 6, 2),
@@ -116,18 +136,23 @@ export function PinnedListWidget(
             ]}
           >
             <Text style={{ fontSize: 11, fontWeight: '600' }} color={textMuted}>
-              {`${props.doneCount}/${props.totalCount}`}
+              {countLabel}
             </Text>
           </Box>
 
+          {props.canEdit ? <Box modifiers={[width(6)]} /> : null}
           {props.canEdit ? (
             <Button
               target={`open:synx://list/${props.listId}?action=newTask`}
               colors={{ containerColor: accent, contentColor: '#FFFFFF' }}
-              modifiers={[padding(8, 4, 8, 4), cornerRadius(8)]}
+              modifiers={[
+                padding(isNarrowHeader ? 0 : 8, 4, isNarrowHeader ? 0 : 8, 4),
+                width(addButtonWidth),
+                cornerRadius(8),
+              ]}
             >
-              <Text style={{ fontSize: 12, fontWeight: 'bold' }} color="#FFFFFF">
-                + Add
+              <Text style={{ fontSize: 12, fontWeight: 'bold' }} color="#FFFFFF" maxLines={1}>
+                {isNarrowHeader ? '+' : '+ Add'}
               </Text>
             </Button>
           ) : null}
@@ -157,7 +182,7 @@ export function PinnedListWidget(
           ) : null}
         </Column>
       ) : (
-        <Column modifiers={[fillMaxWidth()]} verticalArrangement={{ spacedBy: 4 }}>
+        <LazyColumn modifiers={[fillMaxWidth(), fillMaxSize()]} verticalArrangement={{ spacedBy: 4 }}>
           {displayTasks.map((task: WidgetTaskItem) => {
             const priorityDotColor =
               task.priority === 'high'
@@ -216,31 +241,36 @@ export function PinnedListWidget(
                         ]}
                       />
                     ) : null}
-                    <Text
-                      style={{ fontSize: 13, fontWeight: '500' }}
-                      color={textPrimary}
-                      maxLines={1}
-                      modifiers={[padding(6, 0, 6, 0)]}
-                    >
-                      {task.text}
-                    </Text>
-                    <Spacer />
-                    {task.subtaskProgress ? (
-                      <Text style={{ fontSize: 10 }} color={textMuted}>
-                        {task.subtaskProgress}
-                      </Text>
-                    ) : null}
-                    {task.reminderLabel ? (
+                    <Column modifiers={[width(taskTextWidth), padding(6, 0, 6, 0)]}>
                       <Text
-                        style={{
-                          fontSize: 10,
-                          fontWeight: task.isOverdue ? 'bold' : 'normal',
-                        }}
-                        color={task.isOverdue ? '#EF4444' : textMuted}
+                        style={{ fontSize: 13, fontWeight: '500' }}
+                        color={textPrimary}
+                        maxLines={1}
                       >
-                        {task.reminderLabel}
+                        {task.text}
                       </Text>
-                    ) : null}
+                      {task.subtaskProgress || task.reminderLabel ? (
+                        <Row verticalAlignment="center">
+                          {task.subtaskProgress ? (
+                            <Text style={{ fontSize: 10 }} color={textMuted} maxLines={1}>
+                              {task.reminderLabel ? `${task.subtaskProgress} · ` : task.subtaskProgress}
+                            </Text>
+                          ) : null}
+                          {task.reminderLabel ? (
+                            <Text
+                              style={{
+                                fontSize: 10,
+                                fontWeight: task.isOverdue ? 'bold' : 'normal',
+                              }}
+                              color={task.isOverdue ? '#EF4444' : textMuted}
+                              maxLines={1}
+                            >
+                              {task.reminderLabel}
+                            </Text>
+                          ) : null}
+                        </Row>
+                      ) : null}
+                    </Column>
                   </Row>
                 </Button>
               );
@@ -266,29 +296,40 @@ export function PinnedListWidget(
                     ]}
                   />
                 ) : null}
-                <Text
-                  style={{ fontSize: 13, fontWeight: '500' }}
-                  color={textPrimary}
-                  maxLines={1}
-                  modifiers={[padding(6, 0, 6, 0)]}
-                >
-                  {task.text}
-                </Text>
-                <Spacer />
-                {task.subtaskProgress ? (
-                  <Text style={{ fontSize: 10 }} color={textMuted}>
-                    {task.subtaskProgress}
+                <Column modifiers={[width(taskTextWidth), padding(6, 0, 6, 0)]}>
+                  <Text
+                    style={{ fontSize: 13, fontWeight: '500' }}
+                    color={textPrimary}
+                    maxLines={1}
+                  >
+                    {task.text}
                   </Text>
-                ) : null}
-                {task.reminderLabel ? (
-                  <Text style={{ fontSize: 10 }} color={textMuted}>
-                    {task.reminderLabel}
-                  </Text>
-                ) : null}
+                  {task.subtaskProgress || task.reminderLabel ? (
+                    <Row verticalAlignment="center">
+                      {task.subtaskProgress ? (
+                        <Text style={{ fontSize: 10 }} color={textMuted} maxLines={1}>
+                          {task.reminderLabel ? `${task.subtaskProgress} · ` : task.subtaskProgress}
+                        </Text>
+                      ) : null}
+                      {task.reminderLabel ? (
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: task.isOverdue ? 'bold' : 'normal',
+                          }}
+                          color={task.isOverdue ? '#EF4444' : textMuted}
+                          maxLines={1}
+                        >
+                          {task.reminderLabel}
+                        </Text>
+                      ) : null}
+                    </Row>
+                  ) : null}
+                </Column>
               </Row>
             );
           })}
-        </Column>
+        </LazyColumn>
       )}
     </Column>
   );
