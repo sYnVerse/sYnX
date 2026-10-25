@@ -1,6 +1,3 @@
-'widget';
-
-import React from 'react';
 import { createWidget } from 'expo-widgets';
 import {
   Box,
@@ -26,6 +23,7 @@ export function PinnedListWidget(
   props: ListWidgetSnapshot,
   environment: { colorScheme?: 'light' | 'dark'; width?: number; height?: number }
 ) {
+  'widget';
   const isDark = environment?.colorScheme !== 'light';
   const bg = isDark ? '#18181B' : '#FFFFFF';
   const cardBg = isDark ? '#27272A' : '#F4F4F5';
