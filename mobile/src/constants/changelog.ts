@@ -16,6 +16,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Flexible device calendar selection: Choose which calendar to sync tasks to, with zero-friction Google Calendar sync, local account guidance, and a 1-tap shortcut to open the calendar app."
+      },
+      {
+        type: "FIX",
+        text: "Raised the floating action button (+) across Tasks, Calendar, and Lists to float comfortably above the navigation bar with safe-area insets."
       }
     ]
   },

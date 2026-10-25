@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import {
   FolderPlus,
@@ -41,7 +42,7 @@ import { TodoList, TodoItem, ShareMode, getShareModeLabel } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
 import { ListCardSkeleton } from "../components/SkeletonLoader";
-import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
+import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { stripLeadingCategoryEmoji } from "../utils/format";
 import {
@@ -75,6 +76,8 @@ const CATEGORY_OPTIONS = [
 export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelectList }) => {
   const { theme, hapticsEnabled } = useTheme();
   const { showError, showSuccess } = useToast();
+  const insets = useSafeAreaInsets();
+  const fabBottom = getFabBottomOffset(insets.bottom);
   const queryClient = useQueryClient();
   const [modalVisible, setModalVisible] = useState(false);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
@@ -457,7 +460,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
         <SectionList
           sections={listSections}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 110 }}
+          contentContainerStyle={{ paddingBottom: getListBottomPadding(insets.bottom) }}
           stickySectionHeadersEnabled={false}
           refreshControl={
             <RefreshControl
@@ -708,7 +711,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       )}
 
       <TouchableOpacity
-        style={[styles.fab, { backgroundColor: theme.accent }]}
+        style={[styles.fab, { backgroundColor: theme.accent, bottom: fabBottom }]}
         onPress={() => {
           triggerImpactHaptic();
           setModalVisible(true);
@@ -1167,7 +1170,7 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 20,
-    bottom: 95,
+    bottom: getFabBottomOffset(0),
     width: 56,
     height: 56,
     borderRadius: 28,

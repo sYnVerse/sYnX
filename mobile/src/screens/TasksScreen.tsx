@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import {
   Search,
@@ -40,7 +41,7 @@ import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../servi
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
-import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
+import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
 import { formatReminderTime, priorityColor, priorityLabel, listOwnershipLabel } from "../utils/format";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
@@ -87,6 +88,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 }) => {
   const { theme, hapticsEnabled } = useTheme();
   const { showError } = useToast();
+  const insets = useSafeAreaInsets();
+  const fabBottom = getFabBottomOffset(insets.bottom);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -438,7 +441,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         <FlatList
           data={filteredTodos}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: 110 }}
+          contentContainerStyle={{ paddingBottom: getListBottomPadding(insets.bottom) }}
           refreshControl={
             <RefreshControl
               refreshing={isRefetching || (isFetching && !isLoading)}
@@ -624,7 +627,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 
       {canEdit && (
         <TouchableOpacity
-          style={[styles.fab, { backgroundColor: theme.accent }]}
+          style={[styles.fab, { backgroundColor: theme.accent, bottom: fabBottom }]}
           onPress={() => {
             triggerImpactHaptic();
             setEditingTask(null);
@@ -847,7 +850,7 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     right: 20,
-    bottom: 95,
+    bottom: getFabBottomOffset(0),
     width: 56,
     height: 56,
     borderRadius: 28,
