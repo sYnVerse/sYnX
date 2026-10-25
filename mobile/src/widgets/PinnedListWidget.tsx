@@ -7,6 +7,7 @@ import {
   Button,
   Checkbox,
   Spacer,
+  LazyColumn,
 } from '@expo/ui/jetpack-compose';
 import {
   padding,
@@ -67,7 +68,8 @@ export function PinnedListWidget(
   }
 
   const tasks = props.tasks || [];
-  const displayTasks = tasks.slice(0, 5);
+  // Scrollable list, so show everything in the snapshot (the builder caps it at 20).
+  const displayTasks = tasks;
 
   return (
     <Column
@@ -157,7 +159,7 @@ export function PinnedListWidget(
           ) : null}
         </Column>
       ) : (
-        <Column modifiers={[fillMaxWidth()]} verticalArrangement={{ spacedBy: 4 }}>
+        <LazyColumn modifiers={[fillMaxWidth(), fillMaxSize()]} verticalArrangement={{ spacedBy: 4 }}>
           {displayTasks.map((task: WidgetTaskItem) => {
             const priorityDotColor =
               task.priority === 'high'
@@ -288,7 +290,7 @@ export function PinnedListWidget(
               </Row>
             );
           })}
-        </Column>
+        </LazyColumn>
       )}
     </Column>
   );

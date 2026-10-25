@@ -255,3 +255,22 @@ describe("toNativeWidgetProps (Android bridge safety)", () => {
     });
   });
 });
+
+describe("list widget title", () => {
+  it("drops a leading category emoji from the list name so the header doesn't repeat it", () => {
+    const snap = buildListWidgetSnapshot(
+      { id: "l1", name: "📋 Various", isOwner: true, canEdit: true } as TodoList,
+      []
+    );
+    expect(snap.listTitle).toBe("Various");
+    expect(`${snap.categoryEmoji} ${snap.listTitle}`).toBe("📋 Various");
+  });
+
+  it("keeps names without a leading emoji unchanged", () => {
+    const snap = buildListWidgetSnapshot(
+      { id: "l2", name: "Groceries", isOwner: true, canEdit: true } as TodoList,
+      []
+    );
+    expect(snap.listTitle).toBe("Groceries");
+  });
+});

@@ -1,5 +1,5 @@
 import { TodoItem, TodoList } from "./index";
-import { formatReminderTime, listOwnershipLabel } from "./mobile-ux";
+import { formatReminderTime, listOwnershipLabel, stripLeadingCategoryEmoji } from "./mobile-ux";
 import { applySetCompletedLocal } from "./todo-completed";
 
 export interface WidgetTaskItem {
@@ -168,7 +168,8 @@ export function buildListWidgetSnapshot(
 
   return {
     listId: listMeta.id,
-    listTitle: listMeta.name,
+    // The widget header shows the emoji itself, so drop it from the name to avoid "📋 📋 Various".
+    listTitle: stripLeadingCategoryEmoji(listMeta.name, getCategoryEmoji(listMeta.category)) || listMeta.name,
     categoryEmoji: getCategoryEmoji(listMeta.category),
     canEdit: listMeta.canEdit !== false,
     isOwner,
