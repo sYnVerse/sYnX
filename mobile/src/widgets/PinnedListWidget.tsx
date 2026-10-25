@@ -15,6 +15,7 @@ import {
   fillMaxSize,
   fillMaxWidth,
   size,
+  width,
   background,
   cornerRadius,
 } from '@expo/ui/jetpack-compose/modifiers';
@@ -26,6 +27,17 @@ export function PinnedListWidget(
 ) {
   'widget';
   const isDark = environment?.colorScheme !== 'light';
+
+  // Header sizing. Android widget rows can't share leftover space, so a long
+  // title would push the count and the add button off the edge. Give the
+  // title a width that leaves room for both, and use a compact "+" button
+  // when the widget is narrow.
+  const widgetWidth = environment?.width ?? 300;
+  const isNarrowHeader = widgetWidth < 240;
+  const countLabel = `${props.doneCount}/${props.totalCount}`;
+  const countWidth = countLabel.length * 7 + 12;
+  const addButtonWidth = props.canEdit ? (isNarrowHeader ? 36 : 64) : 0;
+  const titleWidth = Math.max(48, widgetWidth - 24 - countWidth - addButtonWidth - 12);
   const bg = isDark ? '#18181B' : '#FFFFFF';
   const cardBg = isDark ? '#27272A' : '#F4F4F5';
   const textPrimary = isDark ? '#F4F4F5' : '#18181B';
@@ -84,6 +96,7 @@ export function PinnedListWidget(
         <Button
           target={`open:synx://list/${props.listId}`}
           colors={{ containerColor: 'transparent', contentColor: textPrimary }}
+          modifiers={[width(titleWidth)]}
         >
           <Row verticalAlignment="center">
             <Text
@@ -118,7 +131,7 @@ export function PinnedListWidget(
             ]}
           >
             <Text style={{ fontSize: 11, fontWeight: '600' }} color={textMuted}>
-              {`${props.doneCount}/${props.totalCount}`}
+              {countLabel}
             </Text>
           </Box>
 
@@ -126,10 +139,14 @@ export function PinnedListWidget(
             <Button
               target={`open:synx://list/${props.listId}?action=newTask`}
               colors={{ containerColor: accent, contentColor: '#FFFFFF' }}
-              modifiers={[padding(8, 4, 8, 4), cornerRadius(8)]}
+              modifiers={[
+                padding(isNarrowHeader ? 0 : 8, 4, isNarrowHeader ? 0 : 8, 4),
+                width(addButtonWidth),
+                cornerRadius(8),
+              ]}
             >
-              <Text style={{ fontSize: 12, fontWeight: 'bold' }} color="#FFFFFF">
-                + Add
+              <Text style={{ fontSize: 12, fontWeight: 'bold' }} color="#FFFFFF" maxLines={1}>
+                {isNarrowHeader ? '+' : '+ Add'}
               </Text>
             </Button>
           ) : null}
