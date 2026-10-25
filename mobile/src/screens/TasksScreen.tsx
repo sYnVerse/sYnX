@@ -49,7 +49,10 @@ import { getPinnedWidgetConfig } from "../services/widgetPreferences";
 
 export interface TasksScreenProps {
   listId: string;
-  initialOpenNewTask?: number;
+  /** Set when a widget or quick-add link asked to open the new task form. */
+  newTaskRequestId?: number;
+  /** Called once the request has been handled so it isn't replayed on the next list open. */
+  onNewTaskRequestHandled?: () => void;
   onGoToMyLists?: () => void;
   onSwitchLists?: () => void;
 }
@@ -83,7 +86,8 @@ function classifyListMetaError(error: unknown): {
 
 export const TasksScreen: React.FC<TasksScreenProps> = ({
   listId,
-  initialOpenNewTask,
+  newTaskRequestId,
+  onNewTaskRequestHandled,
   onGoToMyLists,
   onSwitchLists,
 }) => {
@@ -141,19 +145,20 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const isOwner = listMeta?.isOwner === true;
   const shareMode = listMeta?.shareMode ?? "private";
 
-  const lastHandledNewTaskRef = React.useRef(0);
+  const lastHandledNewTaskRef = React.useRef<number | null>(null);
   React.useEffect(() => {
-    if (!initialOpenNewTask || initialOpenNewTask === lastHandledNewTaskRef.current) {
+    if (!newTaskRequestId || newTaskRequestId === lastHandledNewTaskRef.current) {
       return;
     }
-    if (!listMetaLoading && listMeta) {
-      lastHandledNewTaskRef.current = initialOpenNewTask;
-      if (canEdit) {
-        setEditingTask(null);
-        setModalVisible(true);
-      }
+    // Wait until the list has loaded (or failed) before using up the request.
+    if (listMetaLoading || (!listMeta && !listMetaIsError)) return;
+    lastHandledNewTaskRef.current = newTaskRequestId;
+    if (listMeta && canEdit) {
+      setEditingTask(null);
+      setModalVisible(true);
     }
-  }, [initialOpenNewTask, listMeta, listMetaLoading, canEdit]);
+    onNewTaskRequestHandled?.();
+  }, [newTaskRequestId, listMeta, listMetaLoading, listMetaIsError, canEdit, onNewTaskRequestHandled]);
 
   const accessError = listMetaIsError ? classifyListMetaError(listMetaError) : null;
 

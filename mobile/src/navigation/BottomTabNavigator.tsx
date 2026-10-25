@@ -40,7 +40,13 @@ const MainAppContent: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>("tasks");
   const [activeListId, setActiveListId] = useState<string | null>(null);
-  const [openNewTaskCounter, setOpenNewTaskCounter] = useState(0);
+  /**
+   * One-shot "open the new task form" request from a widget or quick-add link.
+   * Cleared as soon as TasksScreen handles it, so later list opens (which remount
+   * TasksScreen) don't reopen the form.
+   */
+  const [newTaskRequest, setNewTaskRequest] = useState<{ id: number; listId: string | null } | null>(null);
+  const clearNewTaskRequest = useCallback(() => setNewTaskRequest(null), []);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [settingsDirty, setSettingsDirty] = useState(false);
@@ -66,7 +72,7 @@ const MainAppContent: React.FC = () => {
       }
       if (parsed.action === "newTask") {
         setActiveTab("tasks");
-        setOpenNewTaskCounter((c) => c + 1);
+        setNewTaskRequest({ id: Date.now(), listId: parsed.listId ?? null });
       }
     },
     [applyDeepLinkedList]
@@ -279,7 +285,12 @@ const MainAppContent: React.FC = () => {
           {activeTab === "tasks" && (
             <TasksScreen
               listId={activeListId}
-              initialOpenNewTask={openNewTaskCounter}
+              newTaskRequestId={
+                newTaskRequest && (!newTaskRequest.listId || newTaskRequest.listId === activeListId)
+                  ? newTaskRequest.id
+                  : undefined
+              }
+              onNewTaskRequestHandled={clearNewTaskRequest}
               onGoToMyLists={goToMyLists}
               onSwitchLists={() => handleTabSwitch("lists")}
             />
