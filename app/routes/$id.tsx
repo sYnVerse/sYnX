@@ -3631,7 +3631,7 @@ export default function TodoPage() {
                     {release.changes.map((item, i) => (
                       <div key={i} className="flex items-start gap-2.5 text-xs">
                         <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide shrink-0 ${
+                          className={`inline-flex items-center justify-center shrink-0 w-11 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide text-center ${
                             item.type === "NEW"
                               ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                               : item.type === "IMPR"

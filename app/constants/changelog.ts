@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.2.0";
+export const WEB_VERSION = "v5.2.1";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.2.1",
+    date: "2026-10-25",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Standardized changelog category badge widths (NEW, IMPR, FIX) so tags align uniformly across all items."
+      }
+    ]
+  },
   {
     version: "v5.2.0",
     date: "2026-10-24",
