@@ -16,6 +16,8 @@ import {
   setAuthFailureHandler,
 } from "../api/client";
 import { shouldSignOutAfterRefreshFailure } from "../shared/mobile-session";
+import { clearWidgetPreferences } from "../services/widgetPreferences";
+import { resetWidgetsLoggedOut } from "../services/widgetSync";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -77,7 +79,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+  const appStateRef = useRef<AppStateStatus>((AppState.currentState as AppStateStatus | null) ?? "active");
   const silentRefreshInflight = useRef<Promise<void> | null>(null);
 
   const discovery = {
@@ -103,6 +105,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearLocalSessionState = useCallback(async () => {
     await secureSessionStore.clearSessionTokens();
+    await clearWidgetPreferences();
+    resetWidgetsLoggedOut();
     setToken(null);
     setUser(null);
   }, []);

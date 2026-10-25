@@ -1,16 +1,16 @@
 # Graph Report - to-do-list  (2026-10-24)
 
 ## Corpus Check
-- 112 files · ~227,842 words
+- 124 files · ~236,362 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 770 nodes · 1227 edges · 67 communities (57 shown, 10 thin omitted)
+- 859 nodes · 1369 edges · 70 communities (56 shown, 14 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 2 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9aacad28`
+- Built from commit: `aa95a362`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -72,6 +72,9 @@
 - [[_COMMUNITY_Community 61|Community 61]]
 - [[_COMMUNITY_Community 62|Community 62]]
 - [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 67|Community 67]]
+- [[_COMMUNITY_Community 68|Community 68]]
+- [[_COMMUNITY_Community 69|Community 69]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `useTheme()` - 32 edges
@@ -82,8 +85,8 @@
 6. `compilerOptions` - 16 edges
 7. `useToast()` - 15 edges
 8. `expo` - 13 edges
-9. `typography` - 12 edges
-10. `resolveDisplayName()` - 11 edges
+9. `apiClient` - 12 edges
+10. `typography` - 12 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `sendFCMPushNotification()` --calls--> `fetch()`  [INFERRED]
@@ -100,15 +103,15 @@
 ## Import Cycles
 - None detected.
 
-## Communities (67 total, 10 thin omitted)
+## Communities (70 total, 14 thin omitted)
 
 ### Community 0 - "$id.tsx"
-Cohesion: 0.11
-Nodes (23): ChangelogModal(), ChangelogModalProps, styles, NotificationSoftAsk(), NotificationSoftAskProps, styles, ScreenContainer(), ScreenContainerProps (+15 more)
+Cohesion: 0.05
+Nodes (72): apiClient, ChangelogModal(), ChangelogModalProps, styles, FloatingTabBar(), FloatingTabBarProps, styles, TabType (+64 more)
 
 ### Community 1 - "TodoManager"
-Cohesion: 0.05
-Nodes (52): getListAccess(), ListAccessDenial, ListScope, parseListScope(), SerializeListOptions, serializeListRow(), serializeListRows(), verifyBearerToken() (+44 more)
+Cohesion: 0.06
+Nodes (50): getListAccess(), ListAccessDenial, ListScope, parseListScope(), SerializeListOptions, serializeListRow(), serializeListRows(), verifyBearerToken() (+42 more)
 
 ### Community 2 - "compilerOptions"
 Cohesion: 0.10
@@ -123,8 +126,8 @@ Cohesion: 0.12
 Nodes (17): devDependencies, autoprefixer, @cloudflare/vitest-pool-workers, @cloudflare/workers-types, eslint, postcss, @remix-run/dev, tailwindcss (+9 more)
 
 ### Community 5 - "server.ts"
-Cohesion: 0.16
-Nodes (16): getRefreshedCookies(), base64UrlEncode(), FCMMessagePayload, getGoogleOAuthToken(), sendFCMPushNotification(), signRS256(), buildReminderEmailHtml(), escapeHtml() (+8 more)
+Cohesion: 0.15
+Nodes (17): getRefreshedCookies(), base64UrlEncode(), FCMMessagePayload, getGoogleOAuthToken(), sendFCMPushNotification(), signRS256(), buildReminderEmailHtml(), escapeHtml() (+9 more)
 
 ### Community 6 - "auth.server.ts"
 Cohesion: 0.12
@@ -138,10 +141,6 @@ Nodes (25): CreateListInput, CreateListSchema, CreateTodoInput, CreateTodoSchema
 Cohesion: 0.25
 Nodes (8): dependencies, isbot, @openauthjs/openauth, react, react-dom, @remix-run/cloudflare, @remix-run/react, valibot
 
-### Community 18 - "BottomTabNavigator.tsx"
-Cohesion: 0.16
-Nodes (11): AuthProvider(), ThemeProvider(), styles, ToastContext, ToastContextType, ToastProvider(), ToastState, ToastTone (+3 more)
-
 ### Community 19 - "expo"
 Cohesion: 0.08
 Nodes (24): backgroundColor, foregroundImage, adaptiveIcon, googleServicesFile, intentFilters, package, permissions, projectId (+16 more)
@@ -151,8 +150,8 @@ Cohesion: 0.08
 Nodes (25): CreateListInput, CreateListSchema, CreateTodoInput, CreateTodoSchema, ListOwner, ListScope, PriorityLevel, PriorityLevelSchema (+17 more)
 
 ### Community 21 - "mobile/package.json"
-Cohesion: 0.04
-Nodes (48): dependencies, axios, expo, expo-auth-session, expo-blur, expo-calendar, expo-constants, expo-haptics (+40 more)
+Cohesion: 0.06
+Nodes (31): dependencies, axios, expo, expo-auth-session, expo-background-task, expo-blur, expo-calendar, expo-constants (+23 more)
 
 ### Community 22 - "mobile/tsconfig.json"
 Cohesion: 0.20
@@ -163,12 +162,12 @@ Cohesion: 0.40
 Nodes (4): config, { getDefaultConfig }, path, workspaceRoot
 
 ### Community 24 - "mobile.callback.tsx"
-Cohesion: 0.16
-Nodes (16): PushPromptContext, PushPromptContextType, PushPromptProvider(), PushPromptProviderProps, clearSoftAskDeclined(), ensureAndroidReminderChannel(), getPushPermissionStatus(), hasStoredPushToken() (+8 more)
+Cohesion: 0.09
+Nodes (35): PushPromptContext, PushPromptContextType, PushPromptProvider(), PushPromptProviderProps, SettingsScreenProps, styles, CalendarPermissionResult, CalendarPermissionStatus (+27 more)
 
 ### Community 25 - "decode-google-services.js"
-Cohesion: 0.19
-Nodes (13): styles, SubtaskDraft, TaskBreakdownModal(), TaskBreakdownModalProps, useToast(), SetCompletedResult, SetCompletedVars, useSetTodoCompleted() (+5 more)
+Cohesion: 0.15
+Nodes (10): buildListWidgetSnapshot(), BuildSnapshotOptions, buildUpNextWidgetSnapshot(), CATEGORY_EMOJIS, getCategoryEmoji(), ListWidgetSnapshot, PRIORITY_ORDER, ProgressWidgetSnapshot (+2 more)
 
 ### Community 29 - "expo-auth-session"
 Cohesion: 0.11
@@ -179,12 +178,12 @@ Cohesion: 0.11
 Nodes (8): contrastRatio(), formatFriendlyDate(), formatRescheduledToast(), PriorityLevel, PushPermissionStatus, relativeLuminance(), ShareMode, SoftAskPolicyInput
 
 ### Community 31 - "expo-constants"
-Cohesion: 0.17
-Nodes (10): apiClient, REFRESH_TOKEN_KEY, RetriableConfig, secureSessionStore, sessionRefresh, setAuthFailureHandler(), TOKEN_KEY, AuthContext (+2 more)
+Cohesion: 0.07
+Nodes (33): REFRESH_TOKEN_KEY, RetriableConfig, secureSessionStore, sessionRefresh, setAuthFailureHandler(), TOKEN_KEY, AuthContext, AuthContextType (+25 more)
 
 ### Community 32 - "expo-haptics"
-Cohesion: 0.19
-Nodes (11): ListPermissionBanner(), ListPermissionBannerProps, styles, TONE_COLORS, styles, TaskModal(), TaskModalProps, usePushPrompt() (+3 more)
+Cohesion: 0.15
+Nodes (10): buildListWidgetSnapshot(), BuildSnapshotOptions, buildUpNextWidgetSnapshot(), CATEGORY_EMOJIS, getCategoryEmoji(), ListWidgetSnapshot, PRIORITY_ORDER, ProgressWidgetSnapshot (+2 more)
 
 ### Community 33 - "expo-linking"
 Cohesion: 0.14
@@ -195,12 +194,12 @@ Cohesion: 0.17
 Nodes (11): 1. Semantic Versioning (SemVer), 2. Breaking Change Checklist (Requires MAJOR), 3. When to bump vs append (same calendar day), 4. Mobile vs web (separate version lines), 5. Pre-finish checklist, Android `versionCode` / iOS `buildNumber`, Compile-time / code level, Data & architecture (+3 more)
 
 ### Community 35 - "expo-secure-store"
-Cohesion: 0.23
-Nodes (8): FloatingTabBar(), FloatingTabBarProps, styles, TabType, useAuth(), MainAppContent(), styles, SettingsScreen()
+Cohesion: 0.18
+Nodes (11): scripts, android, eas-build-pre-install, ios, postinstall, prebuild, prestart, start (+3 more)
 
 ### Community 36 - "expo-splash-screen"
-Cohesion: 0.24
-Nodes (8): ListCardSkeleton(), styles, TaskCardSkeleton(), useTheme(), CATEGORY_OPTIONS, ListsScreen(), ListsScreenProps, styles
+Cohesion: 0.18
+Nodes (9): expoWidgetsDir, fs, interactionActionPath, path, peekWidgetPath, widgetObjectPath, widgetsDtsPath, widgetsJsPath (+1 more)
 
 ### Community 37 - "expo-status-bar"
 Cohesion: 0.17
@@ -211,8 +210,8 @@ Cohesion: 0.17
 Nodes (10): appJson, appJsonPath, fs, mobileShared, path, pkg, pkgPath, repoShared (+2 more)
 
 ### Community 39 - "expo-web-browser"
-Cohesion: 0.38
-Nodes (10): checkCalendarPermissions(), getEventMappings(), getOrCreateSynxCalendar(), isCalendarSyncEnabled(), removeTaskFromNativeCalendar(), requestCalendarPermissions(), saveEventMappings(), setCalendarSyncEnabled() (+2 more)
+Cohesion: 0.25
+Nodes (7): expo, install, exclude, main, name, private, version
 
 ### Community 40 - "lucide-react-native"
 Cohesion: 0.20
@@ -259,8 +258,8 @@ Cohesion: 0.33
 Nodes (5): b64url(), codes, PORT, s256(), server
 
 ### Community 51 - "Community 51"
-Cohesion: 0.40
-Nodes (5): copyFor(), ListAccessErrorKind, ListAccessErrorState(), ListAccessErrorStateProps, styles
+Cohesion: 0.50
+Nodes (4): devDependencies, @babel/core, @types/react, typescript
 
 ### Community 52 - "Community 52"
 Cohesion: 0.47
@@ -291,24 +290,24 @@ Cohesion: 0.50
 Nodes (3): ChangelogCategory, ChangelogItem, ReleaseNote
 
 ## Knowledge Gaps
-- **356 isolated node(s):** `ListAccessDenial`, `ListScope`, `SerializeListOptions`, `subjects`, `clients` (+351 more)
+- **392 isolated node(s):** `ListAccessDenial`, `ListScope`, `SerializeListOptions`, `subjects`, `clients` (+387 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **14 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `TodoManager` connect `TodoManager` to `auth.server.ts`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
-- **Why does `useTheme()` connect `expo-splash-screen` to `$id.tsx`, `expo-haptics`, `expo-secure-store`, `BottomTabNavigator.tsx`, `Community 51`, `decode-google-services.js`?**
-  _High betweenness centrality (0.005) - this node is a cross-community bridge._
-- **Why does `verifyBearerToken()` connect `TodoManager` to `auth.server.ts`?**
+- **Why does `TodoManager` connect `BottomTabNavigator.tsx` to `TodoManager`, `auth.server.ts`?**
+  _High betweenness centrality (0.006) - this node is a cross-community bridge._
+- **Why does `useTheme()` connect `$id.tsx` to `mobile.callback.tsx`?**
   _High betweenness centrality (0.004) - this node is a cross-community bridge._
+- **Why does `verifyBearerToken()` connect `TodoManager` to `auth.server.ts`?**
+  _High betweenness centrality (0.003) - this node is a cross-community bridge._
 - **What connects `ListAccessDenial`, `ListScope`, `SerializeListOptions` to the rest of the system?**
-  _356 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _392 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `$id.tsx` be split into smaller, more focused modules?**
-  _Cohesion score 0.11264367816091954 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05197594501718213 - nodes in this community are weakly interconnected._
 - **Should `TodoManager` be split into smaller, more focused modules?**
-  _Cohesion score 0.05112560488112771 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06323396567299007 - nodes in this community are weakly interconnected._
 - **Should `compilerOptions` be split into smaller, more focused modules?**
   _Cohesion score 0.1 - nodes in this community are weakly interconnected._

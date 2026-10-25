@@ -220,7 +220,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}
-              onRefresh={refetch}
+              onRefresh={() => { void refetch(); }}
               tintColor={theme.accent}
               colors={[theme.accent]}
             />
