@@ -10,6 +10,8 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  AppState,
+  Linking,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import {
@@ -47,6 +49,7 @@ import {
   checkCalendarPermissions,
   requestCalendarPermissions,
   getOrCreateSynxCalendar,
+  describeCalendarPermission,
 } from "../services/calendar";
 
 interface SettingsScreenProps {
@@ -139,8 +142,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       try {
         const syncEnabled = await isCalendarSyncEnabled();
         setCalendarSync(syncEnabled);
-        const hasPermission = await checkCalendarPermissions();
-        setCalendarPermission(hasPermission ? "Granted" : "Not Granted");
+        const permission = await checkCalendarPermissions();
+        setCalendarPermission(describeCalendarPermission(permission));
       } catch (e) {
         console.error("Failed to read calendar settings", e);
       }
@@ -263,30 +266,80 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     }
   };
 
+  const enableCalendarSync = useCallback(async () => {
+    setCalendarPermission("Granted");
+    await setCalendarSyncEnabled(true);
+    setCalendarSync(true);
+    await getOrCreateSynxCalendar();
+    Alert.alert(
+      "Calendar Sync Enabled",
+      "Tasks with reminders will automatically sync to the 'sYnX Tasks' native calendar."
+    );
+  }, []);
+
+  // Set when the user leaves for system settings to grant calendar access, so sync turns on
+  // automatically once they come back with access granted.
+  const pendingCalendarEnable = useRef(false);
+
+  // Re-check calendar access when the app returns to the foreground (e.g. after the user
+  // changes it in system settings) so the toggle and label stay accurate.
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", async (state) => {
+      if (state !== "active") return;
+      try {
+        const permission = await checkCalendarPermissions();
+        setCalendarPermission(describeCalendarPermission(permission));
+        if (permission.granted && pendingCalendarEnable.current) {
+          pendingCalendarEnable.current = false;
+          await enableCalendarSync();
+        } else if (!permission.granted) {
+          pendingCalendarEnable.current = false;
+        }
+      } catch (e) {
+        console.error("Failed to re-check calendar permission", e);
+      }
+    });
+    return () => subscription.remove();
+  }, [enableCalendarSync]);
+
   const handleToggleCalendarSync = async (val: boolean) => {
     triggerImpact();
     if (val) {
-      let granted = await checkCalendarPermissions();
-      if (!granted) {
-        granted = await requestCalendarPermissions();
+      let permission = await checkCalendarPermissions();
+      if (!permission.granted && permission.canAskAgain) {
+        permission = await requestCalendarPermissions();
       }
-      if (!granted) {
-        setCalendarPermission("Denied");
-        Alert.alert(
-          "Permission Denied",
-          "Calendar access is required to sync task reminders to your device calendar."
-        );
+      if (!permission.granted) {
+        setCalendarPermission(describeCalendarPermission(permission));
+        if (permission.status === "denied" && !permission.canAskAgain) {
+          Alert.alert(
+            "Calendar Access Needed",
+            "Calendar access is turned off for sYnX. Open Settings and allow Calendar access to sync task reminders to your device calendar.",
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Open Settings",
+                onPress: () => {
+                  pendingCalendarEnable.current = true;
+                  Linking.openSettings().catch((e) => {
+                    pendingCalendarEnable.current = false;
+                    console.error("Failed to open system settings", e);
+                  });
+                },
+              },
+            ]
+          );
+        } else {
+          Alert.alert(
+            "Permission Denied",
+            "Calendar access is required to sync task reminders to your device calendar."
+          );
+        }
         return;
       }
-      setCalendarPermission("Granted");
-      await setCalendarSyncEnabled(true);
-      setCalendarSync(true);
-      await getOrCreateSynxCalendar();
-      Alert.alert(
-        "Calendar Sync Enabled",
-        "Tasks with reminders will automatically sync to the 'sYnX Tasks' native calendar."
-      );
+      await enableCalendarSync();
     } else {
+      pendingCalendarEnable.current = false;
       await setCalendarSyncEnabled(false);
       setCalendarSync(false);
     }
