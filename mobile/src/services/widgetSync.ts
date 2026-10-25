@@ -11,6 +11,7 @@ import {
   buildProgressWidgetSnapshot,
   extractPendingWidgetOps,
   reconcileWidgetPendingOps,
+  toNativeWidgetProps,
   type TodoItem,
   type TodoList,
 } from '../shared';
@@ -24,9 +25,9 @@ let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
  */
 export function resetWidgetsLoggedOut(): void {
   try {
-    CurrentListWidget.updateSnapshot(initialCurrentSnapshot);
-    PinnedListWidget.updateSnapshot(initialPinnedSnapshot);
-    ListProgressWidget.updateSnapshot(initialProgressSnapshot);
+    CurrentListWidget.updateSnapshot(toNativeWidgetProps(initialCurrentSnapshot));
+    PinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
+    ListProgressWidget.updateSnapshot(toNativeWidgetProps(initialProgressSnapshot));
   } catch (e) {
     console.warn('[widgetSync] Error resetting widgets to logged-out state:', e);
   }
@@ -76,17 +77,17 @@ export async function drainAndReplayPendingWidgetOps(queryClient: QueryClient): 
 
     // Clear pendingOps from snapshots
     if (currentSnap && Array.isArray(currentSnap.pendingOps) && currentSnap.pendingOps.length > 0) {
-      CurrentListWidget.updateSnapshot({
+      CurrentListWidget.updateSnapshot(toNativeWidgetProps({
         ...currentSnap,
         pendingOps: [],
-      } as any);
+      } as any));
     }
 
     if (pinnedSnap && Array.isArray(pinnedSnap.pendingOps) && pinnedSnap.pendingOps.length > 0) {
-      PinnedListWidget.updateSnapshot({
+      PinnedListWidget.updateSnapshot(toNativeWidgetProps({
         ...pinnedSnap,
         pendingOps: [],
-      } as any);
+      } as any));
     }
   } catch (e) {
     console.warn('[widgetSync] Error draining widget pending ops:', e);
@@ -192,10 +193,10 @@ export async function syncActiveList(
       providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
 
     const currentSnap = buildListWidgetSnapshot(meta, todos);
-    CurrentListWidget.updateSnapshot(currentSnap);
+    CurrentListWidget.updateSnapshot(toNativeWidgetProps(currentSnap));
 
     const progressSnap = buildProgressWidgetSnapshot(meta, todos);
-    ListProgressWidget.updateSnapshot(progressSnap);
+    ListProgressWidget.updateSnapshot(toNativeWidgetProps(progressSnap));
   } catch (e) {
     console.warn('[widgetSync] Error syncing active list widgets:', e);
   }
@@ -213,14 +214,14 @@ export async function syncPinnedList(
 ): Promise<void> {
   try {
     if (listId === null) {
-      PinnedListWidget.updateSnapshot(initialPinnedSnapshot);
+      PinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
       return;
     }
 
     const pinnedConfig = await getPinnedWidgetConfig();
     const targetId = listId || pinnedConfig?.listId;
     if (!targetId) {
-      PinnedListWidget.updateSnapshot(initialPinnedSnapshot);
+      PinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
       return;
     }
 
@@ -232,10 +233,10 @@ export async function syncPinnedList(
 
     if (pinnedConfig?.mode === 'reminders') {
       const upNextSnap = buildUpNextWidgetSnapshot(meta, todos);
-      PinnedListWidget.updateSnapshot(upNextSnap);
+      PinnedListWidget.updateSnapshot(toNativeWidgetProps(upNextSnap));
     } else {
       const pinnedSnap = buildListWidgetSnapshot(meta, todos);
-      PinnedListWidget.updateSnapshot(pinnedSnap);
+      PinnedListWidget.updateSnapshot(toNativeWidgetProps(pinnedSnap));
     }
   } catch (e) {
     console.warn('[widgetSync] Error syncing pinned list widget:', e);

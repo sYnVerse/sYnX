@@ -6,6 +6,7 @@ import {
   extractPendingWidgetOps,
   reconcileWidgetPendingOps,
   applyWidgetTaskCompletion,
+  toNativeWidgetProps,
   type WidgetTaskItem,
 } from "../shared/widget-snapshot";
 import type { TodoItem, TodoList } from "../shared";
@@ -200,6 +201,57 @@ describe("Widget Snapshot & Replay Pure Functions", () => {
       expect(result.completedTask?.id).toBe("t-daily");
       expect(result.updatedTasks).toHaveLength(1);
       expect(result.updatedTasks[0].reminderAt).toBe(now + 86400000);
+    });
+  });
+});
+
+function containsUndefined(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (Array.isArray(value)) return value.some(containsUndefined);
+  if (value && typeof value === "object") return Object.values(value).some(containsUndefined);
+  return false;
+}
+
+describe("toNativeWidgetProps (Android bridge safety)", () => {
+  const list: TodoList = {
+    id: "list-1",
+    name: "Groceries",
+    isOwner: true,
+    canEdit: true,
+  } as TodoList;
+  const todos = [
+    { id: "t1", listId: "list-1", text: "Milk", completed: false, createdAt: 1 },
+    { id: "t2", listId: "list-1", text: "Eggs", completed: true, createdAt: 2 },
+  ] as TodoItem[];
+
+  it("built snapshots contain undefined fields that the native bridge rejects", () => {
+    expect(containsUndefined(buildListWidgetSnapshot(list, todos))).toBe(true);
+  });
+
+  it("removes every undefined value from list, up next, and progress snapshots", () => {
+    for (const snap of [
+      buildListWidgetSnapshot(list, todos),
+      buildUpNextWidgetSnapshot(list, todos),
+      buildProgressWidgetSnapshot(list, todos),
+    ]) {
+      const clean = toNativeWidgetProps(snap);
+      expect(containsUndefined(clean)).toBe(false);
+      expect(clean.isLoggedIn).toBe(true);
+      expect(clean.listId).toBe("list-1");
+    }
+  });
+
+  it("keeps defined values, drops undefined array items, and nulls non-finite numbers", () => {
+    const clean = toNativeWidgetProps({
+      a: 1,
+      b: undefined,
+      c: [{ x: undefined, y: "ok" }, undefined, false],
+      d: { e: null, f: NaN, g: Infinity },
+    } as Record<string, unknown>);
+    expect(clean).toEqual({
+      a: 1,
+      c: [{ y: "ok" }, false],
+      d: { e: null, f: null, g: null },
     });
   });
 });

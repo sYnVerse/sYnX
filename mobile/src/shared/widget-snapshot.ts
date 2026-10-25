@@ -349,3 +349,33 @@ export function applyWidgetTaskCompletion(
 
   return { updatedTasks: nextTasks, completedTask: found };
 }
+
+/**
+ * Prepares snapshot props for the native widget bridge.
+ *
+ * Expo's Android bridge can't convert `undefined`. It rejects the whole
+ * `updateSnapshot` call ("Value is undefined, expected an Object"), and the
+ * widget never gets data. This drops undefined fields, removes undefined array
+ * items, and turns non-finite numbers into null, recursing through nested
+ * objects and arrays. Every `updateSnapshot` call should go through this.
+ */
+export function toNativeWidgetProps<T>(value: T): T {
+  return sanitizeWidgetValue(value) as T;
+}
+
+function sanitizeWidgetValue(value: unknown): unknown {
+  if (value === undefined || typeof value === "function") return undefined;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    return value
+      .map(sanitizeWidgetValue)
+      .filter((item) => item !== undefined);
+  }
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const clean = sanitizeWidgetValue(entry);
+    if (clean !== undefined) out[key] = clean;
+  }
+  return out;
+}
