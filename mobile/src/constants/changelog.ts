@@ -16,6 +16,30 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Device calendar sync asks for calendar permission again and works with the updated calendar module; if access is blocked, Settings offers a shortcut to turn it on."
+      },
+      {
+        type: "NEW",
+        text: "Android home screen widgets: Active List (4x2 resizable) with task checkoff, subtask count, and quick deep-linking."
+      },
+      {
+        type: "NEW",
+        text: "Pinned List & Up Next widget (4x2 resizable): Pin any owned or shared list to your home screen or view upcoming reminders."
+      },
+      {
+        type: "NEW",
+        text: "List Progress & Quick Add widget (2x2 / 2x1 adaptive): Material You circular progress ring and 1-tap task creation."
+      },
+      {
+        type: "NEW",
+        text: "Pin to Widget action on Lists: Easily pin any list to your home screen widget from My lists or Shared with me."
+      },
+      {
+        type: "IMPR",
+        text: "Offline widget completion queue: Check off tasks from your home screen offline; sYnX safely replays and syncs them when reconnected."
+      },
+      {
+        type: "IMPR",
+        text: "Background widget refresh: Periodic background sync keeps widget snapshots fresh across shared and collaborative lists."
       }
     ]
   },

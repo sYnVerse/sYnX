@@ -16,6 +16,8 @@ import {
   setAuthFailureHandler,
 } from "../api/client";
 import { shouldSignOutAfterRefreshFailure } from "../shared/mobile-session";
+import { clearWidgetPreferences } from "../services/widgetPreferences";
+import { resetWidgetsLoggedOut } from "../services/widgetSync";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -103,6 +105,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearLocalSessionState = useCallback(async () => {
     await secureSessionStore.clearSessionTokens();
+    await clearWidgetPreferences();
+    resetWidgetsLoggedOut();
     setToken(null);
     setUser(null);
   }, []);

@@ -72,7 +72,54 @@
       ],
       "expo-secure-store",
       "expo-status-bar",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-widgets",
+        {
+          "enableAndroid": true,
+          "widgets": [
+            {
+              "name": "CurrentListWidget",
+              "displayName": "sYnX: Active List",
+              "description": "View and check off tasks from your current sYnX list.",
+              "android": {
+                "minWidth": 180,
+                "minHeight": 110,
+                "targetCellWidth": 4,
+                "targetCellHeight": 2,
+                "resizeMode": "both",
+                "initialLayout": "./src/widgets/CurrentListWidget.tsx"
+              }
+            },
+            {
+              "name": "PinnedListWidget",
+              "displayName": "sYnX: Pinned List & Up Next",
+              "description": "Keep your pinned list or Up Next reminders accessible on your home screen.",
+              "android": {
+                "minWidth": 180,
+                "minHeight": 110,
+                "targetCellWidth": 4,
+                "targetCellHeight": 2,
+                "resizeMode": "both",
+                "initialLayout": "./src/widgets/PinnedListWidget.tsx"
+              }
+            },
+            {
+              "name": "ListProgressWidget",
+              "displayName": "sYnX: Progress & Quick Add",
+              "description": "Track task completion progress and quickly add new tasks.",
+              "android": {
+                "minWidth": 110,
+                "minHeight": 110,
+                "targetCellWidth": 2,
+                "targetCellHeight": 2,
+                "resizeMode": "both",
+                "initialLayout": "./src/widgets/ListProgressWidget.tsx"
+              }
+            }
+          ]
+        }
+      ]
     ],
     "extra": {
       "eas": {

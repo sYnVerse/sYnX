@@ -14,6 +14,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { PushPromptProvider } from "../context/PushPromptContext";
 import { typography } from "../theme/theme";
+import { parseDeepLinkUrl } from "../shared";
+import { getLastActiveListId, setLastActiveListId } from "../services/widgetPreferences";
+import { syncActiveList } from "../services/widgetSync";
 
 async function fetchOrCreateActiveListId(): Promise<string> {
   const res = await apiClient.get("/api/v1/lists");
@@ -30,35 +33,6 @@ async function fetchOrCreateActiveListId(): Promise<string> {
   return newId;
 }
 
-function extractListIdFromUrl(url: string): string | null {
-  if (url.includes("/mobile/callback") || url.includes("/callback")) return null;
-
-  const uuidMatch = url.match(
-    /([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/
-  );
-  if (uuidMatch?.[1]) return uuidMatch[1];
-
-  const matchPath = url.match(/\/list\/([a-zA-Z0-9_-]+)/);
-  if (matchPath?.[1]) return matchPath[1];
-
-  try {
-    const parsed = Linking.parse(url);
-    if (parsed.path) {
-      const cleanPath = parsed.path.replace(/^\//, "").trim();
-      const firstSegment = cleanPath.split("/")[0];
-      if (firstSegment && !["login", "logout", "mobile", "callback", "api"].includes(firstSegment)) {
-        return firstSegment;
-      }
-    }
-    if (parsed.queryParams?.id) {
-      return String(parsed.queryParams.id);
-    }
-  } catch (e) {
-    console.error("Deep link parsing error", e);
-  }
-  return null;
-}
-
 const MainAppContent: React.FC = () => {
   const { token, login, isLoading } = useAuth();
   const { theme } = useTheme();
@@ -66,6 +40,13 @@ const MainAppContent: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>("tasks");
   const [activeListId, setActiveListId] = useState<string | null>(null);
+  /**
+   * One-shot "open the new task form" request from a widget or quick-add link.
+   * Cleared as soon as TasksScreen handles it, so later list opens (which remount
+   * TasksScreen) don't reopen the form.
+   */
+  const [newTaskRequest, setNewTaskRequest] = useState<{ id: number; listId: string | null } | null>(null);
+  const clearNewTaskRequest = useCallback(() => setNewTaskRequest(null), []);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [settingsDirty, setSettingsDirty] = useState(false);
@@ -85,9 +66,13 @@ const MainAppContent: React.FC = () => {
   const handleDeepLink = useCallback(
     (url: string | null) => {
       if (!url) return;
-      const listId = extractListIdFromUrl(url);
-      if (listId) {
-        applyDeepLinkedList(listId);
+      const parsed = parseDeepLinkUrl(url);
+      if (parsed.listId) {
+        applyDeepLinkedList(parsed.listId);
+      }
+      if (parsed.action === "newTask") {
+        setActiveTab("tasks");
+        setNewTaskRequest({ id: Date.now(), listId: parsed.listId ?? null });
       }
     },
     [applyDeepLinkedList]
@@ -106,6 +91,13 @@ const MainAppContent: React.FC = () => {
       subscription.remove();
     };
   }, [handleDeepLink]);
+
+  useEffect(() => {
+    if (activeListId) {
+      setLastActiveListId(activeListId);
+      syncActiveList(activeListId, undefined, undefined, queryClient).catch(() => {});
+    }
+  }, [activeListId, queryClient]);
 
   const switchTabWithRefresh = (targetTab: TabType) => {
     setActiveTab(targetTab);
@@ -164,6 +156,34 @@ const MainAppContent: React.FC = () => {
     setListLoading(true);
     setListError(null);
     try {
+      const lastId = await getLastActiveListId();
+      if (lastId) {
+        try {
+          const res = await apiClient.get(`/api/v1/lists/${lastId}`);
+          if (res.data?.list) {
+            queryClient.setQueryData(["list_meta", lastId], res.data.list);
+          }
+          if (pendingDeepLinkListIdRef.current) {
+            setActiveListId(pendingDeepLinkListIdRef.current);
+          } else {
+            setActiveListId(lastId);
+          }
+          return;
+        } catch (e: any) {
+          if (e?.response?.status === 403 || e?.response?.status === 404) {
+            await setLastActiveListId(null);
+          } else {
+            // Keep lastId if offline/network error
+            if (pendingDeepLinkListIdRef.current) {
+              setActiveListId(pendingDeepLinkListIdRef.current);
+            } else {
+              setActiveListId(lastId);
+            }
+            return;
+          }
+        }
+      }
+
       const id = await fetchOrCreateActiveListId();
       // Deep link may have arrived while we were resolving.
       if (pendingDeepLinkListIdRef.current) {
@@ -265,6 +285,12 @@ const MainAppContent: React.FC = () => {
           {activeTab === "tasks" && (
             <TasksScreen
               listId={activeListId}
+              newTaskRequestId={
+                newTaskRequest && (!newTaskRequest.listId || newTaskRequest.listId === activeListId)
+                  ? newTaskRequest.id
+                  : undefined
+              }
+              onNewTaskRequestHandled={clearNewTaskRequest}
               onGoToMyLists={goToMyLists}
               onSwitchLists={() => handleTabSwitch("lists")}
             />
