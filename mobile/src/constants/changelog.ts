@@ -14,6 +14,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Upgraded mobile runtime to Expo SDK 58, React 19.3, and React Native 0.88.0."
       },
       {
+        type: "FIX",
+        text: "Device calendar sync asks for calendar permission again and works with the updated calendar module; if access is blocked, Settings offers a shortcut to turn it on."
+      },
+      {
         type: "NEW",
         text: "Android home screen widgets: Active List (4x2 resizable) with task checkoff, subtask count, and quick deep-linking."
       },
