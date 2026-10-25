@@ -6,6 +6,41 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-10-25",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Upgraded mobile runtime to Expo SDK 58, React 19.3, and React Native 0.88.0."
+      },
+      {
+        type: "NEW",
+        text: "Android home screen widgets: Active List (4x2 resizable) with task checkoff, subtask count, and quick deep-linking."
+      },
+      {
+        type: "NEW",
+        text: "Pinned List & Up Next widget (4x2 resizable): Pin any owned or shared list to your home screen or view upcoming reminders."
+      },
+      {
+        type: "NEW",
+        text: "List Progress & Quick Add widget (2x2 / 2x1 adaptive): Material You circular progress ring and 1-tap task creation."
+      },
+      {
+        type: "NEW",
+        text: "Pin to Widget action on Lists: Easily pin any list to your home screen widget from My lists or Shared with me."
+      },
+      {
+        type: "IMPR",
+        text: "Offline widget completion queue: Check off tasks from your home screen offline; sYnX safely replays and syncs them when reconnected."
+      },
+      {
+        type: "IMPR",
+        text: "Background widget refresh: Periodic background sync keeps widget snapshots fresh across shared and collaborative lists."
+      }
+    ]
+  },
+  {
+    version: "v3.2.1",
     date: "2026-10-24",
     title: "What's new?",
     changes: [
@@ -36,34 +71,6 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "NEW",
         text: "Settings lets you set a display name shown on lists you share (your email stays private)."
-      },
-      {
-        type: "IMPR",
-        text: "Upgraded mobile runtime to Expo SDK 58, React 19.3, and React Native 0.88.0."
-      },
-      {
-        type: "NEW",
-        text: "Android home screen widgets: Active List (4x2 resizable) with task checkoff, subtask count, and quick deep-linking."
-      },
-      {
-        type: "NEW",
-        text: "Pinned List & Up Next widget (4x2 resizable): Pin any owned or shared list to your home screen or view upcoming reminders."
-      },
-      {
-        type: "NEW",
-        text: "List Progress & Quick Add widget (2x2 / 2x1 adaptive): Material You circular progress ring and 1-tap task creation."
-      },
-      {
-        type: "NEW",
-        text: "Pin to Widget action on Lists: Easily pin any list to your home screen widget from My lists or Shared with me."
-      },
-      {
-        type: "IMPR",
-        text: "Offline widget completion queue: Check off tasks from your home screen offline; sYnX safely replays and syncs them when reconnected."
-      },
-      {
-        type: "IMPR",
-        text: "Background widget refresh: Periodic background sync keeps widget snapshots fresh across shared and collaborative lists."
       }
     ]
   },
