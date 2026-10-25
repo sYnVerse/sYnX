@@ -16,6 +16,7 @@ import { PushPromptProvider } from "../context/PushPromptContext";
 import { typography } from "../theme/theme";
 import { parseDeepLinkUrl } from "../shared";
 import { getLastActiveListId, setLastActiveListId } from "../services/widgetPreferences";
+import { syncActiveList } from "../services/widgetSync";
 
 async function fetchOrCreateActiveListId(): Promise<string> {
   const res = await apiClient.get("/api/v1/lists");
@@ -88,8 +89,9 @@ const MainAppContent: React.FC = () => {
   useEffect(() => {
     if (activeListId) {
       setLastActiveListId(activeListId);
+      syncActiveList(activeListId, undefined, undefined, queryClient).catch(() => {});
     }
-  }, [activeListId]);
+  }, [activeListId, queryClient]);
 
   const switchTabWithRefresh = (targetTab: TabType) => {
     setActiveTab(targetTab);

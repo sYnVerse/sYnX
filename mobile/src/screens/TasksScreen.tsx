@@ -44,6 +44,8 @@ import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 import { formatReminderTime, priorityColor, priorityLabel, listOwnershipLabel } from "../utils/format";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
+import { syncActiveList, syncPinnedList } from "../services/widgetSync";
+import { getPinnedWidgetConfig } from "../services/widgetPreferences";
 
 export interface TasksScreenProps {
   listId: string;
@@ -176,6 +178,19 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       return failureCount < 2;
     },
   });
+
+  React.useEffect(() => {
+    if (listMeta && rawTodos) {
+      syncActiveList(listId, listMeta, rawTodos, queryClient).catch(() => {});
+      getPinnedWidgetConfig()
+        .then((cfg) => {
+          if (cfg?.listId === listId) {
+            syncPinnedList(listId, listMeta, rawTodos, queryClient).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+  }, [listId, listMeta, rawTodos, queryClient]);
 
   const showingCachedWhileOffline = Boolean(todosIsError && rawTodos);
 

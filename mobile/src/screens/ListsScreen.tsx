@@ -36,6 +36,7 @@ import {
   setPinnedWidgetConfig,
   type PinnedWidgetConfig,
 } from "../services/widgetPreferences";
+import { syncPinnedList } from "../services/widgetSync";
 import { apiClient } from "../api/client";
 import { TodoList, TodoItem, ShareMode, getShareModeLabel } from "../shared";
 import { useTheme } from "../context/ThemeContext";
@@ -246,6 +247,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
       });
       queryClient.invalidateQueries({ queryKey: ["lists"] });
       queryClient.invalidateQueries({ queryKey: ["todos", deletedId] });
+      if (pinnedConfig?.listId === deletedId) {
+        setPinnedWidgetConfig(null).catch(() => {});
+        setPinnedConfig(null);
+        syncPinnedList(null).catch(() => {});
+      }
     },
     onError: (e) => onMutationError(e, "Couldn't delete list"),
   });
@@ -265,6 +271,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
         return remaining;
       });
       queryClient.invalidateQueries({ queryKey: ["lists"] });
+      if (pinnedConfig?.listId === removedId) {
+        setPinnedWidgetConfig(null).catch(() => {});
+        setPinnedConfig(null);
+        syncPinnedList(null).catch(() => {});
+      }
       showSuccess("Removed from Shared with me");
     },
     onError: (e) => onMutationError(e, "Couldn't remove shared list"),
@@ -554,11 +565,13 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                         if (isPinned) {
                           await setPinnedWidgetConfig(null);
                           setPinnedConfig(null);
+                          await syncPinnedList(null);
                           showSuccess("Unpinned from widget");
                         } else {
                           const newConfig: PinnedWidgetConfig = { mode: "list", listId: item.id };
                           await setPinnedWidgetConfig(newConfig);
                           setPinnedConfig(newConfig);
+                          await syncPinnedList(item.id, item, undefined, queryClient);
                           showSuccess(`Pinned "${item.name}" to widget`);
                         }
                       }}
