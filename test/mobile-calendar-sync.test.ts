@@ -4,22 +4,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // The service resolves its dependencies from mobile/node_modules (install mobile deps first),
 // so each module is mocked by that path as well as by its bare name.
 
-const { storage, platform, asyncStorageModule, reactNativeModule } = vi.hoisted(() => {
+const { storage, platform, linking, asyncStorageModule, reactNativeModule } = vi.hoisted(() => {
   // In-memory AsyncStorage
   const storage = new Map<string, string>();
   const platform = { OS: "android" as string };
+  const linking = {
+    openURL: vi.fn(async () => true),
+    canOpenURL: vi.fn(async () => true),
+  };
   return {
     storage,
     platform,
+    linking,
     asyncStorageModule: {
       default: {
         getItem: async (k: string) => (storage.has(k) ? storage.get(k)! : null),
         setItem: async (k: string, v: string) => {
           storage.set(k, v);
         },
+        removeItem: async (k: string) => {
+          storage.delete(k);
+        },
       },
     },
-    reactNativeModule: { Platform: platform },
+    reactNativeModule: { Platform: platform, Linking: linking, processColor: (c: any) => c },
   };
 });
 vi.mock("@react-native-async-storage/async-storage", () => asyncStorageModule);
@@ -40,11 +48,14 @@ const cal = vi.hoisted(() => {
     state.permission = state.requestResult;
     return state.requestResult;
   });
-  const makeCalendar = (id: string, title: string) => ({
+  const makeCalendar = (id: string, title: string, extra: any = {}) => ({
     id,
     title,
     name: title,
+    allowsModifications: true,
+    isPrimary: false,
     source: { id: "src", name: "Default", type: "local" },
+    ...extra,
     createEvent: vi.fn(async (details: any) => {
       const eventId = `evt-${state.nextId++}`;
       const event = {
@@ -120,6 +131,13 @@ import {
   setCalendarSyncEnabled,
   syncTaskToNativeCalendar,
   removeTaskFromNativeCalendar,
+  getAvailableCalendars,
+  getSelectedCalendarId,
+  setSelectedCalendarId,
+  resolveTargetCalendar,
+  getTargetCalendar,
+  openCalendarApp,
+  SYNX_CALENDAR_TITLE,
 } from "../mobile/src/services/calendar";
 
 const MAPPINGS_KEY = "@synx_calendar_event_mappings";
@@ -296,5 +314,112 @@ describe("task event create/update/delete", () => {
     await removeTaskFromNativeCalendar("t1");
     expect(JSON.parse(storage.get(MAPPINGS_KEY)!)).toEqual({ t2: "keep" });
     expect(warnSpy).toHaveBeenCalled();
+  });
+});
+
+describe("target calendar selection and availability", () => {
+  beforeEach(() => {
+    grant();
+  });
+
+  it("getAvailableCalendars returns writable calendars and filters read-only ones", async () => {
+    cal.state.calendars = [
+      cal.makeCalendar("c1", "Personal Google", { isPrimary: true, allowsModifications: true, source: { name: "me@gmail.com", type: "com.google" } }),
+      cal.makeCalendar("c2", "Read-Only Holidays", { allowsModifications: false, accessLevel: "read" }),
+      cal.makeCalendar("c3", "sYnX Tasks", { allowsModifications: true, source: { name: "sYnX", type: "local", isLocalAccount: true } }),
+    ];
+
+    const available = await getAvailableCalendars();
+    expect(available).toHaveLength(2);
+    expect(available[0].id).toBe("c1");
+    expect(available[0].isPrimary).toBe(true);
+    expect(available[0].sourceName).toBe("me@gmail.com");
+    expect(available[1].id).toBe("c3");
+    expect(available[1].isDedicated).toBe(true);
+  });
+
+  it("resolveTargetCalendar defaults to primary writable calendar on Android", async () => {
+    platform.OS = "android";
+    cal.state.calendars = [
+      cal.makeCalendar("work", "Work", { isPrimary: false, allowsModifications: true }),
+      cal.makeCalendar("primary-google", "Personal", { isPrimary: true, allowsModifications: true, source: { name: "user@gmail.com", type: "com.google" } }),
+    ];
+
+    const resolved = await resolveTargetCalendar();
+    expect(resolved).toBe("primary-google");
+    expect(storage.get(CAL_ID_KEY)).toBe("primary-google");
+  });
+
+  it("setSelectedCalendarId updates stored id and resets event mappings", async () => {
+    storage.set(CAL_ID_KEY, "old-cal");
+    storage.set(MAPPINGS_KEY, JSON.stringify({ t1: "old-event" }));
+
+    const ok = await setSelectedCalendarId("new-cal");
+    expect(ok).toBe(true);
+    expect(storage.get(CAL_ID_KEY)).toBe("new-cal");
+    expect(storage.get(MAPPINGS_KEY)).toBe("{}");
+    expect(await getSelectedCalendarId()).toBe("new-cal");
+  });
+
+  it("resolveTargetCalendar reuses valid selected calendar", async () => {
+    storage.set(CAL_ID_KEY, "chosen-cal");
+    cal.state.calendars = [
+      cal.makeCalendar("other", "Other"),
+      cal.makeCalendar("chosen-cal", "My Work Calendar"),
+    ];
+
+    const resolved = await resolveTargetCalendar();
+    expect(resolved).toBe("chosen-cal");
+  });
+
+  it("resolveTargetCalendar falls back if stored calendar was deleted", async () => {
+    storage.set(CAL_ID_KEY, "deleted-cal");
+    cal.state.calendars = [
+      cal.makeCalendar("primary-cal", "Primary", { isPrimary: true }),
+    ];
+
+    const resolved = await resolveTargetCalendar();
+    expect(resolved).toBe("primary-cal");
+  });
+
+  it("getTargetCalendar returns details of the resolved calendar", async () => {
+    cal.state.calendars = [
+      cal.makeCalendar("synx-cal", SYNX_CALENDAR_TITLE, { source: { name: "sYnX", type: "local", isLocalAccount: true } }),
+    ];
+
+    const target = await getTargetCalendar();
+    expect(target).not.toBeNull();
+    expect(target?.id).toBe("synx-cal");
+    expect(target?.isDedicated).toBe(true);
+    expect(target?.isLocal).toBe(true);
+  });
+});
+
+describe("openCalendarApp", () => {
+  it("calls Linking.openURL on Android with content scheme", async () => {
+    platform.OS = "android";
+    linking.openURL.mockResolvedValueOnce(true);
+
+    const opened = await openCalendarApp();
+    expect(opened).toBe(true);
+    expect(linking.openURL).toHaveBeenCalledWith(expect.stringContaining("content://com.android.calendar/time/"));
+  });
+
+  it("falls back to Google Calendar web URL if content intent fails on Android", async () => {
+    platform.OS = "android";
+    linking.openURL.mockRejectedValueOnce(new Error("Cannot open content URI")).mockResolvedValueOnce(true);
+
+    const opened = await openCalendarApp();
+    expect(opened).toBe(true);
+    expect(linking.openURL).toHaveBeenCalledWith("https://calendar.google.com/calendar/r");
+  });
+
+  it("calls calshow on iOS", async () => {
+    platform.OS = "ios";
+    linking.openURL.mockResolvedValueOnce(true);
+
+    const opened = await openCalendarApp();
+    expect(opened).toBe(true);
+    expect(linking.openURL).toHaveBeenCalledWith("calshow:");
   });
 });

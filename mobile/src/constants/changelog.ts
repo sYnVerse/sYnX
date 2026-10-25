@@ -12,6 +12,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Standardized changelog category badge widths (NEW, IMPR, FIX) so tags align uniformly across all items."
+      },
+      {
+        type: "IMPR",
+        text: "Flexible device calendar selection: Choose which calendar to sync tasks to, with zero-friction Google Calendar sync, local account guidance, and a 1-tap shortcut to open the calendar app."
       }
     ]
   },
