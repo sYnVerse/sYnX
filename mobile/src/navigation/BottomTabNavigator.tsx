@@ -151,7 +151,10 @@ const MainAppContent: React.FC = () => {
       const lastId = await getLastActiveListId();
       if (lastId) {
         try {
-          await apiClient.get(`/api/v1/lists/${lastId}/meta`);
+          const res = await apiClient.get(`/api/v1/lists/${lastId}`);
+          if (res.data?.list) {
+            queryClient.setQueryData(["list_meta", lastId], res.data.list);
+          }
           if (pendingDeepLinkListIdRef.current) {
             setActiveListId(pendingDeepLinkListIdRef.current);
           } else {

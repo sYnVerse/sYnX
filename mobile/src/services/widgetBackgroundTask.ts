@@ -58,7 +58,7 @@ TaskManager.defineTask(WIDGET_BACKGROUND_SYNC_TASK, async () => {
     if (activeListId) {
       try {
         const [metaRes, todosRes] = await Promise.all([
-          apiClient.get(`/api/v1/lists/${activeListId}/meta`),
+          apiClient.get(`/api/v1/lists/${activeListId}`),
           apiClient.get(`/api/v1/todos?listId=${activeListId}`),
         ]);
         const listMeta = metaRes.data?.list as TodoList | undefined;
@@ -77,7 +77,7 @@ TaskManager.defineTask(WIDGET_BACKGROUND_SYNC_TASK, async () => {
     if (pinnedListId && pinnedListId !== activeListId) {
       try {
         const [metaRes, todosRes] = await Promise.all([
-          apiClient.get(`/api/v1/lists/${pinnedListId}/meta`),
+          apiClient.get(`/api/v1/lists/${pinnedListId}`),
           apiClient.get(`/api/v1/todos?listId=${pinnedListId}`),
         ]);
         const pinnedMeta = metaRes.data?.list as TodoList | undefined;
