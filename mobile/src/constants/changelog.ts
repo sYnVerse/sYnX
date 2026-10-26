@@ -32,6 +32,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "The Progress widget ring now matches the web app: it always shows its background track (even at 0%), fills clockwise from the top, and shows the percentage in the middle."
+      },
+      {
+        type: "FIX",
+        text: "The sYnX notification icon shows in the status bar again, instead of a plain white square."
       }
     ]
   },
