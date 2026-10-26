@@ -20,6 +20,7 @@ import { useToast } from "../context/ToastContext";
 import { TaskModal } from "../components/TaskModal";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
 import { syncTaskToNativeCalendar } from "../services/calendar";
+import { getCachedListName } from "../services/listNames";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
 import { formatFriendlyDate, formatReminderTime, priorityColor, priorityLabel } from "../utils/format";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
@@ -107,7 +108,9 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
         queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
           old ? [...old, createdTodo] : [createdTodo]
         );
-        syncTaskToNativeCalendar(createdTodo).catch(() => {});
+        syncTaskToNativeCalendar(createdTodo, {
+          listName: getCachedListName(queryClient, createdTodo.listId),
+        }).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },

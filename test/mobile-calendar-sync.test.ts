@@ -130,6 +130,8 @@ import {
   getOrCreateSynxCalendar,
   setCalendarSyncEnabled,
   syncTaskToNativeCalendar,
+  syncAllTasksToNativeCalendar,
+  buildTaskEventNotes,
   removeTaskFromNativeCalendar,
   getAvailableCalendars,
   getSelectedCalendarId,
@@ -300,6 +302,30 @@ describe("task event create/update/delete", () => {
     expect(event.endDate.getTime()).toBe(event.startDate.getTime());
   });
 
+  it("puts the list name and a priority marker in the event description", async () => {
+    const id = await syncTaskToNativeCalendar(task(), { listName: "Groceries" });
+    expect(cal.state.events.get(id!).notes).toBe("sYnX Task · Groceries | Priority: 🔴 HIGH");
+  });
+
+  it("updates the description when the priority changes", async () => {
+    const id = await syncTaskToNativeCalendar(task(), { listName: "Groceries" });
+    await syncTaskToNativeCalendar(task({ priority: "low" }), { listName: "Groceries" });
+    expect(cal.state.events.get(id!).notes).toBe("sYnX Task · Groceries | Priority: 🟢 LOW");
+  });
+
+  it("bulk sync looks up each task's list name", async () => {
+    const names: Record<string, string> = { a: "Work", b: "Home" };
+    await syncAllTasksToNativeCalendar(
+      [task({ id: "x1", listId: "a" }), task({ id: "x2", listId: "b", priority: "medium" })],
+      (listId) => names[listId] ?? null
+    );
+    const notes = [...cal.state.events.values()].map((e: any) => e.notes).sort();
+    expect(notes).toEqual([
+      "sYnX Task · Home | Priority: 🟡 MEDIUM",
+      "sYnX Task · Work | Priority: 🔴 HIGH",
+    ]);
+  });
+
   it("updates the existing event in place", async () => {
     const id = await syncTaskToNativeCalendar(task());
     const again = await syncTaskToNativeCalendar(task({ text: "Renamed" }));
@@ -437,5 +463,22 @@ describe("openCalendarApp", () => {
     const opened = await openCalendarApp();
     expect(opened).toBe(true);
     expect(linking.openURL).toHaveBeenCalledWith("calshow:");
+  });
+});
+
+describe("buildTaskEventNotes", () => {
+  it("marks each priority with its color", () => {
+    expect(buildTaskEventNotes({ priority: "low" }, "Home")).toBe("sYnX Task · Home | Priority: 🟢 LOW");
+    expect(buildTaskEventNotes({ priority: "medium" }, "Home")).toBe("sYnX Task · Home | Priority: 🟡 MEDIUM");
+    expect(buildTaskEventNotes({ priority: "high" }, "Home")).toBe("sYnX Task · Home | Priority: 🔴 HIGH");
+  });
+
+  it("leaves out the marker when there is no priority", () => {
+    expect(buildTaskEventNotes({ priority: "none" }, "Home")).toBe("sYnX Task · Home | Priority: NONE");
+  });
+
+  it("falls back to plain sYnX Task when the list name is unknown or blank", () => {
+    expect(buildTaskEventNotes({ priority: "high" })).toBe("sYnX Task | Priority: 🔴 HIGH");
+    expect(buildTaskEventNotes({ priority: "high" }, "   ")).toBe("sYnX Task | Priority: 🔴 HIGH");
   });
 });

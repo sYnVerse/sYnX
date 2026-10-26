@@ -444,11 +444,40 @@ export async function openCalendarApp(): Promise<boolean> {
   return false;
 }
 
+const PRIORITY_MARKERS: Record<string, string> = {
+  low: "🟢",
+  medium: "🟡",
+  high: "🔴",
+};
+
+/**
+ * Description text for a task's calendar event, e.g.
+ * "sYnX Task · Groceries | Priority: 🔴 HIGH". The list part is left out when the
+ * list name isn't known, and tasks without a priority get no marker.
+ */
+export function buildTaskEventNotes(
+  task: Pick<TodoItem, "priority">,
+  listName?: string | null
+): string {
+  const priority = task.priority || "none";
+  const marker = PRIORITY_MARKERS[priority];
+  const source = listName?.trim() ? `sYnX Task · ${listName.trim()}` : "sYnX Task";
+  return `${source} | Priority: ${marker ? `${marker} ` : ""}${priority.toUpperCase()}`;
+}
+
+export interface SyncTaskOptions {
+  /** Name of the task's list, shown in the event description. */
+  listName?: string | null;
+}
+
 /**
  * Sync a single task to the device's native calendar.
  * If task has no reminderAt or is completed, any existing synced native event will be removed.
  */
-export async function syncTaskToNativeCalendar(task: TodoItem): Promise<string | null> {
+export async function syncTaskToNativeCalendar(
+  task: TodoItem,
+  options: SyncTaskOptions = {}
+): Promise<string | null> {
   if (Platform.OS === "web") return null;
 
   try {
@@ -491,7 +520,7 @@ export async function syncTaskToNativeCalendar(task: TodoItem): Promise<string |
       title: task.text,
       startDate,
       endDate,
-      notes: `sYnX Task | Priority: ${(task.priority || "none").toUpperCase()}`,
+      notes: buildTaskEventNotes(task, options.listName),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
 
@@ -549,8 +578,12 @@ export async function removeTaskFromNativeCalendar(taskId: string): Promise<void
 
 /**
  * Bulk sync all given tasks to the native device calendar.
+ * getListName supplies each task's list name for the event description.
  */
-export async function syncAllTasksToNativeCalendar(tasks: TodoItem[]): Promise<void> {
+export async function syncAllTasksToNativeCalendar(
+  tasks: TodoItem[],
+  getListName?: (listId: string) => string | null
+): Promise<void> {
   if (Platform.OS === "web") return;
 
   try {
@@ -558,7 +591,7 @@ export async function syncAllTasksToNativeCalendar(tasks: TodoItem[]): Promise<v
     if (!calendarId) return;
 
     for (const task of tasks) {
-      await syncTaskToNativeCalendar(task);
+      await syncTaskToNativeCalendar(task, { listName: getListName?.(task.listId) ?? null });
     }
   } catch (error) {
     console.error("Failed bulk sync of tasks to native calendar:", error);
