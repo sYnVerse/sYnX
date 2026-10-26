@@ -113,6 +113,76 @@ export function getAuthClient(request: Request, env: any) {
 }
 
 /**
+ * OAuth client IDs whose sYnID access tokens sYnX accepts. sYnID issues every
+ * access token with `aud` set to the client ID that requested it, and the same
+ * issuer signs tokens for other apps (illusYn, sYnapse). OpenAuth's
+ * `client.verify` checks the signature, issuer, expiry, and token mode, but not
+ * the audience, so sYnX checks it here. Both the web app and the mobile app sign
+ * in as `synx`.
+ */
+export const DEFAULT_ALLOWED_CLIENT_IDS: readonly string[] = ["synx"];
+
+/**
+ * Allowed audiences for this deployment. `SYNX_ALLOWED_CLIENT_IDS` (comma-separated)
+ * can override the default, e.g. for a preview host mapped to another client via
+ * `CLIENT_ID_MAP`. Unset or empty falls back to the safe default.
+ */
+export function getAllowedClientIDs(env: any): string[] {
+  const raw = env?.SYNX_ALLOWED_CLIENT_IDS;
+  if (typeof raw === "string") {
+    const ids = raw
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0);
+    if (ids.length > 0) return ids;
+  }
+  return [...DEFAULT_ALLOWED_CLIENT_IDS];
+}
+
+/**
+ * True when a verified token's `aud` claim names only allowed clients.
+ * A missing or empty audience is rejected.
+ */
+export function isAllowedAudience(aud: unknown, allowed: readonly string[]): boolean {
+  const values = typeof aud === "string" ? [aud] : Array.isArray(aud) ? aud : [];
+  if (values.length === 0) return false;
+  return values.every((value) => typeof value === "string" && allowed.includes(value));
+}
+
+export type VerifiedAccessToken = { userId: string; email: string };
+
+/**
+ * Single entry point for validating a sYnID access token in sYnX.
+ * Runs OpenAuth's `verify` (signature, issuer, expiry, access mode, subject
+ * schema), then requires the verified `aud` to be one of sYnX's own client IDs.
+ * Returns null for any invalid or foreign token; never throws.
+ */
+export async function verifyAccessToken(
+  request: Request,
+  env: any,
+  token: string | null | undefined,
+): Promise<VerifiedAccessToken | null> {
+  if (!token) return null;
+  const client = getAuthClient(request, env);
+  try {
+    const verified = await client.verify(subjects as any, token);
+    if (verified.err) return null;
+    if (!isAllowedAudience(verified.aud, getAllowedClientIDs(env))) {
+      console.warn("Rejected sYnID access token issued to another client");
+      return null;
+    }
+    const properties = (verified.subject as any).properties;
+    return {
+      userId: properties.id as string,
+      email: properties.email as string,
+    };
+  } catch {
+    // Verification error (e.g. expired, malformed, JWKS unavailable)
+    return null;
+  }
+}
+
+/**
  * Attempts silent session renewal using the synx_refresh_session cookie.
  * On success, verifies the new access token, records refreshed Set-Cookie headers,
  * and returns the authenticated user payload.
@@ -135,8 +205,9 @@ export async function trySilentRefresh(
     }
 
     const newAccessToken = refreshed.tokens.access;
-    const verified = await client.verify(subjects as any, newAccessToken);
-    if (verified.err) {
+    // Never hand back (or store) a refreshed token minted for another client.
+    const verified = await verifyAccessToken(request, env, newAccessToken);
+    if (!verified) {
       return null;
     }
 
@@ -150,10 +221,9 @@ export async function trySilentRefresh(
     }
     recordRefreshedCookies(request, cookieHeaders);
 
-    const properties = (verified.subject as any).properties;
     return {
-      userId: properties.id as string,
-      email: properties.email as string,
+      userId: verified.userId,
+      email: verified.email,
       token: newAccessToken,
     };
   } catch (err) {
@@ -167,25 +237,12 @@ export async function requireUser(request: Request, env: any) {
   const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
   const token = match ? decodeURIComponent(match[1]) : null;
 
-  const client = getAuthClient(request, env);
-
-  if (token) {
-    try {
-      const verified = await client.verify(subjects as any, token);
-      if (!verified.err) {
-        const properties = (verified.subject as any).properties;
-        return {
-          userId: properties.id as string,
-          email: properties.email as string,
-          token,
-        };
-      }
-    } catch {
-      // Verification failed (e.g. token expired) — fall through to silent refresh
-    }
+  const verified = await verifyAccessToken(request, env, token);
+  if (verified && token) {
+    return { ...verified, token };
   }
 
-  // Attempt silent renewal if access token is missing or expired
+  // Attempt silent renewal if the access token is missing, expired, or not issued to sYnX
   const renewed = await trySilentRefresh(request, env, token);
   if (renewed) {
     return renewed;
@@ -202,24 +259,15 @@ export async function getOptionalUser(request: Request, env: any) {
   const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
   const token = match ? decodeURIComponent(match[1]) : null;
 
-  const client = getAuthClient(request, env);
-
-  if (token) {
-    try {
-      const verified = await client.verify(subjects as any, token);
-      if (!verified.err) {
-        const properties = (verified.subject as any).properties;
-        return {
-          userId: properties.id as string,
-          email: properties.email as string,
-          isLoggedIn: true,
-          guestId: null,
-          isNewGuest: false,
-        };
-      }
-    } catch (error) {
-      console.error("Token verification failed in optional check:", error);
-    }
+  const verified = await verifyAccessToken(request, env, token);
+  if (verified) {
+    return {
+      userId: verified.userId,
+      email: verified.email,
+      isLoggedIn: true,
+      guestId: null,
+      isNewGuest: false,
+    };
   }
 
   // Attempt silent renewal if access token is missing or expired
@@ -268,22 +316,9 @@ export async function verifyBearerToken(request: Request, env: any) {
     token = cookieToken;
   }
 
-  const client = getAuthClient(request, env);
-
-  if (token) {
-    try {
-      const verified = await client.verify(subjects as any, token);
-      if (!verified.err) {
-        const properties = (verified.subject as any).properties;
-        return {
-          userId: properties.id as string,
-          email: properties.email as string,
-          token,
-        };
-      }
-    } catch {
-      // Verification error
-    }
+  const verified = await verifyAccessToken(request, env, token);
+  if (verified && token) {
+    return { ...verified, token };
   }
 
   // If this was a cookie-backed session and the access token expired, try silent refresh
