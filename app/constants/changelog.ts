@@ -11,6 +11,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Standardized changelog category badge widths (NEW, IMPR, FIX) so tags align uniformly across all items."
+      },
+      {
+        type: "FIX",
+        text: "Security: sYnX now only accepts sign-ins issued to sYnX itself. A sign-in token from another app that uses the same sYnID account can no longer be used to open your lists."
       }
     ]
   },

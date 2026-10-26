@@ -98,6 +98,7 @@ describe("web silent refresh flow", () => {
 
     mockVerify.mockResolvedValueOnce({
       err: false,
+      aud: "synx",
       subject: {
         type: "user",
         properties: { id: "user_123", email: "user@example.com" },
@@ -135,6 +136,7 @@ describe("web silent refresh flow", () => {
     // 3. Verify newly minted token succeeds
     mockVerify.mockResolvedValueOnce({
       err: false,
+      aud: "synx",
       subject: {
         type: "user",
         properties: { id: "user_renewed", email: "renewed@example.com" },
@@ -173,6 +175,7 @@ describe("web silent refresh flow", () => {
     });
     mockVerify.mockResolvedValueOnce({
       err: false,
+      aud: "synx",
       subject: {
         type: "user",
         properties: { id: "opt_user", email: "opt@example.com" },
@@ -198,6 +201,7 @@ describe("web silent refresh flow", () => {
     });
     mockVerify.mockResolvedValueOnce({
       err: false,
+      aud: "synx",
       subject: {
         type: "user",
         properties: { id: "api_user", email: "api@example.com" },
