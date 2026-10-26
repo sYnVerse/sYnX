@@ -284,6 +284,22 @@ describe("task event create/update/delete", () => {
     expect(event.endDate.getTime() - event.startDate.getTime()).toBe(30 * 60 * 1000);
   });
 
+  it("creates a zero-length event when the task has no duration", async () => {
+    for (const [i, durationMinutes] of [null, undefined, 0].entries()) {
+      const id = await syncTaskToNativeCalendar(task({ id: `t-none-${i}`, durationMinutes }));
+      const event = cal.state.events.get(id!);
+      expect(event.startDate.getTime()).toBe(task().reminderAt);
+      expect(event.endDate.getTime()).toBe(event.startDate.getTime());
+    }
+  });
+
+  it("shrinks an existing event to zero length when the duration is cleared", async () => {
+    const id = await syncTaskToNativeCalendar(task());
+    await syncTaskToNativeCalendar(task({ durationMinutes: null }));
+    const event = cal.state.events.get(id!);
+    expect(event.endDate.getTime()).toBe(event.startDate.getTime());
+  });
+
   it("updates the existing event in place", async () => {
     const id = await syncTaskToNativeCalendar(task());
     const again = await syncTaskToNativeCalendar(task({ text: "Renamed" }));

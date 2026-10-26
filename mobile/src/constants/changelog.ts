@@ -6,6 +6,21 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-10-27",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "The sYnX notification icon shows in the status bar again, instead of a plain white square."
+      },
+      {
+        type: "FIX",
+        text: "Tasks without a duration now sync to your calendar as an event at the reminder time with no length (9:00 to 9:00) instead of a made-up 15-minute block."
+      }
+    ]
+  },
+  {
+    version: "v3.3.1",
     date: "2026-10-26",
     title: "What's new?",
     changes: [
@@ -32,10 +47,6 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "The Progress widget ring now matches the web app: it always shows its background track (even at 0%), fills clockwise from the top, and shows the percentage in the middle."
-      },
-      {
-        type: "FIX",
-        text: "The sYnX notification icon shows in the status bar again, instead of a plain white square."
       }
     ]
   },
