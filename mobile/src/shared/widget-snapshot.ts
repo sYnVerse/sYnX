@@ -380,3 +380,115 @@ function sanitizeWidgetValue(value: unknown): unknown {
   }
   return out;
 }
+
+/** Result of replaying one queued widget checkoff against the API. */
+export type WidgetReplayOutcome =
+  | { op: WidgetPendingOp; status: "applied"; todo?: TodoItem }
+  | { op: WidgetPendingOp; status: "rejected" }
+  | { op: WidgetPendingOp; status: "retry" };
+
+/**
+ * Classifies a failed replay. Client errors other than 401/408/429 (for example
+ * the task was deleted, or edit access was removed) can never succeed, so they
+ * are dropped. Everything else (offline, timeouts, server errors, an expired
+ * session) stays queued and is retried on the next drain.
+ */
+export function classifyWidgetReplayError(status: number | undefined | null): "rejected" | "retry" {
+  if (typeof status !== "number") return "retry";
+  if (status === 401 || status === 408 || status === 429) return "retry";
+  return status >= 400 && status < 500 ? "rejected" : "retry";
+}
+
+function sameWidgetOp(a: WidgetPendingOp, b: WidgetPendingOp): boolean {
+  return a.todoId === b.todoId && a.listId === b.listId && a.completed === b.completed && a.at === b.at;
+}
+
+/**
+ * Removes the ops that were handled (applied or permanently rejected) from a
+ * widget's queue, keeping anything queued while the replay was running and
+ * anything that still needs a retry.
+ */
+export function removeHandledWidgetOps(
+  pendingOps: WidgetPendingOp[],
+  handled: WidgetPendingOp[]
+): WidgetPendingOp[] {
+  if (!handled.length) return pendingOps;
+  return pendingOps.filter((op) => !handled.some((h) => sameWidgetOp(op, h)));
+}
+
+/**
+ * Carries a widget's still-queued checkoffs into a freshly built snapshot.
+ *
+ * Rebuilding a widget from server or cache data must not erase taps that have
+ * not reached the server yet. Every queued op is kept (including ops for a
+ * different list, for example after the active list changed), and tasks with a
+ * queued checkoff in this list stay hidden and counted as done, so the widget
+ * doesn't flash the task back as open before the replay finishes.
+ */
+export function mergePendingOpsIntoSnapshot(
+  snapshot: ListWidgetSnapshot,
+  pendingOps: WidgetPendingOp[]
+): ListWidgetSnapshot {
+  if (!snapshot.isLoggedIn || !snapshot.listId) {
+    return { ...snapshot, pendingOps: [] };
+  }
+
+  const latest = new Map<string, WidgetPendingOp>();
+  for (const op of reconcileWidgetPendingOps(pendingOps)) {
+    if (op.listId === snapshot.listId) latest.set(op.todoId, op);
+  }
+
+  let doneCount = snapshot.doneCount;
+  const tasks = snapshot.tasks.filter((task) => {
+    const op = latest.get(task.id);
+    if (!op || !op.completed) return true;
+    if (!isRecurringWidgetTask(task)) doneCount += 1;
+    return false;
+  });
+
+  return {
+    ...snapshot,
+    tasks,
+    doneCount: Math.min(doneCount, snapshot.totalCount),
+    pendingOps: [...pendingOps],
+  };
+}
+
+function isRecurringWidgetTask(task: WidgetTaskItem): boolean {
+  return Boolean(task.recurrence && task.recurrence !== "none");
+}
+
+/**
+ * Applies successfully replayed widget checkoffs to a cached todo list so the
+ * app (and the next widget rebuild) shows the same state the server now has.
+ * Uses the server's returned todo when available (recurring tasks come back
+ * rescheduled), otherwise applies the done state locally. Subtasks nested under
+ * a parent are patched too.
+ */
+export function applyReplayedWidgetOpsToTodos<T extends TodoItem>(
+  todos: T[] | undefined,
+  outcomes: WidgetReplayOutcome[]
+): T[] | undefined {
+  if (!todos) return todos;
+  const applied = outcomes.filter(
+    (o): o is Extract<WidgetReplayOutcome, { status: "applied" }> => o.status === "applied"
+  );
+  if (!applied.length) return todos;
+
+  const patch = (item: T): T => {
+    const outcome = applied.find((o) => o.op.todoId === item.id);
+    if (!outcome) return item;
+    if (outcome.todo) {
+      return { ...item, ...outcome.todo, subtasks: item.subtasks } as T;
+    }
+    return applySetCompletedLocal(item, outcome.op.completed).todo;
+  };
+
+  return todos.map((t) => {
+    const next = patch(t);
+    if (next.subtasks?.length) {
+      return { ...next, subtasks: next.subtasks.map((s) => patch(s as T)) } as T;
+    }
+    return next;
+  });
+}

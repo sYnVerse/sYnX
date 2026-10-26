@@ -5,8 +5,7 @@ import {
   Column,
   Text,
   Button,
-  Spacer,
-  CircularProgressIndicator,
+  Image,
   LinearProgressIndicator,
 } from '@expo/ui/jetpack-compose';
 import {
@@ -31,6 +30,10 @@ export function ListProgressWidget(
   const textPrimary = isDark ? '#F4F4F5' : '#18181B';
   const textMuted = isDark ? '#A1A1AA' : '#71717A';
   const accent = '#6366F1';
+  // Ring colors match the web app's ProgressRing: slate-800/80 track, indigo-500 arc
+  // and indigo-300 label (the web app is dark only; light mode uses slate-200 / indigo-600).
+  const ringTrack = isDark ? '#CC1E293B' : '#E2E8F0';
+  const ringLabel = isDark ? '#A5B4FC' : '#4F46E5';
 
   // Logged-out state
   if (!props?.isLoggedIn || !props?.listId) {
@@ -58,7 +61,8 @@ export function ListProgressWidget(
 
   const height = environment?.height ?? 160;
   const isCompactStrip = height < 120;
-  const progressRatio = Math.min(Math.max((props.progressPercent || 0) / 100, 0), 1);
+  const progressPercent = Math.min(Math.max(Math.round(props.progressPercent || 0), 0), 100);
+  const progressRatio = progressPercent / 100;
 
   // 2x1 Compact Strip Layout
   if (isCompactStrip) {
@@ -81,7 +85,7 @@ export function ListProgressWidget(
           <LinearProgressIndicator
             progress={progressRatio}
             color={accent}
-            trackColor={cardBg}
+            trackColor={ringTrack}
             modifiers={[size(90, 8), cornerRadius(4)]}
           />
         </Box>
@@ -102,6 +106,11 @@ export function ListProgressWidget(
   }
 
   // 2x2 Square Progress Ring Layout
+  // The web ring is 56px with an 11px label. Use the same size when the widget is
+  // tall enough, shrinking (down to 40dp) on short widgets so the button still fits.
+  const ringSize = Math.min(56, Math.max(40, Math.floor(height - 124)));
+  const ringFontSize = Math.max(10, Math.round((ringSize * 13) / 56));
+
   return (
     <Column
       modifiers={[fillMaxSize(), paddingAll(12), background(bg), cornerRadius(16)]}
@@ -118,19 +127,24 @@ export function ListProgressWidget(
         </Text>
       </Button>
 
-      {/* Progress ring with the percentage beside it. On Android the widget renderer
-          draws the ring at its default 32dp and doesn't center it inside a larger Box,
-          so overlaying the text on the ring ends up misaligned. */}
-      <Row verticalAlignment="center">
-        <CircularProgressIndicator progress={progressRatio} color={accent} trackColor={cardBg} />
+      {/* Progress ring, drawn like the web app's ring: a full background track,
+          an arc from 12 o'clock running clockwise, and the percentage centered
+          inside. Android widgets can't draw arcs, so the ring is a vector drawable
+          per whole percent, generated at prebuild by plugins/withWidgetProgressRing.js. */}
+      <Box modifiers={[size(ringSize, ringSize)]} contentAlignment="center">
+        <Image
+          source={{ uri: `synx_widget_ring_${isDark ? 'dark' : 'light'}_${progressPercent}` }}
+          contentDescription={`${progressPercent}% complete`}
+          modifiers={[size(ringSize, ringSize)]}
+        />
         <Text
-          style={{ fontSize: 20, fontWeight: 'bold' }}
-          color={textPrimary}
-          modifiers={[padding(8, 0, 0, 0)]}
+          style={{ fontSize: ringFontSize, fontWeight: 'bold' }}
+          color={ringLabel}
+          maxLines={1}
         >
-          {`${props.progressPercent || 0}%`}
+          {`${progressPercent}%`}
         </Text>
-      </Row>
+      </Box>
 
       {/* Counts & Preview */}
       <Column horizontalAlignment="center">

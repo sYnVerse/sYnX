@@ -20,6 +20,18 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Raised the floating action button (+) across Tasks, Calendar, and Lists to float comfortably above the navigation bar with safe-area insets."
+      },
+      {
+        type: "FIX",
+        text: "Checking off a task in the Pinned List or Active List widget now completes it in sYnX, even when the pinned list isn't the list you have open. Tapping the checkbox used to tick it on the widget without saving."
+      },
+      {
+        type: "FIX",
+        text: "Widget checkoffs made while you're offline stay saved until sYnX can sync them, instead of being lost if the first try fails."
+      },
+      {
+        type: "FIX",
+        text: "The Progress widget ring now matches the web app: it always shows its background track (even at 0%), fills clockwise from the top, and shows the percentage in the middle."
       }
     ]
   },
