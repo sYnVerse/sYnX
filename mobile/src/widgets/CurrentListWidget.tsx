@@ -5,7 +5,6 @@ import {
   Column,
   Text,
   Button,
-  Checkbox,
   LazyColumn,
 } from '@expo/ui/jetpack-compose';
 import {
@@ -228,10 +227,17 @@ export function CurrentListWidget(
                     ]}
                     verticalAlignment="center"
                   >
-                    <Checkbox
-                      value={false}
-                      colors={{ checkedColor: accent, uncheckedColor: textMuted }}
-                    />
+                    {/* Drawn checkbox. A real Checkbox becomes a native Android CheckBox,
+                        which takes the tap itself: it ticks on screen but never runs the
+                        row's click, so the task was never queued or completed. This box
+                        isn't clickable, so taps anywhere on the row go to the row. */}
+                    <Box modifiers={[size(40, 32)]} contentAlignment="center">
+                      <Box
+                        modifiers={[size(18, 18), background(textMuted), cornerRadius(4), paddingAll(2)]}
+                      >
+                        <Box modifiers={[fillMaxSize(), background(cardBg), cornerRadius(3)]} />
+                      </Box>
+                    </Box>
                     {priorityDotColor !== 'transparent' ? (
                       <Box
                         modifiers={[

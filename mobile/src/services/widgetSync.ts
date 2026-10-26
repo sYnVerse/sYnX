@@ -12,13 +12,23 @@ import {
   extractPendingWidgetOps,
   reconcileWidgetPendingOps,
   toNativeWidgetProps,
+  classifyWidgetReplayError,
+  removeHandledWidgetOps,
+  mergePendingOpsIntoSnapshot,
+  applyReplayedWidgetOpsToTodos,
+  type ListWidgetSnapshot,
+  type WidgetPendingOp,
+  type WidgetReplayOutcome,
   type TodoItem,
   type TodoList,
 } from '../shared';
 import { apiClient, secureSessionStore } from '../api/client';
 
 let isDrainingOps = false;
+let drainRequestedWhileBusy = false;
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+type ListWidgetHandle = typeof CurrentListWidget;
 
 /**
  * Resets all widgets to the logged-out state (used on logout).
@@ -33,62 +43,124 @@ export function resetWidgetsLoggedOut(): void {
   }
 }
 
+function readWidgetSnapshot(widget: ListWidgetHandle): Record<string, any> | null {
+  if (Platform.OS !== 'android') return null;
+  try {
+    return (widget.getSnapshot?.() as Record<string, any> | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Drains and replays any offline completed tasks queued in Android SharedPreferences via widget getSnapshot().
+ * Writes a freshly built list snapshot to a widget without losing taps that
+ * are still waiting to be replayed (they stay queued and their tasks stay hidden).
  */
-export async function drainAndReplayPendingWidgetOps(queryClient: QueryClient): Promise<void> {
-  if (Platform.OS !== 'android' || isDrainingOps) {
+function writeListWidgetSnapshot(widget: ListWidgetHandle, snapshot: ListWidgetSnapshot): void {
+  const queued = extractPendingWidgetOps(readWidgetSnapshot(widget));
+  widget.updateSnapshot(toNativeWidgetProps(mergePendingOpsIntoSnapshot(snapshot, queued)));
+}
+
+/**
+ * Removes handled ops from a widget's queue. Re-reads the stored snapshot so
+ * taps made while the replay was running are kept.
+ */
+function clearHandledWidgetOps(widget: ListWidgetHandle, handled: WidgetPendingOp[]): void {
+  if (!handled.length) return;
+  const snap = readWidgetSnapshot(widget);
+  if (!snap || !Array.isArray(snap.pendingOps) || snap.pendingOps.length === 0) return;
+  const remaining = removeHandledWidgetOps(extractPendingWidgetOps(snap), handled);
+  widget.updateSnapshot(toNativeWidgetProps({ ...snap, pendingOps: remaining } as any));
+}
+
+/**
+ * Sends one queued widget checkoff to the API. The API resolves the task's own
+ * list from its ID, so this works for any list (active, pinned, or shared).
+ */
+async function replayWidgetOp(op: WidgetPendingOp): Promise<WidgetReplayOutcome> {
+  try {
+    const res = await apiClient.post(`/api/v1/todos/${op.todoId}/completed`, {
+      completed: op.completed,
+    });
+    return { op, status: 'applied', todo: res.data?.todo as TodoItem | undefined };
+  } catch (err: any) {
+    const status = classifyWidgetReplayError(err?.response?.status);
+    console.warn(`[widgetSync] Failed to replay widget op for todo ${op.todoId} (${status}):`, err?.message);
+    return { op, status };
+  }
+}
+
+/**
+ * Replays every checkoff queued in the Current and Pinned list widgets
+ * (stored in Android SharedPreferences and read with getSnapshot()).
+ *
+ * Each op carries the list it was tapped in, so a pinned list that isn't the
+ * active list is updated in its own cache entry. Ops that fail for a temporary
+ * reason stay queued for the next drain instead of being dropped.
+ */
+export async function drainAndReplayPendingWidgetOps(queryClient?: QueryClient): Promise<void> {
+  if (Platform.OS !== 'android') {
+    return;
+  }
+  if (isDrainingOps) {
+    drainRequestedWhileBusy = true;
     return;
   }
 
   isDrainingOps = true;
   try {
-    const currentSnap = CurrentListWidget.getSnapshot?.() as Record<string, any> | null;
-    const pinnedSnap = PinnedListWidget.getSnapshot?.() as Record<string, any> | null;
+    do {
+      drainRequestedWhileBusy = false;
 
-    const allOps = [
-      ...extractPendingWidgetOps(currentSnap),
-      ...extractPendingWidgetOps(pinnedSnap),
-    ];
+      const allOps = [
+        ...extractPendingWidgetOps(readWidgetSnapshot(CurrentListWidget)),
+        ...extractPendingWidgetOps(readWidgetSnapshot(PinnedListWidget)),
+      ];
+      if (allOps.length === 0) continue;
 
-    const reconciled = reconcileWidgetPendingOps(allOps);
-    if (reconciled.length === 0) {
-      return;
-    }
-
-    const affectedListIds = new Set<string>();
-
-    for (const op of reconciled) {
-      try {
-        await apiClient.post(`/api/v1/todos/${op.todoId}/completed`, {
-          completed: op.completed,
-        });
-        affectedListIds.add(op.listId);
-      } catch (err: any) {
-        console.warn(`[widgetSync] Failed to replay widget op for todo ${op.todoId}:`, err?.message);
+      // Replay only the latest action per task, but clear every queued copy of it.
+      const reconciled = reconcileWidgetPendingOps(allOps);
+      const outcomes: WidgetReplayOutcome[] = [];
+      for (const op of reconciled) {
+        outcomes.push(await replayWidgetOp(op));
       }
-    }
 
-    // Invalidate affected list queries
-    for (const listId of affectedListIds) {
-      queryClient.invalidateQueries({ queryKey: ['todos', listId] });
-      queryClient.invalidateQueries({ queryKey: ['list_meta', listId] });
-    }
+      const handledTodoIds = new Set(
+        outcomes.filter((o) => o.status !== 'retry').map((o) => o.op.todoId)
+      );
+      const handled = allOps.filter((op) => handledTodoIds.has(op.todoId));
 
-    // Clear pendingOps from snapshots
-    if (currentSnap && Array.isArray(currentSnap.pendingOps) && currentSnap.pendingOps.length > 0) {
-      CurrentListWidget.updateSnapshot(toNativeWidgetProps({
-        ...currentSnap,
-        pendingOps: [],
-      } as any));
-    }
+      if (queryClient) {
+        const outcomesByList = new Map<string, WidgetReplayOutcome[]>();
+        for (const outcome of outcomes) {
+          if (outcome.status !== 'applied') continue;
+          const list = outcomesByList.get(outcome.op.listId) ?? [];
+          list.push(outcome);
+          outcomesByList.set(outcome.op.listId, list);
+        }
 
-    if (pinnedSnap && Array.isArray(pinnedSnap.pendingOps) && pinnedSnap.pendingOps.length > 0) {
-      PinnedListWidget.updateSnapshot(toNativeWidgetProps({
-        ...pinnedSnap,
-        pendingOps: [],
-      } as any));
-    }
+        for (const [listId, listOutcomes] of outcomesByList) {
+          // Update the cached tasks right away, so a widget rebuild from cache (or the
+          // list screen) can't bring the task back as open while the refetch runs.
+          queryClient.setQueryData<TodoItem[]>(['todos', listId], (old) =>
+            applyReplayedWidgetOpsToTodos(old, listOutcomes)
+          );
+          queryClient.setQueryData<TodoItem[]>(['active_list_todos_preview', listId], (old) =>
+            applyReplayedWidgetOpsToTodos(old, listOutcomes)
+          );
+          // refetchType 'all' also refreshes lists that aren't on screen, such as a
+          // pinned list that isn't the active list.
+          queryClient.invalidateQueries({ queryKey: ['todos', listId], refetchType: 'all' });
+          queryClient.invalidateQueries({ queryKey: ['list_meta', listId], refetchType: 'all' });
+        }
+        if (outcomesByList.size > 0) {
+          queryClient.invalidateQueries({ queryKey: ['lists'] });
+        }
+      }
+
+      clearHandledWidgetOps(CurrentListWidget, handled);
+      clearHandledWidgetOps(PinnedListWidget, handled);
+    } while (drainRequestedWhileBusy);
   } catch (e) {
     console.warn('[widgetSync] Error draining widget pending ops:', e);
   } finally {
@@ -192,8 +264,7 @@ export async function syncActiveList(
     const todos =
       providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
 
-    const currentSnap = buildListWidgetSnapshot(meta, todos);
-    CurrentListWidget.updateSnapshot(toNativeWidgetProps(currentSnap));
+    writeListWidgetSnapshot(CurrentListWidget, buildListWidgetSnapshot(meta, todos));
 
     const progressSnap = buildProgressWidgetSnapshot(meta, todos);
     ListProgressWidget.updateSnapshot(toNativeWidgetProps(progressSnap));
@@ -231,13 +302,12 @@ export async function syncPinnedList(
     const todos =
       providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
 
-    if (pinnedConfig?.mode === 'reminders') {
-      const upNextSnap = buildUpNextWidgetSnapshot(meta, todos);
-      PinnedListWidget.updateSnapshot(toNativeWidgetProps(upNextSnap));
-    } else {
-      const pinnedSnap = buildListWidgetSnapshot(meta, todos);
-      PinnedListWidget.updateSnapshot(toNativeWidgetProps(pinnedSnap));
-    }
+    writeListWidgetSnapshot(
+      PinnedListWidget,
+      pinnedConfig?.mode === 'reminders'
+        ? buildUpNextWidgetSnapshot(meta, todos)
+        : buildListWidgetSnapshot(meta, todos)
+    );
   } catch (e) {
     console.warn('[widgetSync] Error syncing pinned list widget:', e);
   }
