@@ -3,6 +3,7 @@ import {
   combineDateAndTime,
   defaultPickerValue,
   formatReminderPillLabel,
+  formatReminderPreview,
   initialReminderSelection,
   nextFullHour,
   resolveReminderAt,
@@ -55,5 +56,23 @@ describe("date & time picker helpers", () => {
     const picked = combineDateAndTime(new Date(2026, 10, 8, 14, 10, 33), new Date(2026, 9, 26, 8, 0, 45));
     expect(picked).toBe(new Date(2026, 10, 8, 8, 0, 0).getTime());
     expect(formatReminderPillLabel(picked, "en-US")).toBe("Sun, Nov 8 · 8:00 AM");
+  });
+
+  it("previews the reminder with today/tomorrow, a near-term hint, and a past warning", () => {
+    const at = (d: number, h: number, m: number) => new Date(2026, 9, d, h, m).getTime();
+    expect(formatReminderPreview(undefined, now)).toBeNull();
+    expect(formatReminderPreview(now + 15 * MIN, now, "en-US")).toEqual({
+      text: "🔔 Reminds you today at 2:25 PM (in 15 min)",
+      isPast: false,
+    });
+    expect(formatReminderPreview(at(26, 16, 10), now, "en-US")?.text).toBe("🔔 Reminds you today at 4:10 PM (in 2 hr)");
+    expect(formatReminderPreview(at(27, 9, 0), now, "en-US")?.text).toBe("🔔 Reminds you tomorrow at 9:00 AM");
+    expect(formatReminderPreview(new Date(2026, 10, 8, 8, 0).getTime(), now, "en-US")?.text).toBe(
+      "🔔 Reminds you Sun, Nov 8 at 8:00 AM"
+    );
+    expect(formatReminderPreview(at(26, 9, 0), now, "en-US")).toEqual({
+      text: "⚠️ Reminder time has passed: today at 9:00 AM",
+      isPast: true,
+    });
   });
 });

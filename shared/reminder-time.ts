@@ -98,3 +98,51 @@ export function prefers24HourClock(locale?: string): boolean {
     return false;
   }
 }
+
+export interface ReminderPreview {
+  /** e.g. "🔔 Reminds you today at 8:42 PM (in 15 min)". */
+  text: string;
+  /** True when the reminder time is already in the past. */
+  isPast: boolean;
+}
+
+/** Hours ahead within which the preview adds a relative hint like "(in 2 hr)". */
+const RELATIVE_HINT_MAX_MS = 3 * HOUR_MS;
+
+function localDayIndex(timestamp: number): number {
+  const d = new Date(timestamp);
+  return Math.round(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / (24 * HOUR_MS));
+}
+
+/**
+ * One-line summary of the reminder a task will get, shown under the reminder row.
+ * Uses "today" / "tomorrow" when they apply and a friendly date otherwise, adds
+ * "(in 15 min)" / "(in 2 hr)" within the next few hours, and flags past times.
+ * Times follow the locale's 12/24-hour clock, like the time picker.
+ * Returns null when no reminder will be set.
+ */
+export function formatReminderPreview(
+  reminderAt: number | null | undefined,
+  now: number = Date.now(),
+  locale?: string
+): ReminderPreview | null {
+  if (reminderAt == null || !Number.isFinite(reminderAt)) return null;
+  const dayDiff = localDayIndex(reminderAt) - localDayIndex(now);
+  const day =
+    dayDiff === 0 ? "today" : dayDiff === 1 ? "tomorrow" : formatFriendlyDate(reminderAt, locale);
+  const when = `${day} at ${formatReminderTime(reminderAt, locale)}`;
+
+  if (reminderAt <= now) {
+    return { text: `⚠️ Reminder time has passed: ${when}`, isPast: true };
+  }
+  // Whole-minute difference, matching the minute shown in the label.
+  const diffMs = (Math.floor(reminderAt / MINUTE_MS) - Math.floor(now / MINUTE_MS)) * MINUTE_MS;
+  let hint = "";
+  if (diffMs < RELATIVE_HINT_MAX_MS) {
+    hint =
+      diffMs < HOUR_MS
+        ? ` (in ${Math.max(1, Math.round(diffMs / MINUTE_MS))} min)`
+        : ` (in ${Math.round(diffMs / HOUR_MS)} hr)`;
+  }
+  return { text: `🔔 Reminds you ${when}${hint}`, isPast: false };
+}

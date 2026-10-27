@@ -21,6 +21,7 @@ import {
   combineDateAndTime,
   defaultPickerValue,
   formatReminderPillLabel,
+  formatReminderPreview,
   initialReminderSelection,
   nextFullHour,
   prefers24HourClock,
@@ -82,6 +83,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   /** Bumped to remount (re-open) the time dialog after a past time is rejected. */
   const [timePickerKey, setTimePickerKey] = useState(0);
   const [saving, setSaving] = useState(false);
+  /** Clock for the reminder preview; ticks on each minute boundary while the sheet is open. */
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!visible) return;
@@ -94,6 +97,27 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setPickerStep(null);
     setSaving(false);
   }, [visible, initialText, initialPriority, initialRecurrence, initialDurationMinutes, initialReminderAt]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setNow(Date.now());
+      // Wake just after the next minute starts, so quick-pill previews ("+15m")
+      // roll over at the same moment the saved value would.
+      timer = setTimeout(tick, 60_000 - (Date.now() % 60_000) + 50);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [visible]);
+
+  /** The reminderAt that Save would send right now: the opened-with value until the row is touched. */
+  const effectiveReminderAt = (at: number): number | null | undefined =>
+    reminderTouched
+      ? resolveReminderAt({ selection: reminder, isEditing, existingReminderAt: initialReminderAt, now: at })
+      : initialReminderAt;
+
+  const reminderPreview = formatReminderPreview(effectiveReminderAt(now), now);
 
   const triggerHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -108,6 +132,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   };
 
   const chooseReminder = (next: ReminderSelection) => {
+    setNow(Date.now());
     setReminderTouched(true);
     setReminder(next);
   };
@@ -151,9 +176,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const handleSave = async () => {
     if (!text.trim() || saving) return;
     triggerHaptic();
-    const reminderAt: number | undefined | null = reminderTouched
-      ? resolveReminderAt({ selection: reminder, isEditing, existingReminderAt: initialReminderAt })
-      : initialReminderAt;
+    const reminderAt = effectiveReminderAt(Date.now());
     const cleanDur = durationMinutes.trim();
     const parsedDur = cleanDur ? parseInt(cleanDur.replace(/\D/g, ""), 10) : NaN;
 
@@ -392,6 +415,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
+            {reminderPreview && (
+              <Text
+                style={[
+                  styles.reminderPreview,
+                  { color: reminderPreview.isPast ? theme.danger : theme.textMuted },
+                ]}
+                accessibilityLiveRegion="polite"
+                maxFontSizeMultiplier={1.3}
+              >
+                {reminderPreview.text}
+              </Text>
+            )}
             {/* Android opens these as native dialogs; each one shows when mounted. */}
             {pickerStep === "date" && (
               <DateTimePicker
@@ -506,6 +541,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     minHeight: MIN_TOUCH_TARGET - 4,
     justifyContent: "center",
+  },
+  reminderPreview: {
+    fontSize: typography.xs,
+    marginTop: 8,
   },
   pillWithIcon: {
     flexDirection: "row",
