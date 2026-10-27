@@ -470,8 +470,10 @@ export async function syncTaskToNativeCalendar(task: TodoItem): Promise<string |
     if (!calendarId) return null;
 
     const startDate = new Date(task.reminderAt);
-    const durationMs = (task.durationMinutes || 15) * 60 * 1000;
-    const endDate = new Date(task.reminderAt + durationMs);
+    // No duration set means a zero-length event (9:00 to 9:00), not a made-up default.
+    const durationMinutes =
+      typeof task.durationMinutes === "number" && task.durationMinutes > 0 ? task.durationMinutes : 0;
+    const endDate = new Date(task.reminderAt + durationMinutes * 60 * 1000);
 
     // Build recurrence rule if set
     let recurrenceRule: Calendar.RecurrenceRule | undefined;
