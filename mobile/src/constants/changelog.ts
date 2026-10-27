@@ -52,6 +52,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Quick reminders (+5m to +60m) on a new task now always count from now. From the Calendar tab they used to be added to 9:00 AM on the selected day. When editing a task, they still push its existing reminder back."
+      },
+      {
+        type: "FIX",
+        text: "Repeating tasks keep their time across daylight saving changes: a task that repeats every Monday at 9:00 AM stays at 9:00 AM after the clocks change instead of moving to 8:00 or 10:00. Monthly repeats on the 29th to 31st now land on the last day of shorter months instead of spilling into the next month."
       }
     ]
   },

@@ -10,12 +10,14 @@ import { useState, useRef, useEffect, useCallback, createContext, useContext } f
 import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
-import { applySetCompletedLocal, formatRescheduledToast, sortChangelogItems } from "../../shared";
+import { applySetCompletedLocal, formatRescheduledToast, getLocalTimeZone, sortChangelogItems } from "../../shared";
 import {
   DEFAULT_DISPLAY_NAME,
   getDisplayNamesForUsers,
+  getUserTimeZone,
   resolveDisplayName,
   sanitizeDisplayNameInput,
+  setUserTimeZone,
   syncUserProfileOnSignIn,
 } from "~/user-profile.server";
 import { listSharedWithMe, recordSharedListAccess, removeSharedListAccess } from "~/shared-lists.server";
@@ -247,6 +249,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     discordWebhookUrl: "",
     displayName: DEFAULT_DISPLAY_NAME,
     displayNameSet: false,
+    timeZone: null as string | null,
   };
   if (userId && isLoggedIn) {
     try {
@@ -260,6 +263,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
           discordWebhookUrl: settingsVal.discord_webhook_url || "",
           displayName: resolveDisplayName(settingsVal.display_name),
           displayNameSet: Boolean(settingsVal.display_name && String(settingsVal.display_name).trim()),
+          timeZone: settingsVal.time_zone || null,
         };
       }
     } catch (e) {
@@ -337,6 +341,17 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
           console.error("Failed to migrate guest lists to D1:", e);
         }
       }
+    }
+    return json({ success: true });
+  }
+
+  if (intent === "setTimeZone") {
+    if (!isLoggedIn) {
+      return Response.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const saved = await setUserTimeZone(db, userId, email, formData.get("timeZone"));
+    if (!saved) {
+      return Response.json({ error: "Invalid time zone" }, { status: 400 });
     }
     return json({ success: true });
   }
@@ -457,7 +472,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "toggle": {
       const id = formData.get("id") as string;
-      const todo = await todoManager.toggle(id);
+      const timeZone = isLoggedIn ? await getUserTimeZone(db, userId) : undefined;
+      const todo = await todoManager.toggle(id, { timeZone });
       return { success: true, todo };
     }
 
@@ -465,7 +481,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const id = formData.get("id") as string;
       const completedRaw = formData.get("completed");
       const completed = completedRaw === "true" || completedRaw === "1";
-      const { todo, rescheduled } = await todoManager.setCompleted(id, completed);
+      const timeZone = isLoggedIn ? await getUserTimeZone(db, userId) : undefined;
+      const { todo, rescheduled } = await todoManager.setCompleted(id, completed, { timeZone });
       return { success: true, todo, rescheduled };
     }
 
@@ -1605,6 +1622,28 @@ export default function TodoPage() {
   const clearFetcher = useFetcher();
   const listFetcher = useFetcher();
   const settingsFetcher = useFetcher();
+  const timeZoneFetcher = useFetcher();
+  const reportedTimeZone = useRef<string | null>(null);
+
+  // Report the browser's time zone so recurring tasks keep their local clock
+  // time across daylight saving changes. Only sent when it differs from the
+  // stored value; re-checked when the tab becomes visible again.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const report = () => {
+      const zone = getLocalTimeZone();
+      if (!zone || zone === settings?.timeZone || zone === reportedTimeZone.current) return;
+      reportedTimeZone.current = zone;
+      timeZoneFetcher.submit({ intent: "setTimeZone", timeZone: zone }, { method: "post" });
+    };
+    report();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") report();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, settings?.timeZone]);
   
   const [guestLists, setGuestLists] = useState<GuestList[]>([]);
 

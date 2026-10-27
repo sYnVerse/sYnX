@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import { TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
+import { getUserTimeZone } from "../user-profile.server";
 import * as v from "valibot";
 import { SetTodoCompletedSchema } from "../../shared";
 
@@ -51,7 +52,9 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   }
 
   const manager = new TodoManager(db, todoRow.list_id);
-  const { todo, rescheduled } = await manager.setCompleted(todoId, completed);
+  // Repeats keep their local clock time in the user's stored time zone.
+  const timeZone = await getUserTimeZone(db, user.userId);
+  const { todo, rescheduled } = await manager.setCompleted(todoId, completed, { timeZone });
 
   return Response.json({ success: true, todo, rescheduled });
 }

@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS user_settings (
   phone_number TEXT DEFAULT '',
   discord_webhook_url TEXT DEFAULT '',
   phone_carrier TEXT DEFAULT '',
-  display_name TEXT
+  display_name TEXT,
+  time_zone TEXT
 );
 
 CREATE TABLE IF NOT EXISTS lists (
