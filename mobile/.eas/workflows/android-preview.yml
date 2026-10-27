@@ -1,8 +1,11 @@
 name: Android preview build
 
 # Builds an installable Android preview APK whenever a commit that touches the
-# mobile app lands on main. Root shared/ is included because the build's
-# pre-install hook copies it into the app (scripts/sync-shared.js).
+# mobile app lands on main, then comments on the merged pull request with a
+# link to the build page (Install button and QR code). Pull requests never
+# trigger a build, to save EAS build credits.
+# Root shared/ is included because the build's pre-install hook copies it into
+# the app (scripts/sync-shared.js).
 on:
   push:
     branches: ['main']
@@ -23,3 +26,19 @@ jobs:
     params:
       platform: android
       profile: preview
+
+  comment_on_github:
+    name: Post build link to GitHub
+    after: [build_android_preview]
+    environment: preview
+    env:
+      BUILD_ID: ${{ after.build_android_preview.outputs.build_id }}
+      BUILD_STATUS: ${{ after.build_android_preview.status }}
+      APP_VERSION: ${{ after.build_android_preview.outputs.app_version }}
+      APP_BUILD_VERSION: ${{ after.build_android_preview.outputs.app_build_version }}
+      COMMIT_SHA: ${{ github.sha }}
+      WORKFLOW_URL: ${{ workflow.url }}
+    steps:
+      - uses: eas/checkout
+      - name: Comment on the merged pull request
+        run: node scripts/post-build-comment.js
