@@ -10,19 +10,17 @@ import {
 import { WEB_CHANGELOG } from "../app/constants/changelog";
 import { MOBILE_CHANGELOG } from "../mobile/src/constants/changelog";
 
-describe("changelog category order", () => {
-  it("is NEW, then IMPR, then FIX", () => {
+describe("changelog category order helpers", () => {
+  it("defines the order as NEW, then IMPR, then FIX", () => {
     expect(CHANGELOG_CATEGORY_ORDER).toEqual(["NEW", "IMPR", "FIX"]);
   });
 
-  it("ranks each category by its position", () => {
-    expect(changelogCategoryRank("NEW")).toBe(0);
-    expect(changelogCategoryRank("IMPR")).toBe(1);
-    expect(changelogCategoryRank("FIX")).toBe(2);
+  it("ranks categories by position and puts unknown types last", () => {
+    expect(CHANGELOG_CATEGORY_ORDER.map(changelogCategoryRank)).toEqual([0, 1, 2]);
     expect(changelogCategoryRank("OTHER" as ChangelogCategory)).toBe(CHANGELOG_CATEGORY_ORDER.length);
   });
 
-  it("sorts items stably without mutating the input", () => {
+  it("sorts stably within a category without mutating the input", () => {
     const items: ChangelogItem[] = [
       { type: "FIX", text: "fix 1" },
       { type: "IMPR", text: "impr 1" },
@@ -31,7 +29,7 @@ describe("changelog category order", () => {
       { type: "NEW", text: "new 2" },
       { type: "IMPR", text: "impr 2" },
     ];
-    const snapshot = items.map((item) => item.text);
+    const original = items.map((item) => item.text);
 
     expect(sortChangelogItems(items).map((item) => item.text)).toEqual([
       "new 1",
@@ -41,28 +39,28 @@ describe("changelog category order", () => {
       "fix 1",
       "fix 2",
     ]);
-    expect(items.map((item) => item.text)).toEqual(snapshot);
+    expect(items.map((item) => item.text)).toEqual(original);
   });
 });
 
-describe.each([
-  ["web", WEB_CHANGELOG],
-  ["mobile", MOBILE_CHANGELOG],
-] as [string, ReleaseNote[]][])("%s changelog entries", (_surface, changelog) => {
-  it("only use known categories", () => {
-    for (const release of changelog) {
-      for (const item of release.changes) {
-        expect(CHANGELOG_CATEGORY_ORDER, `${release.version}: ${item.text}`).toContain(item.type);
-      }
+function expectChangelogOrdered(changelog: ReleaseNote[]) {
+  for (const release of changelog) {
+    const types = release.changes.map((item) => item.type);
+    for (const type of types) {
+      expect(CHANGELOG_CATEGORY_ORDER, `${release.version} uses unknown category "${type}"`).toContain(type);
     }
+    expect(types, `${release.version} items must be ordered NEW, then IMPR, then FIX`).toEqual(
+      sortChangelogItems(release.changes).map((item) => item.type)
+    );
+  }
+}
+
+describe("changelog entries follow the category order", () => {
+  it("web: every version lists NEW, then IMPR, then FIX with known categories", () => {
+    expectChangelogOrdered(WEB_CHANGELOG);
   });
 
-  it.each(changelog.map((release) => [release.version, release] as const))(
-    "%s lists NEW, then IMPR, then FIX items",
-    (_version, release) => {
-      expect(release.changes.map((item) => item.type)).toEqual(
-        sortChangelogItems(release.changes).map((item) => item.type)
-      );
-    }
-  );
+  it("mobile: every version lists NEW, then IMPR, then FIX with known categories", () => {
+    expectChangelogOrdered(MOBILE_CHANGELOG);
+  });
 });
