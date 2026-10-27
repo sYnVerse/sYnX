@@ -42,6 +42,7 @@ import {
 import { useTheme } from "../context/ThemeContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../context/ToastContext";
+import { getCachedListName } from "../services/listNames";
 import type { TodoItem } from "../shared";
 import { CalendarPickerModal } from "../components/CalendarPickerModal";
 import { ChangelogModal } from "../components/ChangelogModal";
@@ -295,7 +296,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         }
       }
       if (allTasks.length > 0) {
-        await syncAllTasksToNativeCalendar(allTasks);
+        await syncAllTasksToNativeCalendar(allTasks, (listId) =>
+          getCachedListName(queryClient, listId)
+        );
       }
     } catch (e) {
       console.warn("Failed to sync existing tasks to native calendar", e);

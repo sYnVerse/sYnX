@@ -16,6 +16,14 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Tasks without a duration now sync to your calendar as an event at the reminder time with no length (9:00 to 9:00) instead of a made-up 15-minute block."
+      },
+      {
+        type: "IMPR",
+        text: "Calendar events now show which list a task belongs to, like \"sYnX Task · Groceries\", in the event description."
+      },
+      {
+        type: "IMPR",
+        text: "Calendar event descriptions mark priority with a color: 🟢 Low, 🟡 Medium, and 🔴 High."
       }
     ]
   },

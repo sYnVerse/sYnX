@@ -38,6 +38,7 @@ import { ListAccessErrorState, type ListAccessErrorKind } from "../components/Li
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
 import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../services/calendar";
+import { getCachedListName } from "../services/listNames";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
@@ -278,7 +279,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
           old ? [...old, createdTodo] : [createdTodo]
         );
-        syncTaskToNativeCalendar(createdTodo).catch(() => {});
+        syncTaskToNativeCalendar(createdTodo, {
+          listName: getCachedListName(queryClient, createdTodo.listId),
+        }).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
@@ -296,7 +299,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
           old ? old.map((t) => (t.id === updatedTodo.id ? updatedTodo : t)) : []
         );
-        syncTaskToNativeCalendar(updatedTodo).catch(() => {});
+        syncTaskToNativeCalendar(updatedTodo, {
+          listName: getCachedListName(queryClient, updatedTodo.listId),
+        }).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },

@@ -11,6 +11,7 @@ import {
 import { useToast } from "../context/ToastContext";
 import { useTheme } from "../context/ThemeContext";
 import { syncTaskToNativeCalendar } from "../services/calendar";
+import { getCachedListName } from "../services/listNames";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 
 type SetCompletedVars = { id: string; completed: boolean };
@@ -79,7 +80,9 @@ export function useSetTodoCompleted(listId: string | undefined) {
             subtasks: item.subtasks,
           }))
         );
-        syncTaskToNativeCalendar(data.todo).catch(() => {});
+        syncTaskToNativeCalendar(data.todo, {
+          listName: getCachedListName(queryClient, data.todo.listId),
+        }).catch(() => {});
       }
       if (data.rescheduled && data.todo?.reminderAt) {
         showSuccess(formatRescheduledToast(data.todo.reminderAt));
