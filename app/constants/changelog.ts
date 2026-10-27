@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.2.2";
+export const WEB_VERSION = "v5.3.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.3.0",
+    date: "2026-10-27",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Home time zone setting in your profile: repeating tasks keep their local time in this zone. Search the list or use this browser's zone. It's filled in from your browser the first time and only changes when you change it."
+      },
+      {
+        type: "FIX",
+        text: "Repeating tasks keep their time across daylight saving changes: a task that repeats every Monday at 9:00 AM stays at 9:00 AM after the clocks change instead of moving to 8:00 or 10:00. Monthly repeats on the 29th to 31st now land on the last day of shorter months instead of spilling into the next month."
+      }
+    ]
+  },
   {
     version: "v5.2.2",
     date: "2026-10-27",
@@ -11,10 +26,6 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "What's New now lists each version's new features first, then improvements, then fixes."
-      },
-      {
-        type: "FIX",
-        text: "Repeating tasks keep their time across daylight saving changes: a task that repeats every Monday at 9:00 AM stays at 9:00 AM after the clocks change instead of moving to 8:00 or 10:00. Monthly repeats on the 29th to 31st now land on the last day of shorter months instead of spilling into the next month."
       }
     ]
   },

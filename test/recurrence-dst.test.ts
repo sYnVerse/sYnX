@@ -76,10 +76,12 @@ describe("server rescheduling uses the user's stored time zone", () => {
     await db.exec("DELETE FROM user_settings");
   });
 
-  it("stores a valid reported zone (rejecting junk) and reschedules in it", async () => {
+  it("sets the home zone once, never replaces it silently, and reschedules in it", async () => {
     expect(await getUserTimeZone(db, userId)).toBeUndefined();
-    expect(await setUserTimeZone(db, userId, "a@example.com", "'; DROP TABLE todos; --")).toBe(false);
-    expect(await setUserTimeZone(db, userId, "a@example.com", LA)).toBe(true);
+    expect(await setUserTimeZone(db, userId, "a@example.com", "'; DROP TABLE todos; --")).toBeNull();
+    expect(await setUserTimeZone(db, userId, "a@example.com", LA, { onlyIfUnset: true })).toBe(LA);
+    // A device in another zone can't overwrite it without the user choosing to.
+    expect(await setUserTimeZone(db, userId, "a@example.com", "Asia/Tokyo", { onlyIfUnset: true })).toBe(LA);
     const timeZone = await getUserTimeZone(db, userId);
     expect(timeZone).toBe(LA);
 
@@ -89,5 +91,8 @@ describe("server rescheduling uses the user's stored time zone", () => {
     const { todo: next, rescheduled } = await manager.setCompleted(todo.id, true, { timeZone });
     expect(rescheduled).toBe(true);
     expect(wall(next.reminderAt!)).toBe("Mon, Nov 2, 09:00");
+
+    // An explicit change (Settings or the travel prompt) does replace it.
+    expect(await setUserTimeZone(db, userId, "a@example.com", "Asia/Tokyo")).toBe("Asia/Tokyo");
   });
 });

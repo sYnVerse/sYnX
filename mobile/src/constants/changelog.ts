@@ -18,6 +18,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "New \"Pick date & time\" option next to the quick reminders when adding or editing a task: choose any day and time, like an exam two weeks out, without going through the Calendar tab. The chosen time shows on the pill, and a task's existing reminder appears there when you edit it. A short line under the reminders spells out when you'll be reminded, like \"Reminds you tomorrow at 9:00 AM\"."
       },
       {
+        type: "NEW",
+        text: "Home time zone: repeating tasks keep their local time in your home zone, shown under Settings → Account, where you can switch it to this phone's zone. When you travel to another time zone, sYnX asks whether to switch your repeating reminders to the local time or keep your home time, and remembers your answer for that zone. One-time reminders don't change."
+      },
+      {
         type: "IMPR",
         text: "Calendar events now show which list a task belongs to, like \"sYnX Task · Groceries\", in the event description."
       },

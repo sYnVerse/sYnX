@@ -25,6 +25,7 @@ import {
   Sparkles,
   User,
   ExternalLink,
+  Globe,
   Info,
   ChevronRight,
 } from "lucide-react-native";
@@ -44,6 +45,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../context/ToastContext";
 import { getCachedListName } from "../services/listNames";
 import type { TodoItem } from "../shared";
+import { describeTimeZone, getLocalTimeZone } from "../shared";
+import {
+  getKnownHomeTimeZone,
+  setHomeTimeZone,
+  subscribeHomeTimeZone,
+} from "../services/timeZoneSync";
 import { CalendarPickerModal } from "../components/CalendarPickerModal";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
@@ -111,6 +118,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   );
   const [availableCalendars, setAvailableCalendars] = useState<AvailableCalendar[]>([]);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
+  const [homeTimeZone, setHomeTimeZoneState] = useState<string | null | undefined>(getKnownHomeTimeZone());
+  const [homeTimeZoneBusy, setHomeTimeZoneBusy] = useState(false);
+  const deviceTimeZone = getLocalTimeZone();
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydrated = useRef(false);
@@ -163,6 +173,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           setPhoneCarrier(loaded.phoneCarrier);
           setDiscordWebhookUrl(loaded.discordWebhookUrl);
           setDisplayName(loaded.displayName);
+          setHomeTimeZoneState(res.data.settings.timeZone ?? null);
           onDirtyChange?.(false);
         }
       } catch (e) {
@@ -193,6 +204,21 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     }
     loadSettings();
   }, []);
+
+  useEffect(() => subscribeHomeTimeZone(setHomeTimeZoneState), []);
+
+  const handleUseDeviceTimeZone = async () => {
+    if (!deviceTimeZone || homeTimeZoneBusy) return;
+    triggerImpact();
+    setHomeTimeZoneBusy(true);
+    try {
+      await setHomeTimeZone(deviceTimeZone);
+    } catch (e: any) {
+      showError(getErrorMessage(e, "Couldn't update home time zone"));
+    } finally {
+      setHomeTimeZoneBusy(false);
+    }
+  };
 
   const persistRemoteSettings = useCallback(async (): Promise<boolean> => {
     setSavingRemote(true);
@@ -557,6 +583,32 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         <Text style={[styles.hint, { color: theme.textMuted }]}>
           Shown on lists you share. Your email is never shared with others.
         </Text>
+
+        <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 16 }]}>HOME TIME ZONE</Text>
+        <Text style={[styles.label, { color: theme.textPrimary }]} accessibilityLabel="Home time zone">
+          {homeTimeZone ? `${describeTimeZone(homeTimeZone)} (${homeTimeZone})` : "Not set yet"}
+        </Text>
+        <Text style={[styles.hint, { color: theme.textMuted }]}>
+          Repeating tasks stay at the same local time in this zone, even when the clocks change.
+        </Text>
+        {deviceTimeZone && homeTimeZone !== undefined && deviceTimeZone !== homeTimeZone ? (
+          <TouchableOpacity
+            style={[styles.linkBtn, { borderColor: theme.inputBorder, backgroundColor: theme.inputBg, marginTop: 8 }]}
+            onPress={handleUseDeviceTimeZone}
+            disabled={homeTimeZoneBusy}
+            accessibilityRole="button"
+            accessibilityLabel={`Use this phone's time zone, ${deviceTimeZone}`}
+          >
+            {homeTimeZoneBusy ? (
+              <ActivityIndicator size="small" color={theme.accent} />
+            ) : (
+              <Globe size={14} color={theme.accent} />
+            )}
+            <Text style={[styles.linkBtnText, { color: theme.accent }]}>
+              Use this phone&apos;s zone ({deviceTimeZone})
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* Appearance */}

@@ -130,3 +130,33 @@ export function addCalendarInterval(
   }
   return fromWallClock(w, timeZone);
 }
+
+/** All IANA zones this runtime knows (sorted), for pickers. Empty if unsupported. */
+export function listTimeZones(): string[] {
+  try {
+    const supportedValuesOf = (
+      Intl as unknown as { supportedValuesOf?: (key: "timeZone") => string[] }
+    ).supportedValuesOf;
+    return supportedValuesOf ? [...supportedValuesOf("timeZone")].sort() : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Friendly name for a zone, like "Pacific Time" or "Japan Time", falling back
+ * to the city from the IANA name ("Los Angeles time") when the runtime only
+ * offers a GMT offset.
+ */
+export function describeTimeZone(timeZone: string): string {
+  try {
+    const name = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "longGeneric" })
+      .formatToParts(new Date())
+      .find((p) => p.type === "timeZoneName")?.value;
+    if (name && !/^(GMT|UTC)[+-−]/.test(name)) return name;
+  } catch {
+    // fall through
+  }
+  const city = timeZone.split("/").pop()?.replace(/_/g, " ");
+  return city ? `${city} time` : timeZone;
+}

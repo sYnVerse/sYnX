@@ -133,25 +133,31 @@ export async function getUserTimeZone(
 }
 
 /**
- * Store the time zone a device reports. Returns false for an invalid zone.
- * Only writes when the value changed.
+ * Save the user's home time zone (used to keep repeating reminders at the same
+ * local time). With `onlyIfUnset`, an existing value is never replaced: clients
+ * use that to fill it in once from the device, and change it only when the
+ * user asks. Returns the stored zone afterwards, or null for an invalid zone.
  */
 export async function setUserTimeZone(
   db: D1Database,
   userId: string,
   email: string | null | undefined,
-  timeZone: unknown
-): Promise<boolean> {
-  if (!isValidTimeZone(timeZone)) return false;
+  timeZone: unknown,
+  options: { onlyIfUnset?: boolean } = {}
+): Promise<string | null> {
+  if (!isValidTimeZone(timeZone)) return null;
   await ensureUserProfileSchema(db);
+  const guard = options.onlyIfUnset
+    ? "user_settings.time_zone IS NULL OR user_settings.time_zone = ''"
+    : "user_settings.time_zone IS NOT excluded.time_zone";
   await db
     .prepare(
       `INSERT INTO user_settings (user_id, email, time_zone)
        VALUES (?, ?, ?)
        ON CONFLICT(user_id) DO UPDATE SET time_zone = excluded.time_zone
-       WHERE user_settings.time_zone IS NOT excluded.time_zone`
+       WHERE ${guard}`
     )
     .bind(userId, typeof email === "string" ? email.trim() : "", timeZone)
     .run();
-  return true;
+  return (await getUserTimeZone(db, userId)) ?? null;
 }

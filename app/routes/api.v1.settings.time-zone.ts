@@ -4,9 +4,11 @@ import { setUserTimeZone } from "../user-profile.server";
 
 /**
  * PUT /api/v1/settings/time-zone
- * Body: { timeZone: "America/Los_Angeles" } (IANA name from the device)
- * Stored per user so recurring tasks keep their local clock time across
- * daylight saving changes. Only this field is touched.
+ * Body: { timeZone: "America/Los_Angeles", onlyIfUnset?: boolean }
+ * Sets the user's home time zone (IANA name), which keeps repeating reminders
+ * at the same local time across daylight saving changes. With onlyIfUnset the
+ * call only fills in a missing value (first run) and never replaces one.
+ * Responds with the stored home zone. Only this field is touched.
  */
 export async function action({ request, context }: ActionFunctionArgs) {
   if (request.method !== "PUT") {
@@ -20,18 +22,19 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let timeZone: unknown;
+  let body: { timeZone?: unknown; onlyIfUnset?: unknown };
   try {
-    const body = (await request.json()) as { timeZone?: unknown };
-    timeZone = body?.timeZone;
+    body = ((await request.json()) ?? {}) as typeof body;
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const saved = await setUserTimeZone(db, user.userId, user.email, timeZone);
-  if (!saved) {
+  const stored = await setUserTimeZone(db, user.userId, user.email, body.timeZone, {
+    onlyIfUnset: body.onlyIfUnset === true,
+  });
+  if (!stored) {
     return Response.json({ error: "Invalid time zone" }, { status: 400 });
   }
 
-  return Response.json({ success: true, timeZone });
+  return Response.json({ success: true, timeZone: stored });
 }

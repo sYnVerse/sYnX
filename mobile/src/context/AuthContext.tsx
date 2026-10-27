@@ -18,7 +18,7 @@ import {
 import { shouldSignOutAfterRefreshFailure } from "../shared/mobile-session";
 import { clearWidgetPreferences } from "../services/widgetPreferences";
 import { resetWidgetsLoggedOut } from "../services/widgetSync";
-import { resetTimeZoneSync, syncDeviceTimeZone } from "../services/timeZoneSync";
+import { checkHomeTimeZone, resetTimeZoneSync } from "../services/timeZoneSync";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -117,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await apiClient.get("/api/v1/settings");
       const settings = res.data?.settings;
-      syncDeviceTimeZone(settings?.timeZone ?? null).catch(() => {});
+      if (settings) checkHomeTimeZone(settings.timeZone ?? null).catch(() => {});
       if (settings?.userId || settings?.email) {
         setUser({
           userId: settings.userId || "",
@@ -216,8 +216,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (prev.match(/inactive|background/) && next === "active") {
         silentRefresh()
           .then((ok) => {
-            // Picks up a time zone change (travel) while the app was in the background.
-            if (ok) return syncDeviceTimeZone();
+            // Notices travel to another time zone while the app was in the background.
+            if (ok) return checkHomeTimeZone();
           })
           .catch(() => {});
       }
