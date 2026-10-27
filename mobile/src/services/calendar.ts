@@ -6,6 +6,26 @@ import type { TodoItem } from "../shared";
 const CALENDAR_SYNC_ENABLED_KEY = "@synx_calendar_sync_enabled";
 const SYNX_CALENDAR_ID_KEY = "@synx_calendar_id";
 const EVENT_MAPPINGS_KEY = "@synx_calendar_event_mappings";
+const EVENT_STATE_KEY = "@synx_calendar_event_state";
+const COMPLETED_BEHAVIOR_KEY = "@synx_calendar_completed_behavior";
+
+/** What happens to a task's calendar event when the task is done. */
+export type CompletedEventBehavior = "mark_done" | "delete";
+export const DEFAULT_COMPLETED_EVENT_BEHAVIOR: CompletedEventBehavior = "mark_done";
+
+/**
+ * What sYnX last wrote to the calendar for a task, so changes made outside the app
+ * (widget, web, another device) can be spotted on the next refresh.
+ */
+export interface TaskEventState {
+  listId?: string;
+  /** Reminder time the event was last written with. */
+  reminderAt?: number;
+  /** Set while the event shows the task as done. */
+  completedAt?: number;
+  /** The event was deleted because the task was done (Delete event setting). */
+  deletedOnComplete?: boolean;
+}
 
 /**
  * Check if device calendar sync is enabled in user settings.
@@ -54,6 +74,58 @@ async function saveEventMappings(mappings: Record<string, string>): Promise<void
     await AsyncStorage.setItem(EVENT_MAPPINGS_KEY, JSON.stringify(mappings));
   } catch (e) {
     console.error("Failed to save calendar event mappings", e);
+  }
+}
+
+async function getEventStates(): Promise<Record<string, TaskEventState>> {
+  try {
+    const json = await AsyncStorage.getItem(EVENT_STATE_KEY);
+    return json ? JSON.parse(json) : {};
+  } catch (error) {
+    console.warn("Failed to read calendar event state:", error);
+    return {};
+  }
+}
+
+async function setEventState(taskId: string, state: TaskEventState | null): Promise<void> {
+  try {
+    const states = await getEventStates();
+    if (state) {
+      states[taskId] = state;
+    } else if (taskId in states) {
+      delete states[taskId];
+    } else {
+      return;
+    }
+    await AsyncStorage.setItem(EVENT_STATE_KEY, JSON.stringify(states));
+  } catch (e) {
+    console.error("Failed to save calendar event state", e);
+  }
+}
+
+/**
+ * Read the "When a task is done" setting. Defaults to marking the event as done.
+ */
+export async function getCompletedEventBehavior(): Promise<CompletedEventBehavior> {
+  try {
+    const val = await AsyncStorage.getItem(COMPLETED_BEHAVIOR_KEY);
+    return val === "delete" || val === "mark_done" ? val : DEFAULT_COMPLETED_EVENT_BEHAVIOR;
+  } catch (error) {
+    console.warn("Failed to read completed event setting:", error);
+    return DEFAULT_COMPLETED_EVENT_BEHAVIOR;
+  }
+}
+
+/**
+ * Save the "When a task is done" setting.
+ */
+export async function setCompletedEventBehavior(behavior: CompletedEventBehavior): Promise<boolean> {
+  try {
+    await AsyncStorage.setItem(COMPLETED_BEHAVIOR_KEY, behavior);
+    return true;
+  } catch (error) {
+    console.error("Failed to save completed event setting:", error);
+    return false;
   }
 }
 
@@ -202,20 +274,70 @@ export async function getSelectedCalendarId(): Promise<string | null> {
 
 /**
  * Set the target calendar ID in AsyncStorage.
- * Clears event mappings so subsequent sync creates fresh events in the chosen calendar.
+ * Events sYnX already created are moved to the chosen calendar (copied there, then
+ * deleted from the old one), so switching calendars doesn't leave stale duplicates behind.
  */
 export async function setSelectedCalendarId(calendarId: string): Promise<boolean> {
   try {
     const currentId = await AsyncStorage.getItem(SYNX_CALENDAR_ID_KEY);
     if (currentId !== calendarId) {
       await AsyncStorage.setItem(SYNX_CALENDAR_ID_KEY, calendarId);
-      await saveEventMappings({});
+      await withCalendarLock(() => moveSyncedEventsToCalendar(calendarId));
     }
     return true;
   } catch (e) {
     console.error("Failed to save selected calendar id:", e);
     return false;
   }
+}
+
+/**
+ * Move every synced event into the target calendar. Calendars can't move events between
+ * each other, so each one is recreated in the new calendar and the old copy deleted.
+ * Events that no longer exist are dropped from the mappings.
+ */
+async function moveSyncedEventsToCalendar(calendarId: string): Promise<void> {
+  const mappings = await getEventMappings();
+  const taskIds = Object.keys(mappings);
+  if (taskIds.length === 0) return;
+
+  let target: Calendar.ExpoCalendar | null = null;
+  try {
+    target = await Calendar.ExpoCalendar.get(calendarId);
+  } catch (error) {
+    console.warn("Could not open the new target calendar to move events:", error);
+  }
+
+  const next: Record<string, string> = {};
+  for (const taskId of taskIds) {
+    const eventId = mappings[taskId];
+    let event: Calendar.ExpoCalendarEvent;
+    try {
+      event = await Calendar.ExpoCalendarEvent.get(eventId);
+    } catch {
+      continue; // Deleted in the calendar app; the next sync recreates it if needed.
+    }
+    if (event.calendarId === calendarId) {
+      next[taskId] = eventId;
+      continue;
+    }
+    if (!target) continue;
+    try {
+      const moved = await target.createEvent({
+        title: event.title,
+        startDate: event.startDate,
+        endDate: event.endDate,
+        notes: event.notes,
+        timeZone: event.timeZone,
+        ...(event.recurrenceRule ? { recurrenceRule: event.recurrenceRule } : {}),
+      });
+      next[taskId] = moved.id;
+      await event.delete();
+    } catch (error) {
+      console.warn(`Could not move calendar event for task ${taskId}:`, error);
+    }
+  }
+  await saveEventMappings(next);
 }
 
 /**
@@ -465,35 +587,95 @@ export function buildTaskEventNotes(
   return `${source} | Priority: ${marker ? `${marker} ` : ""}${priority.toUpperCase()}`;
 }
 
+/** Prefix added to the event title of a task marked done. */
+export const COMPLETED_TITLE_PREFIX = "✅ ";
+
+/**
+ * Event title for a completed task: the task text with a ✅ in front. Never adds a
+ * second ✅ when the title already has one.
+ */
+export function buildCompletedEventTitle(text: string): string {
+  return text.startsWith("✅") ? text : `${COMPLETED_TITLE_PREFIX}${text}`;
+}
+
+/** "Completed Oct 26, 2026" in the device's locale. */
+export function formatCompletedLine(completedAt: number): string {
+  const date = new Date(completedAt).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  return `Completed ${date}`;
+}
+
+/** Removes a "Completed <date>" line that sYnX added to an event description. */
+export function stripCompletedLine(notes: string | null | undefined): string {
+  return (notes ?? "")
+    .split("\n")
+    .filter((line) => !/^Completed\b/.test(line.trim()))
+    .join("\n")
+    .trimEnd();
+}
+
+/**
+ * Description for a completed task's event: the usual notes plus a "Completed <date>" line.
+ */
+export function buildCompletedEventNotes(baseNotes: string, completedAt: number): string {
+  const base = stripCompletedLine(baseNotes);
+  const line = formatCompletedLine(completedAt);
+  return base ? `${base}\n${line}` : line;
+}
+
 export interface SyncTaskOptions {
   /** Name of the task's list, shown in the event description. */
   listName?: string | null;
+  /** When the task was completed (defaults to now). Used for the "Completed" line. */
+  completedAt?: number;
+}
+
+// Calendar writes run one at a time, so an in-app check-off and a background
+// reconcile can't both read and rewrite the stored mappings at once.
+let calendarQueue: Promise<unknown> = Promise.resolve();
+function withCalendarLock<T>(work: () => Promise<T>): Promise<T> {
+  const run = calendarQueue.then(work, work);
+  calendarQueue = run.catch(() => undefined);
+  return run;
 }
 
 /**
  * Sync a single task to the device's native calendar.
- * If task has no reminderAt or is completed, any existing synced native event will be removed.
+ * - No reminder: any synced event is removed.
+ * - Completed: the event is marked done (✅ title and a "Completed" line) or deleted,
+ *   depending on the "When a task is done" setting.
+ * - Open: the event is created or updated. A task that was un-completed gets its normal
+ *   title and description back, or its event recreated if it was deleted.
+ * Recurring tasks are never completed (the server moves them to the next date), so their
+ * event simply moves along with the reminder.
  */
-export async function syncTaskToNativeCalendar(
+export function syncTaskToNativeCalendar(
   task: TodoItem,
   options: SyncTaskOptions = {}
 ): Promise<string | null> {
-  if (Platform.OS === "web") return null;
+  if (Platform.OS === "web") return Promise.resolve(null);
+  return withCalendarLock(() => syncTaskUnlocked(task, options));
+}
 
+async function syncTaskUnlocked(task: TodoItem, options: SyncTaskOptions): Promise<string | null> {
   try {
     const enabled = await isCalendarSyncEnabled();
     if (!enabled) return null;
 
-    const mappings = await getEventMappings();
-    const existingEventId = mappings[task.id];
-
-    // If task has no reminder date/time or is completed, remove synced event if it exists
-    if (!task.reminderAt || task.completed) {
-      if (existingEventId) {
-        await removeTaskFromNativeCalendar(task.id);
-      }
+    if (!task.reminderAt) {
+      await removeTaskUnlocked(task.id);
       return null;
     }
+
+    if (task.completed) {
+      return await applyCompletedTreatment(task, options);
+    }
+
+    const mappings = await getEventMappings();
+    const existingEventId = mappings[task.id];
 
     const calendarId = await resolveTargetCalendar();
     if (!calendarId) return null;
@@ -524,11 +706,14 @@ export async function syncTaskToNativeCalendar(
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
 
+    const openState: TaskEventState = { listId: task.listId, reminderAt: task.reminderAt };
+
     if (existingEventId) {
       try {
         const existingEvent = await Calendar.ExpoCalendarEvent.get(existingEventId);
         // Passing null clears a recurrence that was removed from the task.
         await existingEvent.update({ ...eventDetails, recurrenceRule: recurrenceRule ?? null });
+        await setEventState(task.id, openState);
         return existingEventId;
       } catch (error) {
         // Event might have been deleted manually by user in native Calendar app; recreate it.
@@ -544,6 +729,7 @@ export async function syncTaskToNativeCalendar(
     });
     mappings[task.id] = newEvent.id;
     await saveEventMappings(mappings);
+    await setEventState(task.id, openState);
     return newEvent.id;
   } catch (error) {
     console.error(`Failed to sync task ${task.id} to native calendar:`, error);
@@ -552,11 +738,68 @@ export async function syncTaskToNativeCalendar(
 }
 
 /**
+ * Mark a completed task's event as done, or delete it, per the user's setting.
+ * Tasks without a synced event are left alone (nothing is created for them).
+ */
+async function applyCompletedTreatment(
+  task: TodoItem,
+  options: SyncTaskOptions
+): Promise<string | null> {
+  const mappings = await getEventMappings();
+  const eventId = mappings[task.id];
+  if (!eventId) return null;
+
+  const states = await getEventStates();
+  const completedAt = states[task.id]?.completedAt ?? options.completedAt ?? Date.now();
+  const behavior = await getCompletedEventBehavior();
+
+  if (behavior === "delete") {
+    await removeTaskUnlocked(task.id);
+    // Remember the deletion so un-completing the task brings the event back.
+    await setEventState(task.id, {
+      listId: task.listId,
+      reminderAt: task.reminderAt,
+      completedAt,
+      deletedOnComplete: true,
+    });
+    return null;
+  }
+
+  try {
+    const event = await Calendar.ExpoCalendarEvent.get(eventId);
+    // Without a list name (e.g. a background widget sync) keep the event's own description.
+    const baseNotes = options.listName?.trim()
+      ? buildTaskEventNotes(task, options.listName)
+      : stripCompletedLine(event.notes) || buildTaskEventNotes(task);
+    await event.update({
+      title: buildCompletedEventTitle(task.text),
+      notes: buildCompletedEventNotes(baseNotes, completedAt),
+    });
+    await setEventState(task.id, {
+      listId: task.listId,
+      reminderAt: task.reminderAt,
+      completedAt,
+    });
+    return eventId;
+  } catch (error) {
+    // The event was deleted in the calendar app; nothing left to mark.
+    console.warn(`Could not mark calendar event done for task ${task.id}:`, error);
+    delete mappings[task.id];
+    await saveEventMappings(mappings);
+    await setEventState(task.id, null);
+    return null;
+  }
+}
+
+/**
  * Remove a task's synced event from native device calendar.
  */
-export async function removeTaskFromNativeCalendar(taskId: string): Promise<void> {
-  if (Platform.OS === "web") return;
+export function removeTaskFromNativeCalendar(taskId: string): Promise<void> {
+  if (Platform.OS === "web") return Promise.resolve();
+  return withCalendarLock(() => removeTaskUnlocked(taskId));
+}
 
+async function removeTaskUnlocked(taskId: string): Promise<void> {
   try {
     const mappings = await getEventMappings();
     const eventId = mappings[taskId];
@@ -571,6 +814,7 @@ export async function removeTaskFromNativeCalendar(taskId: string): Promise<void
       delete mappings[taskId];
       await saveEventMappings(mappings);
     }
+    await setEventState(taskId, null);
   } catch (error) {
     console.error(`Failed to remove calendar event for task ${taskId}:`, error);
   }
@@ -590,10 +834,91 @@ export async function syncAllTasksToNativeCalendar(
     const calendarId = await resolveTargetCalendar();
     if (!calendarId) return;
 
-    for (const task of tasks) {
-      await syncTaskToNativeCalendar(task, { listName: getListName?.(task.listId) ?? null });
-    }
+    await withCalendarLock(async () => {
+      for (const task of tasks) {
+        await syncTaskUnlocked(task, { listName: getListName?.(task.listId) ?? null });
+      }
+    });
   } catch (error) {
     console.error("Failed bulk sync of tasks to native calendar:", error);
   }
+}
+
+function flattenTasks(tasks: TodoItem[]): TodoItem[] {
+  const out: TodoItem[] = [];
+  for (const task of tasks) {
+    out.push(task);
+    if (task.subtasks?.length) out.push(...flattenTasks(task.subtasks));
+  }
+  return out;
+}
+
+/**
+ * Decide whether a task's calendar event is out of date with the task, based on what
+ * sYnX last wrote to the calendar. Only tasks that already have (or had) a synced event
+ * are considered, so this never creates events for tasks the user didn't sync.
+ */
+export function taskNeedsCalendarReconcile(
+  task: TodoItem,
+  hasEvent: boolean,
+  state: TaskEventState | undefined
+): boolean {
+  if (hasEvent) {
+    if (!task.reminderAt) return true;
+    if (task.completed) return state?.completedAt === undefined;
+    // Un-completed somewhere else: restore the normal title and description.
+    if (state?.completedAt !== undefined) return true;
+    // Reminder moved elsewhere (e.g. a recurring task checked off on the widget).
+    return state?.reminderAt !== undefined && state.reminderAt !== task.reminderAt;
+  }
+  // Event was deleted when the task was done; bring it back if the task is open again.
+  return Boolean(state?.deletedOnComplete && !task.completed && task.reminderAt);
+}
+
+/**
+ * Bring the device calendar in line with the latest task data. This catches changes the
+ * app didn't make itself: check-offs from the home screen widget, the web app, or another
+ * device. Completed tasks get the "When a task is done" treatment, un-completed tasks are
+ * restored, and moved reminders move their event. Does nothing without calendar access,
+ * and never shows a permission prompt.
+ */
+export async function reconcileTasksWithNativeCalendar(
+  tasks: TodoItem[],
+  getListName?: (listId: string) => string | null
+): Promise<number> {
+  if (Platform.OS === "web" || tasks.length === 0) return 0;
+
+  try {
+    if (!(await isCalendarSyncEnabled())) return 0;
+    const permission = await checkCalendarPermissions();
+    if (!permission.granted) return 0;
+
+    return await withCalendarLock(async () => {
+      const [mappings, states] = await Promise.all([getEventMappings(), getEventStates()]);
+      let changed = 0;
+      for (const task of flattenTasks(tasks)) {
+        if (!taskNeedsCalendarReconcile(task, Boolean(mappings[task.id]), states[task.id])) continue;
+        await syncTaskUnlocked(task, { listName: getListName?.(task.listId) ?? null });
+        changed++;
+      }
+      return changed;
+    });
+  } catch (error) {
+    console.error("Failed to reconcile tasks with native calendar:", error);
+    return 0;
+  }
+}
+
+/**
+ * IDs of lists that have tasks with a synced event (or one that may need restoring),
+ * so the app knows which lists to refresh to catch outside changes.
+ */
+export async function getListIdsWithSyncedEvents(): Promise<string[]> {
+  const [mappings, states] = await Promise.all([getEventMappings(), getEventStates()]);
+  const ids = new Set<string>();
+  for (const [taskId, state] of Object.entries(states)) {
+    if (!state.listId) continue;
+    if (mappings[taskId] || state.deletedOnComplete) ids.add(state.listId);
+  }
+  return [...ids];
 }

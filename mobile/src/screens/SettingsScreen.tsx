@@ -61,8 +61,25 @@ import {
   setSelectedCalendarId,
   openCalendarApp,
   syncAllTasksToNativeCalendar,
+  getCompletedEventBehavior,
+  setCompletedEventBehavior,
+  DEFAULT_COMPLETED_EVENT_BEHAVIOR,
   type AvailableCalendar,
+  type CompletedEventBehavior,
 } from "../services/calendar";
+
+const COMPLETED_BEHAVIOR_OPTIONS: { value: CompletedEventBehavior; label: string; description: string }[] = [
+  {
+    value: "mark_done",
+    label: "Mark as done",
+    description: "Keep the event, add ✅ to its title and the completion date to its description",
+  },
+  {
+    value: "delete",
+    label: "Delete event",
+    description: "Remove the event from your calendar",
+  },
+];
 
 interface SettingsScreenProps {
   onDirtyChange?: (isDirty: boolean) => void;
@@ -89,6 +106,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [calendarPermission, setCalendarPermission] = useState<string>("Not Granted");
   const queryClient = useQueryClient();
   const [targetCalendar, setTargetCalendar] = useState<AvailableCalendar | null>(null);
+  const [completedBehavior, setCompletedBehaviorState] = useState<CompletedEventBehavior>(
+    DEFAULT_COMPLETED_EVENT_BEHAVIOR
+  );
   const [availableCalendars, setAvailableCalendars] = useState<AvailableCalendar[]>([]);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
 
@@ -158,6 +178,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       try {
         const syncEnabled = await isCalendarSyncEnabled();
         setCalendarSync(syncEnabled);
+        setCompletedBehaviorState(await getCompletedEventBehavior());
         const permission = await checkCalendarPermissions();
         setCalendarPermission(describeCalendarPermission(permission));
         if (syncEnabled && permission.granted) {
@@ -409,6 +430,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     return () => subscription.remove();
   }, [enableCalendarSync]);
 
+  const handleSelectCompletedBehavior = async (behavior: CompletedEventBehavior) => {
+    if (behavior === completedBehavior) return;
+    triggerImpact();
+    const previous = completedBehavior;
+    setCompletedBehaviorState(behavior);
+    const ok = await setCompletedEventBehavior(behavior);
+    if (!ok) {
+      setCompletedBehaviorState(previous);
+      showError("Couldn't save calendar setting");
+    }
+  };
+
   const handleToggleCalendarSync = async (val: boolean) => {
     triggerImpact();
     if (val) {
@@ -642,6 +675,34 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
                 <ChevronRight size={14} color={theme.accent} />
               </View>
             </TouchableOpacity>
+
+            <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 16 }]}>WHEN A TASK IS DONE</Text>
+            <View style={styles.themeRow} accessibilityRole="radiogroup" accessibilityLabel="When a task is done">
+              {COMPLETED_BEHAVIOR_OPTIONS.map((opt) => {
+                const selected = completedBehavior === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={`When a task is done: ${opt.label}`}
+                    accessibilityHint={opt.description}
+                    style={[
+                      styles.themeOption,
+                      { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                      selected && { backgroundColor: theme.accentLight, borderColor: theme.accent, borderWidth: 2 },
+                    ]}
+                    onPress={() => handleSelectCompletedBehavior(opt.value)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.themeOptionText, { color: theme.textPrimary }]}>{opt.label}</Text>
+                      <Text style={[styles.hint, { color: theme.textMuted }]}>{opt.description}</Text>
+                    </View>
+                    {selected && <Check size={14} color={theme.accent} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
             {/* Guidance banner for Android when syncing to a dedicated local calendar */}
             {Platform.OS === "android" && (targetCalendar?.isDedicated || targetCalendar?.isLocal) ? (

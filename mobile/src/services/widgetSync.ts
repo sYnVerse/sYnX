@@ -23,6 +23,8 @@ import {
   type TodoList,
 } from '../shared';
 import { apiClient, secureSessionStore } from '../api/client';
+import { reconcileTasksWithNativeCalendar } from './calendar';
+import { getCachedListName } from './listNames';
 
 let isDrainingOps = false;
 let drainRequestedWhileBusy = false;
@@ -160,6 +162,18 @@ export async function drainAndReplayPendingWidgetOps(queryClient?: QueryClient):
 
       clearHandledWidgetOps(CurrentListWidget, handled);
       clearHandledWidgetOps(PinnedListWidget, handled);
+
+      // Widget checkoffs skip the in-app calendar code, so apply them to the device
+      // calendar here (also runs from the background task, without a query cache).
+      const appliedTodos = outcomes.flatMap((o) =>
+        o.status === 'applied' && o.todo ? [o.todo] : []
+      );
+      if (appliedTodos.length > 0) {
+        await reconcileTasksWithNativeCalendar(
+          appliedTodos,
+          queryClient ? (listId) => getCachedListName(queryClient, listId) : undefined
+        ).catch(() => 0);
+      }
     } while (drainRequestedWhileBusy);
   } catch (e) {
     console.warn('[widgetSync] Error draining widget pending ops:', e);

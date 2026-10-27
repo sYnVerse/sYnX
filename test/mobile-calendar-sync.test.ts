@@ -140,6 +140,12 @@ import {
   getTargetCalendar,
   openCalendarApp,
   SYNX_CALENDAR_TITLE,
+  setCompletedEventBehavior,
+  getCompletedEventBehavior,
+  reconcileTasksWithNativeCalendar,
+  getListIdsWithSyncedEvents,
+  buildCompletedEventTitle,
+  stripCompletedLine,
 } from "../mobile/src/services/calendar";
 
 const MAPPINGS_KEY = "@synx_calendar_event_mappings";
@@ -344,7 +350,8 @@ describe("task event create/update/delete", () => {
     expect(warnSpy).toHaveBeenCalled();
   });
 
-  it("deletes the event when the task is completed", async () => {
+  it("deletes the event when the task is completed and the setting is Delete event", async () => {
+    await setCompletedEventBehavior("delete");
     const id = await syncTaskToNativeCalendar(task());
     await syncTaskToNativeCalendar(task({ completed: true }));
     expect(cal.state.events.has(id!)).toBe(false);
@@ -480,5 +487,210 @@ describe("buildTaskEventNotes", () => {
   it("falls back to plain sYnX Task when the list name is unknown or blank", () => {
     expect(buildTaskEventNotes({ priority: "high" })).toBe("sYnX Task | Priority: 🔴 HIGH");
     expect(buildTaskEventNotes({ priority: "high" }, "   ")).toBe("sYnX Task | Priority: 🔴 HIGH");
+  });
+});
+
+describe("when a task is done (completed event behavior)", () => {
+  beforeEach(async () => {
+    grant();
+    await setCalendarSyncEnabled(true);
+  });
+
+  it("defaults to Mark as done and persists the setting", async () => {
+    expect(await getCompletedEventBehavior()).toBe("mark_done");
+    await setCompletedEventBehavior("delete");
+    expect(await getCompletedEventBehavior()).toBe("delete");
+    expect(storage.get("@synx_calendar_completed_behavior")).toBe("delete");
+  });
+
+  it("marks the event done: ✅ title and a Completed line, keeping the notes", async () => {
+    const id = await syncTaskToNativeCalendar(task(), { listName: "Groceries" });
+    const completedAt = new Date(2026, 9, 26, 12, 0).getTime();
+    const again = await syncTaskToNativeCalendar(task({ completed: true }), {
+      listName: "Groceries",
+      completedAt,
+    });
+    expect(again).toBe(id);
+    const event = cal.state.events.get(id!);
+    expect(event.title).toBe("✅ Write report");
+    expect(event.notes).toBe("sYnX Task · Groceries | Priority: 🔴 HIGH\nCompleted Oct 26, 2026");
+    expect(JSON.parse(storage.get(MAPPINGS_KEY)!)).toEqual({ t1: id });
+  });
+
+  it("is idempotent: no double ✅ and the original completion date is kept", async () => {
+    const id = await syncTaskToNativeCalendar(task(), { listName: "Groceries" });
+    const first = new Date(2026, 9, 26, 12, 0).getTime();
+    await syncTaskToNativeCalendar(task({ completed: true }), { listName: "Groceries", completedAt: first });
+    await syncTaskToNativeCalendar(task({ completed: true }), {
+      listName: "Groceries",
+      completedAt: new Date(2026, 9, 28, 12, 0).getTime(),
+    });
+    const event = cal.state.events.get(id!);
+    expect(event.title).toBe("✅ Write report");
+    expect(event.notes.match(/Completed/g)).toHaveLength(1);
+    expect(event.notes).toContain("Completed Oct 26, 2026");
+  });
+
+  it("restores the event when the task is un-completed", async () => {
+    const id = await syncTaskToNativeCalendar(task(), { listName: "Groceries" });
+    await syncTaskToNativeCalendar(task({ completed: true }), { listName: "Groceries" });
+    const back = await syncTaskToNativeCalendar(task(), { listName: "Groceries" });
+    expect(back).toBe(id);
+    const event = cal.state.events.get(id!);
+    expect(event.title).toBe("Write report");
+    expect(event.notes).toBe("sYnX Task · Groceries | Priority: 🔴 HIGH");
+  });
+
+  it("recreates a deleted event when the task is un-completed (Delete event setting)", async () => {
+    await setCompletedEventBehavior("delete");
+    const id = await syncTaskToNativeCalendar(task());
+    await syncTaskToNativeCalendar(task({ completed: true }));
+    expect(cal.state.events.size).toBe(0);
+    const recreated = await syncTaskToNativeCalendar(task());
+    expect(recreated).not.toBe(id);
+    expect(cal.state.events.get(recreated!).title).toBe("Write report");
+  });
+
+  it("does not create an event for a task that is already done", async () => {
+    expect(await syncTaskToNativeCalendar(task({ completed: true }))).toBeNull();
+    expect(cal.state.events.size).toBe(0);
+  });
+
+  it("recurring tasks keep moving to the next date instead of being marked done", async () => {
+    const id = await syncTaskToNativeCalendar(task({ recurrence: "daily" }));
+    const next = task().reminderAt + 24 * 60 * 60 * 1000;
+    // The server reschedules a checked-off recurring task and leaves it open.
+    await syncTaskToNativeCalendar(task({ recurrence: "daily", reminderAt: next }));
+    const event = cal.state.events.get(id!);
+    expect(event.title).toBe("Write report");
+    expect(event.startDate.getTime()).toBe(next);
+  });
+
+  it("deleting the task clears its stored state", async () => {
+    await syncTaskToNativeCalendar(task({ listId: "L1" }));
+    await removeTaskFromNativeCalendar("t1");
+    expect(JSON.parse(storage.get("@synx_calendar_event_state")!)).toEqual({});
+  });
+
+  it("title and description helpers", () => {
+    expect(buildCompletedEventTitle("Pay rent")).toBe("✅ Pay rent");
+    expect(buildCompletedEventTitle("✅ Pay rent")).toBe("✅ Pay rent");
+    expect(stripCompletedLine("sYnX Task | Priority: NONE\nCompleted Oct 1, 2026")).toBe(
+      "sYnX Task | Priority: NONE"
+    );
+  });
+});
+
+describe("reconciling outside check-offs (widget, web, other devices)", () => {
+  beforeEach(async () => {
+    grant();
+    await setCalendarSyncEnabled(true);
+  });
+
+  it("marks done a task completed elsewhere whose event still exists", async () => {
+    const id = await syncTaskToNativeCalendar(task({ listId: "L1" }), { listName: "Work" });
+    const changed = await reconcileTasksWithNativeCalendar([task({ listId: "L1", completed: true })]);
+    expect(changed).toBe(1);
+    const event = cal.state.events.get(id!);
+    expect(event.title).toBe("✅ Write report");
+    // Without a list name it keeps the event's own description.
+    expect(event.notes.startsWith("sYnX Task · Work | Priority: 🔴 HIGH\nCompleted ")).toBe(true);
+  });
+
+  it("deletes the event instead when the setting is Delete event", async () => {
+    await setCompletedEventBehavior("delete");
+    const id = await syncTaskToNativeCalendar(task({ listId: "L1" }));
+    await reconcileTasksWithNativeCalendar([task({ listId: "L1", completed: true })]);
+    expect(cal.state.events.has(id!)).toBe(false);
+    // Un-checked on the web later: the event comes back.
+    await reconcileTasksWithNativeCalendar([task({ listId: "L1" })]);
+    expect(cal.state.events.size).toBe(1);
+  });
+
+  it("leaves tasks alone when nothing changed, and never creates events for unsynced tasks", async () => {
+    const id = await syncTaskToNativeCalendar(task({ listId: "L1" }));
+    const event = cal.state.events.get(id!);
+    const changed = await reconcileTasksWithNativeCalendar([
+      task({ listId: "L1" }),
+      task({ id: "other", listId: "L1" }),
+      task({ id: "done-other", listId: "L1", completed: true }),
+    ]);
+    expect(changed).toBe(0);
+    expect(event.update).not.toHaveBeenCalled();
+    expect(cal.state.events.size).toBe(1);
+  });
+
+  it("does not touch an event that is already marked done", async () => {
+    const id = await syncTaskToNativeCalendar(task({ listId: "L1" }));
+    await syncTaskToNativeCalendar(task({ listId: "L1", completed: true }));
+    const event = cal.state.events.get(id!);
+    event.update.mockClear();
+    expect(await reconcileTasksWithNativeCalendar([task({ listId: "L1", completed: true })])).toBe(0);
+    expect(event.update).not.toHaveBeenCalled();
+  });
+
+  it("restores a task un-completed elsewhere", async () => {
+    const id = await syncTaskToNativeCalendar(task({ listId: "L1" }));
+    await syncTaskToNativeCalendar(task({ listId: "L1", completed: true }));
+    await reconcileTasksWithNativeCalendar([task({ listId: "L1" })]);
+    expect(cal.state.events.get(id!).title).toBe("Write report");
+  });
+
+  it("moves the event when the reminder changed elsewhere (recurring widget check-off)", async () => {
+    const id = await syncTaskToNativeCalendar(task({ listId: "L1", recurrence: "daily" }));
+    const next = task().reminderAt + 24 * 60 * 60 * 1000;
+    await reconcileTasksWithNativeCalendar([task({ listId: "L1", recurrence: "daily", reminderAt: next })]);
+    expect(cal.state.events.get(id!).startDate.getTime()).toBe(next);
+  });
+
+  it("checks subtasks too", async () => {
+    const id = await syncTaskToNativeCalendar(task({ id: "sub", listId: "L1" }));
+    await reconcileTasksWithNativeCalendar([
+      task({ id: "parent", listId: "L1", reminderAt: undefined, subtasks: [task({ id: "sub", listId: "L1", completed: true })] }),
+    ]);
+    expect(cal.state.events.get(id!).title).toBe("✅ Write report");
+  });
+
+  it("does nothing (and never prompts) without calendar access or with sync off", async () => {
+    const id = await syncTaskToNativeCalendar(task({ listId: "L1" }));
+    cal.state.permission = { status: "denied", granted: false, canAskAgain: true, expires: "never" };
+    expect(await reconcileTasksWithNativeCalendar([task({ listId: "L1", completed: true })])).toBe(0);
+    expect(cal.module.requestCalendarPermissions).not.toHaveBeenCalled();
+    grant();
+    await setCalendarSyncEnabled(false);
+    expect(await reconcileTasksWithNativeCalendar([task({ listId: "L1", completed: true })])).toBe(0);
+    expect(cal.state.events.get(id!).title).toBe("Write report");
+  });
+
+  it("lists the lists that have synced events", async () => {
+    await syncTaskToNativeCalendar(task({ id: "a", listId: "L1" }));
+    await syncTaskToNativeCalendar(task({ id: "b", listId: "L2" }));
+    await syncTaskToNativeCalendar(task({ id: "c", listId: "L2" }));
+    expect((await getListIdsWithSyncedEvents()).sort()).toEqual(["L1", "L2"]);
+  });
+});
+
+describe("switching the target calendar", () => {
+  beforeEach(async () => {
+    grant();
+    await setCalendarSyncEnabled(true);
+  });
+
+  it("moves existing events to the new calendar instead of orphaning them", async () => {
+    cal.state.calendars = [cal.makeCalendar("old", "Old"), cal.makeCalendar("new", "New")];
+    storage.set(CAL_ID_KEY, "old");
+    const oldId = await syncTaskToNativeCalendar(task(), { listName: "Work" });
+    const oldEvent = cal.state.events.get(oldId!);
+    oldEvent.calendarId = "old";
+
+    await setSelectedCalendarId("new");
+    const mappings = JSON.parse(storage.get(MAPPINGS_KEY)!);
+    expect(mappings.t1).not.toBe(oldId);
+    expect(cal.state.events.has(oldId!)).toBe(false);
+    expect(cal.state.calendars[1].createEvent).toHaveBeenCalledTimes(1);
+    const moved = cal.state.events.get(mappings.t1);
+    expect(moved.title).toBe("Write report");
+    expect(moved.notes).toBe("sYnX Task · Work | Priority: 🔴 HIGH");
+    expect(cal.state.events.size).toBe(1);
   });
 });
