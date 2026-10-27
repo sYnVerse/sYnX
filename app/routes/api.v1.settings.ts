@@ -31,6 +31,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     phoneNumber: row ? row.phone_number || "" : "",
     phoneCarrier: row ? row.phone_carrier || "" : "",
     discordWebhookUrl: row ? row.discord_webhook_url || "" : "",
+    /** Home time zone (IANA) for repeating reminders, or null until a device sets it. */
+    timeZone: row?.time_zone || null,
   };
 
   return Response.json({ success: true, settings });

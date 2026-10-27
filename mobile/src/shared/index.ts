@@ -136,6 +136,8 @@ export * from "./mobile-version";
 
 export * from "./reminder-time";
 
+export * from "./time-zone";
+
 export * from "./todo-completed";
 
 export * from "./widget-snapshot";

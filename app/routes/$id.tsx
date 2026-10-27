@@ -10,12 +10,22 @@ import { useState, useRef, useEffect, useCallback, createContext, useContext } f
 import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
-import { applySetCompletedLocal, formatRescheduledToast, sortChangelogItems } from "../../shared";
+import {
+  applySetCompletedLocal,
+  describeTimeZone,
+  formatRescheduledToast,
+  getLocalTimeZone,
+  isValidTimeZone,
+  listTimeZones,
+  sortChangelogItems,
+} from "../../shared";
 import {
   DEFAULT_DISPLAY_NAME,
   getDisplayNamesForUsers,
+  getUserTimeZone,
   resolveDisplayName,
   sanitizeDisplayNameInput,
+  setUserTimeZone,
   syncUserProfileOnSignIn,
 } from "~/user-profile.server";
 import { listSharedWithMe, recordSharedListAccess, removeSharedListAccess } from "~/shared-lists.server";
@@ -247,6 +257,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     discordWebhookUrl: "",
     displayName: DEFAULT_DISPLAY_NAME,
     displayNameSet: false,
+    timeZone: null as string | null,
   };
   if (userId && isLoggedIn) {
     try {
@@ -260,6 +271,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
           discordWebhookUrl: settingsVal.discord_webhook_url || "",
           displayName: resolveDisplayName(settingsVal.display_name),
           displayNameSet: Boolean(settingsVal.display_name && String(settingsVal.display_name).trim()),
+          timeZone: settingsVal.time_zone || null,
         };
       }
     } catch (e) {
@@ -339,6 +351,21 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       }
     }
     return json({ success: true });
+  }
+
+  // Home time zone for repeating reminders: "initTimeZone" fills it in once
+  // from the browser; "setTimeZone" is an explicit change from Settings.
+  if (intent === "setTimeZone" || intent === "initTimeZone") {
+    if (!isLoggedIn) {
+      return Response.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const stored = await setUserTimeZone(db, userId, email, formData.get("timeZone"), {
+      onlyIfUnset: intent === "initTimeZone",
+    });
+    if (!stored) {
+      return Response.json({ error: "Invalid time zone" }, { status: 400 });
+    }
+    return json({ success: true, timeZone: stored });
   }
 
   if (intent === "updateSettings") {
@@ -457,7 +484,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "toggle": {
       const id = formData.get("id") as string;
-      const todo = await todoManager.toggle(id);
+      const timeZone = isLoggedIn ? await getUserTimeZone(db, userId) : undefined;
+      const todo = await todoManager.toggle(id, { timeZone });
       return { success: true, todo };
     }
 
@@ -465,7 +493,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const id = formData.get("id") as string;
       const completedRaw = formData.get("completed");
       const completed = completedRaw === "true" || completedRaw === "1";
-      const { todo, rescheduled } = await todoManager.setCompleted(id, completed);
+      const timeZone = isLoggedIn ? await getUserTimeZone(db, userId) : undefined;
+      const { todo, rescheduled } = await todoManager.setCompleted(id, completed, { timeZone });
       return { success: true, todo, rescheduled };
     }
 
@@ -1605,6 +1634,20 @@ export default function TodoPage() {
   const clearFetcher = useFetcher();
   const listFetcher = useFetcher();
   const settingsFetcher = useFetcher();
+  const timeZoneFetcher = useFetcher();
+  const initTimeZoneSent = useRef(false);
+
+  // Fill in the home time zone (used by repeating reminders) once from this
+  // browser when the account has none. Never changed silently afterwards;
+  // the user changes it under Profile → Home time zone.
+  useEffect(() => {
+    if (!isLoggedIn || settings?.timeZone || initTimeZoneSent.current) return;
+    const zone = getLocalTimeZone();
+    if (!zone) return;
+    initTimeZoneSent.current = true;
+    timeZoneFetcher.submit({ intent: "initTimeZone", timeZone: zone }, { method: "post" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, settings?.timeZone]);
   
   const [guestLists, setGuestLists] = useState<GuestList[]>([]);
 
@@ -1911,6 +1954,9 @@ export default function TodoPage() {
   const [displayNameInput, setDisplayNameInput] = useState(
     settings?.displayNameSet ? (settings?.displayName ?? "") : ""
   );
+  const [homeTimeZoneInput, setHomeTimeZoneInput] = useState(settings?.timeZone ?? "");
+  const [timeZoneOptions, setTimeZoneOptions] = useState<string[]>([]);
+  const [browserTimeZone, setBrowserTimeZone] = useState<string | undefined>(undefined);
   const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
 
@@ -1921,6 +1967,7 @@ export default function TodoPage() {
   const initialDiscordEnabled = !!settings?.discordWebhookUrl;
   const initialDiscordInput = settings?.discordWebhookUrl ?? "";
   const initialDisplayNameInput = settings?.displayNameSet ? (settings?.displayName ?? "") : "";
+  const initialHomeTimeZone = settings?.timeZone ?? "";
 
   const isSettingsDirty =
     emailEnabled !== initialEmailEnabled ||
@@ -1929,7 +1976,8 @@ export default function TodoPage() {
     phoneCarrier !== initialPhoneCarrier ||
     discordEnabled !== initialDiscordEnabled ||
     discordInput !== initialDiscordInput ||
-    displayNameInput !== initialDisplayNameInput;
+    displayNameInput !== initialDisplayNameInput ||
+    homeTimeZoneInput.trim() !== initialHomeTimeZone;
 
   const resetSettings = () => {
     setEmailEnabled(initialEmailEnabled);
@@ -1939,6 +1987,25 @@ export default function TodoPage() {
     setDiscordEnabled(initialDiscordEnabled);
     setDiscordInput(initialDiscordInput);
     setDisplayNameInput(initialDisplayNameInput);
+    setHomeTimeZoneInput(initialHomeTimeZone);
+  };
+
+  // Zone list and browser zone are read on the client only (avoids hydration mismatch).
+  useEffect(() => {
+    setTimeZoneOptions(listTimeZones());
+    setBrowserTimeZone(getLocalTimeZone());
+  }, []);
+
+  /** Validates and saves the home time zone if it changed. False if invalid. */
+  const saveHomeTimeZone = () => {
+    const zone = homeTimeZoneInput.trim();
+    if (zone === initialHomeTimeZone) return true;
+    if (!isValidTimeZone(zone)) {
+      showToast("⚠️ Pick a home time zone from the list");
+      return false;
+    }
+    timeZoneFetcher.submit({ intent: "setTimeZone", timeZone: zone }, { method: "post" });
+    return true;
   };
 
   const handleSaveSettings = () => {
@@ -1947,6 +2014,7 @@ export default function TodoPage() {
       showToast("⚠️ Phone number must be exactly 10 digits!");
       return false;
     }
+    if (!saveHomeTimeZone()) return false;
     settingsFetcher.submit({
       intent: "updateSettings",
       emailEnabled: emailEnabled ? "true" : "false",
@@ -1986,6 +2054,7 @@ export default function TodoPage() {
     setDiscordEnabled(!!settings?.discordWebhookUrl);
     setDiscordInput(settings?.discordWebhookUrl ?? "");
     setDisplayNameInput(settings?.displayNameSet ? (settings?.displayName ?? "") : "");
+    setHomeTimeZoneInput(settings?.timeZone ?? "");
   }, [settings]);
 
   useEffect(() => {
@@ -3320,6 +3389,44 @@ export default function TodoPage() {
               </p>
             </div>
 
+            {/* Home time zone (repeating reminders) */}
+            {isLoggedIn && (
+              <>
+                <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Home time zone</h4>
+                <div className="mb-6">
+                  <input
+                    type="text"
+                    list="home-time-zone-options"
+                    value={homeTimeZoneInput}
+                    onChange={(e) => setHomeTimeZoneInput(e.target.value.slice(0, 64))}
+                    placeholder="Search, e.g. America/Los_Angeles"
+                    aria-label="Home time zone"
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="w-full rounded-lg bg-slate-950 border border-white/[0.08] text-slate-200 text-sm px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50"
+                  />
+                  <datalist id="home-time-zone-options">
+                    {timeZoneOptions.map((z) => (
+                      <option key={z} value={z} />
+                    ))}
+                  </datalist>
+                  {browserTimeZone && browserTimeZone !== homeTimeZoneInput.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => setHomeTimeZoneInput(browserTimeZone)}
+                      className="mt-1.5 text-[11px] font-semibold text-themeAccentText hover:underline cursor-pointer"
+                    >
+                      Use this browser&apos;s zone ({browserTimeZone})
+                    </button>
+                  )}
+                  <p className="text-[10px] text-slate-500 mt-1.5">
+                    Repeating tasks stay at the same local time in this zone, even when the clocks change.
+                    {isValidTimeZone(homeTimeZoneInput.trim()) ? ` Currently ${describeTimeZone(homeTimeZoneInput.trim())}.` : ""}
+                  </p>
+                </div>
+              </>
+            )}
+
             {/* Statistics */}
             <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Usage Metrics</h4>
             <div className="grid grid-cols-3 gap-2.5 mb-6">
@@ -3484,6 +3591,7 @@ export default function TodoPage() {
                         showToast("⚠️ Phone number must be exactly 10 digits!");
                         return;
                       }
+                      if (!saveHomeTimeZone()) return;
                       settingsFetcher.submit({
                         intent: "updateSettings",
                         emailEnabled: emailEnabled ? "true" : "false",

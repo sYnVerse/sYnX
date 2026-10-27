@@ -39,6 +39,7 @@ Any change that requires downstream users to update code to avoid compile or run
 
 - **Same day as the last release for that surface (web or mobile):** do **not** bump again. Append bullets under the existing same-day entry in the relevant changelog.
 - **Different calendar day than the last release** (including a PR that will merge on a later day): bump to a **new** version and add a **new dated** What's New entry.
+- **Changelog dates** are plain calendar dates in Pacific time (`America/Los_Angeles`) and use the day the release actually ships. Set or correct the date at release.
 - Only increment when starting work on a new calendar day relative to the last release, or when the user explicitly requests a bump.
 
 ## 4. Mobile vs web (separate version lines)

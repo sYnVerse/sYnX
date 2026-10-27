@@ -18,6 +18,7 @@ import {
 import { shouldSignOutAfterRefreshFailure } from "../shared/mobile-session";
 import { clearWidgetPreferences } from "../services/widgetPreferences";
 import { resetWidgetsLoggedOut } from "../services/widgetSync";
+import { checkHomeTimeZone, resetTimeZoneSync } from "../services/timeZoneSync";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -107,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await secureSessionStore.clearSessionTokens();
     await clearWidgetPreferences();
     resetWidgetsLoggedOut();
+    resetTimeZoneSync();
     setToken(null);
     setUser(null);
   }, []);
@@ -115,6 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const res = await apiClient.get("/api/v1/settings");
       const settings = res.data?.settings;
+      if (settings) checkHomeTimeZone(settings.timeZone ?? null).catch(() => {});
       if (settings?.userId || settings?.email) {
         setUser({
           userId: settings.userId || "",
@@ -211,7 +214,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const prev = appStateRef.current;
       appStateRef.current = next;
       if (prev.match(/inactive|background/) && next === "active") {
-        silentRefresh().catch(() => {});
+        silentRefresh()
+          .then((ok) => {
+            // Notices travel to another time zone while the app was in the background.
+            if (ok) return checkHomeTimeZone();
+          })
+          .catch(() => {});
       }
     };
     const sub = AppState.addEventListener("change", onChange);
@@ -238,6 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn("Central OpenAuth logout browser session warning:", browserErr);
       }
 
+      resetTimeZoneSync();
       setToken(null);
       setUser(null);
     } catch (e) {

@@ -1,3 +1,5 @@
+import { isValidTimeZone } from "../shared";
+
 /** Default display name when unset — never derived from email. */
 export const DEFAULT_DISPLAY_NAME = "sYnX user";
 
@@ -19,6 +21,11 @@ export function sanitizeDisplayNameInput(raw: unknown): string | null {
 export async function ensureUserProfileSchema(db: D1Database): Promise<void> {
   try {
     await db.prepare("ALTER TABLE user_settings ADD COLUMN display_name TEXT").run();
+  } catch {
+    // Column already exists
+  }
+  try {
+    await db.prepare("ALTER TABLE user_settings ADD COLUMN time_zone TEXT").run();
   } catch {
     // Column already exists
   }
@@ -105,4 +112,52 @@ export async function getDisplayNamesForUsers(
 
 export function ownerPayload(displayName?: string | null): { displayName: string } {
   return { displayName: resolveDisplayName(displayName) };
+}
+
+/** The user's stored IANA time zone (reported by their devices), if any. */
+export async function getUserTimeZone(
+  db: D1Database,
+  userId: string | null | undefined
+): Promise<string | undefined> {
+  if (!userId) return undefined;
+  try {
+    await ensureUserProfileSchema(db);
+    const row = await db
+      .prepare("SELECT time_zone FROM user_settings WHERE user_id = ?")
+      .bind(userId)
+      .first<{ time_zone?: string | null }>();
+    return isValidTimeZone(row?.time_zone) ? row!.time_zone! : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Save the user's home time zone (used to keep repeating reminders at the same
+ * local time). With `onlyIfUnset`, an existing value is never replaced: clients
+ * use that to fill it in once from the device, and change it only when the
+ * user asks. Returns the stored zone afterwards, or null for an invalid zone.
+ */
+export async function setUserTimeZone(
+  db: D1Database,
+  userId: string,
+  email: string | null | undefined,
+  timeZone: unknown,
+  options: { onlyIfUnset?: boolean } = {}
+): Promise<string | null> {
+  if (!isValidTimeZone(timeZone)) return null;
+  await ensureUserProfileSchema(db);
+  const guard = options.onlyIfUnset
+    ? "user_settings.time_zone IS NULL OR user_settings.time_zone = ''"
+    : "user_settings.time_zone IS NOT excluded.time_zone";
+  await db
+    .prepare(
+      `INSERT INTO user_settings (user_id, email, time_zone)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET time_zone = excluded.time_zone
+       WHERE ${guard}`
+    )
+    .bind(userId, typeof email === "string" ? email.trim() : "", timeZone)
+    .run();
+  return (await getUserTimeZone(db, userId)) ?? null;
 }

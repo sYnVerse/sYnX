@@ -1,3 +1,5 @@
+import { nextReminderAt } from "../shared";
+
 export interface Todo {
   id: string;
   listId: string;
@@ -133,10 +135,13 @@ export class TodoManager {
   /**
    * Sets the completed status of a todo to an explicit value (idempotent).
    * Recurring tasks marked done advance the reminder and stay uncompleted.
+   * Pass the user's IANA `timeZone` so repeats keep their local clock time
+   * across daylight saving changes; without it they advance a fixed 24h / 7d.
    */
   async setCompleted(
     id: string,
-    completed: boolean
+    completed: boolean,
+    options: { timeZone?: string } = {}
   ): Promise<{ todo: Todo; rescheduled: boolean }> {
     const todo = await this.db
       .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
@@ -152,17 +157,7 @@ export class TodoManager {
 
     if (completed && isRecurring) {
       const currentReminder = todo.reminder_at ? Number(todo.reminder_at) : Date.now();
-      let nextReminder = currentReminder;
-      const oneDay = 24 * 60 * 60 * 1000;
-      if (recurrence === "daily") {
-        nextReminder = currentReminder + oneDay;
-      } else if (recurrence === "weekly") {
-        nextReminder = currentReminder + 7 * oneDay;
-      } else if (recurrence === "monthly") {
-        const date = new Date(currentReminder);
-        date.setMonth(date.getMonth() + 1);
-        nextReminder = date.getTime();
-      }
+      const nextReminder = nextReminderAt(currentReminder, String(recurrence), options.timeZone);
 
       await this.db
         .prepare("UPDATE todos SET reminder_at = ?, reminder_sent = 0, completed = 0 WHERE id = ? AND list_id = ?")
@@ -196,7 +191,7 @@ export class TodoManager {
    * Toggles the completed status of a todo item (legacy flip).
    * Prefer setCompleted for idempotent clients.
    */
-  async toggle(id: string): Promise<Todo> {
+  async toggle(id: string, options: { timeZone?: string } = {}): Promise<Todo> {
     const todo = await this.db
       .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
       .bind(id, this.listId)
@@ -204,7 +199,7 @@ export class TodoManager {
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
-    const result = await this.setCompleted(id, !Boolean(todo.completed));
+    const result = await this.setCompleted(id, !Boolean(todo.completed), options);
     return result.todo;
   }
 
