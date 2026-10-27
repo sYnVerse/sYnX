@@ -11,6 +11,7 @@ import {
 import { X, Sparkles } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
 import { MOBILE_VERSION, MOBILE_CHANGELOG } from "../constants/changelog";
+import { sortChangelogItems } from "../shared/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 
 interface ChangelogModalProps {
@@ -85,7 +86,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
                     )}
                   </View>
                   <View style={styles.itemsList}>
-                    {release.changes.map((item, index) => {
+                    {sortChangelogItems(release.changes).map((item, index) => {
                       const isNew = item.type === "NEW";
                       const isImpr = item.type === "IMPR";
 
