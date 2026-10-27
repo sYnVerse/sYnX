@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.2.1";
+export const WEB_VERSION = "v5.2.2";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.2.2",
+    date: "2026-10-27",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "What's New now lists each version's new features first, then improvements, then fixes."
+      }
+    ]
+  },
   {
     version: "v5.2.1",
     date: "2026-10-25",
