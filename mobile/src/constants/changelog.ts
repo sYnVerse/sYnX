@@ -14,6 +14,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "New \"When a task is done\" setting under Device Calendar Integration: Mark as done (the default) keeps the event with ✅ in the title and the completion date in the description, or Delete event removes it. Un-checking a task restores its event."
       },
       {
+        type: "NEW",
+        text: "New \"Pick date & time\" option next to the quick reminders when adding or editing a task: choose any day and time, like an exam two weeks out, without going through the Calendar tab. The chosen time shows on the pill, and a task's existing reminder appears there when you edit it. A short line under the reminders spells out when you'll be reminded, like \"Reminds you tomorrow at 9:00 AM\"."
+      },
+      {
         type: "IMPR",
         text: "Calendar events now show which list a task belongs to, like \"sYnX Task · Groceries\", in the event description."
       },
@@ -24,6 +28,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "What's New now lists each version's new features first, then improvements, then fixes."
+      },
+      {
+        type: "IMPR",
+        text: "Adding a task from the Calendar tab now shows its 9:00 AM reminder for that day on the \"Pick date & time\" pill, and you can change the time or day there."
       },
       {
         type: "FIX",
@@ -40,6 +48,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Changing the target calendar now moves your existing task events to the new calendar instead of leaving old copies behind."
+      },
+      {
+        type: "FIX",
+        text: "Quick reminders (+5m to +60m) on a new task now always count from now. From the Calendar tab they used to be added to 9:00 AM on the selected day. When editing a task, they still push its existing reminder back."
       }
     ]
   },

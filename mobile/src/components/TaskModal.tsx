@@ -12,7 +12,21 @@ import {
   ActivityIndicator,
 } from "react-native";
 import * as Haptics from "expo-haptics";
-import { PriorityLevel, RecurrencePattern } from "../shared";
+import { DateTimePicker } from "@expo/ui/community/datetime-picker";
+import { CalendarClock } from "lucide-react-native";
+import {
+  PriorityLevel,
+  RecurrencePattern,
+  ReminderSelection,
+  combineDateAndTime,
+  defaultPickerValue,
+  formatReminderPillLabel,
+  formatReminderPreview,
+  initialReminderSelection,
+  nextFullHour,
+  prefers24HourClock,
+  resolveReminderAt,
+} from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 import { getErrorMessage } from "../utils/feedback";
@@ -58,9 +72,19 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [durationMinutes, setDurationMinutes] = useState<string>(
     initialDurationMinutes != null ? String(initialDurationMinutes) : ""
   );
-  const [reminderMins, setReminderMins] = useState<number | null>(null);
-  const [clearReminder, setClearReminder] = useState<boolean>(false);
+  const [reminder, setReminder] = useState<ReminderSelection>(() =>
+    initialReminderSelection(initialReminderAt)
+  );
+  /** True once the user changes the reminder row; untouched sheets save the reminder they opened with. */
+  const [reminderTouched, setReminderTouched] = useState(false);
+  /** Which native picker dialog is open: the date first, then the time. */
+  const [pickerStep, setPickerStep] = useState<"date" | "time" | null>(null);
+  const [pickerDraft, setPickerDraft] = useState<Date>(() => new Date(nextFullHour()));
+  /** Bumped to remount (re-open) the time dialog after a past time is rejected. */
+  const [timePickerKey, setTimePickerKey] = useState(0);
   const [saving, setSaving] = useState(false);
+  /** Clock for the reminder preview; ticks on each minute boundary while the sheet is open. */
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!visible) return;
@@ -68,10 +92,32 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setPriority(initialPriority);
     setRecurrence(initialRecurrence);
     setDurationMinutes(initialDurationMinutes != null ? String(initialDurationMinutes) : "");
-    setReminderMins(null);
-    setClearReminder(false);
+    setReminder(initialReminderSelection(initialReminderAt));
+    setReminderTouched(false);
+    setPickerStep(null);
     setSaving(false);
   }, [visible, initialText, initialPriority, initialRecurrence, initialDurationMinutes, initialReminderAt]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setNow(Date.now());
+      // Wake just after the next minute starts, so quick-pill previews ("+15m")
+      // roll over at the same moment the saved value would.
+      timer = setTimeout(tick, 60_000 - (Date.now() % 60_000) + 50);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [visible]);
+
+  /** The reminderAt that Save would send right now: the opened-with value until the row is touched. */
+  const effectiveReminderAt = (at: number): number | null | undefined =>
+    reminderTouched
+      ? resolveReminderAt({ selection: reminder, isEditing, existingReminderAt: initialReminderAt, now: at })
+      : initialReminderAt;
+
+  const reminderPreview = formatReminderPreview(effectiveReminderAt(now), now);
 
   const triggerHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -85,16 +131,52 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     }
   };
 
+  const chooseReminder = (next: ReminderSelection) => {
+    setNow(Date.now());
+    setReminderTouched(true);
+    setReminder(next);
+  };
+
+  const openDateTimePicker = () => {
+    if (saving) return;
+    triggerHaptic();
+    const current = resolveReminderAt({
+      selection: reminder,
+      isEditing,
+      existingReminderAt: initialReminderAt,
+    });
+    setPickerDraft(new Date(defaultPickerValue(current)));
+    setPickerStep("date");
+  };
+
+  const handlePickedDate = (picked: Date) => {
+    // Keep the draft's time of day; if that is already past on the picked day
+    // (e.g. today), start the time dialog on the next full hour instead.
+    let draft = combineDateAndTime(picked, pickerDraft);
+    if (draft <= Date.now()) {
+      draft = combineDateAndTime(picked, nextFullHour());
+    }
+    setPickerDraft(new Date(draft));
+    setPickerStep("time");
+  };
+
+  const handlePickedTime = (picked: Date) => {
+    const timestamp = combineDateAndTime(pickerDraft, picked);
+    if (timestamp <= Date.now()) {
+      triggerErrorHaptic();
+      showError("Pick a time in the future");
+      setTimePickerKey((k) => k + 1);
+      return;
+    }
+    triggerHaptic();
+    chooseReminder({ kind: "at", timestamp });
+    setPickerStep(null);
+  };
+
   const handleSave = async () => {
     if (!text.trim() || saving) return;
     triggerHaptic();
-    const baseTimestamp = initialReminderAt || Date.now();
-    let reminderAt: number | undefined | null = initialReminderAt;
-    if (clearReminder) {
-      reminderAt = isEditing ? null : undefined;
-    } else if (reminderMins !== null) {
-      reminderAt = baseTimestamp + reminderMins * 60 * 1000;
-    }
+    const reminderAt = effectiveReminderAt(Date.now());
     const cleanDur = durationMinutes.trim();
     const parsedDur = cleanDur ? parseInt(cleanDur.replace(/\D/g, ""), 10) : NaN;
 
@@ -109,7 +191,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       });
       onClose();
       // Contextual soft-ask when user first sets a reminder after declining
-      if (reminderAt != null && reminderMins !== null && !clearReminder) {
+      if (reminderAt != null && reminderTouched) {
         maybeAskOnReminder().catch(() => {});
       }
     } catch (e) {
@@ -239,19 +321,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             <View style={styles.row}>
               <TouchableOpacity
                 accessibilityRole="button"
-                accessibilityState={{ selected: clearReminder || (!reminderMins && !initialReminderAt) }}
+                accessibilityState={{ selected: reminder.kind === "none" }}
                 style={[
                   styles.pill,
                   { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                  (clearReminder || (!reminderMins && !initialReminderAt)) && {
+                  reminder.kind === "none" && {
                     backgroundColor: theme.accent,
                     borderColor: theme.accent,
                   },
                 ]}
                 onPress={() => {
                   triggerHaptic();
-                  setReminderMins(null);
-                  setClearReminder(true);
+                  chooseReminder({ kind: "none" });
                 }}
                 disabled={saving}
               >
@@ -259,7 +340,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   style={[
                     styles.pillText,
                     { color: theme.textSecondary },
-                    (clearReminder || (!reminderMins && !initialReminderAt)) && {
+                    reminder.kind === "none" && {
                       color: "#FFFFFF",
                       fontWeight: "700",
                     },
@@ -268,37 +349,106 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   None
                 </Text>
               </TouchableOpacity>
-              {[5, 15, 30, 60].map((mins) => (
-                <TouchableOpacity
-                  key={mins}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: !clearReminder && reminderMins === mins }}
-                  accessibilityLabel={`Reminder plus ${mins} minutes`}
-                  style={[
-                    styles.pill,
-                    { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                    !clearReminder &&
-                      reminderMins === mins && { backgroundColor: theme.accent, borderColor: theme.accent },
-                  ]}
-                  onPress={() => {
-                    triggerHaptic();
-                    setClearReminder(false);
-                    setReminderMins(reminderMins === mins ? null : mins);
-                  }}
-                  disabled={saving}
-                >
-                  <Text
+              {[5, 15, 30, 60].map((mins) => {
+                const selected = reminder.kind === "offset" && reminder.minutes === mins;
+                return (
+                  <TouchableOpacity
+                    key={mins}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={
+                      isEditing ? `Push reminder back ${mins} minutes` : `Remind me in ${mins} minutes`
+                    }
                     style={[
-                      styles.pillText,
-                      { color: theme.textSecondary },
-                      !clearReminder && reminderMins === mins && { color: "#FFFFFF", fontWeight: "700" },
+                      styles.pill,
+                      { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                      selected && { backgroundColor: theme.accent, borderColor: theme.accent },
                     ]}
+                    onPress={() => {
+                      triggerHaptic();
+                      // Tapping the selected pill again goes back to what the sheet opened with.
+                      chooseReminder(
+                        selected ? initialReminderSelection(initialReminderAt) : { kind: "offset", minutes: mins }
+                      );
+                    }}
+                    disabled={saving}
                   >
-                    +{mins}m
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        styles.pillText,
+                        { color: theme.textSecondary },
+                        selected && { color: "#FFFFFF", fontWeight: "700" },
+                      ]}
+                    >
+                      +{mins}m
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityState={{ selected: reminder.kind === "at", expanded: pickerStep !== null }}
+                accessibilityLabel={
+                  reminder.kind === "at"
+                    ? `Reminder ${formatReminderPillLabel(reminder.timestamp)}. Change date and time`
+                    : "Pick reminder date and time"
+                }
+                style={[
+                  styles.pill,
+                  styles.pillWithIcon,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  reminder.kind === "at" && { backgroundColor: theme.accent, borderColor: theme.accent },
+                ]}
+                onPress={openDateTimePicker}
+                disabled={saving}
+              >
+                <CalendarClock size={14} color={reminder.kind === "at" ? "#FFFFFF" : theme.textSecondary} />
+                <Text
+                  style={[
+                    styles.pillText,
+                    { color: theme.textSecondary },
+                    reminder.kind === "at" && { color: "#FFFFFF", fontWeight: "700" },
+                  ]}
+                  maxFontSizeMultiplier={1.3}
+                >
+                  {reminder.kind === "at" ? formatReminderPillLabel(reminder.timestamp) : "Pick date & time"}
+                </Text>
+              </TouchableOpacity>
             </View>
+            {reminderPreview && (
+              <Text
+                style={[
+                  styles.reminderPreview,
+                  { color: reminderPreview.isPast ? theme.danger : theme.textMuted },
+                ]}
+                accessibilityLiveRegion="polite"
+                maxFontSizeMultiplier={1.3}
+              >
+                {reminderPreview.text}
+              </Text>
+            )}
+            {/* Android opens these as native dialogs; each one shows when mounted. */}
+            {pickerStep === "date" && (
+              <DateTimePicker
+                value={pickerDraft}
+                mode="date"
+                minimumDate={startOfToday()}
+                accentColor={theme.accent}
+                onValueChange={(_event, date) => handlePickedDate(date)}
+                onDismiss={() => setPickerStep(null)}
+              />
+            )}
+            {pickerStep === "time" && (
+              <DateTimePicker
+                key={timePickerKey}
+                value={pickerDraft}
+                mode="time"
+                is24Hour={prefers24HourClock()}
+                accentColor={theme.accent}
+                onValueChange={(_event, date) => handlePickedTime(date)}
+                onDismiss={() => setPickerStep(null)}
+              />
+            )}
           </ScrollView>
 
           <View style={styles.actions}>
@@ -334,6 +484,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     </Modal>
   );
 };
+
+function startOfToday(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 const styles = StyleSheet.create({
   overlay: {
@@ -385,6 +541,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     minHeight: MIN_TOUCH_TARGET - 4,
     justifyContent: "center",
+  },
+  reminderPreview: {
+    fontSize: typography.xs,
+    marginTop: 8,
+  },
+  pillWithIcon: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   pillText: {
     fontSize: typography.xs,
