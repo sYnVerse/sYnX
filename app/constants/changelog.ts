@@ -20,7 +20,7 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
   },
   {
     version: "v5.2.2",
-    date: "2026-10-27",
+    date: "2026-10-26",
     title: "What's new?",
     changes: [
       {
