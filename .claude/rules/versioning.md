@@ -100,3 +100,4 @@ Before marking mobile versioning work done:
 - [ ] Changelog items in each version are ordered NEW → IMPR → FIX (section 5)
 - [ ] Web left unchanged unless there were user-facing web changes (`WEB_VERSION`)
 - [ ] Tests pass (`npm test -- --run`; mobile typecheck if mobile code changed)
+- [ ] `cd mobile && npm run doctor` passes before a mobile build or release, or after mobile dependency changes (fix SDK version mismatches with `npx expo install --fix`)

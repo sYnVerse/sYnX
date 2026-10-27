@@ -1,0 +1,11 @@
+---
+description: Run expo-doctor after mobile dependency changes and before mobile builds
+globs: mobile/**
+---
+
+# Mobile dependency check
+
+Follow the "Mobile dependency check (expo-doctor)" section in `CLAUDE.md`. Summary:
+
+- After changing mobile dependencies, and before any mobile build or release, run `cd mobile && npm run doctor` (Node 22.13+).
+- Fix SDK version mismatches with `cd mobile && npx expo install --fix`, then re-run until all checks pass. Report anything it can't fix instead of working around it.
