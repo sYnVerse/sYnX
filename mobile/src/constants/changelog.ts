@@ -24,6 +24,18 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Calendar event descriptions mark priority with a color: 🟢 Low, 🟡 Medium, and 🔴 High."
+      },
+      {
+        type: "FIX",
+        text: "Tasks checked off from the home screen widget, the web app, or another device now update your calendar event the next time sYnX syncs, instead of leaving it as if the task were still open."
+      },
+      {
+        type: "NEW",
+        text: "New \"When a task is done\" setting under Device Calendar Integration: Mark as done (the default) keeps the event with ✅ in the title and the completion date in the description, or Delete event removes it. Un-checking a task restores its event."
+      },
+      {
+        type: "FIX",
+        text: "Changing the target calendar now moves your existing task events to the new calendar instead of leaving old copies behind."
       }
     ]
   },

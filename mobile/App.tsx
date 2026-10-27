@@ -7,13 +7,18 @@ import { ThemeProvider } from "./src/context/ThemeContext";
 import { ToastProvider } from "./src/context/ToastContext";
 import { BottomTabNavigator } from "./src/navigation/BottomTabNavigator";
 import { startWidgetSyncService } from "./src/services/widgetSync";
+import { startCalendarReconcileService } from "./src/services/calendarReconcile";
 import { registerWidgetBackgroundSync } from "./src/services/widgetBackgroundTask";
 
 export default function App() {
   useEffect(() => {
-    const unsub = startWidgetSyncService(queryClient);
+    const unsubWidgets = startWidgetSyncService(queryClient);
+    const unsubCalendar = startCalendarReconcileService(queryClient);
     registerWidgetBackgroundSync().catch(() => {});
-    return unsub;
+    return () => {
+      unsubWidgets();
+      unsubCalendar();
+    };
   }, []);
 
   return (
