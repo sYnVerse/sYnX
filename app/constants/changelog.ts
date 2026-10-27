@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.2.1";
+export const WEB_VERSION = "v5.2.2";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.2.2",
+    date: "2026-10-27",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "What's New now lists each version's new features first, then improvements, then fixes."
+      }
+    ]
+  },
   {
     version: "v5.2.1",
     date: "2026-10-25",
@@ -47,16 +58,16 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "IMPR",
+        text: "Recurring tasks still reschedule when marked done; you now get a short check animation and a \"Rescheduled for …\" toast so it does not look like the check snapped back."
+      },
+      {
         type: "FIX",
         text: "Marking a task done now sends the intended done/undone state instead of blindly flipping, so a double tap no longer cancels itself."
       },
       {
         type: "FIX",
         text: "The checkbox stays locked while a mark-done request is in flight, with an optimistic update and an error toast if the save fails."
-      },
-      {
-        type: "IMPR",
-        text: "Recurring tasks still reschedule when marked done; you now get a short check animation and a \"Rescheduled for …\" toast so it does not look like the check snapped back."
       }
     ]
   },
@@ -112,20 +123,20 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Add DurationPicker to allow viewing/changing task duration of a task."
       },
       {
-        type: "FIX",
-        text: "Use theme tokens for task duration UI."
-      },
-      {
-        type: "FIX",
-        text: "Change z-indexes for DurationPicker, PriorityPicker, ReminderPicker, and RecurrencePicker components."
-      },
-      {
         type: "IMPR",
         text: "Change default value for task duration from 15 minutes to optional."
       },
       {
         type: "IMPR",
         text: "Removed 'N' avatar icon from desktop What's New modal header for a cleaner header design."
+      },
+      {
+        type: "FIX",
+        text: "Use theme tokens for task duration UI."
+      },
+      {
+        type: "FIX",
+        text: "Change z-indexes for DurationPicker, PriorityPicker, ReminderPicker, and RecurrencePicker components."
       }
     ]
   },
@@ -156,6 +167,14 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "List category: You can now add a category to lists to better organize your day."
       },
       {
+        type: "IMPR",
+        text: "Added  unit tests to catch data integrity issues caused by the front-end."
+      },
+      {
+        type: "IMPR",
+        text: "Added unit tests for subtask cascade deletion and hierarchy tree builder."
+      },
+      {
         type: "FIX",
         text: "Shared Lists: Hide controls for editing while viewing a non-permissive list."
       },
@@ -166,14 +185,6 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Raised z-index of Share List modal to prevent list element overlapping."
-      },
-      {
-        type: "IMPR",
-        text: "Added  unit tests to catch data integrity issues caused by the front-end."
-      },
-      {
-        type: "IMPR",
-        text: "Added unit tests for subtask cascade deletion and hierarchy tree builder."
       }
     ]
   },

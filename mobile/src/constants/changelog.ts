@@ -10,12 +10,8 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
-        type: "FIX",
-        text: "The sYnX notification icon shows in the status bar again, instead of a plain white square."
-      },
-      {
-        type: "FIX",
-        text: "Tasks without a duration now sync to your calendar as an event at the reminder time with no length (9:00 to 9:00) instead of a made-up 15-minute block."
+        type: "NEW",
+        text: "New \"When a task is done\" setting under Device Calendar Integration: Mark as done (the default) keeps the event with ✅ in the title and the completion date in the description, or Delete event removes it. Un-checking a task restores its event."
       },
       {
         type: "IMPR",
@@ -26,12 +22,20 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Calendar event descriptions mark priority with a color: 🟢 Low, 🟡 Medium, and 🔴 High."
       },
       {
-        type: "FIX",
-        text: "Tasks checked off from the home screen widget, the web app, or another device now update your calendar event the next time sYnX syncs, instead of leaving it as if the task were still open."
+        type: "IMPR",
+        text: "What's New now lists each version's new features first, then improvements, then fixes."
       },
       {
-        type: "NEW",
-        text: "New \"When a task is done\" setting under Device Calendar Integration: Mark as done (the default) keeps the event with ✅ in the title and the completion date in the description, or Delete event removes it. Un-checking a task restores its event."
+        type: "FIX",
+        text: "The sYnX notification icon shows in the status bar again, instead of a plain white square."
+      },
+      {
+        type: "FIX",
+        text: "Tasks without a duration now sync to your calendar as an event at the reminder time with no length (9:00 to 9:00) instead of a made-up 15-minute block."
+      },
+      {
+        type: "FIX",
+        text: "Tasks checked off from the home screen widget, the web app, or another device now update your calendar event the next time sYnX syncs, instead of leaving it as if the task were still open."
       },
       {
         type: "FIX",
@@ -45,12 +49,12 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
-        type: "FIX",
-        text: "Standardized changelog category badge widths (NEW, IMPR, FIX) so tags align uniformly across all items."
-      },
-      {
         type: "IMPR",
         text: "Flexible device calendar selection: Choose which calendar to sync tasks to, with zero-friction Google Calendar sync, local account guidance, and a 1-tap shortcut to open the calendar app."
+      },
+      {
+        type: "FIX",
+        text: "Standardized changelog category badge widths (NEW, IMPR, FIX) so tags align uniformly across all items."
       },
       {
         type: "FIX",
@@ -76,14 +80,6 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
-        type: "IMPR",
-        text: "Upgraded mobile runtime to Expo SDK 58, React 19.3, and React Native 0.88.0."
-      },
-      {
-        type: "FIX",
-        text: "Device calendar sync asks for calendar permission again and works with the updated calendar module; if access is blocked, Settings offers a shortcut to turn it on."
-      },
-      {
         type: "NEW",
         text: "Android home screen widgets: Active List (4x2 resizable) with task checkoff, subtask count, and quick deep-linking."
       },
@@ -101,11 +97,19 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       },
       {
         type: "IMPR",
+        text: "Upgraded mobile runtime to Expo SDK 58, React 19.3, and React Native 0.88.0."
+      },
+      {
+        type: "IMPR",
         text: "Offline widget completion queue: Check off tasks from your home screen offline; sYnX safely replays and syncs them when reconnected."
       },
       {
         type: "IMPR",
         text: "Background widget refresh: Periodic background sync keeps widget snapshots fresh across shared and collaborative lists."
+      },
+      {
+        type: "FIX",
+        text: "Device calendar sync asks for calendar permission again and works with the updated calendar module; if access is blocked, Settings offers a shortcut to turn it on."
       }
     ]
   },
@@ -114,22 +118,6 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     date: "2026-10-24",
     title: "What's new?",
     changes: [
-      {
-        type: "IMPR",
-        text: "Stay signed in for weeks or months — the app quietly renews your session in the background and only asks you to sign in again if renewal fails."
-      },
-      {
-        type: "FIX",
-        text: "Marking a task done sends the intended done/undone state (not a blind flip), so a double tap on Tasks, Calendar, or a subtask no longer cancels itself."
-      },
-      {
-        type: "FIX",
-        text: "The checkbox locks while saving, updates immediately, and rolls back with an error toast if the request fails."
-      },
-      {
-        type: "IMPR",
-        text: "Recurring tasks still move to the next reminder when marked done; a \"Rescheduled for …\" toast makes that clear instead of looking like the check snapped back."
-      },
       {
         type: "NEW",
         text: "Lists screen splits into My lists and Shared with me — opening a shared link remembers it across devices."
@@ -141,6 +129,22 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "NEW",
         text: "Settings lets you set a display name shown on lists you share (your email stays private)."
+      },
+      {
+        type: "IMPR",
+        text: "Stay signed in for weeks or months — the app quietly renews your session in the background and only asks you to sign in again if renewal fails."
+      },
+      {
+        type: "IMPR",
+        text: "Recurring tasks still move to the next reminder when marked done; a \"Rescheduled for …\" toast makes that clear instead of looking like the check snapped back."
+      },
+      {
+        type: "FIX",
+        text: "Marking a task done sends the intended done/undone state (not a blind flip), so a double tap on Tasks, Calendar, or a subtask no longer cancels itself."
+      },
+      {
+        type: "FIX",
+        text: "The checkbox locks while saving, updates immediately, and rolls back with an error toast if the request fails."
       }
     ]
   },
@@ -149,10 +153,6 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     date: "2026-10-23",
     title: "What's new?",
     changes: [
-      {
-        type: "FIX",
-        text: "Android / EAS builds now use the same version as What's New (3.2.0) — fixed app config drift that left the store-visible version stuck on 3.0.2."
-      },
       {
         type: "NEW",
         text: "Tasks screen shows which list you're in (Yours vs Shared with you) with a Switch control to jump to My Lists."
@@ -180,6 +180,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Readable type scale and centered wide-screen layout for tablets."
+      },
+      {
+        type: "FIX",
+        text: "Android / EAS builds now use the same version as What's New (3.2.0) — fixed app config drift that left the store-visible version stuck on 3.0.2."
       }
     ]
   },
@@ -304,16 +308,16 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Enabled adding a reminder to date selected on Calendar."
       },
       {
-        type: "FIX",
-        text: "Grouped subtask items under parent tasks and filtered child items out of top-level views."
-      },
-      {
         type: "IMPR",
         text: "Converted from queued database operations to real-time CRUD operations."
       },
       {
         type: "IMPR",
         text: "Improved dropdown styling, task duration inputs, list categories, and sub-task hierarchy."
+      },
+      {
+        type: "FIX",
+        text: "Grouped subtask items under parent tasks and filtered child items out of top-level views."
       }
     ]
   },
@@ -340,12 +344,12 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Added category support and task duration estimation pickers."
       },
       {
-        type: "FIX",
-        text: "Wrapped Mobile App with SafeAreaProvider for notch and status bar bounds."
-      },
-      {
         type: "IMPR",
         text: "Single-column active preview layout for mobile lists."
+      },
+      {
+        type: "FIX",
+        text: "Wrapped Mobile App with SafeAreaProvider for notch and status bar bounds."
       }
     ]
   },
@@ -362,12 +366,12 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Added unsaved settings confirmation prompt."
       },
       {
-        type: "FIX",
-        text: "Fixed Android status bar styling and push token retrieval."
-      },
-      {
         type: "IMPR",
         text: "Upgraded mobile runtime to Expo SDK 57, React 19, and React Native 0.86.0."
+      },
+      {
+        type: "FIX",
+        text: "Fixed Android status bar styling and push token retrieval."
       }
     ]
   },

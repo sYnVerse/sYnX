@@ -77,12 +77,25 @@ eas build:version:get -p android
 eas build:version:set -p android   # only if re-initializing remote versionCode
 ```
 
-## 5. Pre-finish checklist
+## 5. Changelog item order
+
+Within each version's `changes`, list items by category in this order:
+
+1. **NEW**: new features
+2. **IMPR**: improvements to existing features
+3. **FIX**: bug fixes
+
+Inside a category, keep the order the items were added. When appending to an existing entry, insert the new item at the end of its category group, not at the end of the list.
+
+The order is defined once as `CHANGELOG_CATEGORY_ORDER` in `shared/changelog.ts` (synced to `mobile/src/shared/` by `sync-shared`). Both What's New views (web `app/routes/$id.tsx` and mobile `ChangelogModal.tsx`) render through `sortChangelogItems`, and `test/changelog-order.test.ts` fails if any entry in `app/constants/changelog.ts` or `mobile/src/constants/changelog.ts` is out of order. If a new category is ever added, add it to `ChangelogCategory` and place it in `CHANGELOG_CATEGORY_ORDER` in the same change.
+
+## 6. Pre-finish checklist
 
 Before marking mobile versioning work done:
 
 - [ ] `shared/mobile-version.ts` has the intended `MOBILE_APP_VERSION`
 - [ ] Ran `cd mobile && npm run sync-version` (`package.json` + `app.json` match)
 - [ ] What's New entry exists / was appended in `mobile/src/constants/changelog.ts`
+- [ ] Changelog items in each version are ordered NEW → IMPR → FIX (section 5)
 - [ ] Web left unchanged unless there were user-facing web changes (`WEB_VERSION`)
 - [ ] Tests pass (`npm test -- --run`; mobile typecheck if mobile code changed)

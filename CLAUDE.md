@@ -17,4 +17,5 @@ Follow **`.claude/rules/versioning.md`** (canonical). Summary:
 - Same calendar day as the last release for that surface: append changelog bullets; do not bump again. A PR merging on a different day gets a new version + dated What's New entry.
 - **Mobile** single source of truth: `shared/mobile-version.ts`. After editing, run `cd mobile && npm run sync-version` so `mobile/package.json` and `mobile/app.json` match. `app.config.js` sets Expo `version` (Android `versionName` / iOS short version). Do not hand-edit EAS-managed `versionCode` / `buildNumber`.
 - **Web** (`WEB_VERSION` in `app/constants/changelog.ts`) is separate; bump only for user-facing web changes.
+- Changelog items within each version go NEW → IMPR → FIX (defined in `shared/changelog.ts`, enforced by `test/changelog-order.test.ts`).
 - Before finish: version file → sync → changelog → tests. Full checklist in the canonical doc.

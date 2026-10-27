@@ -10,7 +10,7 @@ import { useState, useRef, useEffect, useCallback, createContext, useContext } f
 import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
-import { applySetCompletedLocal, formatRescheduledToast } from "../../shared";
+import { applySetCompletedLocal, formatRescheduledToast, sortChangelogItems } from "../../shared";
 import {
   DEFAULT_DISPLAY_NAME,
   getDisplayNamesForUsers,
@@ -3628,7 +3628,7 @@ export default function TodoPage() {
                     {release.date && <span className="text-[10px] text-slate-500">{release.date}</span>}
                   </div>
                   <div className="space-y-2.5">
-                    {release.changes.map((item, i) => (
+                    {sortChangelogItems(release.changes).map((item, i) => (
                       <div key={i} className="flex items-start gap-2.5 text-xs">
                         <span
                           className={`inline-flex items-center justify-center shrink-0 w-11 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide text-center ${
