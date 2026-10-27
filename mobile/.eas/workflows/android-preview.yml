@@ -1,0 +1,25 @@
+name: Android preview build
+
+# Builds an installable Android preview APK whenever a commit that touches the
+# mobile app lands on main. Root shared/ is included because the build's
+# pre-install hook copies it into the app (scripts/sync-shared.js).
+on:
+  push:
+    branches: ['main']
+    paths:
+      - 'mobile/**'
+      - 'shared/**'
+      - '!**/*.md'
+
+concurrency:
+  cancel_in_progress: true
+  group: ${{ workflow.filename }}-${{ github.ref }}
+
+jobs:
+  build_android_preview:
+    name: Build Android preview APK
+    type: build
+    environment: preview
+    params:
+      platform: android
+      profile: preview
