@@ -2,4 +2,5 @@
 
 interface Env {
 	DB: D1Database;
+	GUEST_WRITE_LIMITER: RateLimit;
 }

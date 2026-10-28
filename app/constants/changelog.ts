@@ -13,6 +13,14 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Pages and the sYnX phone app load faster: the server no longer re-checks the database layout on every request, and the busiest lookups (your lists, their tasks and due reminders) now use indexes."
       },
       {
+        type: "IMPR",
+        text: "Guests (not signed in) can still add, check off, edit and delete tasks on lists shared as Collaborative. Setting reminders or repeats on someone else's list now needs you to sign in, and lists you make as a guest stay in your browser until you sign in."
+      },
+      {
+        type: "IMPR",
+        text: "Task names can be up to 1,000 characters, list names up to 100 and categories up to 50, and a list holds up to 1,000 tasks. You'll see a short message if you hit a limit."
+      },
+      {
         type: "FIX",
         text: "Signing out of the sYnX phone app now always stops reminders on that phone, even if the session had already expired. Reminders also stop being sent to phones that no longer have the app."
       },
@@ -27,6 +35,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "The confetti for finishing a list no longer jumps around if the page updates while it plays."
+      },
+      {
+        type: "FIX",
+        text: "As a guest, renaming a list from its title, changing a list's category, and checking off, editing, rescheduling or quick-adding tasks in the calendar now save to your guest lists instead of being lost."
       }
     ]
   },

@@ -6,9 +6,10 @@ import {
 } from "@remix-run/cloudflare";
 import { useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
 import { TodoManager, type Todo } from "~/to-do-manager";
-import { useState, useRef, useEffect, useEffectEvent, useCallback, useMemo, createContext, useContext } from "react";
+import { useState, useRef, useEffect, useEffectEvent, useCallback, useMemo, useContext } from "react";
 import { readStoredValue, useHydrated, useStoredValue, writeStoredValue } from "~/client-storage";
 import { CalendarView } from "~/components/calendar-view";
+import { GUEST_REMINDER_HINT, GuestContext } from "~/guest-context";
 import { getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
 import {
@@ -30,6 +31,24 @@ import {
   syncUserProfileOnSignIn,
 } from "~/user-profile.server";
 import { listSharedWithMe, recordSharedListAccess, removeSharedListAccess } from "~/shared-lists.server";
+import {
+  GUEST_RATE_LIMIT_ERROR,
+  GUEST_REMINDER_DENIAL,
+  GUEST_SHARED_LIST_INTENTS,
+  guestIntentDenial,
+  guestWriteAllowed,
+  isListFull,
+} from "~/guest-access.server";
+import {
+  MAX_CATEGORY_LENGTH,
+  MAX_LIST_NAME_LENGTH,
+  MAX_TASK_TEXT_LENGTH,
+  MAX_TASKS_PER_LIST,
+  TASK_LIMIT_ERROR,
+  categoryError,
+  listNameError,
+  taskTextError,
+} from "~/write-limits";
 
 
 export const GUEST_STORAGE_KEY = "synx_guest_lists";
@@ -40,16 +59,10 @@ export interface GuestList {
   owner_id: string;
   created_at: number;
   share_mode?: string;
+  category?: string;
   todos: Todo[];
 }
 
-export const GuestContext = createContext<{
-  isLoggedIn: boolean;
-  onGuestAction: (intent: string, payload: any) => void;
-}>({
-  isLoggedIn: false,
-  onGuestAction: () => {},
-});
 
 /**
  * Parses the stored guest lists. Falls back to a single empty "My Tasks"
@@ -308,8 +321,10 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         try {
           const guestLists = JSON.parse(rawLists);
           for (const gList of guestLists) {
-            const listName = (gList.name || "My Tasks").trim();
-            const todos = Array.isArray(gList.todos) ? gList.todos : [];
+            const listName = (String(gList.name || "") || "My Tasks").trim().slice(0, MAX_LIST_NAME_LENGTH) || "My Tasks";
+            const todos = (Array.isArray(gList.todos) ? gList.todos : [])
+              .filter((todo: any) => typeof todo?.text === "string" && todo.text.trim())
+              .slice(0, MAX_TASKS_PER_LIST);
             if (listName === "My Tasks" && todos.length === 0) {
               continue;
             }
@@ -326,7 +341,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
               ).bind(
                 todoId,
                 newListId,
-                todo.text,
+                todo.text.slice(0, MAX_TASK_TEXT_LENGTH),
                 todo.completed ? 1 : 0,
                 todo.createdAt || Date.now(),
                 todo.priority && todo.priority !== "none" ? todo.priority : null,
@@ -435,7 +450,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     try {
       const listRow = await db.prepare("SELECT owner_id, share_mode FROM lists WHERE id = ?").bind(activeListId).first<any>();
       if (listRow) {
-        hasOwnership = listRow.owner_id === userId;
+        // Guests never own D1 lists; their own lists live in localStorage.
+        hasOwnership = isLoggedIn && listRow.owner_id === userId;
         isCollaborative = listRow.share_mode === "public_edit";
       }
     } catch (e) {
@@ -443,9 +459,22 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     }
   }
 
-  // For guest users operating on guest lists (not shared D1 lists), return success without D1 mutation
-  if (!isLoggedIn && !isCollaborative) {
-    return json({ success: true, guestLocalStorage: true });
+  if (!isLoggedIn) {
+    // Guest lists (anything that isn't a shared D1 list) live in localStorage,
+    // so there's nothing to write here.
+    if (!isCollaborative) {
+      return json({ success: true, guestLocalStorage: true });
+    }
+    // On a list shared as "anyone can edit", guests can work on tasks, but
+    // can't create lists, change the list, or set anything that sends a
+    // reminder to the owner.
+    const guestIntent = typeof intent === "string" ? intent : "";
+    if (!GUEST_SHARED_LIST_INTENTS.has(guestIntent)) {
+      return Response.json({ error: guestIntentDenial(guestIntent) }, { status: 403 });
+    }
+    if (!(await guestWriteAllowed(context.cloudflare.env, userId, request))) {
+      return Response.json({ error: GUEST_RATE_LIMIT_ERROR }, { status: 429 });
+    }
   }
 
   // For non-list creation actions, verify ownership or collaborative access of the active list
@@ -469,7 +498,22 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       
       if (typeof text !== "string" || !text)
         return Response.json({ error: "Invalid text" }, { status: 400 });
-      
+      const textError = taskTextError(text);
+      if (textError) return Response.json({ error: textError }, { status: 400 });
+      if (!isLoggedIn && (reminderAt !== undefined || recurrence !== "none")) {
+        return Response.json({ error: GUEST_REMINDER_DENIAL }, { status: 403 });
+      }
+      if (parentId) {
+        const parent = await db
+          .prepare("SELECT 1 FROM todos WHERE id = ? AND list_id = ?")
+          .bind(parentId, activeListId)
+          .first();
+        if (!parent) return Response.json({ error: "Parent task not found" }, { status: 400 });
+      }
+      if (await isListFull(db, activeListId)) {
+        return Response.json({ error: TASK_LIMIT_ERROR }, { status: 400 });
+      }
+
       await todoManager.create(text, priority, reminderAt, parentId, recurrence, durationMinutes);
       return { success: true };
     }
@@ -508,6 +552,19 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const text = formData.get("text") as string;
       if (typeof text !== "string" || !text.trim()) {
         return Response.json({ error: "Invalid text" }, { status: 400 });
+      }
+      const textError = taskTextError(text.trim());
+      if (textError) return Response.json({ error: textError }, { status: 400 });
+      if (!isLoggedIn) {
+        // Reminder text goes to the list owner, so guests can't reword a task
+        // that has a reminder.
+        const current = await db
+          .prepare("SELECT reminder_at FROM todos WHERE id = ? AND list_id = ?")
+          .bind(id, activeListId)
+          .first<{ reminder_at: number | null }>();
+        if (current?.reminder_at != null) {
+          return Response.json({ error: "Sign in to edit tasks that have reminders." }, { status: 403 });
+        }
       }
       await todoManager.updateText(id, text.trim());
       return { success: true };
@@ -567,10 +624,12 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       if (typeof listName !== "string" || !listName.trim()) {
         return Response.json({ error: "Invalid list name" }, { status: 400 });
       }
+      const nameError = listNameError(listName.trim()) || categoryError(category);
+      if (nameError) return Response.json({ error: nameError }, { status: 400 });
       const newListId = crypto.randomUUID();
       try {
         await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl, category) VALUES (?, ?, ?, ?, ?, ?)")
-          .bind(newListId, listName.trim(), userId, Date.now(), isLoggedIn ? null : 86400, category)
+          .bind(newListId, listName.trim(), userId, Date.now(), null, category)
           .run();
       } catch (e) {
         console.error("Failed to create list:", e);
@@ -584,6 +643,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       if (typeof newName !== "string" || !newName.trim()) {
         return Response.json({ error: "Invalid list name" }, { status: 400 });
       }
+      const nameError = listNameError(newName.trim());
+      if (nameError) return Response.json({ error: nameError }, { status: 400 });
       const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
       if (!ownRow) {
         return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
@@ -602,6 +663,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       if (!category) {
         return Response.json({ error: "Invalid category" }, { status: 400 });
       }
+      const catError = categoryError(category);
+      if (catError) return Response.json({ error: catError }, { status: 400 });
       const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
       if (!ownRow) {
         return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
@@ -718,7 +781,7 @@ async function requestNotificationPermission() {
 }
 
 function ReminderPicker({ todo }: { todo: Todo }) {
-  const { isLoggedIn, onGuestAction } = useContext(GuestContext);
+  const { isLoggedIn, canSetReminders, onGuestAction } = useContext(GuestContext);
   const fetcher = useFetcher();
   const [open, setOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(false);
@@ -803,6 +866,23 @@ function ReminderPicker({ todo }: { todo: Todo }) {
     setOpen(false);
     setCustomOpen(false);
   };
+
+  if (!canSetReminders) {
+    return (
+      <button
+        type="button"
+        disabled
+        className="text-[10px] font-semibold flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-transparent text-slate-500 opacity-70 cursor-not-allowed"
+        title={displayText ? `Reminder: ${displayText}. ${GUEST_REMINDER_HINT}.` : `${GUEST_REMINDER_HINT}.`}
+        aria-label={displayText ? `Reminder: ${displayText}. ${GUEST_REMINDER_HINT}.` : `${GUEST_REMINDER_HINT}.`}
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        {displayText && <span className="max-w-[5.5rem] truncate">{displayText}</span>}
+      </button>
+    );
+  }
 
   return (
     <div ref={ref} className={`relative ${open ? "z-50" : ""}`}>
@@ -1266,7 +1346,10 @@ function TodoItem({
   canEdit?: boolean;
   onNotify?: (message: string) => void;
 }) {
-  const { isLoggedIn, onGuestAction } = useContext(GuestContext);
+  const { isLoggedIn, canSetReminders, onGuestAction } = useContext(GuestContext);
+  // A task's reminder text goes to the list owner, so guests on a shared list
+  // can't reword tasks that have reminders.
+  const canEditText = canEdit && (canSetReminders || !todo.reminderAt);
   const toggleFetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
   const deleteFetcher = useFetcher();
   const subtaskFetcher = useFetcher();
@@ -1355,7 +1438,7 @@ function TodoItem({
 
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editText.trim() || !canEdit) return;
+    if (!editText.trim() || !canEditText) return;
     if (editText.trim() === todo.text) {
       setIsEditing(false);
       return;
@@ -1435,12 +1518,13 @@ function TodoItem({
           </button>
         </toggleFetcher.Form>
 
-        {isEditing && canEdit ? (
+        {isEditing && canEditText ? (
           <form onSubmit={handleEditSubmit} className="flex-1 flex items-center gap-2">
             <input
               ref={editInputRef}
               type="text"
               value={editText}
+              maxLength={MAX_TASK_TEXT_LENGTH}
               onChange={(e) => setEditText(e.target.value)}
               onKeyDown={handleKeyDown}
               className={`w-full rounded-md bg-white/[0.04] border border-white/[0.1] text-slate-200 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 ${
@@ -1466,7 +1550,7 @@ function TodoItem({
           </form>
         ) : (
           <span
-            className={`flex-1 min-w-0 break-words lg:truncate transition-all duration-200 ${canEdit ? "cursor-pointer hover:text-white" : "cursor-default"} ${
+            className={`flex-1 min-w-0 break-words lg:truncate transition-all duration-200 ${canEditText ? "cursor-pointer hover:text-white" : "cursor-default"} ${
               isSubtask ? "text-xs text-slate-350" : "text-sm text-slate-200"
             } ${
               optimisticCompleted
@@ -1475,7 +1559,7 @@ function TodoItem({
             }`}
             title={todo.text}
             onDoubleClick={() => {
-              if (!optimisticCompleted && canEdit) {
+              if (!optimisticCompleted && canEditText) {
                 setIsEditing(true);
               }
             }}
@@ -1511,7 +1595,7 @@ function TodoItem({
         {canEdit && !optimisticCompleted && !isSubtask && <ReminderPicker todo={todo} />}
 
         {/* Recurrence Picker dropdown (only for parent tasks) */}
-        {canEdit && !isSubtask && !optimisticCompleted && (
+        {canEdit && canSetReminders && !isSubtask && !optimisticCompleted && (
           <RecurrencePicker currentRecurrence={todo.recurrence || "none"} todoId={todo.id} />
         )}
 
@@ -1529,7 +1613,7 @@ function TodoItem({
           </button>
         )}
 
-        {canEdit && !optimisticCompleted && !isEditing && (
+        {canEditText && !optimisticCompleted && !isEditing && (
           <button
             type="button"
             onClick={() => setIsEditing(true)}
@@ -1602,6 +1686,7 @@ function TodoItem({
                 ref={subtaskInputRef}
                 type="text"
                 value={subtaskText}
+                maxLength={MAX_TASK_TEXT_LENGTH}
                 onChange={(e) => setSubtaskText(e.target.value)}
                 placeholder="New subtask name..."
                 required
@@ -1736,7 +1821,12 @@ export default function TodoPage() {
   const todos: Todo[] = useMemo(() => activeTodos || [], [activeTodos]);
 
   const handleGuestAction = useCallback((intent: string, payload: any) => {
-    if (isLoggedIn || isSharedServerList) return;
+    if (isLoggedIn) return;
+    // Task changes on a shared list go to the server. List changes (create,
+    // rename, delete, category) always target the guest's own local lists.
+    const isListIntent =
+      intent === "createList" || intent === "renameList" || intent === "deleteList" || intent === "updateListCategory";
+    if (isSharedServerList && !isListIntent) return;
     // Read the latest stored lists (not the render's copy) so back-to-back
     // actions build on each other. Stamp the fallback list on first change.
     const now = Date.now();
@@ -1903,10 +1993,23 @@ export default function TodoPage() {
         updatedLists = prevLists.filter((l) => l.id !== payload.listId);
         break;
       }
+      case "updateListCategory": {
+        updatedLists = prevLists.map((l) =>
+          l.id === payload.id ? { ...l, category: payload.category } : l
+        );
+        break;
+      }
     }
 
     writeStoredValue(GUEST_STORAGE_KEY, JSON.stringify(updatedLists));
   }, [isLoggedIn, isSharedServerList, effectiveActiveListId, userId]);
+
+  // Guests on someone else's shared list can edit tasks but not reminders.
+  const canSetReminders = isLoggedIn || !isSharedServerList;
+  const guestContextValue = useMemo(
+    () => ({ isLoggedIn, canSetReminders, onGuestAction: handleGuestAction }),
+    [isLoggedIn, canSetReminders, handleGuestAction]
+  );
   
   const inputRef = useRef<HTMLInputElement>(null);
   const listNameInputRef = useRef<HTMLInputElement>(null);
@@ -2362,6 +2465,12 @@ export default function TodoPage() {
     setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2200);
   }, []);
 
+  // Surface server-side rejections of a new task (too long, list full, rate limited).
+  const createData = createFetcher.data as { error?: string } | undefined;
+  useEffect(() => {
+    if (createFetcher.state === "idle" && createData?.error) showToast(createData.error);
+  }, [createFetcher.state, createData, showToast]);
+
 
   const handleExportData = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lists, null, 2));
@@ -2376,6 +2485,12 @@ export default function TodoPage() {
 
   const handleTitleSubmit = () => {
     if (titleInput.trim() && titleInput.trim() !== activeListName) {
+      if (!isLoggedIn && !isSharedServerList) {
+        // Guest lists live in localStorage, same as the sidebar rename.
+        handleGuestAction("renameList", { listId: effectiveActiveListId, newName: titleInput.trim() });
+        setIsEditingTitle(false);
+        return;
+      }
       listFetcher.submit(
         { intent: "renameList", listId: activeListId, newName: titleInput.trim() } as any,
         { method: "post" }
@@ -2410,7 +2525,7 @@ export default function TodoPage() {
   }, [completedCount, totalCount]);
 
   return (
-    <GuestContext.Provider value={{ isLoggedIn, onGuestAction: handleGuestAction }}>
+    <GuestContext.Provider value={guestContextValue}>
       <div className="min-h-screen md:h-screen bg-themeBg text-slate-100 flex flex-col md:grid md:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)] relative overflow-x-hidden overflow-y-auto md:overflow-hidden font-sans w-full max-w-[100vw]">
       
       {/* Confetti Celebration */}
@@ -2704,6 +2819,7 @@ export default function TodoPage() {
                 <input
                   type="text"
                   value={titleInput}
+                  maxLength={MAX_LIST_NAME_LENGTH}
                   onChange={(e) => setTitleInput(e.target.value)}
                   onBlur={handleTitleSubmit}
                   onKeyDown={(e) => {
@@ -2843,6 +2959,7 @@ export default function TodoPage() {
                 type="text"
                 name="text"
                 required
+                maxLength={MAX_TASK_TEXT_LENGTH}
                 className="w-full min-w-0 rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 shadow-inner px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 focus:border-themeAccentRing/50 transition-all duration-200"
                 placeholder="What needs to be done?"
                 autoComplete="off"
@@ -2889,7 +3006,9 @@ export default function TodoPage() {
 
               <button
                 type="button"
+                disabled={!canSetReminders}
                 onClick={async () => {
+                  if (!canSetReminders) return;
                   setShowReminderPanel(!showReminderPanel);
                   if (!showReminderPanel) {
                     const granted = await requestNotificationPermission();
@@ -2898,12 +3017,12 @@ export default function TodoPage() {
                     }
                   }
                 }}
-                className={`rounded-xl border px-3.5 py-3 text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 cursor-pointer
+                className={`rounded-xl border px-3.5 py-3 text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50
                   ${reminderMode !== "none"
                     ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText"
                     : "bg-white/[0.04] border-white/[0.06] text-slate-400 hover:text-slate-200"
                   }`}
-                title="Set Reminder Alert"
+                title={canSetReminders ? "Set Reminder Alert" : GUEST_REMINDER_HINT}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2931,6 +3050,12 @@ export default function TodoPage() {
               </button>
             </div>
           </div>
+
+          {!canSetReminders && (
+            <p className="mt-2 px-1 text-[10px] text-slate-500">
+              {GUEST_REMINDER_HINT} on shared lists.
+            </p>
+          )}
 
           {showDurationPicker && (
             <div className="mt-2.5 p-3.5 rounded-xl bg-themeSidebar border border-themeBorder flex flex-col gap-2.5 animate-fade-in shadow-xl backdrop-blur-md">
@@ -3817,6 +3942,7 @@ export default function TodoPage() {
             <input
               type="text"
               value={renameInput}
+              maxLength={MAX_LIST_NAME_LENGTH}
               onChange={(e) => setRenameInput(e.target.value)}
               className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 mb-5"
               placeholder="Enter new list name..."
@@ -3923,6 +4049,7 @@ export default function TodoPage() {
             <input
               type="text"
               value={newListInput}
+              maxLength={MAX_LIST_NAME_LENGTH}
               onChange={(e) => setNewListInput(e.target.value)}
               className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 mb-4"
               placeholder="Enter list name (e.g., Shopping, Work)..."
@@ -3953,6 +4080,7 @@ export default function TodoPage() {
                 <input
                   type="text"
                   value={customCategoryInput}
+                  maxLength={MAX_CATEGORY_LENGTH}
                   onChange={(e) => setCustomCategoryInput(e.target.value)}
                   className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50"
                   placeholder="e.g. Project Alpha..."
@@ -4038,6 +4166,7 @@ export default function TodoPage() {
                 <input
                   type="text"
                   value={editCustomCategoryInput}
+                  maxLength={MAX_CATEGORY_LENGTH}
                   onChange={(e) => setEditCustomCategoryInput(e.target.value)}
                   className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50"
                   placeholder="e.g. Special Project..."

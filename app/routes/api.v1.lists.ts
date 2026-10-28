@@ -5,6 +5,7 @@ import { CreateListSchema } from "../../shared";
 import { parseListScope, serializeListRows } from "../api-helpers.server";
 import { listSharedWithMe } from "../shared-lists.server";
 import { ownerPayload, resolveDisplayName } from "../user-profile.server";
+import { categoryError, listNameError } from "../write-limits";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
@@ -64,6 +65,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const id = crypto.randomUUID();
     const createdAt = Date.now();
     const category = parsed.category || "Checklist";
+    const limitError = listNameError(parsed.name) || categoryError(category);
+    if (limitError) {
+      return Response.json({ error: limitError }, { status: 400 });
+    }
 
     await db
       .prepare(

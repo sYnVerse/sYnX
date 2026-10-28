@@ -7,6 +7,7 @@ import { getLoadContext } from "./load-context";
 import { sendFCMPushNotification } from "./app/fcm.server";
 import { buildReminderEmailHtml, sanitizeEmailSubject } from "./app/html-escape.server";
 import { getRefreshedCookies } from "./app/auth.server";
+import { deleteExpiredGuestLists } from "./app/guest-access.server";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
@@ -50,6 +51,17 @@ export default {
     const now = Date.now();
 
     console.log(`[Cron] Scheduled job started at ${new Date(now).toISOString()}`);
+
+    // Once an hour, delete expired lists that guests created in D1 before
+    // guest list creation moved fully to the browser.
+    if (new Date(event.scheduledTime).getUTCMinutes() === 0) {
+      try {
+        const deleted = await deleteExpiredGuestLists(db, now);
+        if (deleted > 0) console.log(`[Cron] Deleted ${deleted} expired guest list(s).`);
+      } catch (e) {
+        console.error("[Cron] Failed to delete expired guest lists:", e);
+      }
+    }
 
     // Fetch due reminders with user settings and emails
     let dueReminders: any[] = [];

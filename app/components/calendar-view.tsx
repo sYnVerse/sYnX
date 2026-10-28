@@ -1,6 +1,8 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useContext } from "react";
 import { useFetcher } from "@remix-run/react";
 import type { Todo } from "~/to-do-manager";
+import { GUEST_REMINDER_HINT, GuestContext } from "~/guest-context";
+import { MAX_TASK_TEXT_LENGTH } from "~/write-limits";
 import { applySetCompletedLocal, formatRescheduledToast } from "../../shared";
 
 // Redefining priority config for local styling
@@ -47,6 +49,10 @@ interface CalendarViewProps {
 
 export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProps) {
   const fetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
+  // Guests' own lists live in localStorage, so their changes go through
+  // onGuestAction as well as the server (which ignores them). Guests on
+  // someone else's shared list can't schedule tasks there.
+  const { isLoggedIn, canSetReminders, onGuestAction } = useContext(GuestContext);
   
   // Navigation states
   const [currentDate, setCurrentDate] = useState(() => new Date());
@@ -229,11 +235,18 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
 
   // HTML5 Drag-and-drop drop handlers
   const handleDropOnDate = (todoId: string, dateStr: string) => {
+    if (!canSetReminders) {
+      onNotify?.(`${GUEST_REMINDER_HINT}.`);
+      return;
+    }
     const [year, month, day] = dateStr.split("-").map(Number);
     // Schedule for 9:00 AM on the target date in local time
     const targetDate = new Date(year, month - 1, day);
     targetDate.setHours(9, 0, 0, 0);
-    
+
+    if (!isLoggedIn) {
+      onGuestAction("updateReminder", { id: todoId, reminderAt: targetDate.getTime() });
+    }
     fetcher.submit(
       {
         intent: "updateReminder",
@@ -245,6 +258,13 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
   };
 
   const handleDropOnUnscheduled = (todoId: string) => {
+    if (!canSetReminders) {
+      onNotify?.(`${GUEST_REMINDER_HINT}.`);
+      return;
+    }
+    if (!isLoggedIn) {
+      onGuestAction("updateReminder", { id: todoId, reminderAt: undefined });
+    }
     fetcher.submit(
       {
         intent: "updateReminder",
@@ -260,6 +280,9 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
     if (pendingCompleteId === todoId) return;
     const current = todos.find((t) => t.id === todoId);
     if (!current) return;
+    if (!isLoggedIn) {
+      onGuestAction("setCompleted", { id: todoId, completed: !current.completed });
+    }
     fetcher.submit(
       {
         intent: "setCompleted",
@@ -360,7 +383,8 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                     {dayNum}
                   </span>
                   
-                  {/* Plus button to quick-add */}
+                  {/* Plus button to quick-add (adds a dated task, so not for guests on shared lists) */}
+                  {canSetReminders && (
                   <button
                     onClick={() => setQuickAddDate(date)}
                     className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-themeAccentText hover:bg-white/[0.04] p-0.5 rounded transition duration-150 cursor-pointer flex items-center justify-center"
@@ -370,6 +394,7 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                     </svg>
                   </button>
+                  )}
                 </div>
 
                 {/* List of Tasks in this Date */}
@@ -380,7 +405,7 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                     return (
                       <div
                         key={todo.id}
-                        draggable
+                        draggable={canSetReminders}
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/plain", todo.id);
                         }}
@@ -473,7 +498,9 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
             </h3>
             
             <p className="text-[10px] text-slate-500 mb-4 px-1 leading-normal">
-              Drag tasks from here onto calendar days to schedule them, or drag tasks back here to clear dates.
+              {canSetReminders
+                ? "Drag tasks from here onto calendar days to schedule them, or drag tasks back here to clear dates."
+                : `${GUEST_REMINDER_HINT} or schedule tasks on shared lists.`}
             </p>
 
             <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
@@ -488,7 +515,7 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                   return (
                     <div
                       key={todo.id}
-                      draggable
+                      draggable={canSetReminders}
                       onDragStart={(e) => {
                         e.dataTransfer.setData("text/plain", todo.id);
                       }}
@@ -562,6 +589,7 @@ interface QuickAddTaskModalProps {
 
 function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
   const fetcher = useFetcher();
+  const { isLoggedIn, onGuestAction } = useContext(GuestContext);
   const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [priority, setPriority] = useState<"low" | "medium" | "high" | "none">("none");
@@ -585,6 +613,9 @@ function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
     const scheduledDate = new Date(date);
     scheduledDate.setHours(9, 0, 0, 0);
 
+    if (!isLoggedIn) {
+      onGuestAction("create", { text: text.trim(), priority, reminderAt: scheduledDate.getTime() });
+    }
     fetcher.submit(
       {
         intent: "create",
@@ -631,6 +662,7 @@ function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
               type="text"
               required
               value={text}
+              maxLength={MAX_TASK_TEXT_LENGTH}
               onChange={(e) => setText(e.target.value)}
               placeholder="What needs to be done?"
               className="w-full rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-4 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition duration-200"
@@ -689,6 +721,10 @@ interface EditTaskModalProps {
 
 function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
   const fetcher = useFetcher();
+  const { isLoggedIn, canSetReminders, onGuestAction } = useContext(GuestContext);
+  // Reminder text goes to the list owner, so guests on a shared list can't
+  // reword tasks that have reminders.
+  const canEditText = canSetReminders || !todo.reminderAt;
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [text, setText] = useState(todo.text);
@@ -724,7 +760,8 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
     if (!text.trim()) return;
 
     // 1. Submit text update if changed
-    if (text.trim() !== todo.text) {
+    if (canEditText && text.trim() !== todo.text) {
+      if (!isLoggedIn) onGuestAction("updateText", { id: todo.id, text: text.trim() });
       fetcher.submit(
         { intent: "updateText", id: todo.id, text: text.trim() },
         { method: "post" }
@@ -733,6 +770,7 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
 
     // 2. Submit priority update if changed
     if (priority !== todo.priority) {
+      if (!isLoggedIn) onGuestAction("updatePriority", { id: todo.id, priority });
       fetcher.submit(
         { intent: "updatePriority", id: todo.id, priority },
         { method: "post" }
@@ -741,8 +779,11 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
 
     // 3. Submit reminder date update if changed
     const currentReminderVal = todo.reminderAt ? getDatetimeInputValue(todo.reminderAt) : "";
-    if (dateTime !== currentReminderVal) {
+    if (canSetReminders && dateTime !== currentReminderVal) {
       const targetTime = dateTime ? new Date(dateTime).getTime().toString() : "";
+      if (!isLoggedIn) {
+        onGuestAction("updateReminder", { id: todo.id, reminderAt: dateTime ? Number(targetTime) : undefined });
+      }
       fetcher.submit(
         { intent: "updateReminder", id: todo.id, reminderAt: targetTime },
         { method: "post" }
@@ -754,6 +795,7 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
 
   const handleDelete = () => {
     if (confirm("Are you sure you want to delete this task?")) {
+      if (!isLoggedIn) onGuestAction("delete", { id: todo.id });
       fetcher.submit(
         { intent: "delete", id: todo.id },
         { method: "post" }
@@ -786,8 +828,11 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
               type="text"
               required
               value={text}
+              maxLength={MAX_TASK_TEXT_LENGTH}
+              disabled={!canEditText}
+              title={canEditText ? undefined : "Sign in to edit tasks that have reminders"}
               onChange={(e) => setText(e.target.value)}
-              className="w-full rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 px-4 py-2.5 text-xs focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition duration-200"
+              className="w-full rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 px-4 py-2.5 text-xs disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition duration-200"
             />
           </div>
 
@@ -821,10 +866,11 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
               <input
                 type="datetime-local"
                 value={dateTime}
+                disabled={!canSetReminders}
                 onChange={(e) => setDateTime(e.target.value)}
-                className="flex-1 rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 px-4 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition duration-200 cursor-pointer"
+                className="flex-1 rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 px-4 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition duration-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               />
-              {dateTime && (
+              {dateTime && canSetReminders && (
                 <button
                   type="button"
                   onClick={() => setDateTime("")}
@@ -835,6 +881,9 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
                 </button>
               )}
             </div>
+            {!canSetReminders && (
+              <p className="text-[10px] text-slate-500">{GUEST_REMINDER_HINT} on shared lists.</p>
+            )}
           </div>
 
           <div className="flex items-center justify-between gap-3 mt-2 pt-3 border-t border-white/[0.06]">
