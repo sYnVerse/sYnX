@@ -4,7 +4,6 @@ import * as v from "valibot";
 import { UpdateListSchema } from "../../shared";
 import { getListAccess, serializeListRow } from "../api-helpers.server";
 import { recordSharedListAccess } from "../shared-lists.server";
-import { ensureUserProfileSchema } from "../user-profile.server";
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
@@ -15,8 +14,6 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   if (!listId) {
     return Response.json({ error: "List ID is required" }, { status: 400 });
   }
-
-  await ensureUserProfileSchema(db);
 
   const userId = user ? user.userId : "";
   const access = await getListAccess(db, listId, userId);
@@ -66,8 +63,6 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   if (!listId) {
     return Response.json({ error: "List ID is required" }, { status: 400 });
   }
-
-  await ensureUserProfileSchema(db);
 
   const listRow = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
   if (!listRow) {

@@ -4,15 +4,7 @@ import * as v from "valibot";
 import { CreateListSchema } from "../../shared";
 import { parseListScope, serializeListRows } from "../api-helpers.server";
 import { listSharedWithMe } from "../shared-lists.server";
-import { ensureUserProfileSchema, ownerPayload, resolveDisplayName } from "../user-profile.server";
-
-async function ensureCategoryColumn(db: D1Database) {
-  try {
-    await db.prepare("ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist'").run();
-  } catch {
-    // Column already exists
-  }
-}
+import { ownerPayload, resolveDisplayName } from "../user-profile.server";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
@@ -22,9 +14,6 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  await ensureCategoryColumn(db);
-  await ensureUserProfileSchema(db);
 
   const url = new URL(request.url);
   const scope = parseListScope(url.searchParams.get("scope"));
@@ -68,9 +57,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  await ensureCategoryColumn(db);
-  await ensureUserProfileSchema(db);
 
   try {
     const body = await request.json();

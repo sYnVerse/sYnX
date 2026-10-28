@@ -579,7 +579,6 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       }
       const newListId = crypto.randomUUID();
       try {
-        await db.prepare("ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist'").run().catch(() => {});
         await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl, category) VALUES (?, ?, ?, ?, ?, ?)")
           .bind(newListId, listName.trim(), userId, Date.now(), isLoggedIn ? null : 86400, category)
           .run();
@@ -618,7 +617,6 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
       }
       try {
-        await db.prepare("ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist'").run().catch(() => {});
         await db.prepare("UPDATE lists SET category = ? WHERE id = ?").bind(category, listId).run();
       } catch (e) {
         console.error("Failed to update list category:", e);

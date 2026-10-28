@@ -1,7 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import { removeSharedListAccess } from "../shared-lists.server";
-import { ensureUserProfileSchema } from "../user-profile.server";
 
 /**
  * DELETE /api/v1/lists/:id/shared — remove a list from the caller's "Shared with me" view.
@@ -25,7 +24,6 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return Response.json({ error: "List ID is required" }, { status: 400 });
   }
 
-  await ensureUserProfileSchema(db);
   await removeSharedListAccess(db, user.userId, listId);
 
   return Response.json({ success: true });

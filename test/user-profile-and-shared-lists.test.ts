@@ -7,7 +7,6 @@ import {
   syncUserProfileOnSignIn,
   getDisplayNameForUser,
   ownerPayload,
-  ensureUserProfileSchema,
 } from "../app/user-profile.server";
 import {
   recordSharedListAccess,
@@ -57,7 +56,6 @@ describe("user profile + shared list access (D1)", () => {
 
   beforeEach(async () => {
     db = env.DB;
-    await ensureUserProfileSchema(db);
   });
 
   afterEach(async () => {

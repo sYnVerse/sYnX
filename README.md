@@ -210,7 +210,7 @@ The `to-do-list` Worker deploys through [Cloudflare Workers Builds](https://deve
 
 ### Database schema and migrations
 
-The app stores its data in a Cloudflare D1 (SQLite) database named `synx-db`. The schema lives in numbered SQL files in [`migrations/`](migrations/), and Wrangler records which ones have run in a `d1_migrations` table inside the database. `migrations/0000_baseline.sql` is the full schema as it existed in production on Oct 27, 2026.
+The app stores its data in a Cloudflare D1 (SQLite) database named `synx-db`. The schema lives in numbered SQL files in [`migrations/`](migrations/), and Wrangler records which ones have run in a `d1_migrations` table inside the database. `migrations/0000_baseline.sql` is the full schema as it existed in production on Oct 27, 2026, and `migrations/0001_indexes.sql` adds indexes for the busiest queries.
 
 #### Change the schema
 
@@ -228,7 +228,7 @@ Rules:
 
 * Never edit a migration that has already been applied. Fix mistakes with a new migration.
 * Keep changes additive within a release (expand, then contract): add the new column or table first, ship code that uses it, and only drop the old one in a later release.
-* Don't run DDL (`CREATE`/`ALTER`/`DROP`) from app code for new changes. Some older code still adds columns at runtime (`ensureUserProfileSchema`, `ensureCategoryColumn`); that is legacy and will be removed in a follow-up.
+* Don't run DDL (`CREATE`/`ALTER`/`DROP`) from app code. The app assumes the schema from `migrations/` is already in place.
 
 #### Production
 
