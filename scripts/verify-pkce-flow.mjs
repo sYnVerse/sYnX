@@ -81,7 +81,7 @@ assert(!exchanged.err, "token exchange with verifier succeeds");
 assert(exchanged.tokens?.access === "mock-access-token", "access token returned");
 
 // 5) Exchange without verifier / wrong verifier fails
-const { url: url2, challenge: ch2 } = await client.authorize(CALLBACK, "code", { pkce: true });
+const { url: url2 } = await client.authorize(CALLBACK, "code", { pkce: true });
 const authRes2 = await fetch(url2, { redirect: "manual" });
 const code2 = new URL(authRes2.headers.get("location")).searchParams.get("code");
 const bad = await client.exchange(code2, CALLBACK, "wrong-verifier");

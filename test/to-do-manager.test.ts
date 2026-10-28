@@ -253,8 +253,8 @@ describe("TodoManager", () => {
 
     it("deletes all subtasks when parent task is deleted", async () => {
       const parent = await manager.create("Parent task");
-      const subtask1 = await manager.create("Subtask 1", "none", undefined, parent.id);
-      const subtask2 = await manager.create("Subtask 2", "none", undefined, parent.id);
+      await manager.create("Subtask 1", "none", undefined, parent.id);
+      await manager.create("Subtask 2", "none", undefined, parent.id);
 
       expect(await manager.list()).toHaveLength(3);
 

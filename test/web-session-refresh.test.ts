@@ -6,8 +6,6 @@ import {
   REFRESH_TOKEN_MAX_AGE_SECONDS,
   serializeAuthSessionCookie,
   serializeAuthRefreshCookie,
-  clearAuthSessionCookie,
-  clearAuthRefreshCookie,
   buildAuthClearCookieHeaders,
   parseRefreshCookie,
 } from "../app/auth-cookies.server";

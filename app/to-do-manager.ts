@@ -199,7 +199,7 @@ export class TodoManager {
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
-    const result = await this.setCompleted(id, !Boolean(todo.completed), options);
+    const result = await this.setCompleted(id, !todo.completed, options);
     return result.todo;
   }
 
