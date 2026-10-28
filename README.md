@@ -123,6 +123,8 @@ The Android app lives in [`mobile/`](mobile/). It's an Expo SDK 58 app (React Na
 * An offline copy of your lists (TanStack Query, saved to AsyncStorage), light, dark and system themes, haptics, and deep links (`synx://` links and `synx.christran.io` list links, including a quick-add action).
 * Home time zone support: when you travel, the app asks before switching your repeating reminders to the local time.
 
+<img src="docs/screenshots/mobile-widgets.png" width="320" alt="Android home screen with the Progress &amp; Quick Add widget and the Active List widget">
+
 ### Shared code and versions
 
 * [`shared/`](shared/) holds code that both apps use: validation schemas, recurrence and time zone logic, list permissions, changelog types and widget snapshot logic. `mobile/scripts/sync-shared.js` copies it into `mobile/src/shared/`. The copy runs on `npm start`, `prebuild` and the EAS pre-install hook, and CI fails if it's out of date.
