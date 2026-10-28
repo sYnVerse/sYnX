@@ -1393,7 +1393,7 @@ function TodoItem({
   return (
     <div className="flex flex-col w-full relative">
       <li
-        className={`group flex items-center gap-2 sm:gap-3 border transition-all duration-300 min-w-0 relative focus-within:z-40 hover:z-20
+        className={`group flex flex-wrap lg:flex-nowrap items-center gap-x-2 gap-y-2 sm:gap-x-3 border transition-all duration-300 min-w-0 relative focus-within:z-40 hover:z-20
           ${isSubtask 
             ? "bg-transparent border-transparent py-1.5 px-2 hover:bg-white/[0.02] rounded-lg" 
             : "bg-white/[0.02] hover:bg-white/[0.05] border-white/[0.04] p-3.5 rounded-xl shadow-sm"
@@ -1475,7 +1475,7 @@ function TodoItem({
           </form>
         ) : (
           <span
-            className={`flex-1 min-w-0 truncate transition-all duration-200 ${canEdit ? "cursor-pointer hover:text-white" : "cursor-default"} ${
+            className={`flex-1 min-w-0 break-words lg:truncate transition-all duration-200 ${canEdit ? "cursor-pointer hover:text-white" : "cursor-default"} ${
               isSubtask ? "text-xs text-slate-350" : "text-sm text-slate-200"
             } ${
               optimisticCompleted
@@ -1493,6 +1493,13 @@ function TodoItem({
           </span>
         )}
 
+        {/* Badges and actions: their own wrapping row under the title on narrow
+            screens, so they can't squeeze the title; inline on wide screens. */}
+        <div
+          className={`flex flex-wrap items-center gap-2 basis-full empty:hidden lg:basis-auto lg:flex-nowrap lg:shrink-0 lg:gap-3 lg:pl-0 ${
+            isSubtask ? "pl-6 sm:pl-7" : "pl-7 sm:pl-8"
+          }`}
+        >
         {/* Duration Badge & Picker */}
         {canEdit && !optimisticCompleted ? (
           <DurationPicker currentDurationMinutes={todo.durationMinutes} todoId={todo.id} />
@@ -1535,7 +1542,7 @@ function TodoItem({
           <button
             type="button"
             onClick={() => setIsEditing(true)}
-            className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-themeAccentText transition-all duration-200 p-1 rounded-lg hover:bg-white/[0.04] cursor-pointer"
+            className="lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 text-slate-500 hover:text-themeAccentText transition-all duration-200 p-1 rounded-lg hover:bg-white/[0.04] cursor-pointer"
             title="Edit task"
             aria-label="Edit task"
           >
@@ -1568,7 +1575,7 @@ function TodoItem({
             <input type="hidden" name="intent" value="delete" />
             <button
               type="submit"
-              className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-all duration-200 p-1 rounded-lg hover:bg-rose-500/10 cursor-pointer"
+              className="lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 text-slate-500 hover:text-rose-400 transition-all duration-200 p-1 rounded-lg hover:bg-rose-500/10 cursor-pointer"
               aria-label="Delete task"
             >
               <svg
@@ -1587,6 +1594,7 @@ function TodoItem({
           </button>
           </deleteFetcher.Form>
         )}
+        </div>
       </li>
 
       {/* Render subtasks underneath the parent */}
@@ -2854,7 +2862,7 @@ export default function TodoPage() {
             </div>
 
             <div className="flex flex-wrap gap-2 shrink-0">
-              <div className="relative flex-1 sm:flex-initial min-w-0" title="Est. Duration in minutes">
+              <div className="relative flex-1 sm:flex-initial min-w-[3rem]" title="Est. Duration in minutes">
                 <input
                   type="hidden"
                   name="durationMinutes"
@@ -2877,7 +2885,7 @@ export default function TodoPage() {
                 </button>
               </div>
 
-              <div className="relative flex-1 sm:flex-initial min-w-0">
+              <div className="relative flex-1 sm:flex-initial min-w-[8.5rem]">
                 <select
                   name="priority"
                   value={newPriority}
@@ -2922,7 +2930,7 @@ export default function TodoPage() {
                 name="intent"
                 value="create"
                 disabled={isCreating}
-                className="rounded-xl bg-gradient-to-r from-themeAccentFrom to-themeAccentTo hover:from-themeAccentFrom hover:to-themeAccentTo text-white font-semibold px-5 py-3 text-sm shadow-lg shadow-themeAccentFrom/10 hover:shadow-themeAccentFrom/25 transition-all duration-200 disabled:opacity-50 cursor-pointer active:scale-98 flex items-center justify-center min-w-[70px]"
+                className="rounded-xl bg-gradient-to-r from-themeAccentFrom to-themeAccentTo hover:from-themeAccentFrom hover:to-themeAccentTo text-white font-semibold px-5 py-3 text-sm shadow-lg shadow-themeAccentFrom/10 hover:shadow-themeAccentFrom/25 transition-all duration-200 disabled:opacity-50 cursor-pointer active:scale-98 flex items-center justify-center min-w-[70px] grow sm:grow-0"
               >
                 {isCreating ? (
                   <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -3448,7 +3456,7 @@ export default function TodoPage() {
             <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Color Themes</h4>
             <div className="grid grid-cols-2 gap-2 mb-6">
               {[
-                { id: "midnight", name: "Midnight Indigo", bg: "bg-slate-950 border-indigo-500/50" },
+                { id: "midnight", name: "Midnight Indigo", bg: "bg-[#020617] border-indigo-500/50" },
                 { id: "emerald", name: "Emerald Forest", bg: "bg-emerald-950 border-emerald-500/50" },
                 { id: "sunset", name: "Sunset Rose", bg: "bg-stone-900 border-rose-500/50" },
                 { id: "cyberpunk", name: "Cyberpunk Neon", bg: "bg-black border-pink-500/50" },

@@ -183,3 +183,146 @@ body {
   animation-iteration-count: 1;
   animation-fill-mode: forwards;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Light Pastel theme: readable text and light surfaces                        */
+/* -------------------------------------------------------------------------- */
+/*
+ * Components are styled with dark-theme utilities (light slate text, dark
+ * slate panels, white hairline borders). The other themes are all dark, so
+ * that works there, but on Light Pastel's cream background that text nearly
+ * disappears. These overrides only apply when data-theme="pastel" and remap
+ * those utilities to colors that meet WCAG AA (4.5:1 or better) on the
+ * cream page (#FAF7F2), the sidebar (#F3EFEA) and white cards.
+ *
+ * White text on accent or colored buttons (`text-white`) is deliberately left
+ * alone. The dark toast (`bg-slate-900/95`) and its text also stay dark.
+ */
+
+html[data-theme="pastel"],
+[data-theme="pastel"] body {
+  color: #1e293b;
+}
+
+/* Primary text: 13.7:1 on the page */
+[data-theme="pastel"] .text-slate-50,
+[data-theme="pastel"] .text-slate-100,
+[data-theme="pastel"] .text-slate-200 {
+  color: #1e293b;
+}
+/* Secondary text: 9.7:1 */
+[data-theme="pastel"] .text-slate-300,
+[data-theme="pastel"] .text-slate-350,
+[data-theme="pastel"] .text-slate-355 {
+  color: #334155;
+}
+/* Muted text: 7.1:1, 6.0:1 and 5.4:1 */
+[data-theme="pastel"] .text-slate-400 {
+  color: #475569;
+}
+[data-theme="pastel"] .text-slate-500 {
+  color: #526075;
+}
+[data-theme="pastel"] .text-slate-600,
+[data-theme="pastel"] .text-slate-650 {
+  color: #5b677b;
+}
+[data-theme="pastel"] .placeholder-slate-500::placeholder {
+  color: #5b677b;
+}
+
+/* Hover states that brighten to white in dark themes darken instead */
+[data-theme="pastel"] .hover\:text-white:hover,
+[data-theme="pastel"] .hover\:text-slate-200:hover,
+[data-theme="pastel"] .hover\:text-slate-300:hover,
+[data-theme="pastel"] .hover\:text-slate-350:hover,
+[data-theme="pastel"] .group:hover .group-hover\:text-white,
+[data-theme="pastel"] .group\/task:hover .group-hover\/task\:text-white {
+  color: #0f172a;
+}
+
+/* Gradient headings (logo, list title) */
+[data-theme="pastel"] .bg-clip-text.from-white {
+  background-image: linear-gradient(to right, #0f172a, #1e293b 50%, #334155);
+}
+
+/* Status colors: the dark-theme 200-400 shades are too light on cream */
+[data-theme="pastel"] .text-rose-300,
+[data-theme="pastel"] .text-rose-400,
+[data-theme="pastel"] .text-rose-400\/80,
+[data-theme="pastel"] .text-rose-450,
+[data-theme="pastel"] .text-rose-500,
+[data-theme="pastel"] .hover\:text-rose-300:hover,
+[data-theme="pastel"] .hover\:text-rose-400:hover {
+  color: #be123c;
+}
+[data-theme="pastel"] .text-emerald-400 {
+  color: #065f46;
+}
+[data-theme="pastel"] .text-amber-400 {
+  color: #92400e;
+}
+[data-theme="pastel"] .text-indigo-300,
+[data-theme="pastel"] .text-indigo-400,
+[data-theme="pastel"] .text-indigo-400\/70 {
+  color: #4338ca;
+}
+[data-theme="pastel"] .text-violet-300 {
+  color: #6d28d9;
+}
+[data-theme="pastel"] .text-sky-400 {
+  color: #0369a1;
+}
+
+/* Dark panels (modals, dropdowns, popovers, inputs) become light */
+[data-theme="pastel"] .bg-slate-900,
+[data-theme="pastel"] .bg-slate-900\/80,
+[data-theme="pastel"] .bg-slate-900\/60 {
+  background-color: #ffffff;
+}
+[data-theme="pastel"] .bg-slate-950,
+[data-theme="pastel"] .bg-slate-955 {
+  background-color: #f6f3ee;
+}
+[data-theme="pastel"] .bg-slate-800 {
+  background-color: #cbd5e1;
+}
+[data-theme="pastel"] .bg-slate-800\/80 {
+  background-color: #e2e8f0;
+}
+[data-theme="pastel"] .bg-slate-950\/80 {
+  background-color: rgba(15, 23, 42, 0.35);
+}
+
+/* Calendar day cells: dark tints turn grey on the light grid */
+[data-theme="pastel"] .bg-slate-900\/\[0\.1\]:not([class*="bg-themeAccentBg"]) {
+  background-color: #ffffff;
+}
+[data-theme="pastel"] .bg-slate-950\/\[0\.3\]:not([class*="bg-themeAccentBg"]) {
+  background-color: #f3efea;
+}
+[data-theme="pastel"] .bg-slate-900\/\[0\.1\][class*="bg-themeAccentBg"] {
+  background-color: #f1f0fd; /* today / drop target */
+}
+[data-theme="pastel"] .bg-slate-900\/\[0\.05\] {
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+/* White hairlines and white tints are invisible on cream: use dark ones */
+[data-theme="pastel"] [class^="border-white"],
+[data-theme="pastel"] [class*=" border-white"] {
+  border-color: rgba(15, 23, 42, 0.1);
+}
+[data-theme="pastel"] [class^="bg-white/"],
+[data-theme="pastel"] [class*=" bg-white/"] {
+  background-color: rgba(255, 255, 255, 0.7);
+}
+[data-theme="pastel"] [class*="hover:bg-white/"]:hover {
+  background-color: rgba(15, 23, 42, 0.04);
+}
+
+/* The dark toast keeps its dark-theme look */
+[data-theme="pastel"] .bg-slate-900\/95 .text-indigo-200,
+[data-theme="pastel"] .bg-slate-900\/95.text-indigo-200 {
+  color: #c7d2fe;
+}
