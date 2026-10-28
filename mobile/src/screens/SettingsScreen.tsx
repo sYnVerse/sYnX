@@ -1009,7 +1009,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
               </Text>
             </View>
             <Text style={[styles.label, { color: theme.textPrimary, fontWeight: "700" }]}>
-              What's new? / Version Log
+              What&apos;s new? / Version Log
             </Text>
           </View>
           <Text style={{ color: theme.accent, fontSize: typography.sm, fontWeight: "700" }}>View</Text>

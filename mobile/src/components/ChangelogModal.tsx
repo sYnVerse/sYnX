@@ -42,7 +42,7 @@ export const ChangelogModal: React.FC<ChangelogModalProps> = ({ visible, onClose
                 </View>
                 <View>
                   <View style={styles.titleRow}>
-                    <Text style={[styles.title, { color: theme.textPrimary }]}>What's new?</Text>
+                    <Text style={[styles.title, { color: theme.textPrimary }]}>What&apos;s new?</Text>
                     <View
                       style={[
                         styles.versionBadge,
