@@ -4,6 +4,7 @@ import { TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
 import * as v from "valibot";
 import { UpdateTodoSchema } from "../../shared";
+import { taskTextError } from "../write-limits";
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
   const env = context.cloudflare.env;
@@ -35,6 +36,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     try {
       const body = await request.json();
       const parsed = v.parse(UpdateTodoSchema, body);
+      const textError = parsed.text !== undefined ? taskTextError(parsed.text) : null;
+      if (textError) {
+        return Response.json({ error: textError }, { status: 400 });
+      }
       let updatedTodo;
 
       if (parsed.text !== undefined) {

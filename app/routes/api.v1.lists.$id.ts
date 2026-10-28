@@ -4,6 +4,7 @@ import * as v from "valibot";
 import { UpdateListSchema } from "../../shared";
 import { getListAccess, serializeListRow } from "../api-helpers.server";
 import { recordSharedListAccess } from "../shared-lists.server";
+import { categoryError, listNameError } from "../write-limits";
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
@@ -80,6 +81,12 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
       const newName = parsed.name ?? listRow.name;
       const newCategory = parsed.category ?? listRow.category ?? "Checklist";
+      const limitError =
+        (parsed.name !== undefined ? listNameError(parsed.name) : null) ||
+        (parsed.category !== undefined ? categoryError(parsed.category) : null);
+      if (limitError) {
+        return Response.json({ error: limitError }, { status: 400 });
+      }
 
       await db
         .prepare("UPDATE lists SET name = ?, category = ? WHERE id = ?")

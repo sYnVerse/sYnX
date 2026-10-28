@@ -5,6 +5,8 @@ import * as v from "valibot";
 import { CreateTodoSchema } from "../../shared";
 
 import { getListAccess } from "../api-helpers.server";
+import { isListFull } from "../guest-access.server";
+import { TASK_LIMIT_ERROR, taskTextError } from "../write-limits";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
@@ -51,6 +53,14 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const access = await getListAccess(db, parsed.listId, user.userId);
     if (!access.canEdit) {
       return Response.json({ error: "Edit permission denied for list" }, { status: 403 });
+    }
+
+    const textError = taskTextError(parsed.text);
+    if (textError) {
+      return Response.json({ error: textError }, { status: 400 });
+    }
+    if (await isListFull(db, parsed.listId)) {
+      return Response.json({ error: TASK_LIMIT_ERROR }, { status: 400 });
     }
 
     const manager = new TodoManager(db, parsed.listId);

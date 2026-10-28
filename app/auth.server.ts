@@ -8,6 +8,7 @@ import {
   serializeAuthRefreshCookie,
   serializeAuthSessionCookie,
 } from "./auth-cookies.server";
+import { isGuestId } from "./guest-access.server";
 
 export {
   AUTH_SESSION_COOKIE,
@@ -277,8 +278,19 @@ export async function getOptionalUser(request: Request, env: any) {
   }
 
   // Handle guest fallback
+  // Only accept a cookie that holds an id this app minted (guest_<uuid>);
+  // anything else gets a fresh guest id, so a guest can never act as another
+  // user's id.
   const guestMatch = cookieHeader.match(/guest_session=([^;]+)/);
-  let guestId = guestMatch ? decodeURIComponent(guestMatch[1]) : null;
+  let guestId: string | null = null;
+  if (guestMatch) {
+    try {
+      const candidate = decodeURIComponent(guestMatch[1]);
+      if (isGuestId(candidate)) guestId = candidate;
+    } catch {
+      // Malformed cookie value; treat as no guest session.
+    }
+  }
   let isNewGuest = false;
   if (!guestId) {
     guestId = `guest_${crypto.randomUUID()}`;

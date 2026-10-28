@@ -24,6 +24,19 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Rate limit for writes by guests (not signed in) on lists shared as
+  // "anyone can edit". Checked per guest id and per IP in
+  // app/guest-access.server.ts. namespace_id must be unique in the account.
+  "ratelimits": [
+    {
+      "name": "GUEST_WRITE_LIMITER",
+      "namespace_id": "4201",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    }
+  ],
   "triggers": {
     "crons": [
       "* * * * *"
