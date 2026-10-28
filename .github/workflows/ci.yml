@@ -102,7 +102,7 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
         working-directory: mobile
-      # Expo's ESLint setup (mobile/eslint.config.js). Errors fail the job;
-      # warnings are reported but tracked as follow-ups.
+      # Expo's ESLint setup (mobile/eslint.config.js). The lint script uses
+      # --max-warnings 0, so any error or warning fails the job.
       - run: npm run lint
         working-directory: mobile

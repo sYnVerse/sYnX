@@ -18,7 +18,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs these on every pull request and
 - `npm run typecheck` (web, must report 0 errors) and `npm run typecheck:mobile-tests` (root tests that import mobile code, checked with the mobile types)
 - `cd mobile && npm run typecheck`
 - `cd mobile && npm run doctor` when `mobile/` or `shared/` changes (see below)
-- `cd mobile && npm run lint` when `mobile/` or `shared/` changes (Expo's ESLint setup in `mobile/eslint.config.js`; errors fail CI, warnings are tracked follow-ups)
+- `cd mobile && npm run lint` when `mobile/` or `shared/` changes (Expo's ESLint setup in `mobile/eslint.config.js`; `--max-warnings 0`, so warnings fail CI too)
 
 Tests that import mobile code (and so React Native) go in `test/tsconfig.mobile.json` and the root `tsconfig.json` exclude list, not the web typecheck.
 
