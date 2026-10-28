@@ -32,7 +32,7 @@ Any change that requires downstream users to update code to avoid compile or run
 
 ### Data & architecture
 - Dropping JSON keys or mutating response field types
-- `schema.sql` mutations: dropping columns, altering types, or adding non-null constraints without defaults
+- Schema changes in `migrations/`: dropping columns, altering types, or adding non-null constraints without defaults
 - Removing or renaming required environment variables or config keys
 
 ## 3. When to bump vs append (same calendar day)
@@ -100,4 +100,7 @@ Before marking mobile versioning work done:
 - [ ] Changelog items in each version are ordered NEW → IMPR → FIX (section 5)
 - [ ] Web left unchanged unless there were user-facing web changes (`WEB_VERSION`)
 - [ ] `npm run lint`, tests (`npm test -- --run`), web typecheck (`npm run typecheck` and `npm run typecheck:mobile-tests`) and mobile typecheck pass, the same checks CI runs
+- [ ] Schema changes are a new numbered file in `migrations/` (`npx wrangler d1 migrations create synx-db <name>`), applied locally with `npx wrangler d1 migrations apply synx-db --local`; no DDL in app code (the runtime `ensure*` schema code is legacy, to be removed in a follow-up)
+- [ ] No already-applied migration was edited, and the change is additive within the release (expand, then contract: drop or rename only in a later release)
+- [ ] No `wrangler d1 migrations apply` or `wrangler d1 execute` was run with `--remote` by hand; production migrations run only through the deploy pipeline (`npm run deploy`)
 - [ ] `cd mobile && npm run doctor` passes before a mobile build or release, or after mobile dependency changes (fix SDK version mismatches with `npx expo install --fix`)

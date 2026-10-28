@@ -57,35 +57,6 @@ describe("user profile + shared list access (D1)", () => {
 
   beforeEach(async () => {
     db = env.DB;
-    await db.exec(
-      `
-      CREATE TABLE IF NOT EXISTS user_settings (
-        user_id TEXT PRIMARY KEY,
-        email TEXT,
-        email_enabled INTEGER DEFAULT 0,
-        sms_enabled INTEGER DEFAULT 0,
-        phone_number TEXT DEFAULT '',
-        discord_webhook_url TEXT DEFAULT '',
-        phone_carrier TEXT DEFAULT '',
-        display_name TEXT
-      );
-      CREATE TABLE IF NOT EXISTS lists (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        owner_id TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        expiration_ttl INTEGER,
-        share_mode TEXT DEFAULT 'private',
-        category TEXT DEFAULT 'Checklist'
-      );
-      CREATE TABLE IF NOT EXISTS shared_list_access (
-        user_id TEXT NOT NULL,
-        list_id TEXT NOT NULL,
-        opened_at INTEGER NOT NULL,
-        PRIMARY KEY (user_id, list_id)
-      );
-    `.replace(/\n/g, " ")
-    );
     await ensureUserProfileSchema(db);
   });
 
