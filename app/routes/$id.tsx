@@ -6,7 +6,8 @@ import {
 } from "@remix-run/cloudflare";
 import { useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
 import { TodoManager, type Todo } from "~/to-do-manager";
-import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
+import { useState, useRef, useEffect, useEffectEvent, useCallback, useMemo, createContext, useContext } from "react";
+import { readStoredValue, useHydrated, useStoredValue, writeStoredValue } from "~/client-storage";
 import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
@@ -50,43 +51,32 @@ export const GuestContext = createContext<{
   onGuestAction: () => {},
 });
 
-export function loadGuestListsFromStorage(guestId: string): GuestList[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(GUEST_STORAGE_KEY);
-    if (raw) {
+/**
+ * Parses the stored guest lists. Falls back to a single empty "My Tasks"
+ * list when nothing usable is stored. Pure: the fallback's created_at is 0
+ * and gets stamped when the guest first changes something.
+ */
+export function parseGuestLists(raw: string | null, guestId: string): GuestList[] {
+  if (raw) {
+    try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed;
       }
+    } catch (e) {
+      console.error("Failed to load guest lists from localStorage:", e);
     }
-  } catch (e) {
-    console.error("Failed to load guest lists from localStorage:", e);
   }
-  const defaultList: GuestList = {
-    id: guestId || "guest_default",
-    name: "My Tasks",
-    owner_id: guestId || "guest",
-    created_at: Date.now(),
-    share_mode: "private",
-    todos: [],
-  };
-  const initial = [defaultList];
-  try {
-    localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(initial));
-  } catch {
-    // Storage can be unavailable (private mode, quota); the guest list still works in memory.
-  }
-  return initial;
-}
-
-export function saveGuestListsToStorage(guestLists: GuestList[]) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(guestLists));
-  } catch (e) {
-    console.error("Failed to save guest lists to localStorage:", e);
-  }
+  return [
+    {
+      id: guestId || "guest_default",
+      name: "My Tasks",
+      owner_id: guestId || "guest",
+      created_at: 0,
+      share_mode: "private",
+      todos: [],
+    },
+  ];
 }
 
 
@@ -1288,6 +1278,13 @@ function TodoItem({
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(todo.text);
+  // Reset the edit field when the saved text changes (e.g. after a save or a
+  // revalidation). Adjusting state during render avoids an extra effect pass.
+  const [syncedText, setSyncedText] = useState(todo.text);
+  if (syncedText !== todo.text) {
+    setSyncedText(todo.text);
+    setEditText(todo.text);
+  }
   const editInputRef = useRef<HTMLInputElement>(null);
   const [flashComplete, setFlashComplete] = useState(false);
   const lastRescheduleToastKey = useRef<string | null>(null);
@@ -1334,10 +1331,6 @@ function TodoItem({
       editInputRef.current.select();
     }
   }, [isEditing]);
-
-  useEffect(() => {
-    setEditText(todo.text);
-  }, [todo.text]);
 
   if (isDeleting) return null;
 
@@ -1635,6 +1628,46 @@ function TodoItem({
   );
 }
 
+const CONFETTI_COLORS = ["#f43f5e", "#3b82f6", "#10b981", "#eab308", "#a855f7", "#ec4899", "#06b6d4"];
+
+function makeConfettiPieces() {
+  return Array.from({ length: 60 }, (_, i) => ({
+    left: Math.random() * 100,
+    delay: Math.random() * 1.5,
+    duration: 1.8 + Math.random() * 1.5,
+    size: 6 + Math.random() * 8,
+    rotation: Math.random() * 360,
+    color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+    round: i % 2 === 0,
+  }));
+}
+
+/** Celebration overlay. Pieces are randomized once per burst, so re-renders
+ *  while it plays don't make them jump. */
+function Confetti() {
+  const [pieces] = useState(makeConfettiPieces);
+  return (
+    <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
+      {pieces.map((piece, i) => (
+        <div
+          key={i}
+          className="absolute top-0 animate-confetti-fall"
+          style={{
+            left: `${piece.left}%`,
+            animationDelay: `${piece.delay}s`,
+            animationDuration: `${piece.duration}s`,
+            width: `${piece.size}px`,
+            height: `${piece.size}px`,
+            backgroundColor: piece.color,
+            transform: `rotate(${piece.rotation}deg)`,
+            borderRadius: piece.round ? "50%" : "2px",
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function TodoPage() {
   const { userId, email, isLoggedIn, settings, lists: serverLists, activeListId, stats } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
@@ -1657,216 +1690,222 @@ export default function TodoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn, settings?.timeZone]);
   
-  const [guestLists, setGuestLists] = useState<GuestList[]>([]);
+  const hydrated = useHydrated();
+  const [storedGuestLists] = useStoredValue(GUEST_STORAGE_KEY);
+  // Guest lists live in localStorage, so they are empty until hydration.
+  const guestLists = useMemo(
+    () => (hydrated && !isLoggedIn ? parseGuestLists(storedGuestLists, userId) : []),
+    [hydrated, isLoggedIn, storedGuestLists, userId]
+  );
 
+  // After signing in, move any guest lists into the account once.
+  const submitListFetcher = listFetcher.submit;
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!isLoggedIn) {
-      const loaded = loadGuestListsFromStorage(userId);
-      setGuestLists(loaded);
-    } else {
-      const raw = localStorage.getItem(GUEST_STORAGE_KEY);
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const validLists = parsed.filter((gList: any) => {
-              const listName = (gList.name || "My Tasks").trim();
-              const hasTodos = Array.isArray(gList.todos) && gList.todos.length > 0;
-              if (listName === "My Tasks" && !hasTodos) {
-                return false;
-              }
-              return true;
-            });
-            if (validLists.length > 0) {
-              const form = new FormData();
-              form.append("intent", "migrateGuestLists");
-              form.append("guestLists", JSON.stringify(validLists));
-              listFetcher.submit(form, { method: "post" });
-            }
-            localStorage.removeItem(GUEST_STORAGE_KEY);
+    if (!isLoggedIn) return;
+    const raw = readStoredValue(GUEST_STORAGE_KEY);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const validLists = parsed.filter((gList: any) => {
+          const listName = (gList.name || "My Tasks").trim();
+          const hasTodos = Array.isArray(gList.todos) && gList.todos.length > 0;
+          if (listName === "My Tasks" && !hasTodos) {
+            return false;
           }
-        } catch (e) {
-          console.error("Failed to migrate guest lists:", e);
+          return true;
+        });
+        if (validLists.length > 0) {
+          const form = new FormData();
+          form.append("intent", "migrateGuestLists");
+          form.append("guestLists", JSON.stringify(validLists));
+          submitListFetcher(form, { method: "post" });
         }
+        writeStoredValue(GUEST_STORAGE_KEY, null);
       }
+    } catch (e) {
+      console.error("Failed to migrate guest lists:", e);
     }
-  }, [isLoggedIn, userId]);
+  }, [isLoggedIn, userId, submitListFetcher]);
 
   const isSharedServerList = serverLists.some((l: any) => l.id === activeListId && l.owner_id !== userId);
   const lists = isLoggedIn || isSharedServerList ? serverLists : guestLists;
   const activeListMeta = lists.find((l: any) => l.id === activeListId) || lists[0];
   const effectiveActiveListId = activeListMeta ? activeListMeta.id : activeListId;
-  const todos: Todo[] = activeListMeta ? activeListMeta.todos || [] : [];
+  const activeTodos: Todo[] | undefined = activeListMeta?.todos;
+  const todos: Todo[] = useMemo(() => activeTodos || [], [activeTodos]);
 
   const handleGuestAction = useCallback((intent: string, payload: any) => {
     if (isLoggedIn || isSharedServerList) return;
-    setGuestLists((prevLists) => {
-      let targetListId = payload.listId || effectiveActiveListId;
-      let targetList = prevLists.find((l) => l.id === targetListId);
-      if (!targetList && prevLists.length > 0) {
-        targetList = prevLists[0];
-        targetListId = targetList.id;
-      }
+    // Read the latest stored lists (not the render's copy) so back-to-back
+    // actions build on each other. Stamp the fallback list on first change.
+    const now = Date.now();
+    const prevLists = parseGuestLists(readStoredValue(GUEST_STORAGE_KEY), userId).map((l) =>
+      l.created_at ? l : { ...l, created_at: now }
+    );
+    let targetListId = payload.listId || effectiveActiveListId;
+    let targetList = prevLists.find((l) => l.id === targetListId);
+    if (!targetList && prevLists.length > 0) {
+      targetList = prevLists[0];
+      targetListId = targetList.id;
+    }
 
-      let updatedLists = [...prevLists];
+    let updatedLists = [...prevLists];
 
-      switch (intent) {
-        case "create": {
-          const newTodo: Todo = {
-            id: crypto.randomUUID(),
-            listId: targetListId || userId || "guest_default",
-            text: payload.text,
-            completed: false,
-            createdAt: Date.now(),
-            priority: payload.priority || "none",
-            reminderAt: payload.reminderAt ? Number(payload.reminderAt) : undefined,
-            reminderSent: payload.reminderAt ? false : undefined,
-            parentId: payload.parentId || undefined,
-            recurrence: payload.recurrence || "none",
-            durationMinutes: payload.durationMinutes ?? null,
-          };
-          if (prevLists.length === 0) {
-            const defaultList: GuestList = {
-              id: targetListId || userId || "guest_default",
-              name: "My Tasks",
-              owner_id: userId,
-              created_at: Date.now(),
-              share_mode: "private",
-              todos: [newTodo],
-            };
-            updatedLists = [defaultList];
-          } else {
-            updatedLists = prevLists.map((l) =>
-              l.id === targetListId ? { ...l, todos: [newTodo, ...l.todos] } : l
-            );
-          }
-          break;
-        }
-        case "toggle": {
-          updatedLists = prevLists.map((l) => {
-            if (l.id !== targetListId) return l;
-            const updatedTodos = l.todos.map((t) => {
-              if (t.id !== payload.id) return t;
-              return applySetCompletedLocal(t, !t.completed).todo;
-            });
-            return { ...l, todos: updatedTodos };
-          });
-          break;
-        }
-        case "setCompleted": {
-          updatedLists = prevLists.map((l) => {
-            if (l.id !== targetListId) return l;
-            const updatedTodos = l.todos.map((t) => {
-              if (t.id !== payload.id) return t;
-              return applySetCompletedLocal(t, Boolean(payload.completed)).todo;
-            });
-            return { ...l, todos: updatedTodos };
-          });
-          break;
-        }
-        case "delete": {
-          updatedLists = prevLists.map((l) => {
-            if (l.id !== targetListId) return l;
-            return {
-              ...l,
-              todos: l.todos.filter((t) => t.id !== payload.id && t.parentId !== payload.id),
-            };
-          });
-          break;
-        }
-        case "updatePriority": {
-          updatedLists = prevLists.map((l) => {
-            if (l.id !== targetListId) return l;
-            return {
-              ...l,
-              todos: l.todos.map((t) => (t.id === payload.id ? { ...t, priority: payload.priority } : t)),
-            };
-          });
-          break;
-        }
-        case "updateText": {
-          updatedLists = prevLists.map((l) => {
-            if (l.id !== targetListId) return l;
-            return {
-              ...l,
-              todos: l.todos.map((t) => (t.id === payload.id ? { ...t, text: payload.text } : t)),
-            };
-          });
-          break;
-        }
-        case "updateReminder": {
-          updatedLists = prevLists.map((l) => {
-            if (l.id !== targetListId) return l;
-            return {
-              ...l,
-              todos: l.todos.map((t) =>
-                t.id === payload.id
-                  ? {
-                      ...t,
-                      reminderAt: payload.reminderAt ? Number(payload.reminderAt) : undefined,
-                      reminderSent: payload.reminderAt ? false : undefined,
-                    }
-                  : t
-              ),
-            };
-          });
-          break;
-        }
-        case "updateRecurrence": {
-          updatedLists = prevLists.map((l) => {
-            if (l.id !== targetListId) return l;
-            return {
-              ...l,
-              todos: l.todos.map((t) => (t.id === payload.id ? { ...t, recurrence: payload.recurrence } : t)),
-            };
-          });
-          break;
-        }
-        case "updateDuration": {
-          updatedLists = prevLists.map((l) => {
-            if (l.id !== targetListId) return l;
-            return {
-              ...l,
-              todos: l.todos.map((t) => (t.id === payload.id ? { ...t, durationMinutes: payload.durationMinutes ?? null } : t)),
-            };
-          });
-          break;
-        }
-        case "clearCompleted": {
-          updatedLists = prevLists.map((l) => {
-            if (l.id !== targetListId) return l;
-            return { ...l, todos: l.todos.filter((t) => !t.completed) };
-          });
-          break;
-        }
-        case "createList": {
-          const newList: GuestList = {
-            id: payload.id || crypto.randomUUID(),
-            name: payload.name,
+    switch (intent) {
+      case "create": {
+        const newTodo: Todo = {
+          id: crypto.randomUUID(),
+          listId: targetListId || userId || "guest_default",
+          text: payload.text,
+          completed: false,
+          createdAt: Date.now(),
+          priority: payload.priority || "none",
+          reminderAt: payload.reminderAt ? Number(payload.reminderAt) : undefined,
+          reminderSent: payload.reminderAt ? false : undefined,
+          parentId: payload.parentId || undefined,
+          recurrence: payload.recurrence || "none",
+          durationMinutes: payload.durationMinutes ?? null,
+        };
+        if (prevLists.length === 0) {
+          const defaultList: GuestList = {
+            id: targetListId || userId || "guest_default",
+            name: "My Tasks",
             owner_id: userId,
             created_at: Date.now(),
             share_mode: "private",
-            todos: [],
+            todos: [newTodo],
           };
-          updatedLists = [...prevLists, newList];
-          break;
-        }
-        case "renameList": {
+          updatedLists = [defaultList];
+        } else {
           updatedLists = prevLists.map((l) =>
-            l.id === payload.listId ? { ...l, name: payload.newName } : l
+            l.id === targetListId ? { ...l, todos: [newTodo, ...l.todos] } : l
           );
-          break;
         }
-        case "deleteList": {
-          updatedLists = prevLists.filter((l) => l.id !== payload.listId);
-          break;
-        }
+        break;
       }
+      case "toggle": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          const updatedTodos = l.todos.map((t) => {
+            if (t.id !== payload.id) return t;
+            return applySetCompletedLocal(t, !t.completed).todo;
+          });
+          return { ...l, todos: updatedTodos };
+        });
+        break;
+      }
+      case "setCompleted": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          const updatedTodos = l.todos.map((t) => {
+            if (t.id !== payload.id) return t;
+            return applySetCompletedLocal(t, Boolean(payload.completed)).todo;
+          });
+          return { ...l, todos: updatedTodos };
+        });
+        break;
+      }
+      case "delete": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          return {
+            ...l,
+            todos: l.todos.filter((t) => t.id !== payload.id && t.parentId !== payload.id),
+          };
+        });
+        break;
+      }
+      case "updatePriority": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          return {
+            ...l,
+            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, priority: payload.priority } : t)),
+          };
+        });
+        break;
+      }
+      case "updateText": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          return {
+            ...l,
+            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, text: payload.text } : t)),
+          };
+        });
+        break;
+      }
+      case "updateReminder": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          return {
+            ...l,
+            todos: l.todos.map((t) =>
+              t.id === payload.id
+                ? {
+                    ...t,
+                    reminderAt: payload.reminderAt ? Number(payload.reminderAt) : undefined,
+                    reminderSent: payload.reminderAt ? false : undefined,
+                  }
+                : t
+            ),
+          };
+        });
+        break;
+      }
+      case "updateRecurrence": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          return {
+            ...l,
+            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, recurrence: payload.recurrence } : t)),
+          };
+        });
+        break;
+      }
+      case "updateDuration": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          return {
+            ...l,
+            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, durationMinutes: payload.durationMinutes ?? null } : t)),
+          };
+        });
+        break;
+      }
+      case "clearCompleted": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          return { ...l, todos: l.todos.filter((t) => !t.completed) };
+        });
+        break;
+      }
+      case "createList": {
+        const newList: GuestList = {
+          id: payload.id || crypto.randomUUID(),
+          name: payload.name,
+          owner_id: userId,
+          created_at: Date.now(),
+          share_mode: "private",
+          todos: [],
+        };
+        updatedLists = [...prevLists, newList];
+        break;
+      }
+      case "renameList": {
+        updatedLists = prevLists.map((l) =>
+          l.id === payload.listId ? { ...l, name: payload.newName } : l
+        );
+        break;
+      }
+      case "deleteList": {
+        updatedLists = prevLists.filter((l) => l.id !== payload.listId);
+        break;
+      }
+    }
 
-      saveGuestListsToStorage(updatedLists);
-      return updatedLists;
-    });
+    writeStoredValue(GUEST_STORAGE_KEY, JSON.stringify(updatedLists));
   }, [isLoggedIn, isSharedServerList, effectiveActiveListId, userId]);
   
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1877,61 +1916,42 @@ export default function TodoPage() {
   const [toast, setToast] = useState({ message: "", visible: false });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isChangelogOpen, setIsChangelogOpen] = useState(false);
-
-  useEffect(() => {
-    try {
-      const lastSeen = localStorage.getItem("last_seen_changelog_version");
-      if (lastSeen !== WEB_VERSION) {
-        setIsChangelogOpen(true);
-      }
-    } catch (e) {
-      console.error("Failed to check changelog version:", e);
-    }
-  }, []);
+  // The changelog opens by itself once per new version (after hydration),
+  // or when the user opens it from the menu.
+  const [lastSeenChangelog, setLastSeenChangelog] = useStoredValue("last_seen_changelog_version");
+  const [isChangelogOpenedManually, setIsChangelogOpenedManually] = useState(false);
+  const isChangelogOpen = isChangelogOpenedManually || (hydrated && lastSeenChangelog !== WEB_VERSION);
 
   const handleCloseChangelog = () => {
-    try {
-      localStorage.setItem("last_seen_changelog_version", WEB_VERSION);
-    } catch {
-      // Storage can be unavailable; the changelog just shows again next time.
-    }
-    setIsChangelogOpen(false);
+    // If storage is unavailable the changelog just shows again next time.
+    setLastSeenChangelog(WEB_VERSION);
+    setIsChangelogOpenedManually(false);
   };
 
 
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
-
-  useEffect(() => {
-    const savedViewMode = localStorage.getItem("synx_view_mode");
-    if (savedViewMode === "list" || savedViewMode === "calendar") {
-      setViewMode(savedViewMode);
-    }
-  }, []);
+  const [savedViewMode, setSavedViewMode] = useStoredValue("synx_view_mode");
+  const viewMode: "list" | "calendar" = savedViewMode === "calendar" ? "calendar" : "list";
 
   const changeViewMode = (mode: "list" | "calendar") => {
-    setViewMode(mode);
-    localStorage.setItem("synx_view_mode", mode);
+    setSavedViewMode(mode);
   };
 
   // UX additions: theme, search, sort, share popup
-  const [theme, setTheme] = useState("midnight");
+  const [savedTheme, setSavedTheme] = useStoredValue("synx_theme");
+  const theme = savedTheme || "midnight";
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<"created" | "priority" | "reminder" | "alphabetical">("created");
   const [showSharePopover, setShowSharePopover] = useState(false);
   const sharePopoverRef = useRef<HTMLDivElement>(null);
 
-  // Initialize theme from localStorage
+  // Apply the saved theme to the page once it is read from localStorage.
   useEffect(() => {
-    const savedTheme = localStorage.getItem("synx_theme") || "midnight";
-    setTheme(savedTheme);
-    document.documentElement.setAttribute("data-theme", savedTheme);
-  }, []);
+    if (!hydrated) return;
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [hydrated, theme]);
 
   const changeTheme = (newTheme: string) => {
-    setTheme(newTheme);
-    localStorage.setItem("synx_theme", newTheme);
-    document.documentElement.setAttribute("data-theme", newTheme);
+    setSavedTheme(newTheme);
   };
 
   useEffect(() => {
@@ -1965,9 +1985,9 @@ export default function TodoPage() {
     settings?.displayNameSet ? (settings?.displayName ?? "") : ""
   );
   const [homeTimeZoneInput, setHomeTimeZoneInput] = useState(settings?.timeZone ?? "");
-  const [timeZoneOptions, setTimeZoneOptions] = useState<string[]>([]);
-  const [browserTimeZone, setBrowserTimeZone] = useState<string | undefined>(undefined);
-  const [, setBrowserNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
+  // Zone list and browser zone are read on the client only (avoids hydration mismatch).
+  const timeZoneOptions = useMemo(() => (hydrated ? listTimeZones() : []), [hydrated]);
+  const browserTimeZone = useMemo(() => (hydrated ? getLocalTimeZone() : undefined), [hydrated]);
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
 
   const initialEmailEnabled = settings?.emailEnabled ?? false;
@@ -1999,12 +2019,6 @@ export default function TodoPage() {
     setDisplayNameInput(initialDisplayNameInput);
     setHomeTimeZoneInput(initialHomeTimeZone);
   };
-
-  // Zone list and browser zone are read on the client only (avoids hydration mismatch).
-  useEffect(() => {
-    setTimeZoneOptions(listTimeZones());
-    setBrowserTimeZone(getLocalTimeZone());
-  }, []);
 
   /** Validates and saves the home time zone if it changed. False if invalid. */
   const saveHomeTimeZone = () => {
@@ -2056,26 +2070,24 @@ export default function TodoPage() {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [isProfileOpen, isSettingsDirty]);
 
-  useEffect(() => {
-    setEmailEnabled(settings?.emailEnabled ?? false);
-    setSmsEnabled(settings?.smsEnabled ?? false);
-    setPhoneInput(getDisplayPhone(settings?.phoneNumber));
-    setPhoneCarrier(settings?.phoneCarrier ?? "");
-    setDiscordEnabled(!!settings?.discordWebhookUrl);
-    setDiscordInput(settings?.discordWebhookUrl ?? "");
-    setDisplayNameInput(settings?.displayNameSet ? (settings?.displayName ?? "") : "");
-    setHomeTimeZoneInput(settings?.timeZone ?? "");
-  }, [settings]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      if ("Notification" in window) {
-        setBrowserNotificationPermission(Notification.permission);
-      } else {
-        setBrowserNotificationPermission("unsupported");
-      }
-    }
-  }, [isProfileOpen]);
+  // Reset the form when the saved settings change. Compared by value: the
+  // loader returns a new settings object on every revalidation, which used to
+  // wipe unsaved edits in the open Profile panel.
+  const savedSettingsKey = JSON.stringify([
+    initialEmailEnabled,
+    initialSmsEnabled,
+    initialPhoneInput,
+    initialPhoneCarrier,
+    initialDiscordEnabled,
+    initialDiscordInput,
+    initialDisplayNameInput,
+    initialHomeTimeZone,
+  ]);
+  const [syncedSettingsKey, setSyncedSettingsKey] = useState(savedSettingsKey);
+  if (syncedSettingsKey !== savedSettingsKey) {
+    setSyncedSettingsKey(savedSettingsKey);
+    resetSettings();
+  }
 
   // Reminder States for Creation Form
   const [reminderMode, setReminderMode] = useState<"none" | "duration" | "specific">("none");
@@ -2146,32 +2158,33 @@ export default function TodoPage() {
   const [newDurationMinutes, setNewDurationMinutes] = useState<number | null>(null);
   const [showDurationPicker, setShowDurationPicker] = useState<boolean>(false);
 
-  // Handle escape key to close modals
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (showUnsavedPrompt) {
-          setShowUnsavedPrompt(false);
-        } else if (isChangelogOpen) {
-          handleCloseChangelog();
-        } else if (isProfileOpen) {
-          requestCloseProfile();
-        } else {
-          setListToRename(null);
-          setListToDelete(null);
-          setIsCreateListOpen(false);
-          setListToEditCategory(null);
-        }
-      }
-    };
-    const isAnyModalOpen = isProfileOpen || isChangelogOpen || !!listToRename || !!listToDelete || isCreateListOpen || !!listToEditCategory || showUnsavedPrompt;
-    if (isAnyModalOpen) {
-      document.addEventListener("keydown", handleKeyDown);
+  // Handle escape key to close modals. The handler is an effect event so it
+  // always sees the latest state without re-subscribing on every change.
+  const handleEscape = useEffectEvent(() => {
+    if (showUnsavedPrompt) {
+      setShowUnsavedPrompt(false);
+    } else if (isChangelogOpen) {
+      handleCloseChangelog();
+    } else if (isProfileOpen) {
+      requestCloseProfile();
+    } else {
+      setListToRename(null);
+      setListToDelete(null);
+      setIsCreateListOpen(false);
+      setListToEditCategory(null);
     }
+  });
+  const isAnyModalOpen = isProfileOpen || isChangelogOpen || !!listToRename || !!listToDelete || isCreateListOpen || !!listToEditCategory || showUnsavedPrompt;
+  useEffect(() => {
+    if (!isAnyModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleEscape();
+    };
+    document.addEventListener("keydown", handleKeyDown);
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isProfileOpen, isChangelogOpen, listToRename, listToDelete, isCreateListOpen, listToEditCategory, showUnsavedPrompt, isSettingsDirty]);
+  }, [isAnyModalOpen]);
 
   // Inline List Title Edit State (Main Panel Header)
   const activeListName = activeListMeta?.name || "My Tasks";
@@ -2181,10 +2194,12 @@ export default function TodoPage() {
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(activeListName);
-
-  useEffect(() => {
+  // Follow the list name when it changes (switching lists, renames).
+  const [syncedListName, setSyncedListName] = useState(activeListName);
+  if (syncedListName !== activeListName) {
+    setSyncedListName(activeListName);
     setTitleInput(activeListName);
-  }, [activeListName]);
+  }
 
   // Sync to-do create fetcher
   const isCreating = createFetcher.state !== "idle";
@@ -2214,7 +2229,10 @@ export default function TodoPage() {
     prevIsCreatingList.current = isCreatingList;
   }, [isCreatingList]);
 
-  // WebMCP — register tools so AI agents can interact with sYnX in-browser
+  // WebMCP — register tools so AI agents can interact with sYnX in-browser.
+  // fetcher.submit is stable, unlike the fetcher object, so tools are not
+  // re-registered on every submission.
+  const submitCreate = createFetcher.submit;
   useEffect(() => {
     if (typeof window === "undefined") return;
     const nav = window.navigator as any;
@@ -2245,7 +2263,7 @@ export default function TodoPage() {
           form.append("text", text);
           form.append("priority", priority ?? "medium");
           if (activeListId) form.append("listId", activeListId);
-          createFetcher.submit(form, { method: "post" });
+          submitCreate(form, { method: "post" });
           return { success: true, task: text };
         },
       },
@@ -2273,7 +2291,7 @@ export default function TodoPage() {
     );
 
     return () => controller.abort();
-  }, [activeListId, todos, createFetcher]);
+  }, [activeListId, todos, submitCreate]);
 
   // Optimistic list update
   const optimisticTodos: Todo[] = [...todos] as Todo[];
@@ -2396,35 +2414,7 @@ export default function TodoPage() {
       <div className="min-h-screen md:h-screen bg-themeBg text-slate-100 flex flex-col md:grid md:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)] relative overflow-x-hidden overflow-y-auto md:overflow-hidden font-sans w-full max-w-[100vw]">
       
       {/* Confetti Celebration */}
-      {showConfetti && (
-        <div className="pointer-events-none fixed inset-0 z-50 overflow-hidden">
-          {[...Array(60)].map((_, i) => {
-            const left = Math.random() * 100;
-            const delay = Math.random() * 1.5;
-            const duration = 1.8 + Math.random() * 1.5;
-            const size = 6 + Math.random() * 8;
-            const rotation = Math.random() * 360;
-            const colors = ["#f43f5e", "#3b82f6", "#10b981", "#eab308", "#a855f7", "#ec4899", "#06b6d4"];
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            return (
-              <div
-                key={i}
-                className="absolute top-0 animate-confetti-fall"
-                style={{
-                  left: `${left}%`,
-                  animationDelay: `${delay}s`,
-                  animationDuration: `${duration}s`,
-                  width: `${size}px`,
-                  height: `${size}px`,
-                  backgroundColor: color,
-                  transform: `rotate(${rotation}deg)`,
-                  borderRadius: i % 2 === 0 ? "50%" : "2px",
-                }}
-              />
-            );
-          })}
-        </div>
-      )}
+      {showConfetti && <Confetti />}
 
       {/* ── Ambient Gradient Blobs ─────────────────────────── */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -3637,7 +3627,7 @@ export default function TodoPage() {
                 type="button"
                 onClick={() => {
                   setIsProfileOpen(false);
-                  setIsChangelogOpen(true);
+                  setIsChangelogOpenedManually(true);
                 }}
                 className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
               >

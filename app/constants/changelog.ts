@@ -23,6 +23,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "On phones and narrow windows, a task's name gets its own line and its badges (time, priority, reminder, repeat) wrap underneath, so long names are no longer squeezed down to a few letters. The edit and delete buttons now show on touch screens too, and the priority picker in the add-task bar no longer gets cut off."
+      },
+      {
+        type: "FIX",
+        text: "The confetti for finishing a list no longer jumps around if the page updates while it plays."
       }
     ]
   },
