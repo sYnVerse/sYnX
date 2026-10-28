@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.3.0";
+export const WEB_VERSION = "v5.3.1";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.3.1",
+    date: "2026-10-28",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Signing out of the sYnX phone app now always stops reminders on that phone, even if the session had already expired. Reminders also stop being sent to phones that no longer have the app."
+      }
+    ]
+  },
   {
     version: "v5.3.0",
     date: "2026-10-27",

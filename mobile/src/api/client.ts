@@ -19,6 +19,17 @@ export const REFRESH_TOKEN_KEY = MOBILE_REFRESH_TOKEN_KEY;
 /** FCM/device push token — distinct from the OAuth access token */
 export const DEVICE_PUSH_TOKEN_KEY = "synx_device_push_token";
 
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /**
+     * Skip the 401 refresh / sign-out handling below. Used by requests that run
+     * during sign-out (push token unregister), so a 401 can never start a
+     * sign-out → request → 401 loop.
+     */
+    skipAuthRefresh?: boolean;
+  }
+}
+
 type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 export const secureSessionStore: SessionTokenStore = {
@@ -80,7 +91,7 @@ apiClient.interceptors.response.use(
     const status = error.response?.status;
     const original = error.config as RetriableConfig | undefined;
 
-    if (status !== 401 || !original || original._retry) {
+    if (status !== 401 || !original || original._retry || original.skipAuthRefresh) {
       return Promise.reject(error);
     }
 

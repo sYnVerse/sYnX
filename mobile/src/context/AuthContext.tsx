@@ -7,7 +7,6 @@ import {
   apiClient,
   TOKEN_KEY,
   REFRESH_TOKEN_KEY,
-  DEVICE_PUSH_TOKEN_KEY,
   OPENAUTH_ISSUER,
   OPENAUTH_CLIENT_ID,
   OPENAUTH_TOKEN_ENDPOINT,
@@ -19,6 +18,7 @@ import { shouldSignOutAfterRefreshFailure } from "../shared/mobile-session";
 import { clearWidgetPreferences } from "../services/widgetPreferences";
 import { resetWidgetsLoggedOut } from "../services/widgetSync";
 import { checkHomeTimeZone, resetTimeZoneSync } from "../services/timeZoneSync";
+import { releasePushTokenForSignOut } from "../services/notifications";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -105,6 +105,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const clearLocalSessionState = useCallback(async () => {
+    // Stop pushes to this device for the signed-out user (best effort, never
+    // waits on the network).
+    await releasePushTokenForSignOut();
     await secureSessionStore.clearSessionTokens();
     await clearWidgetPreferences();
     resetWidgetsLoggedOut();
@@ -228,15 +231,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     try {
-      const devicePushToken = await SecureStore.getItemAsync(DEVICE_PUSH_TOKEN_KEY);
-      if (devicePushToken) {
-        try {
-          await apiClient.delete("/api/v1/devices", { data: { token: devicePushToken } });
-        } catch {
-          // ignore network error on logout
-        }
-        await SecureStore.deleteItemAsync(DEVICE_PUSH_TOKEN_KEY);
-      }
+      await releasePushTokenForSignOut();
       await secureSessionStore.clearSessionTokens();
 
       const logoutUrl = `${OPENAUTH_ISSUER}/logout?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;

@@ -1,6 +1,6 @@
 {
   "name": "synx-mobile",
-  "version": "3.3.2",
+  "version": "3.3.3",
   "main": "expo/AppEntry.js",
   "scripts": {
     "postinstall": "node ./scripts/patch-expo-widgets.js",
