@@ -139,6 +139,7 @@ npm install
 npm start           # expo start (syncs shared/ and the version first)
 npm run android     # build and run the native Android app (expo run:android)
 npm run typecheck
+npm run lint        # expo lint (ESLint with eslint-config-expo)
 npm run doctor      # expo-doctor; needs Node 22.13 or newer
 ```
 
@@ -197,7 +198,7 @@ npm run typecheck:mobile-tests
 cd mobile && npm run typecheck
 ```
 
-CI also checks that `mobile/src/shared/` and the mobile version files are in sync, and runs `expo-doctor` when `mobile/` or `shared/` changes. Dependabot opens weekly pull requests for production npm dependencies.
+CI also checks that `mobile/src/shared/` and the mobile version files are in sync, and runs `expo-doctor` and the mobile lint (`cd mobile && npm run lint`) when `mobile/` or `shared/` changes. Dependabot opens weekly pull requests for production npm dependencies.
 
 ---
 
