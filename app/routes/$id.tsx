@@ -10,6 +10,7 @@ import { useState, useRef, useEffect, useEffectEvent, useCallback, useMemo, useC
 import { readStoredValue, useHydrated, useStoredValue, writeStoredValue } from "~/client-storage";
 import { CalendarView } from "~/components/calendar-view";
 import { GUEST_REMINDER_HINT, GuestContext } from "~/guest-context";
+import { getProfileLabel } from "~/profile-label";
 import { getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
 import {
@@ -1755,6 +1756,11 @@ function Confetti() {
 
 export default function TodoPage() {
   const { userId, email, isLoggedIn, settings, lists: serverLists, activeListId, stats } = useLoaderData<typeof loader>();
+  const profileLabel = getProfileLabel({
+    email,
+    displayName: settings?.displayName,
+    displayNameSet: settings?.displayNameSet,
+  });
   const navigate = useNavigate();
   const createFetcher = useFetcher();
   const clearFetcher = useFetcher();
@@ -2746,11 +2752,11 @@ export default function TodoPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-8 h-8 rounded-full bg-themeAccentBg border border-themeAccentRing/30 flex items-center justify-center text-themeAccentText font-bold text-xs flex-shrink-0 shadow-inner select-none">
-                  {email.split("@")[0].substring(0, 2).toUpperCase()}
+                  {profileLabel.initials}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-xs font-semibold text-slate-350 truncate">{email}</p>
-                  <span className="text-[9px] text-slate-500 font-medium">Synced Profile</span>
+                  <p className="text-xs font-semibold text-slate-350 truncate">{profileLabel.primary}</p>
+                  <p className="text-[9px] text-slate-500 font-medium truncate">{profileLabel.secondary}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1 flex-shrink-0">

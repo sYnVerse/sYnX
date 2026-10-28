@@ -21,6 +21,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Task names can be up to 1,000 characters, list names up to 100 and categories up to 50, and a list holds up to 1,000 tasks. You'll see a short message if you hit a limit."
       },
       {
+        type: "IMPR",
+        text: "If you've set a display name, the profile at the bottom of the side menu now shows your name with your email underneath (and your initials in the circle) instead of \"Synced Profile\". Without a display name it still shows your email."
+      },
+      {
         type: "FIX",
         text: "Signing out of the sYnX phone app now always stops reminders on that phone, even if the session had already expired. Reminders also stop being sent to phones that no longer have the app."
       },
