@@ -67,21 +67,20 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
   const lastRescheduleToastKey = useRef<string | null>(null);
   const [flashCompleteId, setFlashCompleteId] = useState<string | null>(null);
 
-  const pendingSetCompleted =
-    fetcher.state !== "idle" && fetcher.formData?.get("intent") === "setCompleted"
-      ? {
-          id: String(fetcher.formData.get("id") || ""),
-          completed: fetcher.formData.get("completed") === "true",
-        }
-      : null;
+  // Keep the optimistic values as primitives so the memo below only
+  // recomputes when the pending toggle actually changes.
+  const isPendingSetCompleted =
+    fetcher.state !== "idle" && fetcher.formData?.get("intent") === "setCompleted";
+  const pendingCompleteId = isPendingSetCompleted ? String(fetcher.formData?.get("id") || "") : "";
+  const pendingCompleted = isPendingSetCompleted && fetcher.formData?.get("completed") === "true";
 
   const displayTodos = useMemo(() => {
-    if (!pendingSetCompleted?.id) return todos;
+    if (!pendingCompleteId) return todos;
     return todos.map((t) => {
-      if (t.id !== pendingSetCompleted.id) return t;
-      return applySetCompletedLocal(t, pendingSetCompleted.completed).todo;
+      if (t.id !== pendingCompleteId) return t;
+      return applySetCompletedLocal(t, pendingCompleted).todo;
     });
-  }, [todos, pendingSetCompleted]);
+  }, [todos, pendingCompleteId, pendingCompleted]);
 
   useEffect(() => {
     if (fetcher.state !== "idle") return;
@@ -258,7 +257,7 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
 
   // Set explicit done state (idempotent); block while this task's request is in flight
   const handleToggleTodo = (todoId: string) => {
-    if (pendingSetCompleted?.id === todoId) return;
+    if (pendingCompleteId === todoId) return;
     const current = todos.find((t) => t.id === todoId);
     if (!current) return;
     fetcher.submit(
@@ -396,14 +395,14 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                           
                           <button
                             type="button"
-                            disabled={pendingSetCompleted?.id === todo.id}
-                            aria-busy={pendingSetCompleted?.id === todo.id}
+                            disabled={pendingCompleteId === todo.id}
+                            aria-busy={pendingCompleteId === todo.id}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleTodo(todo.id);
                             }}
                             className={`w-3.5 h-3.5 rounded border border-slate-700 flex items-center justify-center flex-shrink-0
-                              ${pendingSetCompleted?.id === todo.id ? "cursor-default opacity-80" : "cursor-pointer"}
+                              ${pendingCompleteId === todo.id ? "cursor-default opacity-80" : "cursor-pointer"}
                               ${todo.completed || flashCompleteId === todo.id ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText" : "hover:border-themeAccentRing"}`}
                           >
                             {(todo.completed || flashCompleteId === todo.id) && (
@@ -500,11 +499,11 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                         
                         <button
                           type="button"
-                          disabled={pendingSetCompleted?.id === todo.id}
-                          aria-busy={pendingSetCompleted?.id === todo.id}
+                          disabled={pendingCompleteId === todo.id}
+                          aria-busy={pendingCompleteId === todo.id}
                           onClick={() => handleToggleTodo(todo.id)}
                           className={`w-4 h-4 rounded border border-slate-700 flex items-center justify-center flex-shrink-0
-                            ${pendingSetCompleted?.id === todo.id ? "cursor-default opacity-80" : "cursor-pointer"}
+                            ${pendingCompleteId === todo.id ? "cursor-default opacity-80" : "cursor-pointer"}
                             ${todo.completed || flashCompleteId === todo.id ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText" : "hover:border-themeAccentRing"}`}
                         >
                           {(todo.completed || flashCompleteId === todo.id) && (
