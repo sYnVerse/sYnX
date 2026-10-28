@@ -9,6 +9,18 @@ Rules:
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
 - Always commit graphify updates in a separate chore commit (e.g. `chore: update graphify graph`). Never bundle `graphify-out/` changes into feature, fix, or refactor commits, as graph changes clutter the commit diff and make PR reviews difficult.
 
+## Checks (CI runs these)
+
+GitHub Actions (`.github/workflows/ci.yml`) runs these on every pull request and push to main, so run them before finishing a change:
+
+- `npm run lint`
+- `npm test -- --run --maxWorkers=2`
+- `npm run typecheck` (web, must report 0 errors) and `npm run typecheck:mobile-tests` (root tests that import mobile code, checked with the mobile types)
+- `cd mobile && npm run typecheck`
+- `cd mobile && npm run doctor` when `mobile/` or `shared/` changes (see below)
+
+Tests that import mobile code (and so React Native) go in `test/tsconfig.mobile.json` and the root `tsconfig.json` exclude list, not the web typecheck.
+
 ## Mobile dependency check (expo-doctor)
 
 - After any change to mobile dependencies (`mobile/package.json` or `mobile/package-lock.json`), and before any mobile build or release, run `cd mobile && npm run doctor`. It runs `expo-doctor`, the same check the EAS build runs. Use Node 22.13 or newer.
