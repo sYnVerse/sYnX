@@ -9,6 +9,8 @@ node_modules
 
 *.sql
 .sql
+# D1 migrations are source, not dumps
+!migrations/*.sql
 vitest
 .vitest
 vitest.config.ts

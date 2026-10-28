@@ -20,7 +20,8 @@
     {
       "binding": "DB",
       "database_name": "synx-db",
-      "database_id": "0201d5b3-1df0-4dfe-a47c-22bb1dd9f878"
+      "database_id": "0201d5b3-1df0-4dfe-a47c-22bb1dd9f878",
+      "migrations_dir": "migrations"
     }
   ],
   "triggers": {

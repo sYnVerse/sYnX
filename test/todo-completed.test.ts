@@ -10,12 +10,6 @@ describe("setCompleted / mark-done idempotency", () => {
 
   beforeEach(async () => {
     db = env.DB;
-    await db.exec(
-      `
-      CREATE TABLE IF NOT EXISTS lists ( id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL, expiration_ttl INTEGER, share_mode TEXT DEFAULT 'private' );
-      CREATE TABLE IF NOT EXISTS todos ( id TEXT PRIMARY KEY, list_id TEXT NOT NULL, text TEXT NOT NULL, completed INTEGER DEFAULT 0, created_at INTEGER NOT NULL, priority TEXT DEFAULT 'medium', reminder_at INTEGER, reminder_sent INTEGER DEFAULT 0, parent_id TEXT DEFAULT NULL, recurrence TEXT DEFAULT 'none', duration_minutes INTEGER DEFAULT NULL, FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE, FOREIGN KEY(parent_id) REFERENCES todos(id) ON DELETE CASCADE );
-    `.replace(/\n/g, " ")
-    );
 
     await db
       .prepare("INSERT OR IGNORE INTO lists (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)")

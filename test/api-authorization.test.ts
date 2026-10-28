@@ -9,23 +9,6 @@ describe("REST API Authorization & Share Modes", () => {
 
   beforeEach(async () => {
     db = env.DB;
-    await db.exec(`
-      CREATE TABLE IF NOT EXISTS lists (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        owner_id TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        expiration_ttl INTEGER,
-        share_mode TEXT DEFAULT 'private'
-      );
-      CREATE TABLE IF NOT EXISTS device_tokens (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        token TEXT NOT NULL UNIQUE,
-        platform TEXT NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-    `.replace(/\n/g, " "));
   });
 
   afterEach(async () => {
