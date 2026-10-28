@@ -1,0 +1,15 @@
+{
+  // Type-checks the root tests that import mobile code (and React Native) with
+  // the mobile app's settings, so React Native's globals stay out of the web
+  // typecheck. Run with `npm run typecheck:mobile-tests`.
+  "extends": "../mobile/tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "mobile-calendar-sync.test.ts",
+    "mobile-calendar-reconcile.test.ts",
+    // Types for the `?raw` imports.
+    "../node_modules/vite/client.d.ts"
+  ]
+}

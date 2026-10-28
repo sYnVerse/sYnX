@@ -7,12 +7,16 @@
     "**/.server/**/*.ts",
     "**/.server/**/*.tsx",
     "**/.client/**/*.ts",
-    "**/.client/**/*.tsx",
-    ".eslintrc.js"
+    "**/.client/**/*.tsx"
   ],
   "exclude": [
     "mobile/**/*",
-    "node_modules/**/*"
+    "node_modules/**/*",
+    // These tests import mobile code that pulls in React Native, whose global
+    // types (e.g. FormData) clash with the web DOM types. They are type-checked
+    // with the mobile types by test/tsconfig.mobile.json instead.
+    "test/mobile-calendar-sync.test.ts",
+    "test/mobile-calendar-reconcile.test.ts"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],

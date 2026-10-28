@@ -64,7 +64,8 @@
     "preview": "npm run build && wrangler dev",
     "start": "wrangler dev",
     "test": "vitest",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "typecheck:mobile-tests": "tsc -p test/tsconfig.mobile.json"
   },
   "overrides": {
     "estree-util-value-to-estree": "^3.3.3",
