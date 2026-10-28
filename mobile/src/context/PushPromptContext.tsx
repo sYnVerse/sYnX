@@ -59,6 +59,14 @@ export const PushPromptProvider: React.FC<PushPromptProviderProps> = ({
   const busyRef = useRef(false);
   const ranLaunchRef = useRef(false);
 
+  // Hide the soft ask as soon as the provider is disabled (for example on sign-out),
+  // adjusting state during render instead of in an effect.
+  const [prevEnabled, setPrevEnabled] = useState(enabled);
+  if (enabled !== prevEnabled) {
+    setPrevEnabled(enabled);
+    if (!enabled) setShowSoftAsk(false);
+  }
+
   const refreshPushRegistration = useCallback(async () => {
     const status = await getPushPermissionStatus();
     if (status === "granted") {
@@ -79,7 +87,6 @@ export const PushPromptProvider: React.FC<PushPromptProviderProps> = ({
   useEffect(() => {
     if (!enabled) {
       ranLaunchRef.current = false;
-      setShowSoftAsk(false);
       return;
     }
     if (ranLaunchRef.current) return;

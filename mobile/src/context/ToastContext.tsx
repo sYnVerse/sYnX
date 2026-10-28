@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
-import { Animated, StyleSheet, Text, View } from "react-native";
+import { Animated, StyleSheet, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "./ThemeContext";
 import { typography, spacing } from "../theme/theme";
@@ -27,7 +27,8 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<ToastState | null>(null);
-  const opacity = useRef(new Animated.Value(0)).current;
+  // Created once and kept for the provider's lifetime (lazy state, not a ref read during render).
+  const [opacity] = useState(() => new Animated.Value(0));
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = useCallback(

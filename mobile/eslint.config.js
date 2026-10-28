@@ -40,18 +40,4 @@ module.exports = defineConfig([
       "import/no-named-as-default-member": "off",
     },
   },
-
-  // Temporarily warnings, not errors: fixing these needs effect or render
-  // refactors that change app behavior, so they are tracked here and should
-  // be fixed in follow-up changes, not in the lint setup.
-  {
-    files: ["**/*.{js,jsx,ts,tsx}"],
-    rules: {
-      // React Compiler rules added in eslint-plugin-react-hooks v6+.
-      "react-hooks/set-state-in-effect": "warn",
-      "react-hooks/refs": "warn",
-      "react-hooks/immutability": "warn",
-      "react-hooks/purity": "warn",
-    },
-  },
 ]);

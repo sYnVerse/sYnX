@@ -13,7 +13,7 @@
     "eas-build-pre-install": "node ./scripts/sync-shared.js && node ./scripts/sync-version.js && node ./scripts/decode-google-services.js",
     "sync-version": "node ./scripts/sync-shared.js && node ./scripts/sync-version.js",
     "typecheck": "tsc --noEmit",
-    "lint": "expo lint",
+    "lint": "expo lint --max-warnings 0",
     "doctor": "npx expo-doctor"
   },
   "dependencies": {

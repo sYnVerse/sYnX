@@ -86,17 +86,35 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   /** Clock for the reminder preview; ticks on each minute boundary while the sheet is open. */
   const [now, setNow] = useState(() => Date.now());
 
-  useEffect(() => {
-    if (!visible) return;
-    setText(initialText);
-    setPriority(initialPriority);
-    setRecurrence(initialRecurrence);
-    setDurationMinutes(initialDurationMinutes != null ? String(initialDurationMinutes) : "");
-    setReminder(initialReminderSelection(initialReminderAt));
-    setReminderTouched(false);
-    setPickerStep(null);
-    setSaving(false);
-  }, [visible, initialText, initialPriority, initialRecurrence, initialDurationMinutes, initialReminderAt]);
+  // Reset the form when the sheet opens or its initial values change. Done during
+  // render (React's "adjust state when a prop changes" pattern) rather than in an
+  // effect, so the sheet never paints a frame with the previous task's values.
+  const openState = {
+    visible,
+    initialText,
+    initialPriority,
+    initialRecurrence,
+    initialDurationMinutes,
+    initialReminderAt,
+  };
+  const [prevOpenState, setPrevOpenState] = useState(openState);
+  if (
+    (Object.keys(openState) as (keyof typeof openState)[]).some(
+      (k) => !Object.is(openState[k], prevOpenState[k])
+    )
+  ) {
+    setPrevOpenState(openState);
+    if (visible) {
+      setText(initialText);
+      setPriority(initialPriority);
+      setRecurrence(initialRecurrence);
+      setDurationMinutes(initialDurationMinutes != null ? String(initialDurationMinutes) : "");
+      setReminder(initialReminderSelection(initialReminderAt));
+      setReminderTouched(false);
+      setPickerStep(null);
+      setSaving(false);
+    }
+  }
 
   useEffect(() => {
     if (!visible) return;

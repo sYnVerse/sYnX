@@ -26,7 +26,6 @@ export function ListProgressWidget(
   'widget';
   const isDark = environment?.colorScheme !== 'light';
   const bg = isDark ? '#18181B' : '#FFFFFF';
-  const cardBg = isDark ? '#27272A' : '#F4F4F5';
   const textPrimary = isDark ? '#F4F4F5' : '#18181B';
   const textMuted = isDark ? '#A1A1AA' : '#71717A';
   const accent = '#6366F1';

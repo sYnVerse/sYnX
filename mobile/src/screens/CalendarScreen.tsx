@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -76,7 +76,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     if (listId && listMeta) {
       refetch();
     }
-  }, [listId, listMeta]);
+  }, [listId, listMeta, refetch]);
 
   const triggerImpactHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -141,14 +141,13 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     return d === selectedDate;
   });
 
-  const getSelectedDate9AMTimestamp = () => {
-    const parts = selectedDate.split("-").map(Number);
-    if (parts.length === 3) {
-      const d = new Date(parts[0], parts[1] - 1, parts[2], 9, 0, 0, 0);
-      return d.getTime();
-    }
-    return Date.now();
-  };
+  // 9:00 AM on the selected day, for the add-task sheet. Pure (no Date.now()), so
+  // the sheet's initial reminder doesn't change on every render.
+  const selectedDate9AMTimestamp = useMemo(() => {
+    const [y, m, d] = selectedDate.split("-").map(Number);
+    const time = new Date(y, m - 1, d, 9, 0, 0, 0).getTime();
+    return Number.isNaN(time) ? undefined : time;
+  }, [selectedDate]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -343,7 +342,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
       <TaskModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
-        initialReminderAt={getSelectedDate9AMTimestamp()}
+        initialReminderAt={selectedDate9AMTimestamp}
         onSave={async (newTodo) => {
           if (!canEdit) return;
           await createMutation.mutateAsync(newTodo);
