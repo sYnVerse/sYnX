@@ -11,13 +11,17 @@ import { readStoredValue, useHydrated, useStoredValue, writeStoredValue } from "
 import { CalendarView } from "~/components/calendar-view";
 import { GUEST_REMINDER_HINT, GuestContext } from "~/guest-context";
 import { getProfileLabel } from "~/profile-label";
-import { getOptionalUser } from "~/auth.server";
+import { ProfileAvatar } from "~/components/profile-avatar";
+import { getAuthSettings, getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
 import {
   applySetCompletedLocal,
   describeTimeZone,
   formatRescheduledToast,
   getLocalTimeZone,
+  getShareModeLabel,
+  getSharedNameNotice,
+  isMakingListPublic,
   isValidTimeZone,
   listTimeZones,
   sortChangelogItems,
@@ -31,6 +35,12 @@ import {
   setUserTimeZone,
   syncUserProfileOnSignIn,
 } from "~/user-profile.server";
+import {
+  acceptSuggestedDisplayName,
+  dismissSuggestedDisplayName,
+  providerProfileFields,
+  syncProviderProfile,
+} from "~/provider-profile.server";
 import { listSharedWithMe, recordSharedListAccess, removeSharedListAccess } from "~/shared-lists.server";
 import {
   GUEST_RATE_LIMIT_ERROR,
@@ -95,7 +105,7 @@ export function parseGuestLists(raw: string | null, guestId: string): GuestList[
 
 
 export const loader = async ({ request, params, context }: LoaderFunctionArgs) => {
-  const { userId, email, isLoggedIn, guestId, isNewGuest } = await getOptionalUser(request, context.cloudflare.env);
+  const { userId, email, isLoggedIn, guestId, isNewGuest, accessToken } = await getOptionalUser(request, context.cloudflare.env);
   const db = context.cloudflare.env.DB;
 
   const headers = new Headers();
@@ -109,6 +119,20 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
       await syncUserProfileOnSignIn(db, userId, email);
     } catch (e) {
       console.error("Failed to sync user profile:", e);
+    }
+    // Provider photo / suggested name from sYnID (throttled, best-effort, off the
+    // response path so a slow or missing /userinfo never delays the page).
+    const providerSync = syncProviderProfile(db, {
+      userId,
+      email,
+      accessToken,
+      issuer: getAuthSettings(request, context.cloudflare.env).issuer,
+    });
+    const execCtx = context.cloudflare.ctx;
+    if (execCtx && typeof execCtx.waitUntil === "function") {
+      execCtx.waitUntil(providerSync);
+    } else {
+      await providerSync;
     }
   }
 
@@ -264,6 +288,10 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     displayName: DEFAULT_DISPLAY_NAME,
     displayNameSet: false,
     timeZone: null as string | null,
+    /** Provider profile photo (Google / GitHub via sYnID), or null. */
+    avatarUrl: null as string | null,
+    /** Provider name offered as a display name; null once set, accepted or dismissed. */
+    suggestedDisplayName: null as string | null,
   };
   if (userId && isLoggedIn) {
     try {
@@ -278,6 +306,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
           displayName: resolveDisplayName(settingsVal.display_name),
           displayNameSet: Boolean(settingsVal.display_name && String(settingsVal.display_name).trim()),
           timeZone: settingsVal.time_zone || null,
+          ...providerProfileFields(settingsVal),
         };
       }
     } catch (e) {
@@ -374,6 +403,19 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       return Response.json({ error: "Invalid time zone" }, { status: 400 });
     }
     return json({ success: true, timeZone: stored });
+  }
+
+  if (intent === "acceptSuggestedDisplayName" || intent === "dismissSuggestedDisplayName") {
+    if (!isLoggedIn) {
+      return Response.json({ error: "Sign in required" }, { status: 401 });
+    }
+    // Uses the name stored server-side from sYnID, never a client-supplied value.
+    if (intent === "acceptSuggestedDisplayName") {
+      const saved = await acceptSuggestedDisplayName(db, userId);
+      return json({ success: saved });
+    }
+    await dismissSuggestedDisplayName(db, userId);
+    return json({ success: true });
   }
 
   if (intent === "updateSettings") {
@@ -1766,6 +1808,7 @@ export default function TodoPage() {
   const clearFetcher = useFetcher();
   const listFetcher = useFetcher();
   const settingsFetcher = useFetcher();
+  const suggestionFetcher = useFetcher();
   const timeZoneFetcher = useFetcher();
   const initTimeZoneSent = useRef(false);
 
@@ -2094,6 +2137,10 @@ export default function TodoPage() {
     settings?.displayNameSet ? (settings?.displayName ?? "") : ""
   );
   const [homeTimeZoneInput, setHomeTimeZoneInput] = useState(settings?.timeZone ?? "");
+  // Provider name offered as the display name until accepted or dismissed.
+  const [nameSuggestionHandled, setNameSuggestionHandled] = useState(false);
+  const pendingNameSuggestion =
+    !nameSuggestionHandled && !settings?.displayNameSet ? settings?.suggestedDisplayName || null : null;
   // Zone list and browser zone are read on the client only (avoids hydration mismatch).
   const timeZoneOptions = useMemo(() => (hydrated ? listTimeZones() : []), [hydrated]);
   const browserTimeZone = useMemo(() => (hydrated ? getLocalTimeZone() : undefined), [hydrated]);
@@ -2299,6 +2346,8 @@ export default function TodoPage() {
   const activeListName = activeListMeta?.name || "My Tasks";
   const activeListShareMode = activeListMeta?.share_mode || "private";
   const isOwner = activeListMeta ? activeListMeta.owner_id === userId : false;
+  // Name others see on this user's shared lists (saved value, not unsaved edits).
+  const ownDisplayName = settings?.displayNameSet ? settings?.displayName : null;
   const canEdit = isOwner || activeListShareMode === "public_edit" || !activeListMeta;
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -2751,9 +2800,11 @@ export default function TodoPage() {
           {isLoggedIn ? (
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-themeAccentBg border border-themeAccentRing/30 flex items-center justify-center text-themeAccentText font-bold text-xs flex-shrink-0 shadow-inner select-none">
-                  {profileLabel.initials}
-                </div>
+                <ProfileAvatar
+                  url={settings?.avatarUrl}
+                  initials={profileLabel.initials}
+                  className="w-8 h-8 rounded-full bg-themeAccentBg border border-themeAccentRing/30 flex items-center justify-center text-themeAccentText font-bold text-xs flex-shrink-0 shadow-inner select-none"
+                />
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-350 truncate">{profileLabel.primary}</p>
                   <p className="text-[9px] text-slate-500 font-medium truncate">{profileLabel.secondary}</p>
@@ -3347,7 +3398,11 @@ export default function TodoPage() {
                                 listId: activeListId || "",
                                 shareMode: mode
                               }, { method: "post" });
-                              showToast(`✓ Share permission updated to ${mode}!`);
+                              showToast(
+                                isMakingListPublic(activeListShareMode, mode)
+                                  ? `✓ Shared as ${getShareModeLabel(mode)}. ${getSharedNameNotice(mode, ownDisplayName)}`
+                                  : `✓ Share permission updated to ${getShareModeLabel(mode)}!`
+                              );
                             }}
                           >
                             <span>
@@ -3356,6 +3411,9 @@ export default function TodoPage() {
                             {activeListShareMode === mode && <span className="text-xs">✓</span>}
                           </button>
                         ))}
+                        <p className="text-[10px] text-slate-400 leading-snug">
+                          {getSharedNameNotice(activeListShareMode, ownDisplayName)}
+                        </p>
                       </div>
                     ) : (
                       <div className="bg-white/[0.02] border border-white/[0.04] rounded-lg p-2.5 text-[11px] text-slate-500">
@@ -3473,10 +3531,13 @@ export default function TodoPage() {
 
             {/* Profile Detail */}
             <div className="flex flex-col items-center text-center mb-6">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-themeAccentFrom to-themeAccentTo flex items-center justify-center text-white font-extrabold text-xl shadow-xl shadow-themeAccentFrom/10 mb-3 border border-white/10 relative">
-                {email.split("@")[0].substring(0, 2).toUpperCase()}
+              <ProfileAvatar
+                url={settings?.avatarUrl}
+                initials={profileLabel.initials}
+                className="w-16 h-16 rounded-full bg-gradient-to-tr from-themeAccentFrom to-themeAccentTo flex items-center justify-center text-white font-extrabold text-xl shadow-xl shadow-themeAccentFrom/10 mb-3 border border-white/10 relative"
+              >
                 <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full" />
-              </div>
+              </ProfileAvatar>
               <h3 className="text-base font-bold text-slate-200 font-display">
                 {displayNameInput.trim() || settings?.displayName || "sYnX user"}
               </h3>
@@ -3501,6 +3562,40 @@ export default function TodoPage() {
             {/* Display name */}
             <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Display name</h4>
             <div className="mb-6">
+              {pendingNameSuggestion && !displayNameInput.trim() && (
+                <div
+                  role="status"
+                  className="mb-2.5 rounded-lg border border-themeAccentRing/30 bg-themeAccentBg p-3 text-left"
+                >
+                  <p className="text-xs text-slate-200">
+                    Use <span className="font-semibold">&ldquo;{pendingNameSuggestion}&rdquo;</span> as your display name? It will be visible to people you share lists with.
+                  </p>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        suggestionFetcher.submit({ intent: "acceptSuggestedDisplayName" }, { method: "post" });
+                        setDisplayNameInput(pendingNameSuggestion);
+                        setNameSuggestionHandled(true);
+                        showToast("✓ Display name saved");
+                      }}
+                      className="text-[11px] font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-md px-2.5 py-1 transition-colors cursor-pointer"
+                    >
+                      Use this name
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        suggestionFetcher.submit({ intent: "dismissSuggestedDisplayName" }, { method: "post" });
+                        setNameSuggestionHandled(true);
+                      }}
+                      className="text-[11px] font-semibold text-slate-400 hover:text-slate-200 rounded-md px-2.5 py-1 border border-white/10 transition-colors cursor-pointer bg-transparent"
+                    >
+                      No thanks
+                    </button>
+                  </div>
+                </div>
+              )}
               <input
                 type="text"
                 value={displayNameInput}

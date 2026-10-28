@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   AppState,
   Linking,
+  Image,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import {
@@ -105,6 +106,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [phoneCarrier, setPhoneCarrier] = useState("");
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
   const [displayName, setDisplayName] = useState("");
+  // Provider photo from sYnID (Google / GitHub); initials show when unset or it fails to load.
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
   const [savingRemote, setSavingRemote] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushStatus, setPushStatus] = useState<PushPermissionStatus>("undetermined");
@@ -180,6 +184,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           setDiscordWebhookUrl(loaded.discordWebhookUrl);
           setDisplayName(loaded.displayName);
           setHomeTimeZoneState(res.data.settings.timeZone ?? null);
+          setAvatarUrl(typeof res.data.settings.avatarUrl === "string" ? res.data.settings.avatarUrl : null);
           markLoadedClean();
         }
       } catch (e) {
@@ -546,6 +551,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       ? "Off"
       : "Not set up";
 
+  const nameForInitials = displayName.trim();
+  const accountInitials = (
+    nameForInitials
+      ? nameForInitials
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((w) => Array.from(w)[0] ?? "")
+          .join("")
+      : (user?.email || "").split("@")[0].slice(0, 2)
+  ).toUpperCase();
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.bg }]}
@@ -558,14 +575,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       </View>
       <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
         <Text style={[styles.subLabel, { color: theme.textMuted }]}>SIGNED IN WITH SYNID</Text>
-        <Text style={[styles.accountEmail, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
-          {user?.email || "sYnID user"}
-        </Text>
-        {user?.userId ? (
-          <Text style={[styles.accountId, { color: theme.textMuted }]} numberOfLines={1}>
-            ID: {user.userId}
-          </Text>
-        ) : null}
+        <View style={styles.accountRow}>
+          <View
+            style={[styles.avatar, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+          >
+            {avatarUrl && failedAvatarUrl !== avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                style={styles.avatarImage}
+                onError={() => setFailedAvatarUrl(avatarUrl)}
+              />
+            ) : (
+              <Text style={[styles.avatarInitials, { color: theme.accent }]}>{accountInitials}</Text>
+            )}
+          </View>
+          <View style={styles.accountText}>
+            <Text style={[styles.accountEmail, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
+              {user?.email || "sYnID user"}
+            </Text>
+            {user?.userId ? (
+              <Text style={[styles.accountId, { color: theme.textMuted }]} numberOfLines={1}>
+                ID: {user.userId}
+              </Text>
+            ) : null}
+          </View>
+        </View>
 
         <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 16 }]}>DISPLAY NAME</Text>
         <TextInput
@@ -1077,6 +1113,32 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.5,
     marginBottom: 8,
+  },
+  accountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  accountText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 48,
+    height: 48,
+  },
+  avatarInitials: {
+    fontSize: typography.md,
+    fontWeight: "700",
   },
   accountEmail: {
     fontSize: typography.lg,

@@ -10,6 +10,14 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "NEW",
+        text: "If you sign in with Google or GitHub, your profile photo now shows in Settings next to your email, with your initials if there's no photo."
+      },
+      {
+        type: "NEW",
+        text: "When you share a Private list as View-Only or Collaborative, sYnX reminds you that anyone with the link can see your display name."
+      },
+      {
         type: "FIX",
         text: "Signing out, or being signed out because your session ended, now stops sYnX reminders on this phone right away, even when the session had already expired or you're offline. Signing out no longer waits on the network."
       },

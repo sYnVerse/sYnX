@@ -262,6 +262,8 @@ export async function getOptionalUser(request: Request, env: any) {
       isLoggedIn: true,
       guestId: null,
       isNewGuest: false,
+      /** The verified sYnID access token (server-side only; never send to the client). */
+      accessToken: token as string | null,
     };
   }
 
@@ -274,6 +276,7 @@ export async function getOptionalUser(request: Request, env: any) {
       isLoggedIn: true,
       guestId: null,
       isNewGuest: false,
+      accessToken: renewed.token as string | null,
     };
   }
 
@@ -303,6 +306,7 @@ export async function getOptionalUser(request: Request, env: any) {
     isLoggedIn: false,
     guestId,
     isNewGuest,
+    accessToken: null as string | null,
   };
 }
 

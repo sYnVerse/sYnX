@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
-import { verifyBearerToken } from "../auth.server";
+import { getAuthSettings, verifyBearerToken } from "../auth.server";
+import { providerProfileFields, syncProviderProfile } from "../provider-profile.server";
 import {
   resolveDisplayName,
   sanitizeDisplayNameInput,
@@ -16,6 +17,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   }
 
   await syncUserProfileOnSignIn(db, user.userId, user.email);
+  // Throttled, best-effort provider photo / suggested name (never sets displayName).
+  await syncProviderProfile(db, {
+    userId: user.userId,
+    email: user.email,
+    accessToken: user.token,
+    issuer: getAuthSettings(request, env).issuer,
+  });
 
   const row = await db.prepare("SELECT * FROM user_settings WHERE user_id = ?").bind(user.userId).first<any>();
 
@@ -32,6 +40,8 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     discordWebhookUrl: row ? row.discord_webhook_url || "" : "",
     /** Home time zone (IANA) for repeating reminders, or null until a device sets it. */
     timeZone: row?.time_zone || null,
+    /** Provider photo URL and suggested display name (null when unknown or not applicable). */
+    ...providerProfileFields(row),
   };
 
   return Response.json({ success: true, settings });
@@ -120,9 +130,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
     }
 
     const row = await db
-      .prepare("SELECT display_name FROM user_settings WHERE user_id = ?")
+      .prepare(
+        "SELECT display_name, avatar_url, suggested_display_name, display_name_suggestion_dismissed FROM user_settings WHERE user_id = ?"
+      )
       .bind(user.userId)
-      .first<{ display_name?: string | null }>();
+      .first<{
+        display_name?: string | null;
+        avatar_url?: string | null;
+        suggested_display_name?: string | null;
+        display_name_suggestion_dismissed?: number | null;
+      }>();
 
     return Response.json({
       success: true,
@@ -136,6 +153,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
         phoneNumber,
         phoneCarrier,
         discordWebhookUrl,
+        ...providerProfileFields(row),
       },
     });
   } catch (err: any) {

@@ -9,6 +9,18 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "NEW",
+        text: "If you sign in with Google or GitHub, your profile photo now shows in the side menu and in Profile, with your initials as before if there's no photo or it can't load."
+      },
+      {
+        type: "NEW",
+        text: "If you haven't set a display name, Profile can offer the name from your Google, GitHub or Microsoft account. It's only used if you choose \"Use this name\", and \"No thanks\" stops the offer."
+      },
+      {
+        type: "NEW",
+        text: "The Share menu now reminds you that anyone with a shared list's link can see your display name, including when you switch a list from Private to View-Only or Collaborative."
+      },
+      {
         type: "IMPR",
         text: "Pages and the sYnX phone app load faster: the server no longer re-checks the database layout on every request, and the busiest lookups (your lists, their tasks and due reminders) now use indexes."
       },
