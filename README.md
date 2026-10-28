@@ -157,7 +157,7 @@ Push notifications need `mobile/google-services.json`, which is gitignored. In E
 
 ## Development
 
-You need Node 22 or newer: Wrangler 4 requires it, and CI uses Node 22.
+You need Node 22 or newer: Wrangler 4 requires it, and CI uses Node 22. `.nvmrc` pins 22 for nvm and Workers Builds.
 
 ```bash
 npm install
