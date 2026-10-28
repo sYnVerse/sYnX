@@ -1,11 +1,11 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.3.1";
+export const WEB_VERSION = "v5.4.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
-    version: "v5.3.1",
-    date: "2026-10-28",
+    version: "v5.4.0",
+    date: "2026-10-29",
     title: "What's new?",
     changes: [
       {
@@ -19,7 +19,14 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "NEW",
         text: "The Share menu now reminds you that anyone with a shared list's link can see your display name, including when you switch a list from Private to View-Only or Collaborative."
-      },
+      }
+    ]
+  },
+  {
+    version: "v5.3.1",
+    date: "2026-10-28",
+    title: "What's new?",
+    changes: [
       {
         type: "IMPR",
         text: "Pages and the sYnX phone app load faster: the server no longer re-checks the database layout on every request, and the busiest lookups (your lists, their tasks and due reminders) now use indexes."

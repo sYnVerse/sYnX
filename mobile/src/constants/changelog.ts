@@ -6,7 +6,7 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
-    date: "2026-10-28",
+    date: "2026-10-29",
     title: "What's new?",
     changes: [
       {
@@ -20,7 +20,14 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "NEW",
         text: "When you share a Private list as View-Only or Collaborative, sYnX reminds you that anyone with the link can see your display name."
-      },
+      }
+    ]
+  },
+  {
+    version: "v3.3.3",
+    date: "2026-10-28",
+    title: "What's new?",
+    changes: [
       {
         type: "FIX",
         text: "Signing out, or being signed out because your session ended, now stops sYnX reminders on this phone right away, even when the session had already expired or you're offline. Signing out no longer waits on the network."
