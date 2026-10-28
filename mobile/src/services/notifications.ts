@@ -95,19 +95,52 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   return requestAndRegisterPush();
 }
 
+/** Upper bound for an unregister request, so a slow network never leaves it hanging. */
+const UNREGISTER_TIMEOUT_MS = 5000;
+
+/**
+ * Tell the server to stop sending pushes to this device. The server accepts the
+ * push token without a valid session, and the request skips the 401 refresh /
+ * sign-out handling, so it works after the session has expired and can never
+ * loop. Never throws.
+ */
+async function sendUnregisterRequest(devicePushToken: string): Promise<void> {
+  try {
+    await apiClient.delete("/api/v1/devices", {
+      data: { token: devicePushToken },
+      timeout: UNREGISTER_TIMEOUT_MS,
+      skipAuthRefresh: true,
+    });
+  } catch {
+    // Best effort: offline or server error. The server also drops tokens FCM rejects.
+  }
+}
+
+/** Settings toggle: stop device notifications for this sign-in. */
 export async function unregisterPushToken(): Promise<void> {
   try {
     const devicePushToken = await SecureStore.getItemAsync(DEVICE_PUSH_TOKEN_KEY);
     if (devicePushToken) {
-      try {
-        await apiClient.delete("/api/v1/devices", { data: { token: devicePushToken } });
-      } catch {
-        // ignore network errors when turning off
-      }
+      await sendUnregisterRequest(devicePushToken);
       await SecureStore.deleteItemAsync(DEVICE_PUSH_TOKEN_KEY);
     }
   } catch (e) {
     console.error("Failed to unregister push token", e);
+  }
+}
+
+/**
+ * Sign-out (manual or forced): forget the stored push token and unregister it
+ * in the background, so sign-out never waits on the network.
+ */
+export async function releasePushTokenForSignOut(): Promise<void> {
+  try {
+    const devicePushToken = await SecureStore.getItemAsync(DEVICE_PUSH_TOKEN_KEY);
+    if (!devicePushToken) return;
+    await SecureStore.deleteItemAsync(DEVICE_PUSH_TOKEN_KEY);
+    void sendUnregisterRequest(devicePushToken);
+  } catch (e) {
+    console.error("Failed to release push token on sign-out", e);
   }
 }
 

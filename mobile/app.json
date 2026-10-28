@@ -2,7 +2,7 @@
   "expo": {
     "name": "sYnX",
     "slug": "synx",
-    "version": "3.3.2",
+    "version": "3.3.3",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
