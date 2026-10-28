@@ -21,6 +21,8 @@ export function buildReminderEmailHtml(reminderText: unknown): string {
  */
 export function sanitizeEmailSubject(subject: unknown, fallback = "Reminder"): string {
   const raw = String(subject ?? "")
+    // Control characters are matched on purpose so they can be stripped from subjects.
+    // eslint-disable-next-line no-control-regex
     .replace(/[\r\n\u0000-\u001f\u007f]+/g, " ")
     .replace(/ {2,}/g, " ")
     .trim();

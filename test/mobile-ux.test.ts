@@ -16,7 +16,6 @@ import {
   contrastRatio,
   getFabBottomOffset,
   getListBottomPadding,
-  FLOATING_TAB_BAR_HEIGHT,
 } from "../shared/mobile-ux";
 import { MOBILE_APP_VERSION, MOBILE_VERSION } from "../shared/mobile-version";
 

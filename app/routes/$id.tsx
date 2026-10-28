@@ -5,7 +5,7 @@ import {
   json,
 } from "@remix-run/cloudflare";
 import { useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
-import { TodoManager, type Todo, type UserSettings } from "~/to-do-manager";
+import { TodoManager, type Todo } from "~/to-do-manager";
 import { useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
 import { CalendarView } from "~/components/calendar-view";
 import { getOptionalUser } from "~/auth.server";
@@ -74,7 +74,9 @@ export function loadGuestListsFromStorage(guestId: string): GuestList[] {
   const initial = [defaultList];
   try {
     localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(initial));
-  } catch (e) {}
+  } catch {
+    // Storage can be unavailable (private mode, quota); the guest list still works in memory.
+  }
   return initial;
 }
 
@@ -1628,7 +1630,7 @@ function TodoItem({
 }
 
 export default function TodoPage() {
-  const { userId, email, isLoggedIn, settings, lists: serverLists, activeListId, todos: serverTodos, stats } = useLoaderData<typeof loader>();
+  const { userId, email, isLoggedIn, settings, lists: serverLists, activeListId, stats } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const createFetcher = useFetcher();
   const clearFetcher = useFetcher();
@@ -1885,7 +1887,9 @@ export default function TodoPage() {
   const handleCloseChangelog = () => {
     try {
       localStorage.setItem("last_seen_changelog_version", WEB_VERSION);
-    } catch (e) {}
+    } catch {
+      // Storage can be unavailable; the changelog just shows again next time.
+    }
     setIsChangelogOpen(false);
   };
 
@@ -1957,7 +1961,7 @@ export default function TodoPage() {
   const [homeTimeZoneInput, setHomeTimeZoneInput] = useState(settings?.timeZone ?? "");
   const [timeZoneOptions, setTimeZoneOptions] = useState<string[]>([]);
   const [browserTimeZone, setBrowserTimeZone] = useState<string | undefined>(undefined);
-  const [browserNotificationPermission, setBrowserNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [, setBrowserNotificationPermission] = useState<NotificationPermission | "unsupported">("default");
   const [showUnsavedPrompt, setShowUnsavedPrompt] = useState(false);
 
   const initialEmailEnabled = settings?.emailEnabled ?? false;
@@ -2334,12 +2338,6 @@ export default function TodoPage() {
     setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2200);
   }, []);
 
-  const copyShareLink = useCallback(() => {
-    const url = window.location.href;
-    navigator.clipboard.writeText(url).then(() => {
-      showToast("✓ Link copied to clipboard!");
-    });
-  }, [showToast]);
 
   const handleExportData = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lists, null, 2));
@@ -3641,7 +3639,7 @@ export default function TodoPage() {
                   <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                     {WEB_VERSION}
                   </span>
-                  What's new? / Version Log
+                  What&apos;s new? / Version Log
                 </span>
                 <span className="text-[10px] text-slate-500">View</span>
               </button>
@@ -3710,7 +3708,7 @@ export default function TodoPage() {
             <div className="flex items-center justify-between mb-4 border-b border-white/[0.08] pb-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-extrabold text-slate-100 font-display">What's new?</h3>
+                  <h3 className="text-lg font-extrabold text-slate-100 font-display">What&apos;s new?</h3>
                   <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
                     {WEB_VERSION}
                   </span>
@@ -3881,7 +3879,7 @@ export default function TodoPage() {
           <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
             <h3 className="text-base font-bold text-slate-200 mb-2 font-display">Delete this list?</h3>
             <p className="text-xs text-slate-400 mb-5">
-              Are you sure you want to delete <span className="text-rose-400 font-semibold">"{listToDelete.name}"</span>? This will permanently delete all tasks inside this list. This action is irreversible.
+              Are you sure you want to delete <span className="text-rose-400 font-semibold">&quot;{listToDelete.name}&quot;</span>? This will permanently delete all tasks inside this list. This action is irreversible.
             </p>
             <div className="flex gap-2.5 justify-end">
               <button
@@ -4019,7 +4017,7 @@ export default function TodoPage() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
             <h3 className="text-base font-bold text-slate-200 mb-1 font-display">Edit Category Tag</h3>
-            <p className="text-xs text-slate-400 mb-4">Set or update the category tag for "{listToEditCategory.name}"</p>
+            <p className="text-xs text-slate-400 mb-4">Set or update the category tag for &quot;{listToEditCategory.name}&quot;</p>
 
             <div className="flex flex-wrap gap-1.5 mb-4">
               {["Checklist", "Study", "Shopping", "Movies", "Work", "Personal", "Travel", "Fitness", "Custom"].map((cat) => (

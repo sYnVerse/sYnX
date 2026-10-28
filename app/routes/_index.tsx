@@ -1,6 +1,5 @@
 import { type LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
 import { getOptionalUser } from "~/auth.server";
-import { TodoManager } from "~/to-do-manager";
 
 export const loader = async ({ request, context }: LoaderFunctionArgs) => {
   const { userId, isLoggedIn, guestId, isNewGuest } = await getOptionalUser(request, context.cloudflare.env);

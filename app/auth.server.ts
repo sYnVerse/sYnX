@@ -2,18 +2,14 @@ import { createClient } from "@openauthjs/openauth/client";
 import { createSubjects } from "@openauthjs/openauth/subject";
 import { object, string } from "valibot";
 import {
-  AUTH_REFRESH_COOKIE,
   AUTH_SESSION_COOKIE,
   buildAuthClearCookieHeaders,
-  clearAuthRefreshCookie,
-  clearAuthSessionCookie,
   parseRefreshCookie,
   serializeAuthRefreshCookie,
   serializeAuthSessionCookie,
 } from "./auth-cookies.server";
 
 export {
-  AUTH_REFRESH_COOKIE,
   AUTH_SESSION_COOKIE,
   PKCE_COOKIE_NAME,
   PKCE_MAX_AGE_SECONDS,
@@ -21,8 +17,6 @@ export {
   REFRESH_TOKEN_MAX_AGE_SECONDS,
   buildAuthClearCookieHeaders,
   buildCentralLogoutClearHeaders,
-  clearAuthRefreshCookie,
-  clearAuthSessionCookie,
   clearPkceCookie,
   getCookieAttributes,
   getCookieDomain,

@@ -1,0 +1,88 @@
+name: CI
+
+# Lint, tests and typechecks on every pull request and on pushes to main.
+# Runs on GitHub Actions only; it never starts an EAS build.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect mobile changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read # dorny/paths-filter lists PR files through the API
+    outputs:
+      mobile: ${{ steps.filter.outputs.mobile }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            mobile:
+              - 'mobile/**'
+              - 'shared/**'
+
+  test:
+    name: Lint, tests and typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+      - run: npm ci
+      # Root tests import mobile code, so the mobile deps are needed too.
+      - run: npm ci
+        working-directory: mobile
+      - name: shared/ copy and mobile version are in sync
+        working-directory: mobile
+        run: |
+          node scripts/sync-shared.js
+          node scripts/sync-version.js
+          git diff --exit-code
+      - name: Lint
+        run: npm run lint
+      - name: Tests
+        run: npm test -- --run --maxWorkers=2
+      - name: Web typecheck
+        run: npm run typecheck
+      - name: Typecheck tests that import mobile code
+        run: npm run typecheck:mobile-tests
+      - name: Mobile typecheck
+        run: npm run typecheck
+        working-directory: mobile
+
+  doctor:
+    name: Expo doctor
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run doctor
+        working-directory: mobile

@@ -4,7 +4,6 @@ import { createRequestHandler, type ServerBuild } from "@remix-run/cloudflare";
 import * as build from "./build/server";
 import { getLoadContext } from "./load-context";
 
-import { type PendingReminder } from "./app/to-do-manager";
 import { sendFCMPushNotification } from "./app/fcm.server";
 import { buildReminderEmailHtml, sanitizeEmailSubject } from "./app/html-escape.server";
 import { getRefreshedCookies } from "./app/auth.server";

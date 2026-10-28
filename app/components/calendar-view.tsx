@@ -561,7 +561,7 @@ interface QuickAddTaskModalProps {
   onClose: () => void;
 }
 
-function QuickAddTaskModal({ date, activeListId, onClose }: QuickAddTaskModalProps) {
+function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
   const fetcher = useFetcher();
   const inputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
