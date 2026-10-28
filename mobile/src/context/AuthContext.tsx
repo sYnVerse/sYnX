@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as SecureStore from "expo-secure-store";
@@ -69,6 +76,28 @@ function tryDecodeJwtUser(token: string): AuthUser | null {
   }
 }
 
+/**
+ * Loads the signed-in user from the server settings, falling back to the stored
+ * access token's JWT payload. Also checks the home time zone.
+ */
+async function fetchSessionUser(): Promise<AuthUser | null> {
+  try {
+    const res = await apiClient.get("/api/v1/settings");
+    const settings = res.data?.settings;
+    if (settings) checkHomeTimeZone(settings.timeZone ?? null).catch(() => {});
+    if (settings?.userId || settings?.email) {
+      return {
+        userId: settings.userId || "",
+        email: settings.email || "",
+      };
+    }
+  } catch {
+    // fall through to JWT decode
+  }
+  const stored = await SecureStore.getItemAsync(TOKEN_KEY);
+  return stored ? tryDecodeJwtUser(stored) : null;
+}
+
 async function persistTokenPair(accessToken: string, refreshToken?: string | null) {
   await SecureStore.setItemAsync(TOKEN_KEY, accessToken);
   if (typeof refreshToken === "string" && refreshToken.length > 0) {
@@ -88,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     tokenEndpoint: OPENAUTH_TOKEN_ENDPOINT,
   };
 
-  const [request, response, promptAsync] = useAuthRequest(
+  const [request, , promptAsync] = useAuthRequest(
     {
       clientId: CLIENT_ID,
       redirectUri: REDIRECT_URI,
@@ -117,25 +146,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const refreshUser = useCallback(async () => {
-    try {
-      const res = await apiClient.get("/api/v1/settings");
-      const settings = res.data?.settings;
-      if (settings) checkHomeTimeZone(settings.timeZone ?? null).catch(() => {});
-      if (settings?.userId || settings?.email) {
-        setUser({
-          userId: settings.userId || "",
-          email: settings.email || "",
-        });
-        return;
-      }
-    } catch {
-      // fall through to JWT decode
-    }
-    const stored = await SecureStore.getItemAsync(TOKEN_KEY);
-    if (stored) {
-      const decoded = tryDecodeJwtUser(stored);
-      if (decoded) setUser(decoded);
-    }
+    const loaded = await fetchSessionUser();
+    if (loaded) setUser(loaded);
   }, []);
 
   /**
@@ -196,20 +208,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loadSession();
   }, [applyAccessToken, silentRefresh]);
 
+  // Load the user for each new access token. A response for a token that has
+  // since changed (or been signed out) is ignored.
   useEffect(() => {
-    if (token) {
-      refreshUser().catch(() => {});
-    }
-  }, [token, refreshUser]);
-
-  useEffect(() => {
-    if (response?.type === "success") {
-      const { code } = response.params;
-      if (code && request?.codeVerifier) {
-        exchangeCodeForToken(code, request.codeVerifier);
-      }
-    }
-  }, [response]);
+    if (!token) return;
+    let cancelled = false;
+    fetchSessionUser()
+      .then((loaded) => {
+        if (!cancelled && loaded) setUser(loaded);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   // Refresh when returning to the foreground (weeks/months of stay-signed-in).
   useEffect(() => {
@@ -286,7 +298,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async () => {
     // Persist the sYnID browser session so a rare full re-auth can be a quick sign-in.
-    await promptAsync({ preferEphemeralSession: false });
+    const result = await promptAsync({ preferEphemeralSession: false });
+    // Exchange the code right here, in the sign-in handler, with the PKCE
+    // verifier of the request that was just prompted. Each sign-in is
+    // exchanged exactly once.
+    if (result.type === "success" && result.params.code && request?.codeVerifier) {
+      await exchangeCodeForToken(result.params.code, request.codeVerifier);
+    }
   };
 
   return (

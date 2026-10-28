@@ -1,10 +1,10 @@
 import { AppState, Platform } from 'react-native';
 import type { QueryClient } from '@tanstack/react-query';
 import { addUserInteractionListener } from 'expo-widgets';
-import CurrentListWidget, { initialSnapshot as initialCurrentSnapshot } from '../widgets/CurrentListWidget';
-import PinnedListWidget, { initialSnapshot as initialPinnedSnapshot } from '../widgets/PinnedListWidget';
-import ListProgressWidget, { initialProgressSnapshot } from '../widgets/ListProgressWidget';
-import { getLastActiveListId, getPinnedWidgetConfig, type PinnedWidgetConfig } from './widgetPreferences';
+import currentListWidget, { initialSnapshot as initialCurrentSnapshot } from '../widgets/CurrentListWidget';
+import pinnedListWidget, { initialSnapshot as initialPinnedSnapshot } from '../widgets/PinnedListWidget';
+import listProgressWidget, { initialProgressSnapshot } from '../widgets/ListProgressWidget';
+import { getLastActiveListId, getPinnedWidgetConfig } from './widgetPreferences';
 import {
   buildListWidgetSnapshot,
   buildUpNextWidgetSnapshot,
@@ -30,16 +30,16 @@ let isDrainingOps = false;
 let drainRequestedWhileBusy = false;
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-type ListWidgetHandle = typeof CurrentListWidget;
+type ListWidgetHandle = typeof currentListWidget;
 
 /**
  * Resets all widgets to the logged-out state (used on logout).
  */
 export function resetWidgetsLoggedOut(): void {
   try {
-    CurrentListWidget.updateSnapshot(toNativeWidgetProps(initialCurrentSnapshot));
-    PinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
-    ListProgressWidget.updateSnapshot(toNativeWidgetProps(initialProgressSnapshot));
+    currentListWidget.updateSnapshot(toNativeWidgetProps(initialCurrentSnapshot));
+    pinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
+    listProgressWidget.updateSnapshot(toNativeWidgetProps(initialProgressSnapshot));
   } catch (e) {
     console.warn('[widgetSync] Error resetting widgets to logged-out state:', e);
   }
@@ -115,8 +115,8 @@ export async function drainAndReplayPendingWidgetOps(queryClient?: QueryClient):
       drainRequestedWhileBusy = false;
 
       const allOps = [
-        ...extractPendingWidgetOps(readWidgetSnapshot(CurrentListWidget)),
-        ...extractPendingWidgetOps(readWidgetSnapshot(PinnedListWidget)),
+        ...extractPendingWidgetOps(readWidgetSnapshot(currentListWidget)),
+        ...extractPendingWidgetOps(readWidgetSnapshot(pinnedListWidget)),
       ];
       if (allOps.length === 0) continue;
 
@@ -160,8 +160,8 @@ export async function drainAndReplayPendingWidgetOps(queryClient?: QueryClient):
         }
       }
 
-      clearHandledWidgetOps(CurrentListWidget, handled);
-      clearHandledWidgetOps(PinnedListWidget, handled);
+      clearHandledWidgetOps(currentListWidget, handled);
+      clearHandledWidgetOps(pinnedListWidget, handled);
 
       // Widget checkoffs skip the in-app calendar code, so apply them to the device
       // calendar here (also runs from the background task, without a query cache).
@@ -278,10 +278,10 @@ export async function syncActiveList(
     const todos =
       providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
 
-    writeListWidgetSnapshot(CurrentListWidget, buildListWidgetSnapshot(meta, todos));
+    writeListWidgetSnapshot(currentListWidget, buildListWidgetSnapshot(meta, todos));
 
     const progressSnap = buildProgressWidgetSnapshot(meta, todos);
-    ListProgressWidget.updateSnapshot(toNativeWidgetProps(progressSnap));
+    listProgressWidget.updateSnapshot(toNativeWidgetProps(progressSnap));
   } catch (e) {
     console.warn('[widgetSync] Error syncing active list widgets:', e);
   }
@@ -299,14 +299,14 @@ export async function syncPinnedList(
 ): Promise<void> {
   try {
     if (listId === null) {
-      PinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
+      pinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
       return;
     }
 
     const pinnedConfig = await getPinnedWidgetConfig();
     const targetId = listId || pinnedConfig?.listId;
     if (!targetId) {
-      PinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
+      pinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
       return;
     }
 
@@ -317,7 +317,7 @@ export async function syncPinnedList(
       providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
 
     writeListWidgetSnapshot(
-      PinnedListWidget,
+      pinnedListWidget,
       pinnedConfig?.mode === 'reminders'
         ? buildUpNextWidgetSnapshot(meta, todos)
         : buildListWidgetSnapshot(meta, todos)

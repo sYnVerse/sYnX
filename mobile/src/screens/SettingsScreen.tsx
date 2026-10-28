@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useEffectEvent, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -151,6 +151,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     }
   }, []);
 
+  // Tells the parent the form is clean without making the load below depend on
+  // the parent's callback, so settings load once when the screen opens.
+  const markLoadedClean = useEffectEvent(() => {
+    onDirtyChange?.(false);
+  });
+
   useEffect(() => {
     async function loadSettings() {
       try {
@@ -174,7 +180,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           setDiscordWebhookUrl(loaded.discordWebhookUrl);
           setDisplayName(loaded.displayName);
           setHomeTimeZoneState(res.data.settings.timeZone ?? null);
-          onDirtyChange?.(false);
+          markLoadedClean();
         }
       } catch (e) {
         console.error("Failed to load settings", e);
@@ -203,7 +209,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       hydrated.current = true;
     }
     loadSettings();
-  }, []);
+  }, [refreshPushState]);
 
   useEffect(() => subscribeHomeTimeZone(setHomeTimeZoneState), []);
 
@@ -275,7 +281,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     onDirtyChange,
   ]);
 
-  const resetSettings = () => {
+  const resetSettings = useCallback(() => {
     const s = latestRemote.current;
     setEmailEnabled(s.emailEnabled);
     setSmsEnabled(s.smsEnabled);
@@ -284,7 +290,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     setDiscordWebhookUrl(s.discordWebhookUrl);
     setDisplayName(s.displayName);
     onDirtyChange?.(false);
-  };
+  }, [onDirtyChange]);
 
   useEffect(() => {
     if (onRegisterActions) {
@@ -293,7 +299,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     return () => {
       onRegisterActions?.(null);
     };
-  }, [persistRemoteSettings, onRegisterActions]);
+  }, [persistRemoteSettings, resetSettings, onRegisterActions]);
 
   const handlePushToggle = async (val: boolean) => {
     triggerImpact();

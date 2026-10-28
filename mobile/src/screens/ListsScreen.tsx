@@ -137,7 +137,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     if (activeListId) {
       refetchPreview();
     }
-  }, [activeListId]);
+  }, [activeListId, refetch, refetchPreview]);
 
   const handleRefresh = () => {
     refetch();

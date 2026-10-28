@@ -52,16 +52,25 @@ const MainAppContent: React.FC = () => {
   const [settingsDirty, setSettingsDirty] = useState(false);
   const [settingsActions, setSettingsActions] = useState<{ save: () => Promise<boolean>; reset: () => void } | null>(null);
 
-  /** Survives logout/login so deep-linked shared lists are not overwritten by owned-list resolve. */
+  /**
+   * Survives logout/login so deep-linked shared lists are not overwritten by owned-list resolve.
+   * Kept in state for rendering (the signed-out screen) and mirrored in a ref so async list
+   * resolution can see a deep link that arrives while it is in flight.
+   */
+  const [pendingDeepLinkListId, setPendingDeepLinkListIdState] = useState<string | null>(null);
   const pendingDeepLinkListIdRef = useRef<string | null>(null);
+  const setPendingDeepLinkListId = useCallback((listId: string | null) => {
+    pendingDeepLinkListIdRef.current = listId;
+    setPendingDeepLinkListIdState(listId);
+  }, []);
 
   const applyDeepLinkedList = useCallback((listId: string) => {
-    pendingDeepLinkListIdRef.current = listId;
+    setPendingDeepLinkListId(listId);
     setActiveListId(listId);
     setActiveTab("tasks");
     setListError(null);
     setListLoading(false);
-  }, []);
+  }, [setPendingDeepLinkListId]);
 
   const handleDeepLink = useCallback(
     (url: string | null) => {
@@ -198,28 +207,34 @@ const MainAppContent: React.FC = () => {
     } finally {
       setListLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
-  useEffect(() => {
+  // On sign-out, clear the active list during render (React's "adjust state when a
+  // prop changes" pattern). Keep the pending deep link so post-login we reopen the
+  // shared list.
+  const [prevToken, setPrevToken] = useState(token);
+  if (token !== prevToken) {
+    setPrevToken(token);
     if (!token) {
-      // Keep pendingDeepLinkListIdRef so post-login we reopen the shared list.
       setActiveListId(null);
       setListError(null);
       setListLoading(false);
-      return;
     }
-    resolveActiveList();
+  }
+
+  useEffect(() => {
+    if (token) resolveActiveList();
   }, [token, resolveActiveList]);
 
   const selectOwnedOrOtherList = (id: string) => {
     // Explicit user selection clears deep-link priority.
-    pendingDeepLinkListIdRef.current = null;
+    setPendingDeepLinkListId(null);
     setActiveListId(id);
     handleTabSwitch("tasks");
   };
 
   const goToMyLists = useCallback(async () => {
-    pendingDeepLinkListIdRef.current = null;
+    setPendingDeepLinkListId(null);
     setActiveTab("lists");
     try {
       const id = await fetchOrCreateActiveListId();
@@ -228,7 +243,7 @@ const MainAppContent: React.FC = () => {
     } catch (e) {
       console.error("Failed to return to owned lists", e);
     }
-  }, [queryClient]);
+  }, [queryClient, setPendingDeepLinkListId]);
 
   if (isLoading) {
     return (
@@ -240,12 +255,11 @@ const MainAppContent: React.FC = () => {
   }
 
   if (!token) {
-    const pendingShared = pendingDeepLinkListIdRef.current;
     return (
       <SafeAreaView style={[styles.centered, { backgroundColor: theme.bg }]}>
         <Text style={[styles.title, { color: theme.textPrimary }]}>sYnX</Text>
         <Text style={[styles.subtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.4}>
-          {pendingShared
+          {pendingDeepLinkListId
             ? "Sign in to open this shared list."
             : "Sync your tasks. Execute your day."}
         </Text>

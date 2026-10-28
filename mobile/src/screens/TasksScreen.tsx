@@ -121,7 +121,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const handleDismissChangelog = async () => {
     try {
       await AsyncStorage.setItem("last_seen_changelog_version", MOBILE_VERSION);
-    } catch (e) {}
+    } catch {
+      // Best effort; the dialog still closes.
+    }
     setShowChangelog(false);
   };
 
@@ -149,20 +151,21 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const isOwner = listMeta?.isOwner === true;
   const shareMode = listMeta?.shareMode ?? "private";
 
-  const lastHandledNewTaskRef = React.useRef<number | null>(null);
-  React.useEffect(() => {
-    if (!newTaskRequestId || newTaskRequestId === lastHandledNewTaskRef.current) {
-      return;
-    }
-    // Wait until the list has loaded (or failed) before using up the request.
-    if (listMetaLoading || (!listMeta && !listMetaIsError)) return;
-    lastHandledNewTaskRef.current = newTaskRequestId;
+  // Open the new task form for a widget or quick-add request once the list has
+  // loaded (or failed). Done during render (React's "adjust state when a prop
+  // changes" pattern), then the parent is told in an effect that it was used up.
+  const [handledNewTaskId, setHandledNewTaskId] = useState<number | null>(null);
+  const listMetaSettled = !listMetaLoading && (!!listMeta || listMetaIsError);
+  if (newTaskRequestId && newTaskRequestId !== handledNewTaskId && listMetaSettled) {
+    setHandledNewTaskId(newTaskRequestId);
     if (listMeta && canEdit) {
       setEditingTask(null);
       setModalVisible(true);
     }
-    onNewTaskRequestHandled?.();
-  }, [newTaskRequestId, listMeta, listMetaLoading, listMetaIsError, canEdit, onNewTaskRequestHandled]);
+  }
+  React.useEffect(() => {
+    if (handledNewTaskId !== null) onNewTaskRequestHandled?.();
+  }, [handledNewTaskId, onNewTaskRequestHandled]);
 
   const accessError = listMetaIsError ? classifyListMetaError(listMetaError) : null;
 
@@ -246,7 +249,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     if (listId && listMeta) {
       refetch();
     }
-  }, [listId, listMeta]);
+  }, [listId, listMeta, refetch]);
 
   const { setCompleted, isPendingId } = useSetTodoCompleted(listId);
 

@@ -30,7 +30,13 @@ interface TaskBreakdownModalProps {
   onClose: () => void;
 }
 
-/** Local draft state so minutes/text don't mutate on every keystroke. */
+/** Local edits that haven't been overwritten by the server, keyed by subtask id. */
+interface SubtaskEdit {
+  text?: string;
+  durationText?: string;
+}
+
+/** A subtask as shown in the list: server data with any local edits on top. */
 interface SubtaskDraft {
   id: string;
   text: string;
@@ -49,7 +55,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   const queryClient = useQueryClient();
   const [newSubtaskText, setNewSubtaskText] = useState("");
   const [newSubtaskDuration, setNewSubtaskDuration] = useState("5");
-  const [drafts, setDrafts] = useState<Record<string, SubtaskDraft>>({});
+  const [edits, setEdits] = useState<Record<string, SubtaskEdit>>({});
   const durationTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const { data: listTodos } = useQuery<TodoItem[]>({
@@ -65,28 +71,25 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
     return task.subtasks || [];
   }, [task, listTodos]);
 
-  // Sync server subtasks into local drafts without stomping in-progress edits.
-  useEffect(() => {
-    setDrafts((prev) => {
-      const next: Record<string, SubtaskDraft> = {};
-      subtasks.forEach((st) => {
-        const existing = prev[st.id];
-        next[st.id] = {
-          id: st.id,
-          text: existing?.text ?? st.text,
-          completed: st.completed,
-          durationText:
-            existing?.durationText ??
-            (st.durationMinutes != null ? String(st.durationMinutes) : ""),
-        };
-      });
-      return next;
-    });
-  }, [subtasks]);
+  // Server subtasks with local edits on top, so in-progress edits aren't stomped.
+  const draftList = useMemo<SubtaskDraft[]>(
+    () =>
+      subtasks.map((st) => ({
+        id: st.id,
+        text: edits[st.id]?.text ?? st.text,
+        completed: st.completed,
+        durationText:
+          edits[st.id]?.durationText ??
+          (st.durationMinutes != null ? String(st.durationMinutes) : ""),
+      })),
+    [subtasks, edits]
+  );
 
   useEffect(() => {
+    // The timers object is mutated in place, never replaced, so this is the live map.
+    const timers = durationTimers.current;
     return () => {
-      Object.values(durationTimers.current).forEach(clearTimeout);
+      Object.values(timers).forEach(clearTimeout);
     };
   }, []);
 
@@ -182,11 +185,11 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   };
 
   const overallDurationMinutes = useMemo(() => {
-    return Object.values(drafts).reduce((sum, st) => {
+    return draftList.reduce((sum, st) => {
       const n = parseInt(st.durationText.replace(/\D/g, ""), 10);
       return sum + (isNaN(n) ? 0 : n);
     }, 0);
-  }, [drafts]);
+  }, [draftList]);
 
   const handleAddSubtask = () => {
     if (!newSubtaskText.trim() || !canEdit) return;
@@ -200,15 +203,6 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
 
   if (!task) return null;
 
-  const draftList = subtasks.map(
-    (st) =>
-      drafts[st.id] || {
-        id: st.id,
-        text: st.text,
-        completed: st.completed,
-        durationText: st.durationMinutes != null ? String(st.durationMinutes) : "",
-      }
-  );
   const completedCount = draftList.filter((st) => st.completed).length;
   const progressPercent =
     draftList.length > 0 ? Math.round((completedCount / draftList.length) * 100) : 0;
@@ -320,7 +314,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
                     ]}
                     value={st.text}
                     onChangeText={(val) =>
-                      setDrafts((prev) => ({
+                      setEdits((prev) => ({
                         ...prev,
                         [st.id]: { ...prev[st.id], text: val },
                       }))
@@ -342,7 +336,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
                       placeholderTextColor={theme.inputPlaceholder}
                       onChangeText={(val) => {
                         const next = val.replace(/[^\d]/g, "");
-                        setDrafts((prev) => ({
+                        setEdits((prev) => ({
                           ...prev,
                           [st.id]: { ...prev[st.id], durationText: next },
                         }));
