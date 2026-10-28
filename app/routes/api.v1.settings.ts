@@ -1,7 +1,6 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import {
-  ensureUserProfileSchema,
   resolveDisplayName,
   sanitizeDisplayNameInput,
   syncUserProfileOnSignIn,
@@ -50,8 +49,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  await ensureUserProfileSchema(db);
 
   try {
     const body = (await request.json()) as any;

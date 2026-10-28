@@ -17,35 +17,6 @@ export function sanitizeDisplayNameInput(raw: unknown): string | null {
   return trimmed || null;
 }
 
-/** Ensure additive profile/shared-list schema exists (safe on repeat). */
-export async function ensureUserProfileSchema(db: D1Database): Promise<void> {
-  try {
-    await db.prepare("ALTER TABLE user_settings ADD COLUMN display_name TEXT").run();
-  } catch {
-    // Column already exists
-  }
-  try {
-    await db.prepare("ALTER TABLE user_settings ADD COLUMN time_zone TEXT").run();
-  } catch {
-    // Column already exists
-  }
-  try {
-    await db
-      .prepare(
-        `CREATE TABLE IF NOT EXISTS shared_list_access (
-          user_id TEXT NOT NULL,
-          list_id TEXT NOT NULL,
-          opened_at INTEGER NOT NULL,
-          PRIMARY KEY (user_id, list_id),
-          FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE
-        )`
-      )
-      .run();
-  } catch {
-    // Table already exists or FK unsupported in some test envs
-  }
-}
-
 /**
  * Upsert email from the auth subject and ensure a settings row exists.
  * Does not overwrite an existing display_name.
@@ -55,7 +26,6 @@ export async function syncUserProfileOnSignIn(
   userId: string,
   email: string | null | undefined
 ): Promise<void> {
-  await ensureUserProfileSchema(db);
   const emailVal = typeof email === "string" ? email.trim() : "";
   await db
     .prepare(
@@ -75,7 +45,6 @@ export async function getDisplayNameForUser(
   db: D1Database,
   userId: string
 ): Promise<string> {
-  await ensureUserProfileSchema(db);
   const row = await db
     .prepare("SELECT display_name FROM user_settings WHERE user_id = ?")
     .bind(userId)
@@ -88,7 +57,6 @@ export async function getDisplayNamesForUsers(
   db: D1Database,
   userIds: string[]
 ): Promise<Map<string, string>> {
-  await ensureUserProfileSchema(db);
   const map = new Map<string, string>();
   const unique = [...new Set(userIds.filter(Boolean))];
   for (const id of unique) {
@@ -121,13 +89,15 @@ export async function getUserTimeZone(
 ): Promise<string | undefined> {
   if (!userId) return undefined;
   try {
-    await ensureUserProfileSchema(db);
     const row = await db
       .prepare("SELECT time_zone FROM user_settings WHERE user_id = ?")
       .bind(userId)
       .first<{ time_zone?: string | null }>();
     return isValidTimeZone(row?.time_zone) ? row!.time_zone! : undefined;
-  } catch {
+  } catch (e) {
+    // Best effort: without a stored zone, repeats are rescheduled in UTC rather
+    // than failing the request. Log it so a real D1 error isn't silent.
+    console.error(`Failed to read the home time zone for user ${userId}:`, e);
     return undefined;
   }
 }
@@ -146,7 +116,6 @@ export async function setUserTimeZone(
   options: { onlyIfUnset?: boolean } = {}
 ): Promise<string | null> {
   if (!isValidTimeZone(timeZone)) return null;
-  await ensureUserProfileSchema(db);
   const guard = options.onlyIfUnset
     ? "user_settings.time_zone IS NULL OR user_settings.time_zone = ''"
     : "user_settings.time_zone IS NOT excluded.time_zone";

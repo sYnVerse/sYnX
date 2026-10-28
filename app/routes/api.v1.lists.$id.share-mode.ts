@@ -3,7 +3,6 @@ import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { UpdateShareModeSchema } from "../../shared";
 import { serializeListRow } from "../api-helpers.server";
-import { ensureUserProfileSchema } from "../user-profile.server";
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
   if (request.method !== "PUT") {
@@ -22,8 +21,6 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   if (!listId) {
     return Response.json({ error: "List ID is required" }, { status: 400 });
   }
-
-  await ensureUserProfileSchema(db);
 
   const listRow = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
   if (!listRow) {

@@ -1,5 +1,3 @@
-import { ensureUserProfileSchema } from "./user-profile.server";
-
 /**
  * Record that a signed-in non-owner opened an accessible shared list.
  * No-op for owners or when userId is empty.
@@ -11,7 +9,6 @@ export async function recordSharedListAccess(
   isOwner: boolean
 ): Promise<void> {
   if (!userId || isOwner) return;
-  await ensureUserProfileSchema(db);
   const openedAt = Date.now();
   try {
     await db
@@ -33,7 +30,6 @@ export async function removeSharedListAccess(
   userId: string,
   listId: string
 ): Promise<boolean> {
-  await ensureUserProfileSchema(db);
   const result = await db
     .prepare("DELETE FROM shared_list_access WHERE user_id = ? AND list_id = ?")
     .bind(userId, listId)
@@ -49,7 +45,6 @@ export async function listSharedWithMe(
   db: D1Database,
   userId: string
 ): Promise<any[]> {
-  await ensureUserProfileSchema(db);
   const { results } = await db
     .prepare(
       `SELECT l.*

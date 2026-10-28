@@ -9,6 +9,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "IMPR",
+        text: "Pages and the sYnX phone app load faster: the server no longer re-checks the database layout on every request, and the busiest lookups (your lists, their tasks and due reminders) now use indexes."
+      },
+      {
         type: "FIX",
         text: "Signing out of the sYnX phone app now always stops reminders on that phone, even if the session had already expired. Reminders also stop being sent to phones that no longer have the app."
       },

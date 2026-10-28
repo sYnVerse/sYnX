@@ -28,12 +28,12 @@ Tests that import mobile code (and so React Native) go in `test/tsconfig.mobile.
 
 ## Database schema (D1 migrations)
 
-The D1 schema lives in `migrations/` (numbered SQL files applied by Wrangler and recorded in the `d1_migrations` table). `migrations/0000_baseline.sql` mirrors production as of Oct 27, 2026.
+The D1 schema lives in `migrations/` (numbered SQL files applied by Wrangler and recorded in the `d1_migrations` table). `migrations/0000_baseline.sql` mirrors production as of Oct 27, 2026; later files build on it.
 
 - Every schema change is a new numbered migration: `npx wrangler d1 migrations create synx-db <name>`, then `npx wrangler d1 migrations apply synx-db --local`. Tests build their database from `migrations/` (see `test/apply-migrations.ts`), so don't hand-write `CREATE TABLE` in tests.
 - Never edit a migration that has already been applied (anything merged to main). Fix it with a new migration.
 - Keep schema changes additive within a release (expand, then contract): add the new column or table, ship code that uses it, and only drop or rename the old one in a later release, once no deployed code (web or mobile) relies on it.
-- No DDL (`CREATE`/`ALTER`/`DROP`) in app code for new changes. The existing runtime schema code (`ensureUserProfileSchema`, `ensureCategoryColumn` and the `ALTER TABLE` calls in `app/routes/$id.tsx`) is legacy and will be removed in a follow-up; don't add to it.
+- No DDL (`CREATE`/`ALTER`/`DROP`) or `PRAGMA` schema checks in app code. The app assumes the schema from `migrations/` is in place; don't add "create if missing" or "add column if missing" code, and don't wrap queries in `try/catch` just to ignore schema errors.
 - Never run `wrangler d1 migrations apply` or `wrangler d1 execute` with `--remote` by hand. Production migrations run only in the deploy pipeline (`npm run deploy`, which Workers Builds runs on pushes to main). Don't run `npm run deploy` from your own machine either, since it applies migrations to production. `wrangler d1 migrations list synx-db --remote` is read-only and fine for checking.
 
 ## Versioning Rules (SemVer)
