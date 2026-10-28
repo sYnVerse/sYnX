@@ -31,5 +31,5 @@ A breaking change is any modification requiring downstream users to update their
 
 ### Data & Architecture
 * **API Payloads**: Dropping JSON keys or mutating their data types in responses.
-* **Storage Schema**: Dropping DB columns, altering column types, or adding non-null constraints without defaults (`schema.sql`).
+* **Storage Schema**: Dropping DB columns, altering column types, or adding non-null constraints without defaults (`migrations/`).
 * **Configuration**: Removing or renaming required environment variables or configuration keys.

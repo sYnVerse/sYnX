@@ -23,41 +23,34 @@ Manage your task workspaces with [Cloudflare Workers Assets](https://developers.
 
 ---
 
-## Database Migration Setup
+## Database Schema & Migrations
 
-This project uses a Cloudflare D1 SQLite database. Run the following SQL queries on your D1 database to add the required columns:
+The app stores its data in a Cloudflare D1 (SQLite) database named `synx-db`. The schema lives in numbered SQL files in [`migrations/`](migrations/), and Wrangler records which ones have run in a `d1_migrations` table inside the database. `migrations/0000_baseline.sql` is the full schema as it existed in production on Oct 27, 2026.
 
-```sql
--- 1. Add share_mode and category to lists
-ALTER TABLE lists ADD COLUMN share_mode TEXT DEFAULT 'private';
-ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist';
+### Change the schema
 
--- 2. Add parent_id, recurrence, and duration_minutes to todos
-ALTER TABLE todos ADD COLUMN parent_id TEXT REFERENCES todos(id) ON DELETE CASCADE;
-ALTER TABLE todos ADD COLUMN recurrence TEXT DEFAULT 'none';
-ALTER TABLE todos ADD COLUMN duration_minutes INTEGER DEFAULT NULL;
+1. Create a new numbered migration file and write the SQL in it:
+   ```bash
+   npx wrangler d1 migrations create synx-db <short_name>
+   ```
+2. Apply it to your local dev database:
+   ```bash
+   npx wrangler d1 migrations apply synx-db --local
+   ```
+3. Run the tests. They build their database from `migrations/`, so they pick up the change automatically.
 
--- 3. Display names + Shared with me tracking
-ALTER TABLE user_settings ADD COLUMN display_name TEXT;
-CREATE TABLE IF NOT EXISTS shared_list_access (
-  user_id TEXT NOT NULL,
-  list_id TEXT NOT NULL,
-  opened_at INTEGER NOT NULL,
-  PRIMARY KEY (user_id, list_id),
-  FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE
-);
-```
+Rules:
 
-### Apply Locally
-To run these migrations on your local wrangler dev environment, execute:
+* Never edit a migration that has already been applied. Fix mistakes with a new migration.
+* Keep changes additive within a release (expand, then contract): add the new column or table first, ship code that uses it, and only drop the old one in a later release.
+* Don't run DDL (`CREATE`/`ALTER`/`DROP`) from app code for new changes. Some older code still adds columns at runtime (`ensureUserProfileSchema`, `ensureCategoryColumn`); that is legacy and will be removed in a follow-up.
+
+### Production
+
+Production migrations run in the deploy pipeline, not by hand. `npm run deploy` (what Cloudflare Workers Builds runs on every push to `main`) builds the app, applies any pending migrations to the remote database, then deploys the Worker. If a migration fails, the deploy stops before the new code goes live. To see which migrations production has applied (read-only):
+
 ```bash
-npx wrangler d1 execute synx-db --local --command "ALTER TABLE lists ADD COLUMN share_mode TEXT DEFAULT 'private';"
-npx wrangler d1 execute synx-db --local --command "ALTER TABLE lists ADD COLUMN category TEXT DEFAULT 'Checklist';"
-npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN parent_id TEXT REFERENCES todos(id) ON DELETE CASCADE;"
-npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN recurrence TEXT DEFAULT 'none';"
-npx wrangler d1 execute synx-db --local --command "ALTER TABLE todos ADD COLUMN duration_minutes INTEGER DEFAULT NULL;"
-npx wrangler d1 execute synx-db --local --command "ALTER TABLE user_settings ADD COLUMN display_name TEXT;"
-npx wrangler d1 execute synx-db --local --command "CREATE TABLE IF NOT EXISTS shared_list_access (user_id TEXT NOT NULL, list_id TEXT NOT NULL, opened_at INTEGER NOT NULL, PRIMARY KEY (user_id, list_id), FOREIGN KEY(list_id) REFERENCES lists(id) ON DELETE CASCADE);"
+npx wrangler d1 migrations list synx-db --remote
 ```
 
 ---
@@ -74,24 +67,29 @@ npx wrangler d1 execute synx-db --local --command "CREATE TABLE IF NOT EXISTS sh
    npm run cf-typegen
    ```
 
-3. **Run Dev Server**:
+3. **Create the Local Database** (builds the schema from `migrations/`):
+   ```bash
+   npx wrangler d1 migrations apply synx-db --local
+   ```
+
+4. **Run Dev Server**:
    ```bash
    npm run dev
    ```
 
-4. **Run Tests**:
+5. **Run Tests**:
    ```bash
    npm run test -- --run
    ```
 
-5. **Run Mobile App (React Native / Expo)**:
+6. **Run Mobile App (React Native / Expo)**:
    ```bash
    cd mobile
    npm install
    npx expo start
    ```
 
-6. **Build Web Production Bundle**:
+7. **Build Web Production Bundle**:
    ```bash
    npm run build
    ```
@@ -125,6 +123,6 @@ A breaking change is any modification requiring downstream users to update their
 
 #### Data & Architecture
 * **API Payloads**: Dropping JSON keys or mutating their data types in responses.
-* **Storage Schema**: Dropping DB columns, altering column types, or adding non-null constraints without defaults (`schema.sql`).
+* **Storage Schema**: Dropping DB columns, altering column types, or adding non-null constraints without defaults (`migrations/`).
 * **Configuration**: Removing or renaming required environment variables or configuration keys.
 
