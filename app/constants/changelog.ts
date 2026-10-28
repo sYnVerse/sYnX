@@ -11,6 +11,14 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Signing out of the sYnX phone app now always stops reminders on that phone, even if the session had already expired. Reminders also stop being sent to phones that no longer have the app."
+      },
+      {
+        type: "FIX",
+        text: "Light Pastel theme is readable again: task names, the list title, the sYnX logo, menus and pop-ups now use dark text that's easy to read on the light background, and cards, borders and the calendar no longer look washed out or grey."
+      },
+      {
+        type: "FIX",
+        text: "On phones and narrow windows, a task's name gets its own line and its badges (time, priority, reminder, repeat) wrap underneath, so long names are no longer squeezed down to a few letters. The edit and delete buttons now show on touch screens too, and the priority picker in the add-task bar no longer gets cut off."
       }
     ]
   },

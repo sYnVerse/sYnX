@@ -613,7 +613,7 @@ function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
       <div className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-5 shadow-2xl z-10 flex flex-col gap-4 animate-fade-in animate-scale-up">
         <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
           <div>
-            <h3 className="font-display font-extrabold text-sm text-white">Quick Add Task</h3>
+            <h3 className="font-display font-extrabold text-sm text-slate-50">Quick Add Task</h3>
             <p className="text-[10px] text-slate-400 mt-0.5">Scheduled for: {formattedDateStr}</p>
           </div>
           <button
@@ -770,7 +770,7 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
       
       <div className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-5 shadow-2xl z-10 flex flex-col gap-4 animate-fade-in animate-scale-up">
         <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
-          <h3 className="font-display font-extrabold text-sm text-white">Edit Task Details</h3>
+          <h3 className="font-display font-extrabold text-sm text-slate-50">Edit Task Details</h3>
           <button
             onClick={onClose}
             className="text-slate-500 hover:text-white p-1 hover:bg-white/[0.04] rounded-lg transition cursor-pointer flex items-center justify-center"
