@@ -65,6 +65,9 @@ export async function sendFCMPushNotification(
     if (!response.ok) {
       const errText = await response.text();
       console.error(`[FCM] Push failed with status ${response.status}: ${errText}`);
+      if (isInvalidTokenResponse(errText) && env.DB) {
+        await removeDeviceToken(env.DB as D1Database, token);
+      }
       return false;
     }
 
@@ -73,6 +76,48 @@ export async function sendFCMPushNotification(
   } catch (error) {
     console.error("[FCM] Error in sendFCMPushNotification:", error);
     return false;
+  }
+}
+
+/**
+ * True when FCM says the token itself is dead or malformed, so it can never
+ * receive a push again: 404 with UNREGISTERED (app uninstalled or token rotated),
+ * or INVALID_ARGUMENT that points at the token. Other INVALID_ARGUMENT errors
+ * (a bad payload) are not the token's fault and keep it.
+ */
+export function isInvalidTokenResponse(body: string): boolean {
+  type FcmErrorDetail = { errorCode?: string; fieldViolations?: { field?: string }[] };
+  type FcmError = { status?: string; message?: string; details?: FcmErrorDetail[] };
+  let error: FcmError | null = null;
+  try {
+    error = (JSON.parse(body) as { error?: FcmError })?.error ?? null;
+  } catch {
+    // Non-JSON error body
+  }
+  const details = Array.isArray(error?.details) ? error.details : [];
+  const errorCodes = details.map((d) => d?.errorCode);
+
+  // Require FCM's UNREGISTERED code: a bare 404 can also mean a wrong project
+  // ID, and that must not wipe every token.
+  if (errorCodes.includes("UNREGISTERED")) return true;
+  if (error?.status === "INVALID_ARGUMENT" || errorCodes.includes("INVALID_ARGUMENT")) {
+    const pointsAtToken = details.some((d) =>
+      (d?.fieldViolations ?? []).some((f) => f?.field === "message.token")
+    );
+    return pointsAtToken || /registration token/i.test(String(error?.message ?? ""));
+  }
+  return false;
+}
+
+/** Drops a device token FCM has rejected for good, so the cron stops sending to it. */
+export async function removeDeviceToken(db: D1Database, token: string): Promise<void> {
+  try {
+    const result = await db.prepare("DELETE FROM device_tokens WHERE token = ?").bind(token).run();
+    console.warn(
+      `[FCM] Removed invalid device token ${token.substring(0, 10)}... (${result.meta?.changes ?? 0} row(s))`
+    );
+  } catch (e) {
+    console.error("[FCM] Failed to remove invalid device token:", e);
   }
 }
 

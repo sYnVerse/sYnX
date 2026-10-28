@@ -6,6 +6,21 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-10-28",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Signing out, or being signed out because your session ended, now stops sYnX reminders on this phone right away, even when the session had already expired or you're offline. Signing out no longer waits on the network."
+      },
+      {
+        type: "FIX",
+        text: "An expired session can no longer make the app repeat the same request in the background over and over, which wasted battery and data."
+      }
+    ]
+  },
+  {
+    version: "v3.3.2",
     date: "2026-10-27",
     title: "What's new?",
     changes: [
