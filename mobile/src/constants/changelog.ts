@@ -16,6 +16,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "An expired session can no longer make the app repeat the same request in the background over and over, which wasted battery and data."
+      },
+      {
+        type: "FIX",
+        text: "On Android, tapping a shared sYnX list link (synx.christran.io followed by the list's ID) now opens the list in the app instead of the browser. Other sYnX web pages, like sign-in, still open in the browser."
       }
     ]
   },

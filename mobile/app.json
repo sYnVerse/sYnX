@@ -39,6 +39,11 @@
               "scheme": "https",
               "host": "synx.christran.io",
               "pathPrefix": "/list"
+            },
+            {
+              "scheme": "https",
+              "host": "synx.christran.io",
+              "pathPattern": "/........-....-....-....-............"
             }
           ],
           "category": [
