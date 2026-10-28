@@ -82,6 +82,14 @@ export default tseslint.config(
       // Successor of the old no-empty-interface rule (which was off): allow
       // `interface X extends Y {}` for module augmentation.
       "@typescript-eslint/no-empty-object-type": ["error", { allowInterfaces: "with-single-extends" }],
+      // TypeScript already checks these, and import/namespace builds export maps
+      // of every imported module (including React Native via the mobile tests),
+      // which ran CI out of memory. typescript-eslint recommends turning them off:
+      // https://typescript-eslint.io/troubleshooting/typed-linting/performance#eslint-plugin-import
+      "import/named": "off",
+      "import/namespace": "off",
+      "import/default": "off",
+      "import/no-named-as-default-member": "off",
       // Existing code has many `any`s; flag them without failing lint.
       "@typescript-eslint/no-explicit-any": "warn",
     },
