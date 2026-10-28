@@ -86,3 +86,23 @@ jobs:
         working-directory: mobile
       - run: npm run doctor
         working-directory: mobile
+
+  mobile-lint:
+    name: Mobile lint
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      # Expo's ESLint setup (mobile/eslint.config.js). Errors fail the job;
+      # warnings are reported but tracked as follow-ups.
+      - run: npm run lint
+        working-directory: mobile

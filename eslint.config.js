@@ -1,5 +1,6 @@
 // ESLint flat config (ESLint 9). Replaces the legacy .eslintrc.js.
-// The mobile app (mobile/) is checked separately by its own typecheck and expo-doctor.
+// The mobile app (mobile/) has its own Expo ESLint config (mobile/eslint.config.js),
+// run by `npm run lint` in mobile/ and the "Mobile lint" CI job.
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import react from "eslint-plugin-react";

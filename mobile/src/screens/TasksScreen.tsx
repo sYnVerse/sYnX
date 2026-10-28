@@ -482,7 +482,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             <View style={styles.emptyContainer}>
               {todosIsError ? (
                 <>
-                  <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Couldn't load tasks</Text>
+                  <Text style={[styles.emptyTitle, { color: theme.textPrimary }]}>Couldn&apos;t load tasks</Text>
                   <Text style={[styles.emptySub, { color: theme.textMuted }]}>
                     Check your connection and try again.
                   </Text>

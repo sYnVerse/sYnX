@@ -454,7 +454,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
         </View>
       ) : isError && !lists ? (
         <View style={styles.errorBox}>
-          <Text style={[styles.errorTitle, { color: theme.textPrimary }]}>Couldn't load lists</Text>
+          <Text style={[styles.errorTitle, { color: theme.textPrimary }]}>Couldn&apos;t load lists</Text>
           <Text style={[styles.errorBody, { color: theme.textMuted }]}>
             {getErrorMessage(error, "Check your connection and try again.")}
           </Text>
@@ -936,7 +936,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                 style={[styles.warnBox, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
               >
                 <Text style={[styles.warnText, { color: theme.accent }]}>
-                  This list is Private — others can't open a shared link until you change access below.
+                  This list is Private — others can&apos;t open a shared link until you change access below.
                 </Text>
               </View>
             ) : null}
