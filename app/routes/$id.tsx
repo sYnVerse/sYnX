@@ -2862,7 +2862,7 @@ export default function TodoPage() {
             </div>
 
             <div className="flex flex-wrap gap-2 shrink-0">
-              <div className="relative flex-1 sm:flex-initial min-w-0" title="Est. Duration in minutes">
+              <div className="relative flex-1 sm:flex-initial min-w-[3rem]" title="Est. Duration in minutes">
                 <input
                   type="hidden"
                   name="durationMinutes"
@@ -2930,7 +2930,7 @@ export default function TodoPage() {
                 name="intent"
                 value="create"
                 disabled={isCreating}
-                className="rounded-xl bg-gradient-to-r from-themeAccentFrom to-themeAccentTo hover:from-themeAccentFrom hover:to-themeAccentTo text-white font-semibold px-5 py-3 text-sm shadow-lg shadow-themeAccentFrom/10 hover:shadow-themeAccentFrom/25 transition-all duration-200 disabled:opacity-50 cursor-pointer active:scale-98 flex items-center justify-center min-w-[70px]"
+                className="rounded-xl bg-gradient-to-r from-themeAccentFrom to-themeAccentTo hover:from-themeAccentFrom hover:to-themeAccentTo text-white font-semibold px-5 py-3 text-sm shadow-lg shadow-themeAccentFrom/10 hover:shadow-themeAccentFrom/25 transition-all duration-200 disabled:opacity-50 cursor-pointer active:scale-98 flex items-center justify-center min-w-[70px] grow sm:grow-0"
               >
                 {isCreating ? (
                   <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
