@@ -38,6 +38,19 @@ describe("provider avatar allowlist", () => {
   });
 });
 
+describe("sYnID-hosted avatars (Microsoft work/school photos)", () => {
+  it("accepts only auth.christran.io/avatar/<32 hex> URLs", () => {
+    const key = "0123456789abcdef0123456789abcdef";
+    expect(sanitizeProviderAvatarUrl(`https://auth.christran.io/avatar/${key}`)).toBe(
+      `https://auth.christran.io/avatar/${key}`
+    );
+    expect(sanitizeProviderAvatarUrl(`http://auth.christran.io/avatar/${key}`)).toBeNull();
+    expect(sanitizeProviderAvatarUrl("https://auth.christran.io/userinfo")).toBeNull();
+    expect(sanitizeProviderAvatarUrl(`https://auth.christran.io/avatar/${key}?x=1`)).toBeNull();
+    expect(sanitizeProviderAvatarUrl(`https://evil.test/avatar/${key}`)).toBeNull();
+  });
+});
+
 describe("fetchProviderProfile", () => {
   it("returns null when sYnID has no /userinfo yet (404) or errors", async () => {
     expect(await fetchProviderProfile(ISSUER, "t", jsonFetch(404, { error: "not_found" }))).toBeNull();

@@ -11,7 +11,11 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     changes: [
       {
         type: "NEW",
-        text: "If you sign in with Google or GitHub, your profile photo now shows in Settings next to your email, with your initials if there's no photo."
+        text: "If you sign in with Google, GitHub or a Microsoft work or school account, your profile photo now shows in Settings next to your email, with your initials if there's no photo."
+      },
+      {
+        type: "NEW",
+        text: "If you haven't set a display name, the app can offer the name from your Google, GitHub or Microsoft account, once after you sign in and in Settings. It's only used if you choose \"Use this name\", and \"No thanks\" stops the offer in the app and on the web."
       },
       {
         type: "NEW",

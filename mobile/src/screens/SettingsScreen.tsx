@@ -52,6 +52,12 @@ import {
   setHomeTimeZone,
   subscribeHomeTimeZone,
 } from "../services/timeZoneSync";
+import {
+  acceptDisplayNameSuggestion,
+  dismissDisplayNameSuggestion,
+  subscribeDisplayNameSuggestion,
+  suggestionMessage,
+} from "../services/displayNameSuggestion";
 import { CalendarPickerModal } from "../components/CalendarPickerModal";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
@@ -106,9 +112,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [phoneCarrier, setPhoneCarrier] = useState("");
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
   const [displayName, setDisplayName] = useState("");
-  // Provider photo from sYnID (Google / GitHub); initials show when unset or it fails to load.
+  // Provider photo from sYnID (Google, GitHub, Microsoft work/school); initials show when unset or it fails to load.
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null);
+  // Provider name offered as the display name until accepted or dismissed (server flags).
+  const [suggestedName, setSuggestedName] = useState<string | null>(null);
+  const [suggestionBusy, setSuggestionBusy] = useState(false);
   const [savingRemote, setSavingRemote] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushStatus, setPushStatus] = useState<PushPermissionStatus>("undetermined");
@@ -185,6 +194,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           setDisplayName(loaded.displayName);
           setHomeTimeZoneState(res.data.settings.timeZone ?? null);
           setAvatarUrl(typeof res.data.settings.avatarUrl === "string" ? res.data.settings.avatarUrl : null);
+          setSuggestedName(
+            typeof res.data.settings.suggestedDisplayName === "string"
+              ? res.data.settings.suggestedDisplayName
+              : null
+          );
           markLoadedClean();
         }
       } catch (e) {
@@ -217,6 +231,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   }, [refreshPushState]);
 
   useEffect(() => subscribeHomeTimeZone(setHomeTimeZoneState), []);
+
+  // Answered here or in the one-time prompt: hide the offer and show a saved name.
+  useEffect(
+    () =>
+      subscribeDisplayNameSuggestion((outcome) => {
+        setSuggestedName(null);
+        if (outcome.kind === "accepted") {
+          // Already saved on the server, so it isn't an unsaved edit.
+          latestRemote.current = { ...latestRemote.current, displayName: outcome.displayName };
+          setDisplayName(outcome.displayName);
+        }
+      }),
+    []
+  );
+
+  const handleSuggestion = async (accept: boolean) => {
+    if (suggestionBusy) return;
+    triggerImpact();
+    setSuggestionBusy(true);
+    try {
+      if (accept) {
+        const saved = await acceptDisplayNameSuggestion();
+        if (saved) showSuccess("Display name saved");
+      } else {
+        await dismissDisplayNameSuggestion();
+      }
+    } catch (e: any) {
+      showError(getErrorMessage(e, "Couldn't update display name"));
+    } finally {
+      setSuggestionBusy(false);
+    }
+  };
 
   const handleUseDeviceTimeZone = async () => {
     if (!deviceTimeZone || homeTimeZoneBusy) return;
@@ -604,6 +650,34 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         </View>
 
         <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 16 }]}>DISPLAY NAME</Text>
+        {suggestedName && !displayName.trim() ? (
+          <View
+            style={[styles.suggestionCard, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
+            accessibilityRole="summary"
+          >
+            <Text style={[styles.suggestionText, { color: theme.textPrimary }]}>
+              {suggestionMessage(suggestedName)}
+            </Text>
+            <View style={styles.suggestionActions}>
+              <TouchableOpacity
+                style={[styles.suggestionBtn, { backgroundColor: theme.accent, borderColor: theme.accent }]}
+                onPress={() => handleSuggestion(true)}
+                disabled={suggestionBusy}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.suggestionBtnText, { color: "#fff" }]}>Use this name</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.suggestionBtn, { borderColor: theme.inputBorder }]}
+                onPress={() => handleSuggestion(false)}
+                disabled={suggestionBusy}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.suggestionBtnText, { color: theme.textMuted }]}>No thanks</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
         <TextInput
           style={[
             styles.input,
@@ -1113,6 +1187,32 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0.5,
     marginBottom: 8,
+  },
+  suggestionCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+  },
+  suggestionText: {
+    fontSize: typography.sm,
+    lineHeight: 20,
+  },
+  suggestionActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+  },
+  suggestionBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    minHeight: MIN_TOUCH_TARGET,
+    justifyContent: "center",
+  },
+  suggestionBtnText: {
+    fontSize: typography.sm,
+    fontWeight: "600",
   },
   accountRow: {
     flexDirection: "row",

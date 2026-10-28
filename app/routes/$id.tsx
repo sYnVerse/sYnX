@@ -288,7 +288,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     displayName: DEFAULT_DISPLAY_NAME,
     displayNameSet: false,
     timeZone: null as string | null,
-    /** Provider profile photo (Google / GitHub via sYnID), or null. */
+    /** Provider profile photo (Google, GitHub or Microsoft work/school via sYnID), or null. */
     avatarUrl: null as string | null,
     /** Provider name offered as a display name; null once set, accepted or dismissed. */
     suggestedDisplayName: null as string | null,
@@ -2141,6 +2141,18 @@ export default function TodoPage() {
   const [nameSuggestionHandled, setNameSuggestionHandled] = useState(false);
   const pendingNameSuggestion =
     !nameSuggestionHandled && !settings?.displayNameSet ? settings?.suggestedDisplayName || null : null;
+  // Same server flags back the Profile card and the one-time banner, so answering
+  // either one hides both for good (web and phone app).
+  const acceptNameSuggestion = (name: string) => {
+    suggestionFetcher.submit({ intent: "acceptSuggestedDisplayName" }, { method: "post" });
+    setDisplayNameInput(name);
+    setNameSuggestionHandled(true);
+    showToast("✓ Display name saved");
+  };
+  const dismissNameSuggestion = () => {
+    suggestionFetcher.submit({ intent: "dismissSuggestedDisplayName" }, { method: "post" });
+    setNameSuggestionHandled(true);
+  };
   // Zone list and browser zone are read on the client only (avoids hydration mismatch).
   const timeZoneOptions = useMemo(() => (hydrated ? listTimeZones() : []), [hydrated]);
   const browserTimeZone = useMemo(() => (hydrated ? getLocalTimeZone() : undefined), [hydrated]);
@@ -3573,22 +3585,14 @@ export default function TodoPage() {
                   <div className="mt-2 flex gap-2">
                     <button
                       type="button"
-                      onClick={() => {
-                        suggestionFetcher.submit({ intent: "acceptSuggestedDisplayName" }, { method: "post" });
-                        setDisplayNameInput(pendingNameSuggestion);
-                        setNameSuggestionHandled(true);
-                        showToast("✓ Display name saved");
-                      }}
+                      onClick={() => acceptNameSuggestion(pendingNameSuggestion)}
                       className="text-[11px] font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-md px-2.5 py-1 transition-colors cursor-pointer"
                     >
                       Use this name
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        suggestionFetcher.submit({ intent: "dismissSuggestedDisplayName" }, { method: "post" });
-                        setNameSuggestionHandled(true);
-                      }}
+                      onClick={dismissNameSuggestion}
                       className="text-[11px] font-semibold text-slate-400 hover:text-slate-200 rounded-md px-2.5 py-1 border border-white/10 transition-colors cursor-pointer bg-transparent"
                     >
                       No thanks
@@ -4303,6 +4307,34 @@ export default function TodoPage() {
                 Save Category
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* One-time display name offer outside Profile (Profile shows it inline). */}
+      {isLoggedIn && pendingNameSuggestion && !isAnyModalOpen && (
+        <div
+          role="status"
+          className="fixed bottom-20 left-4 right-4 sm:left-auto sm:right-6 sm:w-80 z-40 rounded-xl border border-themeAccentRing/30 bg-slate-900/95 backdrop-blur p-3.5 shadow-2xl text-left"
+        >
+          <p className="text-xs text-slate-200 leading-relaxed">
+            Use <span className="font-semibold">&ldquo;{pendingNameSuggestion}&rdquo;</span> as your display name? It will be visible to people you share lists with.
+          </p>
+          <div className="mt-2.5 flex gap-2">
+            <button
+              type="button"
+              onClick={() => acceptNameSuggestion(pendingNameSuggestion)}
+              className="text-[11px] font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-md px-2.5 py-1 transition-colors cursor-pointer"
+            >
+              Use this name
+            </button>
+            <button
+              type="button"
+              onClick={dismissNameSuggestion}
+              className="text-[11px] font-semibold text-slate-400 hover:text-slate-200 rounded-md px-2.5 py-1 border border-white/10 transition-colors cursor-pointer bg-transparent"
+            >
+              No thanks
+            </button>
           </div>
         </div>
       )}

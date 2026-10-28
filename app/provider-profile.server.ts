@@ -16,7 +16,17 @@ const MAX_AVATAR_URL_LENGTH = 2048;
 
 export type ProviderProfileInfo = { name: string | null; picture: string | null };
 
-/** Only https photos on Google's or GitHub's avatar hosts. */
+/**
+ * sYnID hosts Microsoft work/school photos itself (Graph has no public photo URL) at
+ * https://auth.christran.io/avatar/<32 hex characters>.
+ */
+const SYNID_AVATAR_HOST = "auth.christran.io";
+const SYNID_AVATAR_PATH = /^\/avatar\/[0-9a-f]{32}$/;
+
+/**
+ * Only https photos on Google's or GitHub's avatar hosts, or a sYnID-hosted
+ * /avatar/<key> image (Microsoft work/school accounts).
+ */
 export function sanitizeProviderAvatarUrl(raw: unknown): string | null {
   if (typeof raw !== "string" || !raw || raw.length > MAX_AVATAR_URL_LENGTH) return null;
   let u: URL;
@@ -27,6 +37,9 @@ export function sanitizeProviderAvatarUrl(raw: unknown): string | null {
   }
   if (u.protocol !== "https:" || u.username || u.password || u.port) return null;
   const host = u.hostname.toLowerCase();
+  if (host === SYNID_AVATAR_HOST) {
+    return SYNID_AVATAR_PATH.test(u.pathname) && !u.search && !u.hash ? u.toString() : null;
+  }
   const allowed =
     host === "avatars.githubusercontent.com" ||
     host === "googleusercontent.com" ||

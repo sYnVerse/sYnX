@@ -10,11 +10,11 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     changes: [
       {
         type: "NEW",
-        text: "If you sign in with Google or GitHub, your profile photo now shows in the side menu and in Profile, with your initials as before if there's no photo or it can't load."
+        text: "If you sign in with Google, GitHub or a Microsoft work or school account, your profile photo now shows in the side menu and in Profile, with your initials as before if there's no photo or it can't load."
       },
       {
         type: "NEW",
-        text: "If you haven't set a display name, Profile can offer the name from your Google, GitHub or Microsoft account. It's only used if you choose \"Use this name\", and \"No thanks\" stops the offer."
+        text: "If you haven't set a display name, sYnX can offer the name from your Google, GitHub or Microsoft account, in a one-time message after you sign in and in Profile. It's only used if you choose \"Use this name\", and \"No thanks\" stops the offer on the web and in the phone app."
       },
       {
         type: "NEW",
