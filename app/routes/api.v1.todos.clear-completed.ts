@@ -1,7 +1,11 @@
 import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
-import { TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
+import {
+  deleteRequestActivitySummary,
+  logListActivity,
+} from "../list-activity.server";
+import { requestOrPerformDelete } from "../pending-deletes.server";
 
 export async function action({ request, context }: ActionFunctionArgs) {
   if (request.method !== "POST") {
@@ -27,8 +31,44 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return Response.json({ error: "Edit permission denied for list" }, { status: 403 });
   }
 
-  const manager = new TodoManager(db, listId);
-  await manager.clearCompleted();
+  const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+  const result = await requestOrPerformDelete(db, {
+    listId,
+    userId: user.userId,
+    isOwner: access.isOwner,
+    canEdit: access.canEdit,
+    targetType: "clear_completed",
+    env,
+    waitUntil,
+  });
 
-  return Response.json({ success: true });
+  if (result.kind === "deleted" || result.kind === "requested") {
+    const logPromise = logListActivity(db, {
+      listId,
+      action: result.kind === "requested" ? "delete_requested" : "clear_completed",
+      actorId: user.userId,
+      isOwner: access.isOwner,
+      shareMode: access.list?.share_mode,
+      request,
+      summary:
+        result.kind === "requested"
+          ? deleteRequestActivitySummary("clear_completed")
+          : undefined,
+    });
+    if (waitUntil) waitUntil(logPromise); else await logPromise;
+  }
+
+  if (result.kind === "deleted") {
+    return Response.json({ success: true });
+  }
+  if (result.kind === "requested") {
+    return Response.json({
+      success: true,
+      pendingApproval: true,
+      alreadyRequested: result.alreadyExisted,
+      requestId: result.requestId,
+      message: result.message,
+    });
+  }
+  return Response.json({ error: result.error }, { status: 403 });
 }

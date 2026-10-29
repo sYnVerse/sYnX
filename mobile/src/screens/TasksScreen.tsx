@@ -10,6 +10,8 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,9 +29,18 @@ import {
   FolderKanban,
   Bell,
   Flag,
+  History,
 } from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoItem, TodoList, type ListAccessDenialCode, type PriorityLevel } from "../shared";
+import {
+  TodoItem,
+  TodoList,
+  describeListActivityAction,
+  type ListAccessDenialCode,
+  type ListActivityEntry,
+  type PendingDeleteRequest,
+  type PriorityLevel,
+} from "../shared";
 import { TaskModal } from "../components/TaskModal";
 import { TaskBreakdownModal } from "../components/TaskBreakdownModal";
 import { TaskCardSkeleton } from "../components/SkeletonLoader";
@@ -94,7 +105,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   onSwitchLists,
 }) => {
   const { theme, hapticsEnabled } = useTheme();
-  const { showError } = useToast();
+  const { showError, showSuccess, showToast } = useToast();
   const insets = useSafeAreaInsets();
   const fabBottom = getFabBottomOffset(insets.bottom);
   const queryClient = useQueryClient();
@@ -181,6 +192,11 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
+      // Keep pending requests in a sibling cache key (same response).
+      queryClient.setQueryData(
+        ["delete-requests", listId],
+        (res.data.pendingDeleteRequests || []) as PendingDeleteRequest[]
+      );
       return res.data.todos as TodoItem[];
     },
     enabled: !!listId && !!listMeta,
@@ -189,6 +205,15 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       if (status === 403 || status === 404) return false;
       return failureCount < 2;
     },
+  });
+
+  const { data: pendingDeleteRequests = [] } = useQuery({
+    queryKey: ["delete-requests", listId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/v1/delete-requests?listId=${listId}`);
+      return (res.data.requests || []) as PendingDeleteRequest[];
+    },
+    enabled: !!listId && !!listMeta,
   });
 
   React.useEffect(() => {
@@ -255,20 +280,63 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiClient.delete(`/api/v1/todos/${id}`);
-      return id;
+      const res = await apiClient.delete(`/api/v1/todos/${id}`);
+      return {
+        id,
+        pendingApproval: Boolean(res.data?.pendingApproval),
+        message: res.data?.message as string | undefined,
+      };
     },
-    onSuccess: (deletedId) => {
+    onSuccess: (result) => {
       triggerImpactHaptic();
-      if (deletedId) {
-        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          old ? old.filter((t) => t.id !== deletedId && t.parentId !== deletedId) : []
+      if (result.pendingApproval) {
+        showToast(
+          result.message || "Delete request sent. The list owner must approve it.",
+          "info"
         );
-        removeTaskFromNativeCalendar(deletedId).catch(() => {});
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old
+            ? old.map((t) => (t.id === result.id ? { ...t, pendingDelete: true } : t))
+            : []
+        );
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+        queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
+        return;
+      }
+      if (result.id) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old ? old.filter((t) => t.id !== result.id && t.parentId !== result.id) : []
+        );
+        removeTaskFromNativeCalendar(result.id).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
     },
     onError: (e) => onMutationError(e, "Couldn't delete task"),
+  });
+
+  const reviewDeleteMutation = useMutation({
+    mutationFn: async ({
+      requestId,
+      decision,
+    }: {
+      requestId: string;
+      decision: "approve" | "decline";
+    }) => {
+      const res = await apiClient.post(`/api/v1/delete-requests/${requestId}`, { decision });
+      return res.data as { decision: string; listId?: string; targetType?: string };
+    },
+    onSuccess: (data) => {
+      triggerSuccessHaptic();
+      showSuccess(data.decision === "approve" ? "Delete approved" : "Delete declined");
+      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+      if (data.targetType === "list") {
+        queryClient.invalidateQueries({ queryKey: ["list_meta", listId] });
+      }
+    },
+    onError: (e) => onMutationError(e, "Couldn't update delete request"),
   });
 
   const createMutation = useMutation({
@@ -312,16 +380,69 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   });
 
   const handleDeleteTask = (task: TodoItem) => {
-    if (!canEdit) return;
+    if (!canEdit || task.pendingDelete) return;
     triggerImpactHaptic();
-    Alert.alert("Delete Task", `Are you sure you want to delete "${task.text}"?`, [
+    const title = isOwner ? "Delete Task" : "Request task deletion?";
+    const message = isOwner
+      ? `Are you sure you want to delete "${task.text}"?`
+      : `Ask the owner to delete "${task.text}"? They'll need to approve before it's removed.`;
+    Alert.alert(title, message, [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Delete",
+        text: isOwner ? "Delete" : "Send request",
         style: "destructive",
         onPress: () => deleteMutation.mutate(task.id),
       },
     ]);
+  };
+
+  const ownerPendingRequests = useMemo(
+    () => (isOwner ? pendingDeleteRequests : []),
+    [isOwner, pendingDeleteRequests]
+  );
+
+  const canViewActivity = isOwner && shareMode !== "private";
+  const [showActivity, setShowActivity] = useState(false);
+  const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityHasMore, setActivityHasMore] = useState(false);
+  const [activityError, setActivityError] = useState(false);
+
+  const loadActivity = async (before: number | null, replace: boolean) => {
+    setActivityLoading(true);
+    setActivityError(false);
+    try {
+      const params = new URLSearchParams({ limit: "50" });
+      if (before != null) params.set("before", String(before));
+      const res = await apiClient.get(`/api/v1/lists/${listId}/activity?${params.toString()}`);
+      const entries = (res.data.entries || []) as ListActivityEntry[];
+      setActivityEntries((prev) => {
+        if (replace) return entries;
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...entries.filter((e) => !seen.has(e.id))];
+      });
+      setActivityHasMore(entries.length >= 50);
+    } catch {
+      setActivityError(true);
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  const openActivity = () => {
+    triggerImpactHaptic();
+    setActivityEntries([]);
+    setActivityHasMore(false);
+    setActivityError(false);
+    setShowActivity(true);
+    void loadActivity(null, true);
+  };
+
+  const closeActivity = () => {
+    setShowActivity(false);
+    setActivityEntries([]);
+    setActivityHasMore(false);
+    setActivityError(false);
   };
 
   const filteredTodos = structuredTodos.filter((parent) => {
@@ -422,21 +543,37 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             {ownershipLabel}
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.switchListBtn, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
-          onPress={() => {
-            triggerImpactHaptic();
-            onSwitchLists?.();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Switch lists"
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <FolderKanban size={16} color={theme.accent} />
-          <Text style={[styles.switchListText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
-            Switch
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.listHeaderActions}>
+          {canViewActivity ? (
+            <TouchableOpacity
+              style={[styles.switchListBtn, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+              onPress={openActivity}
+              accessibilityRole="button"
+              accessibilityLabel="View activity"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <History size={16} color={theme.accent} />
+              <Text style={[styles.switchListText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
+                Activity
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={[styles.switchListBtn, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
+            onPress={() => {
+              triggerImpactHaptic();
+              onSwitchLists?.();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Switch lists"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <FolderKanban size={16} color={theme.accent} />
+            <Text style={[styles.switchListText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
+              Switch
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {listMeta ? (
@@ -446,6 +583,66 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
           canEdit={canEdit}
           ownerDisplayName={ownerDisplayName}
         />
+      ) : null}
+
+      {ownerPendingRequests.length > 0 ? (
+        <View
+          style={[
+            styles.pendingRequestsPanel,
+            { backgroundColor: theme.accentLight, borderColor: theme.accent },
+          ]}
+          accessibilityRole="summary"
+        >
+          <Text style={[styles.pendingRequestsTitle, { color: theme.accent }]}>
+            Delete requests ({ownerPendingRequests.length})
+          </Text>
+          {ownerPendingRequests.map((req) => {
+            const label =
+              req.targetType === "task"
+                ? req.targetLabel
+                  ? `Delete task "${req.targetLabel}"`
+                  : "Delete a task"
+                : req.targetType === "clear_completed"
+                  ? "Clear completed tasks"
+                  : "Delete this list";
+            return (
+              <View key={req.id} style={styles.pendingRequestRow}>
+                <Text
+                  style={[styles.pendingRequestLabel, { color: theme.textPrimary }]}
+                  numberOfLines={2}
+                >
+                  {label}
+                </Text>
+                <View style={styles.pendingRequestActions}>
+                  <TouchableOpacity
+                    style={[styles.pendingActionBtn, { backgroundColor: theme.accent }]}
+                    onPress={() =>
+                      reviewDeleteMutation.mutate({ requestId: req.id, decision: "approve" })
+                    }
+                    disabled={reviewDeleteMutation.isPending}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Approve ${label}`}
+                  >
+                    <Text style={styles.pendingActionApproveText}>Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.pendingActionBtn, { backgroundColor: theme.inputBg }]}
+                    onPress={() =>
+                      reviewDeleteMutation.mutate({ requestId: req.id, decision: "decline" })
+                    }
+                    disabled={reviewDeleteMutation.isPending}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Decline ${label}`}
+                  >
+                    <Text style={[styles.pendingActionDeclineText, { color: theme.textSecondary }]}>
+                      Decline
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+        </View>
       ) : null}
 
       {showingCachedWhileOffline ? (
@@ -604,6 +801,14 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                       </View>
                     ) : null}
 
+                    {item.pendingDelete ? (
+                      <View style={[styles.pillBadge, { backgroundColor: "rgba(245, 158, 11, 0.18)" }]}>
+                        <Text style={[styles.pillBadgeText, { color: "#F59E0B" }]}>
+                          Delete requested
+                        </Text>
+                      </View>
+                    ) : null}
+
                     {item.recurrence !== "none" && (
                       <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
                         <Repeat size={11} color={theme.accent} />
@@ -636,15 +841,19 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                       <Pencil size={16} color={theme.textMuted} />
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={styles.actionBtn}
-                      onPress={() => handleDeleteTask(item)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Delete ${item.text}`}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Trash2 size={16} color={theme.danger} />
-                    </TouchableOpacity>
+                    {!item.pendingDelete && (
+                      <TouchableOpacity
+                        style={styles.actionBtn}
+                        onPress={() => handleDeleteTask(item)}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          isOwner ? `Delete ${item.text}` : `Request delete for ${item.text}`
+                        }
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Trash2 size={16} color={theme.danger} />
+                      </TouchableOpacity>
+                    )}
                   </>
                 )}
               </TouchableOpacity>
@@ -701,6 +910,116 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       />
 
       <ChangelogModal visible={showChangelog} onClose={handleDismissChangelog} />
+
+      <Modal
+        visible={showActivity}
+        animationType="slide"
+        transparent
+        onRequestClose={closeActivity}
+      >
+        <View style={styles.activityOverlay}>
+          <TouchableOpacity
+            style={styles.activityDismiss}
+            activeOpacity={1}
+            onPress={closeActivity}
+            accessibilityLabel="Close activity"
+          />
+          <View
+            style={[
+              styles.activitySheet,
+              { backgroundColor: theme.surface, borderColor: theme.cardBorder },
+            ]}
+          >
+            <Text style={[styles.activityTitle, { color: theme.textPrimary }]}>Activity</Text>
+            <Text style={[styles.activitySubtitle, { color: theme.textMuted }]}>
+              Who changed this shared list, and from which IP. Only you can see this.
+            </Text>
+            {activityLoading && activityEntries.length === 0 ? (
+              <ActivityIndicator color={theme.accent} style={{ marginVertical: 24 }} />
+            ) : activityError && activityEntries.length === 0 ? (
+              <TouchableOpacity
+                onPress={() => void loadActivity(null, true)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.activityEmpty, { color: theme.accent }]}>
+                  {"Couldn't load activity. Tap to retry."}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <ScrollView style={styles.activityScroll} contentContainerStyle={{ paddingBottom: 16 }}>
+                {activityEntries.length === 0 ? (
+                  <Text style={[styles.activityEmpty, { color: theme.textMuted }]}>
+                    No activity yet on this shared list.
+                  </Text>
+                ) : (
+                  activityEntries.map((entry) => (
+                    <View
+                      key={entry.id}
+                      style={[
+                        styles.activityRow,
+                        { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                      ]}
+                    >
+                      <View style={styles.activityRowHeader}>
+                        <Text style={[styles.activityAction, { color: theme.textPrimary }]}>
+                          {describeListActivityAction(entry.action)}
+                        </Text>
+                        <Text style={[styles.activityWhen, { color: theme.textMuted }]}>
+                          {new Date(entry.createdAt).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      </View>
+                      <Text style={[styles.activityActor, { color: theme.textSecondary }]}>
+                        {entry.actorLabel}
+                        {entry.actorType !== "owner" ? ` · ${entry.actorType}` : ""}
+                      </Text>
+                      {entry.summary ? (
+                        <Text style={[styles.activitySummary, { color: theme.textMuted }]}>
+                          {entry.summary}
+                        </Text>
+                      ) : null}
+                      {entry.clientIp ? (
+                        <Text style={[styles.activityIp, { color: theme.textMuted }]}>
+                          IP {entry.clientIp}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))
+                )}
+                {activityHasMore && activityEntries.length > 0 ? (
+                  <TouchableOpacity
+                    style={[styles.activityLoadMore, { backgroundColor: theme.accentLight }]}
+                    disabled={activityLoading}
+                    onPress={() => {
+                      const oldest = activityEntries[activityEntries.length - 1]?.createdAt;
+                      if (oldest == null) return;
+                      void loadActivity(oldest, false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Load more activity"
+                  >
+                    <Text style={[styles.activityLoadMoreText, { color: theme.accent }]}>
+                      {activityLoading ? "Loading…" : "Load more"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </ScrollView>
+            )}
+            <TouchableOpacity
+              style={[styles.activityCloseBtn, { backgroundColor: theme.accent }]}
+              onPress={closeActivity}
+              accessibilityRole="button"
+              accessibilityLabel="Close activity"
+            >
+              <Text style={styles.activityCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -732,6 +1051,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.xs,
   },
+  listHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  },
   listTitle: {
     fontSize: typography.xl,
     fontWeight: "800",
@@ -755,6 +1080,99 @@ const styles = StyleSheet.create({
   switchListText: {
     fontSize: typography.sm,
     fontWeight: "700",
+  },
+  activityOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  activityDismiss: {
+    flex: 1,
+  },
+  activitySheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    maxHeight: "80%",
+  },
+  activityTitle: {
+    fontSize: typography.lg,
+    fontWeight: "800",
+  },
+  activitySubtitle: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+    marginTop: 4,
+    marginBottom: spacing.sm,
+  },
+  activityScroll: {
+    maxHeight: 420,
+  },
+  activityEmpty: {
+    fontSize: typography.sm,
+    textAlign: "center",
+    paddingVertical: 24,
+  },
+  activityRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    gap: 4,
+  },
+  activityRowHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  activityAction: {
+    fontSize: typography.sm,
+    fontWeight: "700",
+    flex: 1,
+  },
+  activityWhen: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+  },
+  activityActor: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+  },
+  activitySummary: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+  },
+  activityIp: {
+    fontSize: typography.xs,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  activityLoadMore: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 4,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  activityLoadMoreText: {
+    fontSize: typography.sm,
+    fontWeight: "700",
+  },
+  activityCloseBtn: {
+    marginTop: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 14,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  activityCloseText: {
+    color: "#FFFFFF",
+    fontSize: typography.sm,
+    fontWeight: "800",
   },
   offlineBanner: {
     paddingHorizontal: 12,
@@ -888,5 +1306,47 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
+  },
+  pendingRequestsPanel: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+    gap: 8,
+  },
+  pendingRequestsTitle: {
+    fontSize: typography.xs,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  pendingRequestRow: {
+    gap: 8,
+  },
+  pendingRequestLabel: {
+    fontSize: typography.sm,
+    fontWeight: "600",
+  },
+  pendingRequestActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  pendingActionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minHeight: MIN_TOUCH_TARGET - 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pendingActionApproveText: {
+    color: "#FFFFFF",
+    fontSize: typography.sm,
+    fontWeight: "700",
+  },
+  pendingActionDeclineText: {
+    fontSize: typography.sm,
+    fontWeight: "700",
   },
 });

@@ -61,11 +61,11 @@ describe("guest sessions", () => {
 });
 
 describe("guest writes on shared lists", () => {
-  it("allows task edits but not list creation or reminders", () => {
-    for (const intent of ["create", "setCompleted", "updateText", "delete"]) {
+  it("allows task edits and list-delete requests but not list creation or reminders", () => {
+    for (const intent of ["create", "setCompleted", "updateText", "delete", "deleteList", "clearCompleted"]) {
       expect(GUEST_SHARED_LIST_INTENTS.has(intent)).toBe(true);
     }
-    for (const intent of ["createList", "updateReminder", "updateRecurrence", "markReminderSent", "deleteList", "updateShareMode"]) {
+    for (const intent of ["createList", "updateReminder", "updateRecurrence", "markReminderSent", "updateShareMode"]) {
       expect(GUEST_SHARED_LIST_INTENTS.has(intent)).toBe(false);
     }
     expect(guestIntentDenial("updateReminder")).toBe(GUEST_REMINDER_DENIAL);

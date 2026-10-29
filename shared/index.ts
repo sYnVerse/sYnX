@@ -29,6 +29,101 @@ export interface TodoItem {
   recurrence: RecurrencePattern;
   durationMinutes?: number | null;
   subtasks?: TodoItem[];
+  /** True when a collaborator has requested deleting this task (awaits owner). */
+  pendingDelete?: boolean;
+}
+
+export type DeleteTargetType = "task" | "list" | "clear_completed";
+
+/** Pending collaborator delete request awaiting list-owner approval. */
+export interface PendingDeleteRequest {
+  id: string;
+  listId: string;
+  listName: string;
+  requesterId: string;
+  targetType: DeleteTargetType;
+  targetId: string;
+  targetLabel: string | null;
+  createdAt: number;
+}
+
+/** Short human label for a pending delete target (UI + push copy). */
+export function describeDeleteTarget(
+  targetType: DeleteTargetType,
+  targetLabel?: string | null
+): string {
+  if (targetType === "task") {
+    return targetLabel ? `task "${targetLabel}"` : "a task";
+  }
+  if (targetType === "clear_completed") {
+    return "completed tasks";
+  }
+  return "this list";
+}
+
+/** Actions recorded in the shared-list activity log (owner-only). */
+export type ListActivityAction =
+  | "task_created"
+  | "task_edited"
+  | "task_completed"
+  | "task_uncompleted"
+  | "task_deleted"
+  | "clear_completed"
+  | "list_renamed"
+  | "list_settings_changed"
+  | "list_deleted"
+  | "delete_requested"
+  | "delete_approved"
+  | "delete_declined";
+
+export type ListActivityActorType = "owner" | "collaborator" | "guest";
+
+export interface ListActivityEntry {
+  id: string;
+  listId: string;
+  taskId: string | null;
+  action: ListActivityAction;
+  actorType: ListActivityActorType;
+  actorId: string;
+  /** Display name, email, or "Guest · …" — never shown to non-owners. */
+  actorLabel: string;
+  /** Present only for the list owner. */
+  clientIp: string | null;
+  userAgent: string | null;
+  summary: string | null;
+  createdAt: number;
+}
+
+/** Short UI label for an activity action. */
+export function describeListActivityAction(action: ListActivityAction): string {
+  switch (action) {
+    case "task_created":
+      return "Added a task";
+    case "task_edited":
+      return "Edited a task";
+    case "task_completed":
+      return "Completed a task";
+    case "task_uncompleted":
+      return "Marked a task incomplete";
+    case "task_deleted":
+      return "Deleted a task";
+    case "clear_completed":
+      return "Cleared completed tasks";
+    case "list_renamed":
+      return "Renamed the list";
+    case "list_settings_changed":
+      return "Changed list settings";
+    case "list_deleted":
+      return "Deleted the list";
+    case "delete_requested":
+      return "Requested a delete";
+    case "delete_approved":
+      return "Approved a delete request";
+    case "delete_declined":
+      return "Declined a delete request";
+    default:
+      return "Made a change";
+  }
 }
 
 /** Public owner summary on list payloads — display name only (never email). */

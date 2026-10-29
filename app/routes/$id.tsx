@@ -16,6 +16,8 @@ import { getAuthSettings, getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
 import {
   applySetCompletedLocal,
+  describeDeleteTarget,
+  describeListActivityAction,
   describeTimeZone,
   formatRescheduledToast,
   getLocalTimeZone,
@@ -25,6 +27,8 @@ import {
   isValidTimeZone,
   listTimeZones,
   sortChangelogItems,
+  type ListActivityEntry,
+  type PendingDeleteRequest,
 } from "../../shared";
 import {
   DEFAULT_DISPLAY_NAME,
@@ -50,6 +54,18 @@ import {
   guestWriteAllowed,
   isListFull,
 } from "~/guest-access.server";
+import {
+  approvePendingDelete,
+  declinePendingDelete,
+  listPendingDeletesForList,
+  listPendingDeletesForOwner,
+  requestOrPerformDelete,
+} from "~/pending-deletes.server";
+import {
+  deleteRequestActivitySummary,
+  listActivityForOwner,
+  logListActivity,
+} from "~/list-activity.server";
 import {
   MAX_CATEGORY_LENGTH,
   MAX_LIST_NAME_LENGTH,
@@ -245,6 +261,52 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     }
   }
 
+  // Pending delete requests for the active list (collaborators see markers;
+  // owners also get the full owned-lists queue below).
+  let pendingDeleteRequests: PendingDeleteRequest[] = [];
+  let pendingTaskIds = new Set<string>();
+  try {
+    if (activeListId) {
+      pendingDeleteRequests = await listPendingDeletesForList(db, activeListId);
+      pendingTaskIds = new Set(
+        pendingDeleteRequests
+          .filter((r) => r.targetType === "task" && r.targetId)
+          .map((r) => r.targetId)
+      );
+    }
+    if (isLoggedIn) {
+      // Owners see every pending request across their lists in the review panel.
+      const ownedPending = await listPendingDeletesForOwner(db, userId);
+      const byId = new Map<string, PendingDeleteRequest>();
+      for (const r of [...ownedPending, ...pendingDeleteRequests]) {
+        byId.set(r.id, r);
+      }
+      pendingDeleteRequests = Array.from(byId.values()).sort(
+        (a, b) => a.createdAt - b.createdAt
+      );
+    }
+  } catch (e) {
+    console.error("Failed to load pending delete requests:", e);
+  }
+
+  // Owner-only activity for the active shared list (private lists have no log).
+  let listActivity: ListActivityEntry[] = [];
+  try {
+    if (isLoggedIn && activeListId) {
+      const activeMeta = lists.find((l: any) => l.id === activeListId);
+      if (
+        activeMeta &&
+        activeMeta.owner_id === userId &&
+        (activeMeta.share_mode || "private") !== "private"
+      ) {
+        const activity = await listActivityForOwner(db, activeListId, userId, { limit: 50 });
+        if (activity.kind === "ok") listActivity = activity.entries;
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load list activity:", e);
+  }
+
   const listsWithTodos = lists.map((list: any) => {
     const listTodos = allTodos
       .filter((t: any) => t.list_id === list.id)
@@ -259,6 +321,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
         parentId: t.parent_id || undefined,
         recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
         durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : null,
+        pendingDelete: pendingTaskIds.has(t.id),
       }))
       .sort((a: any, b: any) => b.createdAt - a.createdAt);
     return {
@@ -322,6 +385,8 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     lists: listsWithTodos,
     activeListId: activeListId || userId,
     todos,
+    pendingDeleteRequests,
+    listActivity,
     stats: {
       totalLists,
       totalTasks,
@@ -340,9 +405,38 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   const { userId, email, isLoggedIn } = await getOptionalUser(request, context.cloudflare.env);
   const db = context.cloudflare.env.DB;
   const activeListId = params.id as string;
+  const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
 
   const formData = await request.formData();
   const intent = formData.get("intent");
+
+  const scheduleActivityLog = (
+    input: Parameters<typeof logListActivity>[1]
+  ) => {
+    const promise = logListActivity(db, { ...input, request });
+    if (waitUntil) waitUntil(promise);
+    else void promise;
+  };
+
+  if (intent === "listActivity") {
+    if (!isLoggedIn) {
+      return Response.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const listId = (formData.get("listId") as string) || activeListId;
+    const beforeRaw = formData.get("before");
+    const before =
+      beforeRaw != null && String(beforeRaw) !== "" && Number.isFinite(Number(beforeRaw))
+        ? Number(beforeRaw)
+        : null;
+    const result = await listActivityForOwner(db, listId, userId, { limit: 50, before });
+    if (result.kind === "not_found") {
+      return Response.json({ error: result.error }, { status: 404 });
+    }
+    if (result.kind === "forbidden") {
+      return Response.json({ error: result.error }, { status: 403 });
+    }
+    return json({ success: true, entries: result.entries, listName: result.listName });
+  }
 
   if (intent === "migrateGuestLists") {
     if (isLoggedIn) {
@@ -486,9 +580,86 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     return json({ success: true });
   }
 
+  // Owner review of collaborator delete requests — not scoped to the active list.
+  if (intent === "approveDeleteRequest" || intent === "declineDeleteRequest") {
+    if (!isLoggedIn) {
+      return Response.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const requestId = formData.get("requestId") as string;
+    if (!requestId) {
+      return Response.json({ error: "Request ID is required" }, { status: 400 });
+    }
+    const pendingMeta = await db
+      .prepare(
+        `SELECT p.list_id, p.target_type, p.target_id, l.share_mode, t.text AS target_label
+         FROM pending_delete_requests p
+         JOIN lists l ON l.id = p.list_id
+         LEFT JOIN todos t ON t.id = p.target_id AND p.target_type = 'task'
+         WHERE p.id = ?`
+      )
+      .bind(requestId)
+      .first<{
+        list_id: string;
+        target_type: "task" | "list" | "clear_completed";
+        target_id: string;
+        share_mode: string | null;
+        target_label: string | null;
+      }>();
+
+    if (intent === "approveDeleteRequest") {
+      const result = await approvePendingDelete(db, requestId, userId);
+      if (result.kind === "not_found") {
+        return Response.json({ error: result.error }, { status: 404 });
+      }
+      if (result.kind === "forbidden") {
+        return Response.json({ error: result.error }, { status: 403 });
+      }
+      scheduleActivityLog({
+        listId: result.listId,
+        taskId: pendingMeta?.target_type === "task" ? pendingMeta.target_id : null,
+        action: "delete_approved",
+        actorId: userId,
+        isOwner: true,
+        shareMode: pendingMeta?.share_mode,
+        summary: deleteRequestActivitySummary(
+          result.targetType,
+          pendingMeta?.target_label
+        ),
+      });
+      if (result.targetType === "list" && activeListId === result.listId) {
+        const firstList = await db
+          .prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1")
+          .bind(userId)
+          .first<{ id: string }>();
+        return redirect(firstList ? `/${firstList.id}` : "/");
+      }
+      return json({ success: true, approved: true });
+    }
+    const result = await declinePendingDelete(db, requestId, userId);
+    if (result.kind === "not_found") {
+      return Response.json({ error: result.error }, { status: 404 });
+    }
+    if (result.kind === "forbidden") {
+      return Response.json({ error: result.error }, { status: 403 });
+    }
+    scheduleActivityLog({
+      listId: result.listId,
+      taskId: pendingMeta?.target_type === "task" ? pendingMeta.target_id : null,
+      action: "delete_declined",
+      actorId: userId,
+      isOwner: true,
+      shareMode: pendingMeta?.share_mode,
+      summary: pendingMeta
+        ? deleteRequestActivitySummary(pendingMeta.target_type, pendingMeta.target_label)
+        : undefined,
+    });
+    return json({ success: true, declined: true });
+  }
+
   // Check list ownership or collaborative access in D1
   let hasOwnership = false;
   let isCollaborative = false;
+  let activeShareMode: string | null = null;
   if (activeListId) {
     try {
       const listRow = await db.prepare("SELECT owner_id, share_mode FROM lists WHERE id = ?").bind(activeListId).first<any>();
@@ -496,6 +667,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         // Guests never own D1 lists; their own lists live in localStorage.
         hasOwnership = isLoggedIn && listRow.owner_id === userId;
         isCollaborative = listRow.share_mode === "public_edit";
+        activeShareMode = listRow.share_mode || "private";
       }
     } catch (e) {
       console.error("Failed to verify list access:", e);
@@ -557,7 +729,16 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         return Response.json({ error: TASK_LIMIT_ERROR }, { status: 400 });
       }
 
-      await todoManager.create(text, priority, reminderAt, parentId, recurrence, durationMinutes);
+      const created = await todoManager.create(text, priority, reminderAt, parentId, recurrence, durationMinutes);
+      scheduleActivityLog({
+        listId: activeListId,
+        taskId: created.id,
+        action: "task_created",
+        actorId: userId,
+        isOwner: hasOwnership,
+        shareMode: activeShareMode,
+        summary: text,
+      });
       return { success: true };
     }
 
@@ -565,6 +746,15 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const id = formData.get("id") as string;
       const timeZone = isLoggedIn ? await getUserTimeZone(db, userId) : undefined;
       const todo = await todoManager.toggle(id, { timeZone });
+      scheduleActivityLog({
+        listId: activeListId,
+        taskId: id,
+        action: todo.completed ? "task_completed" : "task_uncompleted",
+        actorId: userId,
+        isOwner: hasOwnership,
+        shareMode: activeShareMode,
+        summary: todo.text,
+      });
       return { success: true, todo };
     }
 
@@ -574,19 +764,76 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const completed = completedRaw === "true" || completedRaw === "1";
       const timeZone = isLoggedIn ? await getUserTimeZone(db, userId) : undefined;
       const { todo, rescheduled } = await todoManager.setCompleted(id, completed, { timeZone });
+      scheduleActivityLog({
+        listId: activeListId,
+        taskId: id,
+        action: completed ? "task_completed" : "task_uncompleted",
+        actorId: userId,
+        isOwner: hasOwnership,
+        shareMode: activeShareMode,
+        summary: todo.text,
+      });
       return { success: true, todo, rescheduled };
     }
 
     case "delete": {
       const id = formData.get("id") as string;
-      await todoManager.delete(id);
-      return { success: true };
+      const existing = await db
+        .prepare("SELECT text FROM todos WHERE id = ? AND list_id = ?")
+        .bind(id, activeListId)
+        .first<{ text: string }>();
+      const result = await requestOrPerformDelete(db, {
+        listId: activeListId,
+        userId,
+        isOwner: hasOwnership,
+        canEdit: hasOwnership || isCollaborative,
+        targetType: "task",
+        targetId: id,
+        env: context.cloudflare.env,
+        waitUntil,
+      });
+      if (result.kind === "deleted" || result.kind === "requested") {
+        scheduleActivityLog({
+          listId: activeListId,
+          taskId: id,
+          action: result.kind === "requested" ? "delete_requested" : "task_deleted",
+          actorId: userId,
+          isOwner: hasOwnership,
+          shareMode: activeShareMode,
+          summary:
+            result.kind === "requested"
+              ? deleteRequestActivitySummary("task", existing?.text)
+              : existing?.text,
+        });
+      }
+      if (result.kind === "deleted") return { success: true };
+      if (result.kind === "requested") {
+        return {
+          success: true,
+          pendingApproval: true,
+          alreadyRequested: result.alreadyExisted,
+          message: result.message,
+        };
+      }
+      if (result.kind === "not_found") {
+        return Response.json({ error: result.error }, { status: 404 });
+      }
+      return Response.json({ error: result.error }, { status: 403 });
     }
 
     case "updatePriority": {
       const id = formData.get("id") as string;
       const priority = formData.get("priority") as "low" | "medium" | "high" | "none";
       await todoManager.updatePriority(id, priority);
+      scheduleActivityLog({
+        listId: activeListId,
+        taskId: id,
+        action: "task_edited",
+        actorId: userId,
+        isOwner: hasOwnership,
+        shareMode: activeShareMode,
+        summary: `Priority → ${priority}`,
+      });
       return { success: true };
     }
 
@@ -598,18 +845,30 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       }
       const textError = taskTextError(text.trim());
       if (textError) return Response.json({ error: textError }, { status: 400 });
+      const previous = await db
+        .prepare("SELECT text, reminder_at FROM todos WHERE id = ? AND list_id = ?")
+        .bind(id, activeListId)
+        .first<{ text: string; reminder_at: number | null }>();
       if (!isLoggedIn) {
         // Reminder text goes to the list owner, so guests can't reword a task
         // that has a reminder.
-        const current = await db
-          .prepare("SELECT reminder_at FROM todos WHERE id = ? AND list_id = ?")
-          .bind(id, activeListId)
-          .first<{ reminder_at: number | null }>();
-        if (current?.reminder_at != null) {
+        if (previous?.reminder_at != null) {
           return Response.json({ error: "Sign in to edit tasks that have reminders." }, { status: 403 });
         }
       }
       await todoManager.updateText(id, text.trim());
+      scheduleActivityLog({
+        listId: activeListId,
+        taskId: id,
+        action: "task_edited",
+        actorId: userId,
+        isOwner: hasOwnership,
+        shareMode: activeShareMode,
+        summary:
+          previous?.text && previous.text !== text.trim()
+            ? `${previous.text} → ${text.trim()}`
+            : text.trim(),
+      });
       return { success: true };
     }
 
@@ -618,6 +877,15 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const reminderAtVal = formData.get("reminderAt");
       const reminderAt = reminderAtVal ? Number(reminderAtVal) : undefined;
       await todoManager.updateReminder(id, reminderAt);
+      scheduleActivityLog({
+        listId: activeListId,
+        taskId: id,
+        action: "task_edited",
+        actorId: userId,
+        isOwner: hasOwnership,
+        shareMode: activeShareMode,
+        summary: reminderAt ? "Reminder set" : "Reminder cleared",
+      });
       return { success: true };
     }
 
@@ -631,6 +899,15 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const id = formData.get("id") as string;
       const recurrence = formData.get("recurrence") as "none" | "daily" | "weekly" | "monthly";
       await todoManager.updateRecurrence(id, recurrence);
+      scheduleActivityLog({
+        listId: activeListId,
+        taskId: id,
+        action: "task_edited",
+        actorId: userId,
+        isOwner: hasOwnership,
+        shareMode: activeShareMode,
+        summary: `Repeat → ${recurrence}`,
+      });
       return { success: true };
     }
 
@@ -639,6 +916,16 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const durationMinutesVal = formData.get("durationMinutes");
       const durationMinutes = durationMinutesVal ? Number(durationMinutesVal) : null;
       await todoManager.updateDuration(id, durationMinutes);
+      scheduleActivityLog({
+        listId: activeListId,
+        taskId: id,
+        action: "task_edited",
+        actorId: userId,
+        isOwner: hasOwnership,
+        shareMode: activeShareMode,
+        summary:
+          durationMinutes != null ? `Duration → ${durationMinutes}m` : "Duration cleared",
+      });
       return { success: true };
     }
 
@@ -648,17 +935,60 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       if (shareMode !== "private" && shareMode !== "public_read" && shareMode !== "public_edit") {
         return Response.json({ error: "Invalid share mode" }, { status: 400 });
       }
-      const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
+      const ownRow = await db
+        .prepare("SELECT share_mode FROM lists WHERE id = ? AND owner_id = ?")
+        .bind(listId, userId)
+        .first<{ share_mode: string | null }>();
       if (!ownRow) {
         return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
       }
+      const previousMode = ownRow.share_mode || "private";
       await db.prepare("UPDATE lists SET share_mode = ? WHERE id = ?").bind(shareMode, listId).run();
+      scheduleActivityLog({
+        listId,
+        action: "list_settings_changed",
+        actorId: userId,
+        isOwner: true,
+        // Log against the non-private side so private→shared still records.
+        shareMode: shareMode === "private" ? previousMode : shareMode,
+        summary: `Share mode: ${previousMode} → ${shareMode}`,
+      });
       return { success: true };
     }
 
     case "clearCompleted": {
-      await todoManager.clearCompleted();
-      return { success: true };
+      const result = await requestOrPerformDelete(db, {
+        listId: activeListId,
+        userId,
+        isOwner: hasOwnership,
+        canEdit: hasOwnership || isCollaborative,
+        targetType: "clear_completed",
+        env: context.cloudflare.env,
+        waitUntil,
+      });
+      if (result.kind === "deleted" || result.kind === "requested") {
+        scheduleActivityLog({
+          listId: activeListId,
+          action: result.kind === "requested" ? "delete_requested" : "clear_completed",
+          actorId: userId,
+          isOwner: hasOwnership,
+          shareMode: activeShareMode,
+          summary:
+            result.kind === "requested"
+              ? deleteRequestActivitySummary("clear_completed")
+              : undefined,
+        });
+      }
+      if (result.kind === "deleted") return { success: true };
+      if (result.kind === "requested") {
+        return {
+          success: true,
+          pendingApproval: true,
+          alreadyRequested: result.alreadyExisted,
+          message: result.message,
+        };
+      }
+      return Response.json({ error: result.error }, { status: 403 });
     }
 
     case "createList": {
@@ -688,12 +1018,23 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       }
       const nameError = listNameError(newName.trim());
       if (nameError) return Response.json({ error: nameError }, { status: 400 });
-      const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
+      const ownRow = await db
+        .prepare("SELECT name, share_mode FROM lists WHERE id = ? AND owner_id = ?")
+        .bind(listId, userId)
+        .first<{ name: string; share_mode: string | null }>();
       if (!ownRow) {
         return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
       }
       try {
         await db.prepare("UPDATE lists SET name = ? WHERE id = ?").bind(newName.trim(), listId).run();
+        scheduleActivityLog({
+          listId,
+          action: "list_renamed",
+          actorId: userId,
+          isOwner: true,
+          shareMode: ownRow.share_mode,
+          summary: `${ownRow.name} → ${newName.trim()}`,
+        });
       } catch (e) {
         console.error("Failed to rename list:", e);
       }
@@ -708,12 +1049,23 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       }
       const catError = categoryError(category);
       if (catError) return Response.json({ error: catError }, { status: 400 });
-      const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
+      const ownRow = await db
+        .prepare("SELECT category, share_mode FROM lists WHERE id = ? AND owner_id = ?")
+        .bind(listId, userId)
+        .first<{ category: string | null; share_mode: string | null }>();
       if (!ownRow) {
         return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
       }
       try {
         await db.prepare("UPDATE lists SET category = ? WHERE id = ?").bind(category, listId).run();
+        scheduleActivityLog({
+          listId,
+          action: "list_settings_changed",
+          actorId: userId,
+          isOwner: true,
+          shareMode: ownRow.share_mode,
+          summary: `Category: ${ownRow.category || "Checklist"} → ${category}`,
+        });
       } catch (e) {
         console.error("Failed to update list category:", e);
       }
@@ -722,17 +1074,56 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "deleteList": {
       const listId = formData.get("listId") as string;
-      const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
-      if (!ownRow) {
+      const listAccess = await db
+        .prepare("SELECT owner_id, share_mode, name FROM lists WHERE id = ?")
+        .bind(listId)
+        .first<{ owner_id: string; share_mode: string; name: string }>();
+      if (!listAccess) {
+        return Response.json({ error: "List not found" }, { status: 404 });
+      }
+      const ownsList = isLoggedIn && listAccess.owner_id === userId;
+      const listIsCollaborative = listAccess.share_mode === "public_edit";
+      if (!ownsList && !listIsCollaborative) {
         return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
       }
-      try {
-        await db.prepare("DELETE FROM lists WHERE id = ?").bind(listId).run();
-      } catch (e) {
-        console.error("Failed to delete list:", e);
+
+      const result = await requestOrPerformDelete(db, {
+        listId,
+        userId,
+        isOwner: ownsList,
+        canEdit: ownsList || listIsCollaborative,
+        targetType: "list",
+        env: context.cloudflare.env,
+        waitUntil,
+      });
+
+      if (result.kind === "requested" || result.kind === "deleted") {
+        scheduleActivityLog({
+          listId,
+          action: result.kind === "requested" ? "delete_requested" : "list_deleted",
+          actorId: userId,
+          isOwner: ownsList,
+          shareMode: listAccess.share_mode,
+          summary:
+            result.kind === "requested"
+              ? deleteRequestActivitySummary("list")
+              : listAccess.name,
+        });
       }
 
-      if (activeListId === listId) {
+      if (result.kind === "requested") {
+        return {
+          success: true,
+          pendingApproval: true,
+          alreadyRequested: result.alreadyExisted,
+          message: result.message,
+        };
+      }
+      if (result.kind !== "deleted") {
+        return Response.json({ error: result.error }, { status: 403 });
+      }
+
+      if (ownsList && activeListId === listId) {
         try {
           const firstList = await db.prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1").bind(userId).first<any>();
           if (firstList) {
@@ -747,6 +1138,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       }
       return { success: true };
     }
+
 
     default:
       return Response.json({ error: "Invalid intent" }, { status: 400 });
@@ -1394,9 +1786,24 @@ function TodoItem({
   // can't reword tasks that have reminders.
   const canEditText = canEdit && (canSetReminders || !todo.reminderAt);
   const toggleFetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
-  const deleteFetcher = useFetcher();
+  const deleteFetcher = useFetcher<{
+    success?: boolean;
+    pendingApproval?: boolean;
+    message?: string;
+    error?: string;
+  }>();
   const subtaskFetcher = useFetcher();
   const editFetcher = useFetcher();
+
+  useEffect(() => {
+    if (deleteFetcher.state !== "idle" || !deleteFetcher.data) return;
+    const data = deleteFetcher.data;
+    if (data.pendingApproval && data.message) {
+      onNotify?.(data.message);
+    } else if (data.error) {
+      onNotify?.(data.error);
+    }
+  }, [deleteFetcher.state, deleteFetcher.data, onNotify]);
 
   const [showAddSubtask, setShowAddSubtask] = useState(false);
   const [subtaskText, setSubtaskText] = useState("");
@@ -1634,6 +2041,15 @@ function TodoItem({
           </span>
         )}
 
+        {todo.pendingDelete && (
+          <span
+            className="text-[9px] bg-amber-500/15 text-amber-300 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border border-amber-400/25"
+            title="Waiting for the list owner to approve deletion"
+          >
+            Delete requested
+          </span>
+        )}
+
         {canEdit && <PriorityPicker currentPriority={todo.priority || "none"} todoId={todo.id} />}
         {canEdit && !optimisticCompleted && !isSubtask && <ReminderPicker todo={todo} />}
 
@@ -1680,7 +2096,7 @@ function TodoItem({
           </button>
         )}
 
-        {canEdit && (
+        {canEdit && !todo.pendingDelete && (
           <deleteFetcher.Form
             method="post"
             onSubmit={() => {
@@ -1796,8 +2212,31 @@ function Confetti() {
   );
 }
 
+function formatActivityWhen(ts: number): string {
+  try {
+    return new Date(ts).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
 export default function TodoPage() {
-  const { userId, email, isLoggedIn, settings, lists: serverLists, activeListId, stats } = useLoaderData<typeof loader>();
+  const {
+    userId,
+    email,
+    isLoggedIn,
+    settings,
+    lists: serverLists,
+    activeListId,
+    stats,
+    pendingDeleteRequests = [],
+    listActivity: loaderListActivity = [],
+  } = useLoaderData<typeof loader>();
   const profileLabel = getProfileLabel({
     email,
     displayName: settings?.displayName,
@@ -1805,8 +2244,25 @@ export default function TodoPage() {
   });
   const navigate = useNavigate();
   const createFetcher = useFetcher();
-  const clearFetcher = useFetcher();
-  const listFetcher = useFetcher();
+  const clearFetcher = useFetcher<{
+    success?: boolean;
+    pendingApproval?: boolean;
+    message?: string;
+    error?: string;
+  }>();
+  const listFetcher = useFetcher<{
+    success?: boolean;
+    pendingApproval?: boolean;
+    message?: string;
+    error?: string;
+  }>();
+  const deleteRequestFetcher = useFetcher();
+  const activityFetcher = useFetcher<{
+    success?: boolean;
+    entries?: ListActivityEntry[];
+    listName?: string;
+    error?: string;
+  }>();
   const settingsFetcher = useFetcher();
   const suggestionFetcher = useFetcher();
   const timeZoneFetcher = useFetcher();
@@ -2095,6 +2551,33 @@ export default function TodoPage() {
   const [sortBy, setSortBy] = useState<"created" | "priority" | "reminder" | "alphabetical">("created");
   const [showSharePopover, setShowSharePopover] = useState(false);
   const sharePopoverRef = useRef<HTMLDivElement>(null);
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>(
+    () => (loaderListActivity as ListActivityEntry[]) || []
+  );
+  const [activityHasMore, setActivityHasMore] = useState(
+    () => ((loaderListActivity as ListActivityEntry[]) || []).length >= 50
+  );
+  const activityLoadMoreSent = useRef(false);
+
+  // Keep the Activity panel in sync when the active list (or its loader data) changes.
+  useEffect(() => {
+    const seeded = (loaderListActivity as ListActivityEntry[]) || [];
+    setActivityEntries(seeded);
+    setActivityHasMore(seeded.length >= 50);
+  }, [loaderListActivity, activeListId]);
+
+  useEffect(() => {
+    if (activityFetcher.state !== "idle" || !activityLoadMoreSent.current) return;
+    activityLoadMoreSent.current = false;
+    const data = activityFetcher.data;
+    if (!data?.success || !Array.isArray(data.entries)) return;
+    setActivityEntries((prev) => {
+      const seen = new Set(prev.map((e) => e.id));
+      return [...prev, ...data.entries!.filter((e) => !seen.has(e.id))];
+    });
+    setActivityHasMore(data.entries.length >= 50);
+  }, [activityFetcher.state, activityFetcher.data]);
 
   // Apply the saved theme to the page once it is read from localStorage.
   useEffect(() => {
@@ -2331,6 +2814,8 @@ export default function TodoPage() {
   const handleEscape = useEffectEvent(() => {
     if (showUnsavedPrompt) {
       setShowUnsavedPrompt(false);
+    } else if (showActivityModal) {
+      setShowActivityModal(false);
     } else if (isChangelogOpen) {
       handleCloseChangelog();
     } else if (isProfileOpen) {
@@ -2342,7 +2827,7 @@ export default function TodoPage() {
       setListToEditCategory(null);
     }
   });
-  const isAnyModalOpen = isProfileOpen || isChangelogOpen || !!listToRename || !!listToDelete || isCreateListOpen || !!listToEditCategory || showUnsavedPrompt;
+  const isAnyModalOpen = isProfileOpen || isChangelogOpen || !!listToRename || !!listToDelete || isCreateListOpen || !!listToEditCategory || showUnsavedPrompt || showActivityModal;
   useEffect(() => {
     if (!isAnyModalOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2361,6 +2846,25 @@ export default function TodoPage() {
   // Name others see on this user's shared lists (saved value, not unsaved edits).
   const ownDisplayName = settings?.displayNameSet ? settings?.displayName : null;
   const canEdit = isOwner || activeListShareMode === "public_edit" || !activeListMeta;
+  const ownedPendingDeleteRequests = useMemo(
+    () =>
+      (pendingDeleteRequests as PendingDeleteRequest[]).filter((r) => {
+        const list = lists.find((l: any) => l.id === r.listId);
+        return list ? list.owner_id === userId : true;
+      }),
+    [pendingDeleteRequests, lists, userId]
+  );
+  const activeListPendingDeletes = useMemo(
+    () =>
+      (pendingDeleteRequests as PendingDeleteRequest[]).filter(
+        (r) => r.listId === activeListId
+      ),
+    [pendingDeleteRequests, activeListId]
+  );
+  const pendingClearCompleted = activeListPendingDeletes.some(
+    (r) => r.targetType === "clear_completed"
+  );
+  const pendingListDelete = activeListPendingDeletes.some((r) => r.targetType === "list");
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(activeListName);
@@ -2538,6 +3042,26 @@ export default function TodoPage() {
     if (createFetcher.state === "idle" && createData?.error) showToast(createData.error);
   }, [createFetcher.state, createData, showToast]);
 
+  // Collaborator delete / clear-completed / list-delete → pending approval toast.
+  useEffect(() => {
+    if (clearFetcher.state !== "idle" || !clearFetcher.data) return;
+    if (clearFetcher.data.pendingApproval && clearFetcher.data.message) {
+      showToast(clearFetcher.data.message);
+    } else if (clearFetcher.data.error) {
+      showToast(clearFetcher.data.error);
+    }
+  }, [clearFetcher.state, clearFetcher.data, showToast]);
+
+  useEffect(() => {
+    if (listFetcher.state !== "idle" || !listFetcher.data) return;
+    if (listFetcher.data.pendingApproval && listFetcher.data.message) {
+      showToast(listFetcher.data.message);
+      setListToDelete(null);
+    } else if (listFetcher.data.error) {
+      showToast(listFetcher.data.error);
+    }
+  }, [listFetcher.state, listFetcher.data, showToast]);
+
 
   const handleExportData = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lists, null, 2));
@@ -2681,6 +3205,12 @@ export default function TodoPage() {
               const renderListRow = (list: any, opts: { shared?: boolean }) => {
                 const isActive = list.id === activeListId;
                 const remainingCount = (list.todos || []).filter((t: any) => !t.completed).length;
+                const pendingForList = (pendingDeleteRequests as PendingDeleteRequest[]).filter(
+                  (r) => r.listId === list.id
+                ).length;
+                const listPendingDelete = (pendingDeleteRequests as PendingDeleteRequest[]).some(
+                  (r) => r.listId === list.id && r.targetType === "list"
+                );
                 return (
                   <div
                     key={list.id}
@@ -2711,6 +3241,14 @@ export default function TodoPage() {
                     </a>
 
                     <div className="flex items-center gap-1.5">
+                      {!opts.shared && pendingForList > 0 && (
+                        <span
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300"
+                          title={`${pendingForList} delete request${pendingForList === 1 ? "" : "s"} waiting`}
+                        >
+                          {pendingForList}
+                        </span>
+                      )}
                       {remainingCount > 0 && (
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-themeAccentBg text-themeAccentText" : "bg-white/5 text-slate-400"}`}>
                           {remainingCount}
@@ -2719,20 +3257,38 @@ export default function TodoPage() {
 
                       <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity duration-200 bg-slate-900/80 px-1 py-0.5 rounded-md border border-white/5 shadow-sm absolute right-2">
                         {opts.shared ? (
-                          <button
-                            onClick={() => {
-                              settingsFetcher.submit(
-                                { intent: "removeSharedList", listId: list.id },
-                                { method: "post" }
-                              );
-                            }}
-                            className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
-                            title="Remove from Shared with me"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <>
+                            {list.share_mode === "public_edit" && !listPendingDelete && (
+                              <button
+                                onClick={() => setListToDelete({ id: list.id, name: list.name })}
+                                className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
+                                title="Request delete (owner must approve)"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                            {listPendingDelete && (
+                              <span className="text-[9px] text-amber-300 px-1" title="Delete requested">
+                                Pending
+                              </span>
+                            )}
+                            <button
+                              onClick={() => {
+                                settingsFetcher.submit(
+                                  { intent: "removeSharedList", listId: list.id },
+                                  { method: "post" }
+                                );
+                              }}
+                              className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
+                              title="Remove from Shared with me"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </>
                         ) : (
                           <>
                             <button
@@ -2879,6 +3435,75 @@ export default function TodoPage() {
 
       {/* ── Main Area ─────────────────────────────────────── */}
       <main className="relative z-10 flex flex-col py-6 px-4 sm:px-5 md:px-6 lg:px-8 max-w-2xl mx-auto w-full min-w-0 md:max-w-none md:h-screen md:overflow-x-hidden md:overflow-y-auto">
+
+        {isLoggedIn && ownedPendingDeleteRequests.length > 0 && (
+          <section
+            className="mb-5 rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3"
+            aria-label="Pending delete requests"
+          >
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-amber-200">
+                Delete requests
+              </h2>
+              <span className="text-[10px] font-semibold text-amber-300/80">
+                {ownedPendingDeleteRequests.length} pending
+              </span>
+            </div>
+            <ul className="space-y-2">
+              {ownedPendingDeleteRequests.map((req) => {
+                const summary = describeDeleteTarget(req.targetType, req.targetLabel);
+                const onThisList = req.listId === activeListId;
+                return (
+                  <li
+                    key={req.id}
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl bg-black/20 border border-white/[0.04] px-3 py-2"
+                  >
+                    <div className="min-w-0 text-xs text-slate-200">
+                      <span className="font-semibold">Delete {summary}</span>
+                      {!onThisList && (
+                        <span className="text-slate-400"> on &ldquo;{req.listName}&rdquo;</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={deleteRequestFetcher.state !== "idle"}
+                        onClick={() =>
+                          deleteRequestFetcher.submit(
+                            { intent: "approveDeleteRequest", requestId: req.id },
+                            { method: "post" }
+                          )
+                        }
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-themeAccentFrom/90 hover:bg-themeAccentTo text-white transition-colors disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleteRequestFetcher.state !== "idle"}
+                        onClick={() =>
+                          deleteRequestFetcher.submit(
+                            { intent: "declineDeleteRequest", requestId: req.id },
+                            { method: "post" }
+                          )
+                        }
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 transition-colors disabled:opacity-50"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        {!isOwner && pendingListDelete && (
+          <div className="mb-4 text-xs text-amber-200/90 bg-amber-500/10 border border-amber-400/20 rounded-xl px-3 py-2">
+            A request to delete this list is waiting for the owner&apos;s approval.
+          </div>
+        )}
         
         {/* Header (Active list title + Progress) */}
         <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/[0.04] pb-6 min-w-0">
@@ -3354,7 +3979,7 @@ export default function TodoPage() {
 
             {/* Action buttons (Clear completed, Share Popover) */}
             <div className="flex gap-3 items-center self-end sm:self-auto shrink-0">
-              {completedCount > 0 && (
+              {completedCount > 0 && !pendingClearCompleted && (
                 <clearFetcher.Form
                   method="post"
                   onSubmit={() => {
@@ -3368,9 +3993,33 @@ export default function TodoPage() {
                     type="submit"
                     className="text-xs text-slate-500 hover:text-rose-400 font-semibold transition-colors duration-200 cursor-pointer bg-transparent"
                   >
-                    Clear completed
+                    {isOwner || !isSharedServerList ? "Clear completed" : "Request clear completed"}
                   </button>
                 </clearFetcher.Form>
+              )}
+              {pendingClearCompleted && (
+                <span className="text-xs text-amber-300/90 font-semibold" title="Waiting for the list owner">
+                  Clear requested
+                </span>
+              )}
+
+              {isOwner && isLoggedIn && activeListShareMode !== "private" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActivityEntries((loaderListActivity as ListActivityEntry[]) || []);
+                    setActivityHasMore(
+                      ((loaderListActivity as ListActivityEntry[]) || []).length >= 50
+                    );
+                    setShowActivityModal(true);
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-themeAccentText font-semibold transition-colors duration-200 cursor-pointer bg-transparent"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Activity
+                </button>
               )}
 
               {/* Enhanced Share Menu */}
@@ -3917,6 +4566,107 @@ export default function TodoPage() {
         </div>
       )}
 
+      {/* ── Owner Activity Log Modal ──────────────────────── */}
+      {showActivityModal && (
+        <div
+          onClick={() => setShowActivityModal(false)}
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex justify-center overflow-y-auto p-4 transition-all duration-300 cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="my-auto bg-slate-900 border border-white/10 rounded-2xl max-w-lg w-full shadow-2xl p-6 relative overflow-hidden cursor-default text-slate-100"
+          >
+            <div className="flex items-center justify-between mb-4 border-b border-white/[0.08] pb-3">
+              <div>
+                <h3 className="text-lg font-extrabold text-slate-100 font-display">Activity</h3>
+                <p className="text-[11px] text-slate-400">
+                  Who changed this shared list, and from which IP. Only you can see this.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowActivityModal(false)}
+                className="text-slate-400 hover:text-slate-200 transition-colors bg-transparent cursor-pointer"
+                aria-label="Close activity"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-3 custom-scrollbar mb-4">
+              {activityEntries.length === 0 ? (
+                <p className="text-xs text-slate-500 py-6 text-center">
+                  No activity yet on this shared list.
+                </p>
+              ) : (
+                activityEntries.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-1"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-200">
+                          {describeListActivityAction(entry.action)}
+                        </p>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {entry.actorLabel}
+                          {entry.actorType !== "owner" ? (
+                            <span className="text-slate-500"> · {entry.actorType}</span>
+                          ) : null}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-[10px] text-slate-500">
+                        {formatActivityWhen(entry.createdAt)}
+                      </span>
+                    </div>
+                    {entry.summary ? (
+                      <p className="text-[11px] text-slate-400 leading-snug">{entry.summary}</p>
+                    ) : null}
+                    {entry.clientIp ? (
+                      <p className="text-[10px] text-slate-500 font-mono">IP {entry.clientIp}</p>
+                    ) : null}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {activityHasMore && activityEntries.length > 0 && (
+              <button
+                type="button"
+                disabled={activityFetcher.state !== "idle"}
+                onClick={() => {
+                  const oldest = activityEntries[activityEntries.length - 1]?.createdAt;
+                  if (oldest == null) return;
+                  activityLoadMoreSent.current = true;
+                  activityFetcher.submit(
+                    {
+                      intent: "listActivity",
+                      listId: activeListId || "",
+                      before: String(oldest),
+                    },
+                    { method: "post" }
+                  );
+                }}
+                className="w-full text-center text-xs font-semibold text-slate-200 bg-white/[0.06] hover:bg-white/[0.1] rounded-xl py-2.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mb-2"
+              >
+                {activityFetcher.state !== "idle" ? "Loading…" : "Load more"}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowActivityModal(false)}
+              className="w-full text-center text-xs font-bold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-xl py-3 transition-all cursor-pointer shadow-md active:scale-[0.98]"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── What's New / Version Log Modal ─────────────────── */}
       {isChangelogOpen && (
         <div
@@ -4101,12 +4851,26 @@ export default function TodoPage() {
       )}
 
       {/* ── Delete List Dialog Modal ──────────────────────── */}
-      {listToDelete && (
+      {listToDelete && (() => {
+        const deletingOwned =
+          !isLoggedIn ||
+          lists.find((l: any) => l.id === listToDelete.id)?.owner_id === userId;
+        return (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
-            <h3 className="text-base font-bold text-slate-200 mb-2 font-display">Delete this list?</h3>
+            <h3 className="text-base font-bold text-slate-200 mb-2 font-display">
+              {deletingOwned ? "Delete this list?" : "Request list deletion?"}
+            </h3>
             <p className="text-xs text-slate-400 mb-5">
-              Are you sure you want to delete <span className="text-rose-400 font-semibold">&quot;{listToDelete.name}&quot;</span>? This will permanently delete all tasks inside this list. This action is irreversible.
+              {deletingOwned ? (
+                <>
+                  Are you sure you want to delete <span className="text-rose-400 font-semibold">&quot;{listToDelete.name}&quot;</span>? This will permanently delete all tasks inside this list. This action is irreversible.
+                </>
+              ) : (
+                <>
+                  Ask the owner to delete <span className="text-rose-400 font-semibold">&quot;{listToDelete.name}&quot;</span>? They&apos;ll need to approve before the list is removed.
+                </>
+              )}
             </p>
             <div className="flex gap-2.5 justify-end">
               <button
@@ -4127,22 +4891,24 @@ export default function TodoPage() {
                     } else {
                       navigate(`/${userId}`);
                     }
+                    setListToDelete(null);
                   } else {
                     listFetcher.submit(
                       { intent: "deleteList", listId: listToDelete.id },
                       { method: "post" }
                     );
+                    if (deletingOwned) setListToDelete(null);
                   }
-                  setListToDelete(null);
                 }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-xl shadow-lg transition-all duration-200"
               >
-                Delete List
+                {deletingOwned ? "Delete List" : "Send request"}
               </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ── Create List Dialog Modal ──────────────────────── */}
       {isCreateListOpen && (

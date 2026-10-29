@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import { TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
+import { logListActivity } from "../list-activity.server";
 import { getUserTimeZone } from "../user-profile.server";
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
@@ -36,6 +37,19 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   // Repeats keep their local clock time in the user's stored time zone.
   const timeZone = await getUserTimeZone(db, user.userId);
   const updatedTodo = await manager.toggle(todoId, { timeZone });
+
+  const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+  const logPromise = logListActivity(db, {
+    listId: todoRow.list_id,
+    taskId: todoId,
+    action: updatedTodo.completed ? "task_completed" : "task_uncompleted",
+    actorId: user.userId,
+    isOwner: access.isOwner,
+    shareMode: access.list?.share_mode,
+    request,
+    summary: updatedTodo.text,
+  });
+  if (waitUntil) waitUntil(logPromise); else await logPromise;
 
   return Response.json({ success: true, todo: updatedTodo });
 }

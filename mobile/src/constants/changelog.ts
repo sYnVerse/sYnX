@@ -20,6 +20,18 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "NEW",
         text: "When you share a Private list as View-Only or Collaborative, sYnX reminds you that anyone with the link can see your display name."
+      },
+      {
+        type: "NEW",
+        text: "On Collaborative lists, only the owner can delete tasks or the list right away. Everyone else sends a delete request the owner approves or declines, and tasks waiting on approval are marked clearly."
+      },
+      {
+        type: "NEW",
+        text: "Shared lists keep an Activity log for you (the owner): who changed tasks, who requested deletes, and from which IP. Collaborators and guests can't see it."
+      },
+      {
+        type: "IMPR",
+        text: "If you own a list and someone asks to delete something, you get an in-app review panel (and a push notification when your phone is set up for reminders)."
       }
     ]
   },

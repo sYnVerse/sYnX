@@ -3,7 +3,12 @@ import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { UpdateListSchema } from "../../shared";
 import { getListAccess, serializeListRow } from "../api-helpers.server";
+import {
+  deleteRequestActivitySummary,
+  logListActivity,
+} from "../list-activity.server";
 import { recordSharedListAccess } from "../shared-lists.server";
+import { requestOrPerformDelete } from "../pending-deletes.server";
 import { categoryError, listNameError } from "../write-limits";
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
@@ -65,28 +70,32 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return Response.json({ error: "List ID is required" }, { status: 400 });
   }
 
-  const listRow = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
-  if (!listRow) {
+  const access = await getListAccess(db, listId, user.userId);
+  if (!access.list) {
     return Response.json({ error: "List not found" }, { status: 404 });
   }
 
-  if (listRow.owner_id !== user.userId) {
-    return Response.json({ error: "Only the list owner can perform this action" }, { status: 403 });
-  }
-
   if (request.method === "PUT") {
+    if (!access.isOwner) {
+      return Response.json({ error: "Only the list owner can perform this action" }, { status: 403 });
+    }
     try {
       const body = await request.json();
       const parsed = v.parse(UpdateListSchema, body);
 
-      const newName = parsed.name ?? listRow.name;
-      const newCategory = parsed.category ?? listRow.category ?? "Checklist";
+      const newName = parsed.name ?? access.list.name;
+      const newCategory = parsed.category ?? access.list.category ?? "Checklist";
       const limitError =
         (parsed.name !== undefined ? listNameError(parsed.name) : null) ||
         (parsed.category !== undefined ? categoryError(parsed.category) : null);
       if (limitError) {
         return Response.json({ error: limitError }, { status: 400 });
       }
+
+      const nameChanged = parsed.name !== undefined && parsed.name !== access.list.name;
+      const categoryChanged =
+        parsed.category !== undefined &&
+        (parsed.category ?? "Checklist") !== (access.list.category ?? "Checklist");
 
       await db
         .prepare("UPDATE lists SET name = ?, category = ? WHERE id = ?")
@@ -95,6 +104,40 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
 
       const updated = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
       const list = await serializeListRow(db, updated, { viewerUserId: user.userId });
+
+      const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+      const shareMode = access.list.share_mode;
+      const logJobs: Promise<void>[] = [];
+      if (nameChanged) {
+        logJobs.push(
+          logListActivity(db, {
+            listId,
+            action: "list_renamed",
+            actorId: user.userId,
+            isOwner: access.isOwner,
+            shareMode,
+            request,
+            summary: newName,
+          })
+        );
+      }
+      if (categoryChanged) {
+        logJobs.push(
+          logListActivity(db, {
+            listId,
+            action: "list_settings_changed",
+            actorId: user.userId,
+            isOwner: access.isOwner,
+            shareMode,
+            request,
+            summary: `Category: ${access.list.category ?? "Checklist"} → ${newCategory}`,
+          })
+        );
+      }
+      if (logJobs.length > 0) {
+        const logPromise = Promise.all(logJobs).then(() => undefined);
+        if (waitUntil) waitUntil(logPromise); else await logPromise;
+      }
 
       return Response.json({
         success: true,
@@ -106,8 +149,53 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   }
 
   if (request.method === "DELETE") {
-    await db.prepare("DELETE FROM lists WHERE id = ?").bind(listId).run();
-    return Response.json({ success: true });
+    // Owner deletes immediately; collaborators on public_edit request approval.
+    // View-only / private non-owners stay forbidden.
+    if (!access.isOwner && !access.canEdit) {
+      return Response.json({ error: "Only the list owner can perform this action" }, { status: 403 });
+    }
+
+    const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+    const shareMode = access.list.share_mode;
+    const result = await requestOrPerformDelete(db, {
+      listId,
+      userId: user.userId,
+      isOwner: access.isOwner,
+      canEdit: access.canEdit,
+      targetType: "list",
+      env,
+      waitUntil,
+    });
+
+    if (result.kind === "deleted" || result.kind === "requested") {
+      const logPromise = logListActivity(db, {
+        listId,
+        action: result.kind === "requested" ? "delete_requested" : "list_deleted",
+        actorId: user.userId,
+        isOwner: access.isOwner,
+        shareMode,
+        request,
+        summary:
+          result.kind === "requested"
+            ? deleteRequestActivitySummary("list")
+            : access.list.name,
+      });
+      if (waitUntil) waitUntil(logPromise); else await logPromise;
+    }
+
+    if (result.kind === "deleted") {
+      return Response.json({ success: true });
+    }
+    if (result.kind === "requested") {
+      return Response.json({
+        success: true,
+        pendingApproval: true,
+        alreadyRequested: result.alreadyExisted,
+        requestId: result.requestId,
+        message: result.message,
+      });
+    }
+    return Response.json({ error: result.error }, { status: 403 });
   }
 
   return Response.json({ error: "Method not allowed" }, { status: 405 });
