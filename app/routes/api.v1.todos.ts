@@ -6,6 +6,10 @@ import { CreateTodoSchema } from "../../shared";
 
 import { getListAccess } from "../api-helpers.server";
 import { isListFull } from "../guest-access.server";
+import {
+  listPendingDeletesForList,
+  pendingTaskDeleteIds,
+} from "../pending-deletes.server";
 import { TASK_LIMIT_ERROR, taskTextError } from "../write-limits";
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
@@ -30,7 +34,17 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
 
   const manager = new TodoManager(db, listId);
   const todos = await manager.list();
-  return Response.json({ success: true, todos });
+  const pendingTaskIds = await pendingTaskDeleteIds(db, listId);
+  const pendingDeleteRequests = await listPendingDeletesForList(db, listId);
+  const todosWithPending = todos.map((t) => ({
+    ...t,
+    pendingDelete: pendingTaskIds.has(t.id),
+  }));
+  return Response.json({
+    success: true,
+    todos: todosWithPending,
+    pendingDeleteRequests,
+  });
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {

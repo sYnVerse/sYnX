@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.4.0";
+export const WEB_VERSION = "v5.5.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.5.0",
+    date: "2026-10-30",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "On Collaborative lists, only you (the owner) can delete tasks, clear completed tasks, or delete the list right away. Collaborators and guests send a delete request you approve or decline, and tasks waiting on approval are marked clearly."
+      },
+      {
+        type: "IMPR",
+        text: "Private and View-Only lists still work the same: View-Only can't delete, and Private stays owner-only."
+      }
+    ]
+  },
   {
     version: "v5.4.0",
     date: "2026-10-29",

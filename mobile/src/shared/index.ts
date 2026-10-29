@@ -29,6 +29,22 @@ export interface TodoItem {
   recurrence: RecurrencePattern;
   durationMinutes?: number | null;
   subtasks?: TodoItem[];
+  /** True when a collaborator has requested deleting this task (awaits owner). */
+  pendingDelete?: boolean;
+}
+
+export type DeleteTargetType = "task" | "list" | "clear_completed";
+
+/** Pending collaborator delete request awaiting list-owner approval. */
+export interface PendingDeleteRequest {
+  id: string;
+  listId: string;
+  listName: string;
+  requesterId: string;
+  targetType: DeleteTargetType;
+  targetId: string;
+  targetLabel: string | null;
+  createdAt: number;
 }
 
 /** Public owner summary on list payloads — display name only (never email). */

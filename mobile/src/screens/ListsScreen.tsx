@@ -31,6 +31,7 @@ import {
   Users,
   Copy,
   Pin,
+  X,
 } from "lucide-react-native";
 import {
   getPinnedWidgetConfig,
@@ -244,10 +245,23 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 
   const deleteListMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiClient.delete(`/api/v1/lists/${id}`);
+      const res = await apiClient.delete(`/api/v1/lists/${id}`);
+      return {
+        id,
+        pendingApproval: Boolean(res.data?.pendingApproval),
+        message: res.data?.message as string | undefined,
+      };
     },
-    onSuccess: (_, deletedId) => {
+    onSuccess: (result) => {
       triggerImpactHaptic();
+      if (result.pendingApproval) {
+        showSuccess(
+          result.message || "Delete request sent. The list owner must approve it."
+        );
+        queryClient.invalidateQueries({ queryKey: ["delete-requests", result.id] });
+        return;
+      }
+      const deletedId = result.id;
       queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
         const remaining = old ? old.filter((l) => l.id !== deletedId) : [];
         if (deletedId === activeListId && remaining.length > 0) {
@@ -317,10 +331,15 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
 
   const handleDeleteList = (list: TodoList) => {
     triggerImpactHaptic();
-    Alert.alert("Delete List", `Are you sure you want to delete "${list.name}" and all its tasks?`, [
+    const isListOwner = list.isOwner !== false;
+    const title = isListOwner ? "Delete List" : "Request list deletion?";
+    const message = isListOwner
+      ? `Are you sure you want to delete "${list.name}" and all its tasks?`
+      : `Ask the owner to delete "${list.name}"? They'll need to approve before the list is removed.`;
+    Alert.alert(title, message, [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Delete",
+        text: isListOwner ? "Delete" : "Send request",
         style: "destructive",
         onPress: () => deleteListMutation.mutate(list.id),
       },
@@ -596,29 +615,42 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                       />
                     </TouchableOpacity>
                     {isShared ? (
-                      <TouchableOpacity
-                        style={styles.actionIconBtn}
-                        onPress={() => {
-                          triggerImpactHaptic();
-                          Alert.alert(
-                            "Remove from Shared with me",
-                            `Stop showing "${item.name}" in Shared with me? You can open the link again later.`,
-                            [
-                              { text: "Cancel", style: "cancel" },
-                              {
-                                text: "Remove",
-                                style: "destructive",
-                                onPress: () => removeSharedMutation.mutate(item.id),
-                              },
-                            ]
-                          );
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${item.name} from Shared with me`}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Trash2 size={16} color={theme.danger} />
-                      </TouchableOpacity>
+                      <>
+                        {item.shareMode === "public_edit" && (
+                          <TouchableOpacity
+                            style={styles.actionIconBtn}
+                            onPress={() => handleDeleteList(item)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Request delete for ${item.name}`}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Trash2 size={16} color={theme.danger} />
+                          </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                          style={styles.actionIconBtn}
+                          onPress={() => {
+                            triggerImpactHaptic();
+                            Alert.alert(
+                              "Remove from Shared with me",
+                              `Stop showing "${item.name}" in Shared with me? You can open the link again later.`,
+                              [
+                                { text: "Cancel", style: "cancel" },
+                                {
+                                  text: "Remove",
+                                  style: "destructive",
+                                  onPress: () => removeSharedMutation.mutate(item.id),
+                                },
+                              ]
+                            );
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove ${item.name} from Shared with me`}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <X size={16} color={theme.textMuted} />
+                        </TouchableOpacity>
+                      </>
                     ) : (
                       <>
                         <TouchableOpacity

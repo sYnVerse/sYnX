@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import { TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
+import { requestOrPerformDelete } from "../pending-deletes.server";
 import * as v from "valibot";
 import { UpdateTodoSchema } from "../../shared";
 import { taskTextError } from "../write-limits";
@@ -68,8 +69,37 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   }
 
   if (request.method === "DELETE") {
-    await manager.delete(todoId);
-    return Response.json({ success: true });
+    const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+    const result = await requestOrPerformDelete(db, {
+      listId: todoRow.list_id,
+      userId: user.userId,
+      isOwner: access.isOwner,
+      canEdit: access.canEdit,
+      targetType: "task",
+      targetId: todoId,
+      env,
+      waitUntil,
+    });
+
+    if (result.kind === "deleted") {
+      return Response.json({ success: true });
+    }
+    if (result.kind === "requested") {
+      return Response.json({
+        success: true,
+        pendingApproval: true,
+        alreadyRequested: result.alreadyExisted,
+        requestId: result.requestId,
+        message: result.message,
+      });
+    }
+    if (result.kind === "not_found") {
+      return Response.json({ error: result.error }, { status: 404 });
+    }
+    if (result.kind === "bad_request") {
+      return Response.json({ error: result.error }, { status: 400 });
+    }
+    return Response.json({ error: result.error }, { status: 403 });
   }
 
   return Response.json({ error: "Method not allowed" }, { status: 405 });

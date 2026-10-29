@@ -51,6 +51,15 @@ import {
   isListFull,
 } from "~/guest-access.server";
 import {
+  approvePendingDelete,
+  declinePendingDelete,
+  describeDeleteTarget,
+  listPendingDeletesForList,
+  listPendingDeletesForOwner,
+  requestOrPerformDelete,
+  type PendingDeleteRequest,
+} from "~/pending-deletes.server";
+import {
   MAX_CATEGORY_LENGTH,
   MAX_LIST_NAME_LENGTH,
   MAX_TASK_TEXT_LENGTH,
@@ -245,6 +254,34 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     }
   }
 
+  // Pending delete requests for the active list (collaborators see markers;
+  // owners also get the full owned-lists queue below).
+  let pendingDeleteRequests: PendingDeleteRequest[] = [];
+  let pendingTaskIds = new Set<string>();
+  try {
+    if (activeListId) {
+      pendingDeleteRequests = await listPendingDeletesForList(db, activeListId);
+      pendingTaskIds = new Set(
+        pendingDeleteRequests
+          .filter((r) => r.targetType === "task" && r.targetId)
+          .map((r) => r.targetId)
+      );
+    }
+    if (isLoggedIn) {
+      // Owners see every pending request across their lists in the review panel.
+      const ownedPending = await listPendingDeletesForOwner(db, userId);
+      const byId = new Map<string, PendingDeleteRequest>();
+      for (const r of [...ownedPending, ...pendingDeleteRequests]) {
+        byId.set(r.id, r);
+      }
+      pendingDeleteRequests = Array.from(byId.values()).sort(
+        (a, b) => a.createdAt - b.createdAt
+      );
+    }
+  } catch (e) {
+    console.error("Failed to load pending delete requests:", e);
+  }
+
   const listsWithTodos = lists.map((list: any) => {
     const listTodos = allTodos
       .filter((t: any) => t.list_id === list.id)
@@ -259,6 +296,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
         parentId: t.parent_id || undefined,
         recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
         durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : null,
+        pendingDelete: pendingTaskIds.has(t.id),
       }))
       .sort((a: any, b: any) => b.createdAt - a.createdAt);
     return {
@@ -322,6 +360,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     lists: listsWithTodos,
     activeListId: activeListId || userId,
     todos,
+    pendingDeleteRequests,
     stats: {
       totalLists,
       totalTasks,
@@ -486,6 +525,42 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     return json({ success: true });
   }
 
+  // Owner review of collaborator delete requests — not scoped to the active list.
+  if (intent === "approveDeleteRequest" || intent === "declineDeleteRequest") {
+    if (!isLoggedIn) {
+      return Response.json({ error: "Sign in required" }, { status: 401 });
+    }
+    const requestId = formData.get("requestId") as string;
+    if (!requestId) {
+      return Response.json({ error: "Request ID is required" }, { status: 400 });
+    }
+    if (intent === "approveDeleteRequest") {
+      const result = await approvePendingDelete(db, requestId, userId);
+      if (result.kind === "not_found") {
+        return Response.json({ error: result.error }, { status: 404 });
+      }
+      if (result.kind === "forbidden") {
+        return Response.json({ error: result.error }, { status: 403 });
+      }
+      if (result.targetType === "list" && activeListId === result.listId) {
+        const firstList = await db
+          .prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1")
+          .bind(userId)
+          .first<{ id: string }>();
+        return redirect(firstList ? `/${firstList.id}` : "/");
+      }
+      return json({ success: true, approved: true });
+    }
+    const result = await declinePendingDelete(db, requestId, userId);
+    if (result.kind === "not_found") {
+      return Response.json({ error: result.error }, { status: 404 });
+    }
+    if (result.kind === "forbidden") {
+      return Response.json({ error: result.error }, { status: 403 });
+    }
+    return json({ success: true, declined: true });
+  }
+
   // Check list ownership or collaborative access in D1
   let hasOwnership = false;
   let isCollaborative = false;
@@ -579,8 +654,30 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "delete": {
       const id = formData.get("id") as string;
-      await todoManager.delete(id);
-      return { success: true };
+      const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+      const result = await requestOrPerformDelete(db, {
+        listId: activeListId,
+        userId,
+        isOwner: hasOwnership,
+        canEdit: hasOwnership || isCollaborative,
+        targetType: "task",
+        targetId: id,
+        env: context.cloudflare.env,
+        waitUntil,
+      });
+      if (result.kind === "deleted") return { success: true };
+      if (result.kind === "requested") {
+        return {
+          success: true,
+          pendingApproval: true,
+          alreadyRequested: result.alreadyExisted,
+          message: result.message,
+        };
+      }
+      if (result.kind === "not_found") {
+        return Response.json({ error: result.error }, { status: 404 });
+      }
+      return Response.json({ error: result.error }, { status: 403 });
     }
 
     case "updatePriority": {
@@ -657,8 +754,26 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     }
 
     case "clearCompleted": {
-      await todoManager.clearCompleted();
-      return { success: true };
+      const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+      const result = await requestOrPerformDelete(db, {
+        listId: activeListId,
+        userId,
+        isOwner: hasOwnership,
+        canEdit: hasOwnership || isCollaborative,
+        targetType: "clear_completed",
+        env: context.cloudflare.env,
+        waitUntil,
+      });
+      if (result.kind === "deleted") return { success: true };
+      if (result.kind === "requested") {
+        return {
+          success: true,
+          pendingApproval: true,
+          alreadyRequested: result.alreadyExisted,
+          message: result.message,
+        };
+      }
+      return Response.json({ error: result.error }, { status: 403 });
     }
 
     case "createList": {
@@ -722,17 +837,43 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "deleteList": {
       const listId = formData.get("listId") as string;
-      const ownRow = await db.prepare("SELECT 1 FROM lists WHERE id = ? AND owner_id = ?").bind(listId, userId).first();
-      if (!ownRow) {
+      const listAccess = await db
+        .prepare("SELECT owner_id, share_mode FROM lists WHERE id = ?")
+        .bind(listId)
+        .first<{ owner_id: string; share_mode: string }>();
+      if (!listAccess) {
+        return Response.json({ error: "List not found" }, { status: 404 });
+      }
+      const ownsList = isLoggedIn && listAccess.owner_id === userId;
+      const listIsCollaborative = listAccess.share_mode === "public_edit";
+      if (!ownsList && !listIsCollaborative) {
         return Response.json({ error: "Unauthorized access to list" }, { status: 403 });
       }
-      try {
-        await db.prepare("DELETE FROM lists WHERE id = ?").bind(listId).run();
-      } catch (e) {
-        console.error("Failed to delete list:", e);
+
+      const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+      const result = await requestOrPerformDelete(db, {
+        listId,
+        userId,
+        isOwner: ownsList,
+        canEdit: ownsList || listIsCollaborative,
+        targetType: "list",
+        env: context.cloudflare.env,
+        waitUntil,
+      });
+
+      if (result.kind === "requested") {
+        return {
+          success: true,
+          pendingApproval: true,
+          alreadyRequested: result.alreadyExisted,
+          message: result.message,
+        };
+      }
+      if (result.kind !== "deleted") {
+        return Response.json({ error: result.error }, { status: 403 });
       }
 
-      if (activeListId === listId) {
+      if (ownsList && activeListId === listId) {
         try {
           const firstList = await db.prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1").bind(userId).first<any>();
           if (firstList) {
@@ -747,6 +888,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       }
       return { success: true };
     }
+
 
     default:
       return Response.json({ error: "Invalid intent" }, { status: 400 });
@@ -1394,9 +1536,24 @@ function TodoItem({
   // can't reword tasks that have reminders.
   const canEditText = canEdit && (canSetReminders || !todo.reminderAt);
   const toggleFetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
-  const deleteFetcher = useFetcher();
+  const deleteFetcher = useFetcher<{
+    success?: boolean;
+    pendingApproval?: boolean;
+    message?: string;
+    error?: string;
+  }>();
   const subtaskFetcher = useFetcher();
   const editFetcher = useFetcher();
+
+  useEffect(() => {
+    if (deleteFetcher.state !== "idle" || !deleteFetcher.data) return;
+    const data = deleteFetcher.data;
+    if (data.pendingApproval && data.message) {
+      onNotify?.(data.message);
+    } else if (data.error) {
+      onNotify?.(data.error);
+    }
+  }, [deleteFetcher.state, deleteFetcher.data, onNotify]);
 
   const [showAddSubtask, setShowAddSubtask] = useState(false);
   const [subtaskText, setSubtaskText] = useState("");
@@ -1634,6 +1791,15 @@ function TodoItem({
           </span>
         )}
 
+        {todo.pendingDelete && (
+          <span
+            className="text-[9px] bg-amber-500/15 text-amber-300 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider border border-amber-400/25"
+            title="Waiting for the list owner to approve deletion"
+          >
+            Delete requested
+          </span>
+        )}
+
         {canEdit && <PriorityPicker currentPriority={todo.priority || "none"} todoId={todo.id} />}
         {canEdit && !optimisticCompleted && !isSubtask && <ReminderPicker todo={todo} />}
 
@@ -1680,7 +1846,7 @@ function TodoItem({
           </button>
         )}
 
-        {canEdit && (
+        {canEdit && !todo.pendingDelete && (
           <deleteFetcher.Form
             method="post"
             onSubmit={() => {
@@ -1797,7 +1963,16 @@ function Confetti() {
 }
 
 export default function TodoPage() {
-  const { userId, email, isLoggedIn, settings, lists: serverLists, activeListId, stats } = useLoaderData<typeof loader>();
+  const {
+    userId,
+    email,
+    isLoggedIn,
+    settings,
+    lists: serverLists,
+    activeListId,
+    stats,
+    pendingDeleteRequests = [],
+  } = useLoaderData<typeof loader>();
   const profileLabel = getProfileLabel({
     email,
     displayName: settings?.displayName,
@@ -1805,8 +1980,19 @@ export default function TodoPage() {
   });
   const navigate = useNavigate();
   const createFetcher = useFetcher();
-  const clearFetcher = useFetcher();
-  const listFetcher = useFetcher();
+  const clearFetcher = useFetcher<{
+    success?: boolean;
+    pendingApproval?: boolean;
+    message?: string;
+    error?: string;
+  }>();
+  const listFetcher = useFetcher<{
+    success?: boolean;
+    pendingApproval?: boolean;
+    message?: string;
+    error?: string;
+  }>();
+  const deleteRequestFetcher = useFetcher();
   const settingsFetcher = useFetcher();
   const suggestionFetcher = useFetcher();
   const timeZoneFetcher = useFetcher();
@@ -2361,6 +2547,25 @@ export default function TodoPage() {
   // Name others see on this user's shared lists (saved value, not unsaved edits).
   const ownDisplayName = settings?.displayNameSet ? settings?.displayName : null;
   const canEdit = isOwner || activeListShareMode === "public_edit" || !activeListMeta;
+  const ownedPendingDeleteRequests = useMemo(
+    () =>
+      (pendingDeleteRequests as PendingDeleteRequest[]).filter((r) => {
+        const list = lists.find((l: any) => l.id === r.listId);
+        return list ? list.owner_id === userId : true;
+      }),
+    [pendingDeleteRequests, lists, userId]
+  );
+  const activeListPendingDeletes = useMemo(
+    () =>
+      (pendingDeleteRequests as PendingDeleteRequest[]).filter(
+        (r) => r.listId === activeListId
+      ),
+    [pendingDeleteRequests, activeListId]
+  );
+  const pendingClearCompleted = activeListPendingDeletes.some(
+    (r) => r.targetType === "clear_completed"
+  );
+  const pendingListDelete = activeListPendingDeletes.some((r) => r.targetType === "list");
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(activeListName);
@@ -2538,6 +2743,26 @@ export default function TodoPage() {
     if (createFetcher.state === "idle" && createData?.error) showToast(createData.error);
   }, [createFetcher.state, createData, showToast]);
 
+  // Collaborator delete / clear-completed / list-delete → pending approval toast.
+  useEffect(() => {
+    if (clearFetcher.state !== "idle" || !clearFetcher.data) return;
+    if (clearFetcher.data.pendingApproval && clearFetcher.data.message) {
+      showToast(clearFetcher.data.message);
+    } else if (clearFetcher.data.error) {
+      showToast(clearFetcher.data.error);
+    }
+  }, [clearFetcher.state, clearFetcher.data, showToast]);
+
+  useEffect(() => {
+    if (listFetcher.state !== "idle" || !listFetcher.data) return;
+    if (listFetcher.data.pendingApproval && listFetcher.data.message) {
+      showToast(listFetcher.data.message);
+      setListToDelete(null);
+    } else if (listFetcher.data.error) {
+      showToast(listFetcher.data.error);
+    }
+  }, [listFetcher.state, listFetcher.data, showToast]);
+
 
   const handleExportData = () => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(lists, null, 2));
@@ -2681,6 +2906,12 @@ export default function TodoPage() {
               const renderListRow = (list: any, opts: { shared?: boolean }) => {
                 const isActive = list.id === activeListId;
                 const remainingCount = (list.todos || []).filter((t: any) => !t.completed).length;
+                const pendingForList = (pendingDeleteRequests as PendingDeleteRequest[]).filter(
+                  (r) => r.listId === list.id
+                ).length;
+                const listPendingDelete = (pendingDeleteRequests as PendingDeleteRequest[]).some(
+                  (r) => r.listId === list.id && r.targetType === "list"
+                );
                 return (
                   <div
                     key={list.id}
@@ -2711,6 +2942,14 @@ export default function TodoPage() {
                     </a>
 
                     <div className="flex items-center gap-1.5">
+                      {!opts.shared && pendingForList > 0 && (
+                        <span
+                          className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300"
+                          title={`${pendingForList} delete request${pendingForList === 1 ? "" : "s"} waiting`}
+                        >
+                          {pendingForList}
+                        </span>
+                      )}
                       {remainingCount > 0 && (
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-themeAccentBg text-themeAccentText" : "bg-white/5 text-slate-400"}`}>
                           {remainingCount}
@@ -2719,20 +2958,38 @@ export default function TodoPage() {
 
                       <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity duration-200 bg-slate-900/80 px-1 py-0.5 rounded-md border border-white/5 shadow-sm absolute right-2">
                         {opts.shared ? (
-                          <button
-                            onClick={() => {
-                              settingsFetcher.submit(
-                                { intent: "removeSharedList", listId: list.id },
-                                { method: "post" }
-                              );
-                            }}
-                            className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
-                            title="Remove from Shared with me"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <>
+                            {list.share_mode === "public_edit" && !listPendingDelete && (
+                              <button
+                                onClick={() => setListToDelete({ id: list.id, name: list.name })}
+                                className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
+                                title="Request delete (owner must approve)"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                            {listPendingDelete && (
+                              <span className="text-[9px] text-amber-300 px-1" title="Delete requested">
+                                Pending
+                              </span>
+                            )}
+                            <button
+                              onClick={() => {
+                                settingsFetcher.submit(
+                                  { intent: "removeSharedList", listId: list.id },
+                                  { method: "post" }
+                                );
+                              }}
+                              className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
+                              title="Remove from Shared with me"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </>
                         ) : (
                           <>
                             <button
@@ -2879,6 +3136,75 @@ export default function TodoPage() {
 
       {/* ── Main Area ─────────────────────────────────────── */}
       <main className="relative z-10 flex flex-col py-6 px-4 sm:px-5 md:px-6 lg:px-8 max-w-2xl mx-auto w-full min-w-0 md:max-w-none md:h-screen md:overflow-x-hidden md:overflow-y-auto">
+
+        {isLoggedIn && ownedPendingDeleteRequests.length > 0 && (
+          <section
+            className="mb-5 rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3"
+            aria-label="Pending delete requests"
+          >
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-amber-200">
+                Delete requests
+              </h2>
+              <span className="text-[10px] font-semibold text-amber-300/80">
+                {ownedPendingDeleteRequests.length} pending
+              </span>
+            </div>
+            <ul className="space-y-2">
+              {ownedPendingDeleteRequests.map((req) => {
+                const summary = describeDeleteTarget(req.targetType, req.targetLabel);
+                const onThisList = req.listId === activeListId;
+                return (
+                  <li
+                    key={req.id}
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl bg-black/20 border border-white/[0.04] px-3 py-2"
+                  >
+                    <div className="min-w-0 text-xs text-slate-200">
+                      <span className="font-semibold">Delete {summary}</span>
+                      {!onThisList && (
+                        <span className="text-slate-400"> on &ldquo;{req.listName}&rdquo;</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={deleteRequestFetcher.state !== "idle"}
+                        onClick={() =>
+                          deleteRequestFetcher.submit(
+                            { intent: "approveDeleteRequest", requestId: req.id },
+                            { method: "post" }
+                          )
+                        }
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-themeAccentFrom/90 hover:bg-themeAccentTo text-white transition-colors disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleteRequestFetcher.state !== "idle"}
+                        onClick={() =>
+                          deleteRequestFetcher.submit(
+                            { intent: "declineDeleteRequest", requestId: req.id },
+                            { method: "post" }
+                          )
+                        }
+                        className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 transition-colors disabled:opacity-50"
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        {!isOwner && pendingListDelete && (
+          <div className="mb-4 text-xs text-amber-200/90 bg-amber-500/10 border border-amber-400/20 rounded-xl px-3 py-2">
+            A request to delete this list is waiting for the owner&apos;s approval.
+          </div>
+        )}
         
         {/* Header (Active list title + Progress) */}
         <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-white/[0.04] pb-6 min-w-0">
@@ -3354,7 +3680,7 @@ export default function TodoPage() {
 
             {/* Action buttons (Clear completed, Share Popover) */}
             <div className="flex gap-3 items-center self-end sm:self-auto shrink-0">
-              {completedCount > 0 && (
+              {completedCount > 0 && !pendingClearCompleted && (
                 <clearFetcher.Form
                   method="post"
                   onSubmit={() => {
@@ -3368,9 +3694,14 @@ export default function TodoPage() {
                     type="submit"
                     className="text-xs text-slate-500 hover:text-rose-400 font-semibold transition-colors duration-200 cursor-pointer bg-transparent"
                   >
-                    Clear completed
+                    {isOwner || !isSharedServerList ? "Clear completed" : "Request clear completed"}
                   </button>
                 </clearFetcher.Form>
+              )}
+              {pendingClearCompleted && (
+                <span className="text-xs text-amber-300/90 font-semibold" title="Waiting for the list owner">
+                  Clear requested
+                </span>
               )}
 
               {/* Enhanced Share Menu */}
@@ -4101,12 +4432,26 @@ export default function TodoPage() {
       )}
 
       {/* ── Delete List Dialog Modal ──────────────────────── */}
-      {listToDelete && (
+      {listToDelete && (() => {
+        const deletingOwned =
+          !isLoggedIn ||
+          lists.find((l: any) => l.id === listToDelete.id)?.owner_id === userId;
+        return (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
-            <h3 className="text-base font-bold text-slate-200 mb-2 font-display">Delete this list?</h3>
+            <h3 className="text-base font-bold text-slate-200 mb-2 font-display">
+              {deletingOwned ? "Delete this list?" : "Request list deletion?"}
+            </h3>
             <p className="text-xs text-slate-400 mb-5">
-              Are you sure you want to delete <span className="text-rose-400 font-semibold">&quot;{listToDelete.name}&quot;</span>? This will permanently delete all tasks inside this list. This action is irreversible.
+              {deletingOwned ? (
+                <>
+                  Are you sure you want to delete <span className="text-rose-400 font-semibold">&quot;{listToDelete.name}&quot;</span>? This will permanently delete all tasks inside this list. This action is irreversible.
+                </>
+              ) : (
+                <>
+                  Ask the owner to delete <span className="text-rose-400 font-semibold">&quot;{listToDelete.name}&quot;</span>? They&apos;ll need to approve before the list is removed.
+                </>
+              )}
             </p>
             <div className="flex gap-2.5 justify-end">
               <button
@@ -4127,22 +4472,24 @@ export default function TodoPage() {
                     } else {
                       navigate(`/${userId}`);
                     }
+                    setListToDelete(null);
                   } else {
                     listFetcher.submit(
                       { intent: "deleteList", listId: listToDelete.id },
                       { method: "post" }
                     );
+                    if (deletingOwned) setListToDelete(null);
                   }
-                  setListToDelete(null);
                 }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-xl shadow-lg transition-all duration-200"
               >
-                Delete List
+                {deletingOwned ? "Delete List" : "Send request"}
               </button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ── Create List Dialog Modal ──────────────────────── */}
       {isCreateListOpen && (

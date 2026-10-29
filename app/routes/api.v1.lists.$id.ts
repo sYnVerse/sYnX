@@ -4,6 +4,7 @@ import * as v from "valibot";
 import { UpdateListSchema } from "../../shared";
 import { getListAccess, serializeListRow } from "../api-helpers.server";
 import { recordSharedListAccess } from "../shared-lists.server";
+import { requestOrPerformDelete } from "../pending-deletes.server";
 import { categoryError, listNameError } from "../write-limits";
 
 export async function loader({ request, params, context }: LoaderFunctionArgs) {
@@ -65,22 +66,21 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return Response.json({ error: "List ID is required" }, { status: 400 });
   }
 
-  const listRow = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
-  if (!listRow) {
+  const access = await getListAccess(db, listId, user.userId);
+  if (!access.list) {
     return Response.json({ error: "List not found" }, { status: 404 });
   }
 
-  if (listRow.owner_id !== user.userId) {
-    return Response.json({ error: "Only the list owner can perform this action" }, { status: 403 });
-  }
-
   if (request.method === "PUT") {
+    if (!access.isOwner) {
+      return Response.json({ error: "Only the list owner can perform this action" }, { status: 403 });
+    }
     try {
       const body = await request.json();
       const parsed = v.parse(UpdateListSchema, body);
 
-      const newName = parsed.name ?? listRow.name;
-      const newCategory = parsed.category ?? listRow.category ?? "Checklist";
+      const newName = parsed.name ?? access.list.name;
+      const newCategory = parsed.category ?? access.list.category ?? "Checklist";
       const limitError =
         (parsed.name !== undefined ? listNameError(parsed.name) : null) ||
         (parsed.category !== undefined ? categoryError(parsed.category) : null);
@@ -106,8 +106,36 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   }
 
   if (request.method === "DELETE") {
-    await db.prepare("DELETE FROM lists WHERE id = ?").bind(listId).run();
-    return Response.json({ success: true });
+    // Owner deletes immediately; collaborators on public_edit request approval.
+    // View-only / private non-owners stay forbidden.
+    if (!access.isOwner && !access.canEdit) {
+      return Response.json({ error: "Only the list owner can perform this action" }, { status: 403 });
+    }
+
+    const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+    const result = await requestOrPerformDelete(db, {
+      listId,
+      userId: user.userId,
+      isOwner: access.isOwner,
+      canEdit: access.canEdit,
+      targetType: "list",
+      env,
+      waitUntil,
+    });
+
+    if (result.kind === "deleted") {
+      return Response.json({ success: true });
+    }
+    if (result.kind === "requested") {
+      return Response.json({
+        success: true,
+        pendingApproval: true,
+        alreadyRequested: result.alreadyExisted,
+        requestId: result.requestId,
+        message: result.message,
+      });
+    }
+    return Response.json({ error: result.error }, { status: 403 });
   }
 
   return Response.json({ error: "Method not allowed" }, { status: 405 });

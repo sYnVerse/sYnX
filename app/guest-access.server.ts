@@ -22,9 +22,10 @@ export function isGuestId(value: unknown): value is string {
 
 /**
  * Page actions a guest may run on someone else's public_edit list: adding,
- * completing, editing and deleting tasks. Anything that creates or changes a
- * reminder (reminders, repeats, marking a reminder sent) or changes a list
- * itself needs a signed-in account.
+ * completing, editing tasks, and requesting deletes (task, clear completed,
+ * or the list — the owner must approve). Anything that creates or changes a
+ * reminder (reminders, repeats, marking a reminder sent) or renames/shares a
+ * list needs a signed-in account.
  */
 export const GUEST_SHARED_LIST_INTENTS: ReadonlySet<string> = new Set([
   "create",
@@ -35,6 +36,8 @@ export const GUEST_SHARED_LIST_INTENTS: ReadonlySet<string> = new Set([
   "updateText",
   "updateDuration",
   "clearCompleted",
+  // Guests on collaborative lists may request list deletion (owner must approve).
+  "deleteList",
 ]);
 
 export const GUEST_REMINDER_DENIAL = "Sign in to set reminders.";

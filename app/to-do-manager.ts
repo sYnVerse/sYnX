@@ -12,6 +12,8 @@ export interface Todo {
   parentId?: string;
   recurrence?: "none" | "daily" | "weekly" | "monthly";
   durationMinutes?: number;
+  /** Collaborator delete request awaiting owner approval. */
+  pendingDelete?: boolean;
 }
 
 export interface UserSettings {

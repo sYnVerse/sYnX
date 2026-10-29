@@ -6,6 +6,21 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-10-30",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "On Collaborative lists, only the owner can delete tasks or the list right away. Everyone else sends a delete request the owner approves or declines, and tasks waiting on approval are marked clearly."
+      },
+      {
+        type: "IMPR",
+        text: "If you own a list and someone asks to delete something, you get an in-app review panel (and a push notification when your phone is set up for reminders)."
+      }
+    ]
+  },
+  {
+    version: "v3.4.0",
     date: "2026-10-29",
     title: "What's new?",
     changes: [

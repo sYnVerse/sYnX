@@ -51,7 +51,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   onClose,
 }) => {
   const { theme, resolvedMode, hapticsEnabled } = useTheme();
-  const { showError } = useToast();
+  const { showError, showToast } = useToast();
   const queryClient = useQueryClient();
   const [newSubtaskText, setNewSubtaskText] = useState("");
   const [newSubtaskDuration, setNewSubtaskDuration] = useState("5");
@@ -129,12 +129,23 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
 
   const removeSubtaskMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiClient.delete(`/api/v1/todos/${id}`);
+      const res = await apiClient.delete(`/api/v1/todos/${id}`);
+      return {
+        pendingApproval: Boolean(res.data?.pendingApproval),
+        message: res.data?.message as string | undefined,
+      };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       triggerHaptic();
+      if (result.pendingApproval) {
+        showToast(
+          result.message || "Delete request sent. The list owner must approve it.",
+          "info"
+        );
+      }
       if (task) {
         queryClient.invalidateQueries({ queryKey: ["todos", task.listId] });
+        queryClient.invalidateQueries({ queryKey: ["delete-requests", task.listId] });
       }
     },
     onError: (e) => onErr(e, "Couldn't remove subtask"),

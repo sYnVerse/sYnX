@@ -5,7 +5,7 @@
  * Also mirrored to package.json / app.json by mobile/scripts/sync-version.js,
  * and forced into Expo config by mobile/app.config.js (Android versionName).
  */
-export const MOBILE_APP_VERSION = "3.4.0";
+export const MOBILE_APP_VERSION = "3.5.0";
 
 /** Display form used in What's New and Settings (leading "v"). */
 export const MOBILE_VERSION = `v${MOBILE_APP_VERSION}` as const;

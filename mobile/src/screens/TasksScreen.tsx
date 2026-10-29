@@ -29,7 +29,13 @@ import {
   Flag,
 } from "lucide-react-native";
 import { apiClient } from "../api/client";
-import { TodoItem, TodoList, type ListAccessDenialCode, type PriorityLevel } from "../shared";
+import {
+  TodoItem,
+  TodoList,
+  type ListAccessDenialCode,
+  type PendingDeleteRequest,
+  type PriorityLevel,
+} from "../shared";
 import { TaskModal } from "../components/TaskModal";
 import { TaskBreakdownModal } from "../components/TaskBreakdownModal";
 import { TaskCardSkeleton } from "../components/SkeletonLoader";
@@ -94,7 +100,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   onSwitchLists,
 }) => {
   const { theme, hapticsEnabled } = useTheme();
-  const { showError } = useToast();
+  const { showError, showSuccess, showToast } = useToast();
   const insets = useSafeAreaInsets();
   const fabBottom = getFabBottomOffset(insets.bottom);
   const queryClient = useQueryClient();
@@ -181,6 +187,11 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     queryKey: ["todos", listId],
     queryFn: async () => {
       const res = await apiClient.get(`/api/v1/todos?listId=${listId}`);
+      // Keep pending requests in a sibling cache key (same response).
+      queryClient.setQueryData(
+        ["delete-requests", listId],
+        (res.data.pendingDeleteRequests || []) as PendingDeleteRequest[]
+      );
       return res.data.todos as TodoItem[];
     },
     enabled: !!listId && !!listMeta,
@@ -189,6 +200,15 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       if (status === 403 || status === 404) return false;
       return failureCount < 2;
     },
+  });
+
+  const { data: pendingDeleteRequests = [] } = useQuery({
+    queryKey: ["delete-requests", listId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/v1/delete-requests?listId=${listId}`);
+      return (res.data.requests || []) as PendingDeleteRequest[];
+    },
+    enabled: !!listId && !!listMeta,
   });
 
   React.useEffect(() => {
@@ -255,20 +275,63 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiClient.delete(`/api/v1/todos/${id}`);
-      return id;
+      const res = await apiClient.delete(`/api/v1/todos/${id}`);
+      return {
+        id,
+        pendingApproval: Boolean(res.data?.pendingApproval),
+        message: res.data?.message as string | undefined,
+      };
     },
-    onSuccess: (deletedId) => {
+    onSuccess: (result) => {
       triggerImpactHaptic();
-      if (deletedId) {
-        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          old ? old.filter((t) => t.id !== deletedId && t.parentId !== deletedId) : []
+      if (result.pendingApproval) {
+        showToast(
+          result.message || "Delete request sent. The list owner must approve it.",
+          "info"
         );
-        removeTaskFromNativeCalendar(deletedId).catch(() => {});
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old
+            ? old.map((t) => (t.id === result.id ? { ...t, pendingDelete: true } : t))
+            : []
+        );
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+        queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
+        return;
+      }
+      if (result.id) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          old ? old.filter((t) => t.id !== result.id && t.parentId !== result.id) : []
+        );
+        removeTaskFromNativeCalendar(result.id).catch(() => {});
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
     },
     onError: (e) => onMutationError(e, "Couldn't delete task"),
+  });
+
+  const reviewDeleteMutation = useMutation({
+    mutationFn: async ({
+      requestId,
+      decision,
+    }: {
+      requestId: string;
+      decision: "approve" | "decline";
+    }) => {
+      const res = await apiClient.post(`/api/v1/delete-requests/${requestId}`, { decision });
+      return res.data as { decision: string; listId?: string; targetType?: string };
+    },
+    onSuccess: (data) => {
+      triggerSuccessHaptic();
+      showSuccess(data.decision === "approve" ? "Delete approved" : "Delete declined");
+      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+      if (data.targetType === "list") {
+        queryClient.invalidateQueries({ queryKey: ["list_meta", listId] });
+      }
+    },
+    onError: (e) => onMutationError(e, "Couldn't update delete request"),
   });
 
   const createMutation = useMutation({
@@ -312,17 +375,26 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   });
 
   const handleDeleteTask = (task: TodoItem) => {
-    if (!canEdit) return;
+    if (!canEdit || task.pendingDelete) return;
     triggerImpactHaptic();
-    Alert.alert("Delete Task", `Are you sure you want to delete "${task.text}"?`, [
+    const title = isOwner ? "Delete Task" : "Request task deletion?";
+    const message = isOwner
+      ? `Are you sure you want to delete "${task.text}"?`
+      : `Ask the owner to delete "${task.text}"? They'll need to approve before it's removed.`;
+    Alert.alert(title, message, [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Delete",
+        text: isOwner ? "Delete" : "Send request",
         style: "destructive",
         onPress: () => deleteMutation.mutate(task.id),
       },
     ]);
   };
+
+  const ownerPendingRequests = useMemo(
+    () => (isOwner ? pendingDeleteRequests : []),
+    [isOwner, pendingDeleteRequests]
+  );
 
   const filteredTodos = structuredTodos.filter((parent) => {
     if (!search.trim()) return true;
@@ -446,6 +518,66 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
           canEdit={canEdit}
           ownerDisplayName={ownerDisplayName}
         />
+      ) : null}
+
+      {ownerPendingRequests.length > 0 ? (
+        <View
+          style={[
+            styles.pendingRequestsPanel,
+            { backgroundColor: theme.accentLight, borderColor: theme.accent },
+          ]}
+          accessibilityRole="summary"
+        >
+          <Text style={[styles.pendingRequestsTitle, { color: theme.accent }]}>
+            Delete requests ({ownerPendingRequests.length})
+          </Text>
+          {ownerPendingRequests.map((req) => {
+            const label =
+              req.targetType === "task"
+                ? req.targetLabel
+                  ? `Delete task "${req.targetLabel}"`
+                  : "Delete a task"
+                : req.targetType === "clear_completed"
+                  ? "Clear completed tasks"
+                  : "Delete this list";
+            return (
+              <View key={req.id} style={styles.pendingRequestRow}>
+                <Text
+                  style={[styles.pendingRequestLabel, { color: theme.textPrimary }]}
+                  numberOfLines={2}
+                >
+                  {label}
+                </Text>
+                <View style={styles.pendingRequestActions}>
+                  <TouchableOpacity
+                    style={[styles.pendingActionBtn, { backgroundColor: theme.accent }]}
+                    onPress={() =>
+                      reviewDeleteMutation.mutate({ requestId: req.id, decision: "approve" })
+                    }
+                    disabled={reviewDeleteMutation.isPending}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Approve ${label}`}
+                  >
+                    <Text style={styles.pendingActionApproveText}>Approve</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.pendingActionBtn, { backgroundColor: theme.inputBg }]}
+                    onPress={() =>
+                      reviewDeleteMutation.mutate({ requestId: req.id, decision: "decline" })
+                    }
+                    disabled={reviewDeleteMutation.isPending}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Decline ${label}`}
+                  >
+                    <Text style={[styles.pendingActionDeclineText, { color: theme.textSecondary }]}>
+                      Decline
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })}
+        </View>
       ) : null}
 
       {showingCachedWhileOffline ? (
@@ -604,6 +736,14 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                       </View>
                     ) : null}
 
+                    {item.pendingDelete ? (
+                      <View style={[styles.pillBadge, { backgroundColor: "rgba(245, 158, 11, 0.18)" }]}>
+                        <Text style={[styles.pillBadgeText, { color: "#F59E0B" }]}>
+                          Delete requested
+                        </Text>
+                      </View>
+                    ) : null}
+
                     {item.recurrence !== "none" && (
                       <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
                         <Repeat size={11} color={theme.accent} />
@@ -636,15 +776,19 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                       <Pencil size={16} color={theme.textMuted} />
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={styles.actionBtn}
-                      onPress={() => handleDeleteTask(item)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Delete ${item.text}`}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Trash2 size={16} color={theme.danger} />
-                    </TouchableOpacity>
+                    {!item.pendingDelete && (
+                      <TouchableOpacity
+                        style={styles.actionBtn}
+                        onPress={() => handleDeleteTask(item)}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          isOwner ? `Delete ${item.text}` : `Request delete for ${item.text}`
+                        }
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Trash2 size={16} color={theme.danger} />
+                      </TouchableOpacity>
+                    )}
                   </>
                 )}
               </TouchableOpacity>
@@ -888,5 +1032,47 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
+  },
+  pendingRequestsPanel: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+    gap: 8,
+  },
+  pendingRequestsTitle: {
+    fontSize: typography.xs,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  pendingRequestRow: {
+    gap: 8,
+  },
+  pendingRequestLabel: {
+    fontSize: typography.sm,
+    fontWeight: "600",
+  },
+  pendingRequestActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  pendingActionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minHeight: MIN_TOUCH_TARGET - 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pendingActionApproveText: {
+    color: "#FFFFFF",
+    fontSize: typography.sm,
+    fontWeight: "700",
+  },
+  pendingActionDeclineText: {
+    fontSize: typography.sm,
+    fontWeight: "700",
   },
 });
