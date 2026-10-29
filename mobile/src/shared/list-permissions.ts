@@ -82,3 +82,27 @@ export function getShareModeLabel(mode: ShareMode): string {
       return "Collaborative";
   }
 }
+
+/** True when a list goes from Private to View-Only or Collaborative. */
+export function isMakingListPublic(from: ShareMode, to: ShareMode): boolean {
+  return from === "private" && to !== "private";
+}
+
+/**
+ * Short owner-facing notice: shared lists show the owner's display name to
+ * anyone with the link (guests included). Quotes the name when known.
+ * Never mentions or exposes email.
+ */
+export function getSharedNameNotice(
+  shareMode: ShareMode,
+  ownerDisplayName?: string | null
+): string {
+  const name = ownerDisplayName?.trim();
+  const yourName = name ? `your display name, "${name}",` : "your display name";
+  if (shareMode === "private") {
+    return `Sharing this list shows ${yourName} to anyone with the link.`;
+  }
+  return name
+    ? `Anyone with the link can see your display name, "${name}".`
+    : "Anyone with the link can see your display name.";
+}

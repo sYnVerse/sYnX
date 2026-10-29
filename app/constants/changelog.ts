@@ -1,8 +1,27 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.3.1";
+export const WEB_VERSION = "v5.4.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.4.0",
+    date: "2026-10-29",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "If you sign in with Google, GitHub or a Microsoft work or school account, your profile photo now shows in the side menu and in Profile, with your initials as before if there's no photo or it can't load."
+      },
+      {
+        type: "NEW",
+        text: "If you haven't set a display name, sYnX can offer the name from your Google, GitHub or Microsoft account, in a one-time message after you sign in and in Profile. It's only used if you choose \"Use this name\", and \"No thanks\" stops the offer on the web and in the phone app."
+      },
+      {
+        type: "NEW",
+        text: "The Share menu now reminds you that anyone with a shared list's link can see your display name, including when you switch a list from Private to View-Only or Collaborative."
+      }
+    ]
+  },
   {
     version: "v5.3.1",
     date: "2026-10-28",

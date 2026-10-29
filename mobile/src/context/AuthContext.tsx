@@ -25,6 +25,10 @@ import { shouldSignOutAfterRefreshFailure } from "../shared/mobile-session";
 import { clearWidgetPreferences } from "../services/widgetPreferences";
 import { resetWidgetsLoggedOut } from "../services/widgetSync";
 import { checkHomeTimeZone, resetTimeZoneSync } from "../services/timeZoneSync";
+import {
+  maybePromptDisplayNameSuggestion,
+  resetDisplayNameSuggestion,
+} from "../services/displayNameSuggestion";
 import { releasePushTokenForSignOut } from "../services/notifications";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -85,6 +89,8 @@ async function fetchSessionUser(): Promise<AuthUser | null> {
     const res = await apiClient.get("/api/v1/settings");
     const settings = res.data?.settings;
     if (settings) checkHomeTimeZone(settings.timeZone ?? null).catch(() => {});
+    // One-time offer of the sign-in provider's name as the display name.
+    if (settings) maybePromptDisplayNameSuggestion(settings.suggestedDisplayName);
     if (settings?.userId || settings?.email) {
       return {
         userId: settings.userId || "",
@@ -141,6 +147,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await clearWidgetPreferences();
     resetWidgetsLoggedOut();
     resetTimeZoneSync();
+    resetDisplayNameSuggestion();
     setToken(null);
     setUser(null);
   }, []);
@@ -254,6 +261,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       resetTimeZoneSync();
+      resetDisplayNameSuggestion();
       setToken(null);
       setUser(null);
     } catch (e) {

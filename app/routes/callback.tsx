@@ -1,5 +1,6 @@
 import { LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
-import { getAuthClient, verifyAccessToken } from "~/auth.server";
+import { getAuthClient, getAuthSettings, verifyAccessToken } from "~/auth.server";
+import { syncProviderProfile } from "~/provider-profile.server";
 import {
   clearPkceCookie,
   parsePkceCookie,
@@ -42,10 +43,20 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
 
     const { access, refresh } = exchanged.tokens;
     // Only store a session that sYnX itself will accept (valid and issued to sYnX).
-    if (!(await verifyAccessToken(request, context.cloudflare.env, access))) {
+    const verified = await verifyAccessToken(request, context.cloudflare.env, access);
+    if (!verified) {
       console.error("Token exchange returned an access token sYnX does not accept");
       return reject();
     }
+    // Pick up the provider photo / suggested name right after sign-in. Best-effort
+    // and time-limited: a slow, failing or missing sYnID /userinfo never blocks sign-in.
+    await syncProviderProfile(context.cloudflare.env.DB, {
+      userId: verified.userId,
+      email: verified.email,
+      accessToken: access,
+      issuer: getAuthSettings(request, context.cloudflare.env).issuer,
+      force: true,
+    });
     const headers = new Headers();
     // Always clear the short-lived PKCE cookie after a successful exchange.
     headers.append("Set-Cookie", clearPkce);

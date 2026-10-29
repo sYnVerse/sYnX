@@ -39,7 +39,14 @@ import {
 } from "../services/widgetPreferences";
 import { syncPinnedList } from "../services/widgetSync";
 import { apiClient } from "../api/client";
-import { TodoList, TodoItem, ShareMode, getShareModeLabel } from "../shared";
+import {
+  TodoList,
+  TodoItem,
+  ShareMode,
+  getShareModeLabel,
+  getSharedNameNotice,
+  isMakingListPublic,
+} from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
 import { ListCardSkeleton } from "../components/SkeletonLoader";
@@ -336,7 +343,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     if (shouldWarnBeforeSharingPrivateList(list.shareMode || "private")) {
       Alert.alert(
         "List is private",
-        "Others can't open this link while the list is Private. Change sharing to View-Only or Collaborative first?",
+        `Others can't open this link while the list is Private. Change sharing to View-Only or Collaborative first? ${getSharedNameNotice("private")}`,
         [
           { text: "Keep Private", style: "cancel" },
           {
@@ -390,7 +397,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     if (shouldWarnBeforeSharingPrivateList(list.shareMode || "private")) {
       Alert.alert(
         "List is private",
-        "Copied links won't work for others while this list is Private. Change sharing so others can open it?",
+        `Copied links won't work for others while this list is Private. Change sharing so others can open it? ${getSharedNameNotice("private")}`,
         [
           { text: "Copy anyway", onPress: () => copyText(link) },
           {
@@ -938,6 +945,9 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                 <Text style={[styles.warnText, { color: theme.accent }]}>
                   This list is Private — others can&apos;t open a shared link until you change access below.
                 </Text>
+                <Text style={[styles.hintText, { color: theme.textSecondary }]}>
+                  {getSharedNameNotice("private")}
+                </Text>
               </View>
             ) : null}
 
@@ -981,7 +991,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                     ]}
                     onPress={() => {
                       if (sharingList) {
-                        shareModeMutation.mutate({ id: sharingList.id, shareMode: mode });
+                        const makingPublic = isMakingListPublic(sharingList.shareMode || "private", mode);
+                        shareModeMutation.mutate(
+                          { id: sharingList.id, shareMode: mode },
+                          makingPublic ? { onSuccess: () => showSuccess(getSharedNameNotice(mode)) } : undefined
+                        );
                       }
                     }}
                     disabled={shareModeMutation.isPending}
@@ -1002,6 +1016,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                 );
               })}
             </View>
+            {sharingList && sharingList.shareMode && sharingList.shareMode !== "private" ? (
+              <Text style={[styles.hintText, { color: theme.textMuted, marginTop: 0 }]}>
+                {getSharedNameNotice(sharingList.shareMode)}
+              </Text>
+            ) : null}
 
             <TouchableOpacity
               style={[styles.createBtn, { backgroundColor: theme.accent, marginTop: 8 }]}
@@ -1302,5 +1321,10 @@ const styles = StyleSheet.create({
     fontSize: typography.sm,
     fontWeight: "600",
     lineHeight: 18,
+  },
+  hintText: {
+    fontSize: typography.xs,
+    lineHeight: 16,
+    marginTop: 6,
   },
 });
