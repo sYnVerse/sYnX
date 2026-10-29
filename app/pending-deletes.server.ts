@@ -1,25 +1,19 @@
+import {
+  describeDeleteTarget,
+  type DeleteTargetType,
+  type PendingDeleteRequest,
+} from "../shared";
 import { TodoManager } from "./to-do-manager";
 import { sendFCMPushNotification } from "./fcm.server";
 
-export type DeleteTargetType = "task" | "list" | "clear_completed";
+export type { DeleteTargetType, PendingDeleteRequest };
+export { describeDeleteTarget };
 
 export const DELETE_REQUEST_MESSAGE =
   "Delete request sent. The list owner must approve it.";
 
 export const DELETE_REQUEST_ALREADY_MESSAGE =
   "A delete request for this is already waiting for the list owner.";
-
-export interface PendingDeleteRequest {
-  id: string;
-  listId: string;
-  listName: string;
-  requesterId: string;
-  targetType: DeleteTargetType;
-  targetId: string;
-  /** Task text when targetType is task; otherwise null */
-  targetLabel: string | null;
-  createdAt: number;
-}
 
 type PendingRow = {
   id: string;
@@ -48,16 +42,6 @@ function mapRow(row: PendingRow): PendingDeleteRequest {
 function normalizeTargetId(targetType: DeleteTargetType, targetId?: string | null): string {
   if (targetType === "task") return targetId || "";
   return "";
-}
-
-export function describeDeleteTarget(targetType: DeleteTargetType, targetLabel?: string | null): string {
-  if (targetType === "task") {
-    return targetLabel ? `task "${targetLabel}"` : "a task";
-  }
-  if (targetType === "clear_completed") {
-    return "completed tasks";
-  }
-  return "this list";
 }
 
 /**

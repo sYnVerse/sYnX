@@ -16,6 +16,7 @@ import { getAuthSettings, getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
 import {
   applySetCompletedLocal,
+  describeDeleteTarget,
   describeTimeZone,
   formatRescheduledToast,
   getLocalTimeZone,
@@ -25,6 +26,7 @@ import {
   isValidTimeZone,
   listTimeZones,
   sortChangelogItems,
+  type PendingDeleteRequest,
 } from "../../shared";
 import {
   DEFAULT_DISPLAY_NAME,
@@ -53,11 +55,9 @@ import {
 import {
   approvePendingDelete,
   declinePendingDelete,
-  describeDeleteTarget,
   listPendingDeletesForList,
   listPendingDeletesForOwner,
   requestOrPerformDelete,
-  type PendingDeleteRequest,
 } from "~/pending-deletes.server";
 import {
   MAX_CATEGORY_LENGTH,

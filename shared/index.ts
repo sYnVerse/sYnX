@@ -47,6 +47,20 @@ export interface PendingDeleteRequest {
   createdAt: number;
 }
 
+/** Short human label for a pending delete target (UI + push copy). */
+export function describeDeleteTarget(
+  targetType: DeleteTargetType,
+  targetLabel?: string | null
+): string {
+  if (targetType === "task") {
+    return targetLabel ? `task "${targetLabel}"` : "a task";
+  }
+  if (targetType === "clear_completed") {
+    return "completed tasks";
+  }
+  return "this list";
+}
+
 /** Public owner summary on list payloads — display name only (never email). */
 export interface ListOwner {
   displayName: string;
