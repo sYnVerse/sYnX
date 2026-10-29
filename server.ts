@@ -8,6 +8,7 @@ import { sendFCMPushNotification } from "./app/fcm.server";
 import { buildReminderEmailHtml, sanitizeEmailSubject } from "./app/html-escape.server";
 import { getRefreshedCookies } from "./app/auth.server";
 import { deleteExpiredGuestLists } from "./app/guest-access.server";
+import { pruneOldListActivity } from "./app/list-activity.server";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
@@ -53,13 +54,20 @@ export default {
     console.log(`[Cron] Scheduled job started at ${new Date(now).toISOString()}`);
 
     // Once an hour, delete expired lists that guests created in D1 before
-    // guest list creation moved fully to the browser.
+    // guest list creation moved fully to the browser, and prune activity
+    // log rows older than 90 days.
     if (new Date(event.scheduledTime).getUTCMinutes() === 0) {
       try {
         const deleted = await deleteExpiredGuestLists(db, now);
         if (deleted > 0) console.log(`[Cron] Deleted ${deleted} expired guest list(s).`);
       } catch (e) {
         console.error("[Cron] Failed to delete expired guest lists:", e);
+      }
+      try {
+        const pruned = await pruneOldListActivity(db, now);
+        if (pruned > 0) console.log(`[Cron] Pruned ${pruned} list activity row(s) older than 90 days.`);
+      } catch (e) {
+        console.error("[Cron] Failed to prune list activity:", e);
       }
     }
 

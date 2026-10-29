@@ -1,6 +1,10 @@
 import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import {
+  deleteRequestActivitySummary,
+  logListActivity,
+} from "../list-activity.server";
+import {
   approvePendingDelete,
   declinePendingDelete,
 } from "../pending-deletes.server";
@@ -43,6 +47,23 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     );
   }
 
+  const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+
+  // Capture share_mode + target_type before approve can delete the list (or
+  // decline removes the pending row), so activity logging still has context.
+  const pendingMeta = await db
+    .prepare(
+      `SELECT p.target_type, l.share_mode
+       FROM pending_delete_requests p
+       JOIN lists l ON l.id = p.list_id
+       WHERE p.id = ?`
+    )
+    .bind(requestId)
+    .first<{
+      target_type: "task" | "list" | "clear_completed";
+      share_mode: string | null;
+    }>();
+
   if (decision === "approve") {
     const result = await approvePendingDelete(db, requestId, user.userId);
     if (result.kind === "not_found") {
@@ -51,6 +72,16 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     if (result.kind === "forbidden") {
       return Response.json({ error: result.error }, { status: 403 });
     }
+    const logPromise = logListActivity(db, {
+      listId: result.listId,
+      action: "delete_approved",
+      actorId: user.userId,
+      isOwner: true,
+      shareMode: pendingMeta?.share_mode,
+      request,
+      summary: deleteRequestActivitySummary(result.targetType),
+    });
+    if (waitUntil) waitUntil(logPromise); else await logPromise;
     return Response.json({
       success: true,
       decision: "approve",
@@ -66,6 +97,18 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   if (result.kind === "forbidden") {
     return Response.json({ error: result.error }, { status: 403 });
   }
+  const logPromise = logListActivity(db, {
+    listId: result.listId,
+    action: "delete_declined",
+    actorId: user.userId,
+    isOwner: true,
+    shareMode: pendingMeta?.share_mode,
+    request,
+    summary: pendingMeta?.target_type
+      ? deleteRequestActivitySummary(pendingMeta.target_type)
+      : undefined,
+  });
+  if (waitUntil) waitUntil(logPromise); else await logPromise;
   return Response.json({
     success: true,
     decision: "decline",

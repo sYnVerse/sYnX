@@ -10,6 +10,8 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,12 +29,15 @@ import {
   FolderKanban,
   Bell,
   Flag,
+  History,
 } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import {
   TodoItem,
   TodoList,
+  describeListActivityAction,
   type ListAccessDenialCode,
+  type ListActivityEntry,
   type PendingDeleteRequest,
   type PriorityLevel,
 } from "../shared";
@@ -396,6 +401,46 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     [isOwner, pendingDeleteRequests]
   );
 
+  const canViewActivity = isOwner && shareMode !== "private";
+  const [showActivity, setShowActivity] = useState(false);
+  const [activityBefore, setActivityBefore] = useState<number | null>(null);
+
+  const {
+    data: activityPage,
+    isFetching: activityFetching,
+    isError: activityError,
+    refetch: refetchActivity,
+  } = useQuery({
+    queryKey: ["list-activity", listId, activityBefore],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: "50" });
+      if (activityBefore != null) params.set("before", String(activityBefore));
+      const res = await apiClient.get(`/api/v1/lists/${listId}/activity?${params.toString()}`);
+      return {
+        entries: (res.data.entries || []) as ListActivityEntry[],
+        listName: res.data.listName as string | undefined,
+      };
+    },
+    enabled: canViewActivity && showActivity,
+  });
+
+  const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>([]);
+  React.useEffect(() => {
+    if (!showActivity) {
+      setActivityEntries([]);
+      setActivityBefore(null);
+      return;
+    }
+    if (!activityPage) return;
+    setActivityEntries((prev) => {
+      if (activityBefore == null) return activityPage.entries;
+      const seen = new Set(prev.map((e) => e.id));
+      return [...prev, ...activityPage.entries.filter((e) => !seen.has(e.id))];
+    });
+  }, [activityPage, activityBefore, showActivity]);
+
+  const activityHasMore = (activityPage?.entries.length ?? 0) >= 50;
+
   const filteredTodos = structuredTodos.filter((parent) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase().trim();
@@ -494,21 +539,41 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             {ownershipLabel}
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.switchListBtn, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
-          onPress={() => {
-            triggerImpactHaptic();
-            onSwitchLists?.();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Switch lists"
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <FolderKanban size={16} color={theme.accent} />
-          <Text style={[styles.switchListText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
-            Switch
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.listHeaderActions}>
+          {canViewActivity ? (
+            <TouchableOpacity
+              style={[styles.switchListBtn, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+              onPress={() => {
+                triggerImpactHaptic();
+                setActivityBefore(null);
+                setShowActivity(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="View activity"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <History size={16} color={theme.accent} />
+              <Text style={[styles.switchListText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
+                Activity
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity
+            style={[styles.switchListBtn, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
+            onPress={() => {
+              triggerImpactHaptic();
+              onSwitchLists?.();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Switch lists"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <FolderKanban size={16} color={theme.accent} />
+            <Text style={[styles.switchListText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
+              Switch
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {listMeta ? (
@@ -845,6 +910,113 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       />
 
       <ChangelogModal visible={showChangelog} onClose={handleDismissChangelog} />
+
+      <Modal
+        visible={showActivity}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowActivity(false)}
+      >
+        <View style={styles.activityOverlay}>
+          <TouchableOpacity
+            style={styles.activityDismiss}
+            activeOpacity={1}
+            onPress={() => setShowActivity(false)}
+            accessibilityLabel="Close activity"
+          />
+          <View
+            style={[
+              styles.activitySheet,
+              { backgroundColor: theme.surface, borderColor: theme.cardBorder },
+            ]}
+          >
+            <Text style={[styles.activityTitle, { color: theme.textPrimary }]}>Activity</Text>
+            <Text style={[styles.activitySubtitle, { color: theme.textMuted }]}>
+              Who changed this shared list, and from which IP. Only you can see this.
+            </Text>
+            {activityFetching && activityEntries.length === 0 ? (
+              <ActivityIndicator color={theme.accent} style={{ marginVertical: 24 }} />
+            ) : activityError && activityEntries.length === 0 ? (
+              <TouchableOpacity onPress={() => refetchActivity()} accessibilityRole="button">
+                <Text style={[styles.activityEmpty, { color: theme.accent }]}>
+                  Couldn't load activity. Tap to retry.
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <ScrollView style={styles.activityScroll} contentContainerStyle={{ paddingBottom: 16 }}>
+                {activityEntries.length === 0 ? (
+                  <Text style={[styles.activityEmpty, { color: theme.textMuted }]}>
+                    No activity yet on this shared list.
+                  </Text>
+                ) : (
+                  activityEntries.map((entry) => (
+                    <View
+                      key={entry.id}
+                      style={[
+                        styles.activityRow,
+                        { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                      ]}
+                    >
+                      <View style={styles.activityRowHeader}>
+                        <Text style={[styles.activityAction, { color: theme.textPrimary }]}>
+                          {describeListActivityAction(entry.action)}
+                        </Text>
+                        <Text style={[styles.activityWhen, { color: theme.textMuted }]}>
+                          {new Date(entry.createdAt).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      </View>
+                      <Text style={[styles.activityActor, { color: theme.textSecondary }]}>
+                        {entry.actorLabel}
+                        {entry.actorType !== "owner" ? ` · ${entry.actorType}` : ""}
+                      </Text>
+                      {entry.summary ? (
+                        <Text style={[styles.activitySummary, { color: theme.textMuted }]}>
+                          {entry.summary}
+                        </Text>
+                      ) : null}
+                      {entry.clientIp ? (
+                        <Text style={[styles.activityIp, { color: theme.textMuted }]}>
+                          IP {entry.clientIp}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))
+                )}
+                {activityHasMore && activityEntries.length > 0 ? (
+                  <TouchableOpacity
+                    style={[styles.activityLoadMore, { backgroundColor: theme.accentLight }]}
+                    disabled={activityFetching}
+                    onPress={() => {
+                      const oldest = activityEntries[activityEntries.length - 1]?.createdAt;
+                      if (oldest == null) return;
+                      setActivityBefore(oldest);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Load more activity"
+                  >
+                    <Text style={[styles.activityLoadMoreText, { color: theme.accent }]}>
+                      {activityFetching ? "Loading…" : "Load more"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </ScrollView>
+            )}
+            <TouchableOpacity
+              style={[styles.activityCloseBtn, { backgroundColor: theme.accent }]}
+              onPress={() => setShowActivity(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close activity"
+            >
+              <Text style={styles.activityCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -876,6 +1048,12 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.xs,
   },
+  listHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  },
   listTitle: {
     fontSize: typography.xl,
     fontWeight: "800",
@@ -899,6 +1077,99 @@ const styles = StyleSheet.create({
   switchListText: {
     fontSize: typography.sm,
     fontWeight: "700",
+  },
+  activityOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  activityDismiss: {
+    flex: 1,
+  },
+  activitySheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.lg,
+    maxHeight: "80%",
+  },
+  activityTitle: {
+    fontSize: typography.lg,
+    fontWeight: "800",
+  },
+  activitySubtitle: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+    marginTop: 4,
+    marginBottom: spacing.sm,
+  },
+  activityScroll: {
+    maxHeight: 420,
+  },
+  activityEmpty: {
+    fontSize: typography.sm,
+    textAlign: "center",
+    paddingVertical: 24,
+  },
+  activityRow: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    gap: 4,
+  },
+  activityRowHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  activityAction: {
+    fontSize: typography.sm,
+    fontWeight: "700",
+    flex: 1,
+  },
+  activityWhen: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+  },
+  activityActor: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+  },
+  activitySummary: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+  },
+  activityIp: {
+    fontSize: typography.xs,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
+  activityLoadMore: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 4,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  activityLoadMoreText: {
+    fontSize: typography.sm,
+    fontWeight: "700",
+  },
+  activityCloseBtn: {
+    marginTop: spacing.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 14,
+    borderRadius: 14,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  activityCloseText: {
+    color: "#FFFFFF",
+    fontSize: typography.sm,
+    fontWeight: "800",
   },
   offlineBanner: {
     paddingHorizontal: 12,

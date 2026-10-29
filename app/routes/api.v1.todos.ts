@@ -6,6 +6,7 @@ import { CreateTodoSchema } from "../../shared";
 
 import { getListAccess } from "../api-helpers.server";
 import { isListFull } from "../guest-access.server";
+import { logListActivity } from "../list-activity.server";
 import {
   listPendingDeletesForList,
   pendingTaskDeleteIds,
@@ -86,6 +87,19 @@ export async function action({ request, context }: ActionFunctionArgs) {
       parsed.recurrence,
       parsed.durationMinutes
     );
+
+    const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+    const logPromise = logListActivity(db, {
+      listId: parsed.listId,
+      taskId: todo.id,
+      action: "task_created",
+      actorId: user.userId,
+      isOwner: access.isOwner,
+      shareMode: access.list?.share_mode,
+      request,
+      summary: parsed.text,
+    });
+    if (waitUntil) waitUntil(logPromise); else await logPromise;
 
     return Response.json({ success: true, todo }, { status: 201 });
   } catch (err: any) {

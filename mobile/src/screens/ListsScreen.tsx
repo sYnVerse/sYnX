@@ -32,6 +32,7 @@ import {
   Copy,
   Pin,
   X,
+  History,
 } from "lucide-react-native";
 import {
   getPinnedWidgetConfig,
@@ -44,9 +45,11 @@ import {
   TodoList,
   TodoItem,
   ShareMode,
+  describeListActivityAction,
   getShareModeLabel,
   getSharedNameNotice,
   isMakingListPublic,
+  type ListActivityEntry,
 } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
@@ -91,6 +94,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const [modalVisible, setModalVisible] = useState(false);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [sharingList, setSharingList] = useState<TodoList | null>(null);
+  const [activityList, setActivityList] = useState<TodoList | null>(null);
+  const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityHasMore, setActivityHasMore] = useState(false);
+  const [activityError, setActivityError] = useState(false);
   const [pinnedConfig, setPinnedConfig] = useState<PinnedWidgetConfig | null>(null);
 
   useEffect(() => {
@@ -447,6 +455,43 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     }
   };
 
+  const openActivity = (list: TodoList) => {
+    triggerImpactHaptic();
+    setActivityList(list);
+    setActivityEntries([]);
+    setActivityHasMore(false);
+    setActivityError(false);
+    void loadActivity(list.id, null, true);
+  };
+
+  const loadActivity = async (listId: string, before: number | null, replace: boolean) => {
+    setActivityLoading(true);
+    setActivityError(false);
+    try {
+      const params = new URLSearchParams({ limit: "50" });
+      if (before != null) params.set("before", String(before));
+      const res = await apiClient.get(`/api/v1/lists/${listId}/activity?${params.toString()}`);
+      const entries = (res.data.entries || []) as ListActivityEntry[];
+      setActivityEntries((prev) => {
+        if (replace) return entries;
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...entries.filter((e) => !seen.has(e.id))];
+      });
+      setActivityHasMore(entries.length >= 50);
+    } catch {
+      setActivityError(true);
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  const closeActivity = () => {
+    setActivityList(null);
+    setActivityEntries([]);
+    setActivityHasMore(false);
+    setActivityError(false);
+  };
+
   const sheetOverlay = (children: React.ReactNode, onClose: () => void) => (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -653,6 +698,17 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                       </>
                     ) : (
                       <>
+                        {(item.shareMode || "private") !== "private" ? (
+                          <TouchableOpacity
+                            style={styles.actionIconBtn}
+                            onPress={() => openActivity(item)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Activity for ${item.name}`}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <History size={16} color={theme.accent} />
+                          </TouchableOpacity>
+                        ) : null}
                         <TouchableOpacity
                           style={styles.actionIconBtn}
                           onPress={() => {
@@ -1085,6 +1141,106 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
             </TouchableOpacity>
           </>,
           () => setSharingList(null)
+        )}
+
+      {/* Owner activity sheet */}
+      {!!activityList &&
+        sheetOverlay(
+          <>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Activity</Text>
+            <Text style={[styles.label, { color: theme.textMuted }]}>{activityList.name}</Text>
+            <Text style={[styles.hintText, { color: theme.textMuted, marginBottom: 8 }]}>
+              Who changed this shared list, and from which IP. Only you can see this.
+            </Text>
+            {activityLoading && activityEntries.length === 0 ? (
+              <ActivityIndicator color={theme.accent} style={{ marginVertical: 24 }} />
+            ) : activityError && activityEntries.length === 0 ? (
+              <TouchableOpacity
+                onPress={() => activityList && void loadActivity(activityList.id, null, true)}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.hintText, { color: theme.accent, textAlign: "center" }]}>
+                  Couldn't load activity. Tap to retry.
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ paddingBottom: 8 }}>
+                {activityEntries.length === 0 ? (
+                  <Text style={[styles.hintText, { color: theme.textMuted, textAlign: "center", paddingVertical: 24 }]}>
+                    No activity yet on this shared list.
+                  </Text>
+                ) : (
+                  activityEntries.map((entry) => (
+                    <View
+                      key={entry.id}
+                      style={[
+                        styles.catBtn,
+                        {
+                          backgroundColor: theme.inputBg,
+                          borderColor: theme.inputBorder,
+                          width: "100%",
+                          flexDirection: "column",
+                          alignItems: "stretch",
+                          marginBottom: 8,
+                          gap: 4,
+                        },
+                      ]}
+                    >
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 8 }}>
+                        <Text style={{ fontSize: typography.sm, fontWeight: "700", color: theme.textPrimary, flex: 1 }}>
+                          {describeListActivityAction(entry.action)}
+                        </Text>
+                        <Text style={{ fontSize: typography.xs, color: theme.textMuted }}>
+                          {new Date(entry.createdAt).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </Text>
+                      </View>
+                      <Text style={{ fontSize: typography.xs, color: theme.textSecondary, fontWeight: "600" }}>
+                        {entry.actorLabel}
+                        {entry.actorType !== "owner" ? ` · ${entry.actorType}` : ""}
+                      </Text>
+                      {entry.summary ? (
+                        <Text style={{ fontSize: typography.xs, color: theme.textMuted }}>{entry.summary}</Text>
+                      ) : null}
+                      {entry.clientIp ? (
+                        <Text style={{ fontSize: typography.xs, color: theme.textMuted }}>
+                          IP {entry.clientIp}
+                        </Text>
+                      ) : null}
+                    </View>
+                  ))
+                )}
+                {activityHasMore && activityEntries.length > 0 ? (
+                  <TouchableOpacity
+                    style={[styles.copyBtn, { borderColor: theme.inputBorder, backgroundColor: theme.inputBg }]}
+                    disabled={activityLoading}
+                    onPress={() => {
+                      const oldest = activityEntries[activityEntries.length - 1]?.createdAt;
+                      if (oldest == null || !activityList) return;
+                      void loadActivity(activityList.id, oldest, false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Load more activity"
+                  >
+                    <Text style={[styles.copyBtnText, { color: theme.accent }]}>
+                      {activityLoading ? "Loading…" : "Load more"}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </ScrollView>
+            )}
+            <TouchableOpacity
+              style={[styles.cancelBtn, { marginTop: 8, alignSelf: "center" }]}
+              onPress={closeActivity}
+            >
+              <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Close</Text>
+            </TouchableOpacity>
+          </>,
+          closeActivity
         )}
     </View>
   );

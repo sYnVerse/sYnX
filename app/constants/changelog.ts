@@ -1,23 +1,8 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.5.0";
+export const WEB_VERSION = "v5.4.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
-  {
-    version: "v5.5.0",
-    date: "2026-10-30",
-    title: "What's new?",
-    changes: [
-      {
-        type: "NEW",
-        text: "On Collaborative lists, only you (the owner) can delete tasks, clear completed tasks, or delete the list right away. Collaborators and guests send a delete request you approve or decline, and tasks waiting on approval are marked clearly."
-      },
-      {
-        type: "IMPR",
-        text: "Private and View-Only lists still work the same: View-Only can't delete, and Private stays owner-only."
-      }
-    ]
-  },
   {
     version: "v5.4.0",
     date: "2026-10-29",
@@ -34,6 +19,18 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "NEW",
         text: "The Share menu now reminds you that anyone with a shared list's link can see your display name, including when you switch a list from Private to View-Only or Collaborative."
+      },
+      {
+        type: "NEW",
+        text: "On Collaborative lists, only you (the owner) can delete tasks, clear completed tasks, or delete the list right away. Collaborators and guests send a delete request you approve or decline, and tasks waiting on approval are marked clearly."
+      },
+      {
+        type: "NEW",
+        text: "Shared lists keep an Activity log for you (the owner): who added, edited, completed or deleted tasks, who requested deletes, and from which IP. Collaborators and guests can't see it. Entries older than 90 days are removed automatically."
+      },
+      {
+        type: "IMPR",
+        text: "Private and View-Only lists still work the same: View-Only can't delete, and Private stays owner-only."
       }
     ]
   },
