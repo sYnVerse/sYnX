@@ -25,6 +25,7 @@ export interface TodoItem {
   priority: PriorityLevel;
   reminderAt?: number;
   reminderSent: boolean;
+  reminderUserId?: string;
   parentId?: string | null;
   recurrence: RecurrencePattern;
   durationMinutes?: number | null;

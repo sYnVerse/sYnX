@@ -15,3 +15,16 @@ export const queryClient = new QueryClient({
 export const asyncStoragePersister = createAsyncStoragePersister({
   storage: AsyncStorage,
 });
+
+/**
+ * Clears both the in-memory TanStack Query cache and the persisted AsyncStorage
+ * snapshot so signed-out user data is not retained on disk.
+ */
+export async function clearPersistedQueryCache(): Promise<void> {
+  queryClient.clear();
+  try {
+    await asyncStoragePersister.removeClient();
+  } catch {
+    // Ignore storage cleanup errors on sign-out.
+  }
+}

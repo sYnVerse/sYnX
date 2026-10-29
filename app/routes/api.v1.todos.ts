@@ -74,6 +74,15 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (textError) {
       return Response.json({ error: textError }, { status: 400 });
     }
+    if (parsed.parentId) {
+      const parent = await db
+        .prepare("SELECT 1 FROM todos WHERE id = ? AND list_id = ?")
+        .bind(parsed.parentId, parsed.listId)
+        .first();
+      if (!parent) {
+        return Response.json({ error: "Parent task not found" }, { status: 400 });
+      }
+    }
     if (await isListFull(db, parsed.listId)) {
       return Response.json({ error: TASK_LIMIT_ERROR }, { status: 400 });
     }
@@ -85,7 +94,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
       parsed.reminderAt,
       parsed.parentId,
       parsed.recurrence,
-      parsed.durationMinutes
+      parsed.durationMinutes,
+      user.userId
     );
 
     const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
@@ -102,7 +112,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (waitUntil) waitUntil(logPromise); else await logPromise;
 
     return Response.json({ success: true, todo }, { status: 201 });
-  } catch (err: any) {
-    return Response.json({ error: err.message || "Invalid request payload" }, { status: 400 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "";
+    return Response.json({ error: message || "Invalid request payload" }, { status: 400 });
   }
 }

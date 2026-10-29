@@ -5,11 +5,12 @@ import {
   json,
 } from "@remix-run/cloudflare";
 import { useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
-import { TodoManager, type Todo } from "~/to-do-manager";
+import { TodoManager, type Todo, type TodoRow } from "~/to-do-manager";
+import type { ListRow } from "~/api-helpers.server";
 import { useState, useRef, useEffect, useEffectEvent, useCallback, useMemo, useContext } from "react";
 import { readStoredValue, useHydrated, useStoredValue, writeStoredValue } from "~/client-storage";
 import { CalendarView } from "~/components/calendar-view";
-import { GUEST_REMINDER_HINT, GuestContext } from "~/guest-context";
+import { GUEST_REMINDER_HINT, GuestContext, type GuestActionPayload } from "~/guest-context";
 import { getProfileLabel } from "~/profile-label";
 import { ProfileAvatar } from "~/components/profile-avatar";
 import { getAuthSettings, getOptionalUser } from "~/auth.server";
@@ -85,10 +86,14 @@ export interface GuestList {
   name: string;
   owner_id: string;
   created_at: number;
-  share_mode?: string;
-  category?: string;
+  expiration_ttl?: number | null;
+  share_mode?: string | null;
+  category?: string | null;
+  owner_display_name?: string;
   todos: Todo[];
 }
+
+type LoaderListRow = ListRow & { owner_display_name?: string };
 
 
 /**
@@ -152,14 +157,14 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     }
   }
 
-  let lists: any[] = [];
+  let lists: LoaderListRow[] = [];
   const activeListId = params.id;
   let activeListExists = false;
 
   if (isLoggedIn) {
     // Load owned lists from D1
     try {
-      const { results: listRows } = await db.prepare("SELECT * FROM lists WHERE owner_id = ? ORDER BY created_at ASC").bind(userId).all();
+      const { results: listRows } = await db.prepare("SELECT * FROM lists WHERE owner_id = ? ORDER BY created_at ASC").bind(userId).all<ListRow>();
       lists = listRows || [];
     } catch (e) {
       console.error("Failed to load lists:", e);
@@ -168,7 +173,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     // Load previously opened shared lists (still public); private lists drop out here
     try {
       const sharedRows = await listSharedWithMe(db, userId);
-      const ownedIds = new Set(lists.map((l: any) => l.id));
+      const ownedIds = new Set(lists.map((l) => l.id));
       for (const row of sharedRows) {
         if (!ownedIds.has(row.id)) lists.push(row);
       }
@@ -176,11 +181,11 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
       console.error("Failed to load shared-with-me lists:", e);
     }
 
-    activeListExists = lists.some((l: any) => l.id === activeListId);
+    activeListExists = lists.some((l) => l.id === activeListId);
 
     if (!activeListExists && activeListId) {
       try {
-        const sharedList = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(activeListId).first<any>();
+        const sharedList = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(activeListId).first<ListRow>();
         if (sharedList && sharedList.share_mode && sharedList.share_mode !== "private") {
           lists.push(sharedList);
           activeListExists = true;
@@ -190,7 +195,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
         console.error("Failed to query shared list:", e);
       }
     } else if (activeListExists && activeListId) {
-      const active = lists.find((l: any) => l.id === activeListId);
+      const active = lists.find((l) => l.id === activeListId);
       if (active && active.owner_id !== userId) {
         await recordSharedListAccess(db, userId, activeListId, false);
       }
@@ -217,7 +222,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     // Check if params.id matches a shared list from D1
     if (activeListId) {
       try {
-        const sharedList = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(activeListId).first<any>();
+        const sharedList = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(activeListId).first<ListRow>();
         if (sharedList && sharedList.share_mode && sharedList.share_mode !== "private") {
           lists.push(sharedList);
           activeListExists = true;
@@ -232,29 +237,29 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
   try {
     const ownerNames = await getDisplayNamesForUsers(
       db,
-      lists.map((l: any) => l.owner_id)
+      lists.map((l) => l.owner_id)
     );
-    lists = lists.map((l: any) => ({
+    lists = lists.map((l) => ({
       ...l,
       owner_display_name: ownerNames.get(l.owner_id) || DEFAULT_DISPLAY_NAME,
     }));
   } catch (e) {
     console.error("Failed to resolve owner display names:", e);
-    lists = lists.map((l: any) => ({
+    lists = lists.map((l) => ({
       ...l,
       owner_display_name: DEFAULT_DISPLAY_NAME,
     }));
   }
 
   // Load all todos for any lists loaded from D1 (logged in user or shared list)
-  let allTodos: any[] = [];
-  const listIds = lists.map((l: any) => l.id);
+  let allTodos: TodoRow[] = [];
+  const listIds = lists.map((l) => l.id);
   if (listIds.length > 0) {
     try {
       const placeholders = listIds.map(() => "?").join(",");
       const { results } = await db.prepare(`
         SELECT * FROM todos WHERE list_id IN (${placeholders})
-      `).bind(...listIds).all();
+      `).bind(...listIds).all<TodoRow>();
       allTodos = results || [];
     } catch (e) {
       console.error("Failed to query todos:", e);
@@ -293,7 +298,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
   let listActivity: ListActivityEntry[] = [];
   try {
     if (isLoggedIn && activeListId) {
-      const activeMeta = lists.find((l: any) => l.id === activeListId);
+      const activeMeta = lists.find((l) => l.id === activeListId);
       if (
         activeMeta &&
         activeMeta.owner_id === userId &&
@@ -307,30 +312,32 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
     console.error("Failed to load list activity:", e);
   }
 
-  const listsWithTodos = lists.map((list: any) => {
-    const listTodos = allTodos
-      .filter((t: any) => t.list_id === list.id)
-      .map((t: any) => ({
+  const listsWithTodos: GuestList[] = lists.map((list) => {
+    const listTodos: Todo[] = allTodos
+      .filter((t) => t.list_id === list.id)
+      .map((t) => ({
         id: t.id,
+        listId: t.list_id,
         text: t.text,
         completed: Boolean(t.completed),
         createdAt: Number(t.created_at),
         priority: (t.priority || "none") as "low" | "medium" | "high" | "none",
         reminderAt: t.reminder_at ? Number(t.reminder_at) : undefined,
         reminderSent: t.reminder_sent !== null ? Boolean(t.reminder_sent) : undefined,
+        reminderUserId: t.reminder_user_id || undefined,
         parentId: t.parent_id || undefined,
         recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
-        durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : null,
+        durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : undefined,
         pendingDelete: pendingTaskIds.has(t.id),
       }))
-      .sort((a: any, b: any) => b.createdAt - a.createdAt);
+      .sort((a, b) => b.createdAt - a.createdAt);
     return {
       ...list,
       todos: listTodos,
     };
   });
 
-  const activeList = listsWithTodos.find((l: any) => l.id === activeListId);
+  const activeList = listsWithTodos.find((l) => l.id === activeListId);
   const todos = activeList ? activeList.todos : [];
 
   const totalLists = listsWithTodos.length;
@@ -338,7 +345,7 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
   let completedTasks = 0;
   for (const item of listsWithTodos) {
     totalTasks += item.todos.length;
-    completedTasks += item.todos.filter((t: any) => t.completed).length;
+    completedTasks += item.todos.filter((t) => t.completed).length;
   }
 
   // Load settings
@@ -358,7 +365,18 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
   };
   if (userId && isLoggedIn) {
     try {
-      const settingsVal = await db.prepare("SELECT * FROM user_settings WHERE user_id = ?").bind(userId).first<any>();
+      const settingsVal = await db.prepare("SELECT * FROM user_settings WHERE user_id = ?").bind(userId).first<{
+        email_enabled?: number | boolean | null;
+        sms_enabled?: number | boolean | null;
+        phone_number?: string | null;
+        phone_carrier?: string | null;
+        discord_webhook_url?: string | null;
+        display_name?: string | null;
+        time_zone?: string | null;
+        avatar_url?: string | null;
+        suggested_display_name?: string | null;
+        display_name_suggestion_dismissed?: number | null;
+      }>();
       if (settingsVal) {
         settings = {
           emailEnabled: Boolean(settingsVal.email_enabled),
@@ -443,11 +461,15 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const rawLists = formData.get("guestLists") as string;
       if (rawLists) {
         try {
-          const guestLists = JSON.parse(rawLists);
+          const guestLists = JSON.parse(rawLists) as Array<{
+            name?: unknown;
+            created_at?: unknown;
+            todos?: unknown[];
+          }>;
           for (const gList of guestLists) {
             const listName = (String(gList.name || "") || "My Tasks").trim().slice(0, MAX_LIST_NAME_LENGTH) || "My Tasks";
             const todos = (Array.isArray(gList.todos) ? gList.todos : [])
-              .filter((todo: any) => typeof todo?.text === "string" && todo.text.trim())
+              .filter((todo): todo is Partial<Todo> & { text: string } => Boolean(todo && typeof (todo as { text?: unknown }).text === "string" && (todo as { text: string }).text.trim()))
               .slice(0, MAX_TASKS_PER_LIST);
             if (listName === "My Tasks" && todos.length === 0) {
               continue;
@@ -455,13 +477,23 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
             const newListId = crypto.randomUUID();
             await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, NULL)")
-              .bind(newListId, listName, userId, gList.created_at || Date.now())
+              .bind(newListId, listName, userId, Number(gList.created_at) || Date.now())
               .run();
-            
+
+            // Pre-allocate new UUIDs so subtask parentId links within the list stay valid.
+            const idMap = new Map<string, string>();
             for (const todo of todos) {
-              const todoId = crypto.randomUUID();
+              if (typeof todo.id === "string" && todo.id) {
+                idMap.set(todo.id, crypto.randomUUID());
+              }
+            }
+
+            for (const todo of todos) {
+              const todoId = (typeof todo.id === "string" && idMap.get(todo.id)) || crypto.randomUUID();
+              const mappedParentId =
+                typeof todo.parentId === "string" ? (idMap.get(todo.parentId) ?? null) : null;
               await db.prepare(
-                "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, parent_id, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
               ).bind(
                 todoId,
                 newListId,
@@ -471,7 +503,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
                 todo.priority && todo.priority !== "none" ? todo.priority : null,
                 todo.reminderAt ?? null,
                 todo.reminderSent ? 1 : (todo.reminderAt ? 0 : null),
-                todo.parentId ?? null,
+                todo.reminderAt ? userId : null,
+                mappedParentId,
                 todo.recurrence || "none"
               ).run();
             }
@@ -524,6 +557,13 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     const discordWebhookUrlRaw = (formData.get("discordWebhookUrl") as string) || "";
     const discordWebhookUrl = discordWebhookUrlRaw.trim();
     const displayName = sanitizeDisplayNameInput(formData.get("displayName"));
+
+    if (phoneNumber.trim().length > 32) {
+      return Response.json({ error: "Phone number is too long" }, { status: 400 });
+    }
+    if (phoneCarrier.trim().length > 64) {
+      return Response.json({ error: "Phone carrier is too long" }, { status: 400 });
+    }
 
     if (discordWebhookUrl) {
       const DISCORD_WEBHOOK_REGEX = /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
@@ -660,10 +700,12 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   let hasOwnership = false;
   let isCollaborative = false;
   let activeShareMode: string | null = null;
+  let listOwnerId: string | null = null;
   if (activeListId) {
     try {
-      const listRow = await db.prepare("SELECT owner_id, share_mode FROM lists WHERE id = ?").bind(activeListId).first<any>();
+      const listRow = await db.prepare("SELECT owner_id, share_mode FROM lists WHERE id = ?").bind(activeListId).first<{ owner_id: string; share_mode: string | null }>();
       if (listRow) {
+        listOwnerId = listRow.owner_id;
         // Guests never own D1 lists; their own lists live in localStorage.
         hasOwnership = isLoggedIn && listRow.owner_id === userId;
         isCollaborative = listRow.share_mode === "public_edit";
@@ -729,7 +771,15 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         return Response.json({ error: TASK_LIMIT_ERROR }, { status: 400 });
       }
 
-      const created = await todoManager.create(text, priority, reminderAt, parentId, recurrence, durationMinutes);
+      const created = await todoManager.create(
+        text,
+        priority,
+        reminderAt,
+        parentId,
+        recurrence,
+        durationMinutes,
+        isLoggedIn ? userId : null
+      );
       scheduleActivityLog({
         listId: activeListId,
         taskId: created.id,
@@ -744,7 +794,12 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
     case "toggle": {
       const id = formData.get("id") as string;
-      const timeZone = isLoggedIn ? await getUserTimeZone(db, userId) : undefined;
+      const reminderRow = await db
+        .prepare("SELECT reminder_user_id FROM todos WHERE id = ? AND list_id = ?")
+        .bind(id, activeListId)
+        .first<{ reminder_user_id: string | null }>();
+      const tzUserId = reminderRow?.reminder_user_id || (isLoggedIn ? userId : "");
+      const timeZone = tzUserId ? await getUserTimeZone(db, tzUserId) : undefined;
       const todo = await todoManager.toggle(id, { timeZone });
       scheduleActivityLog({
         listId: activeListId,
@@ -762,7 +817,12 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const id = formData.get("id") as string;
       const completedRaw = formData.get("completed");
       const completed = completedRaw === "true" || completedRaw === "1";
-      const timeZone = isLoggedIn ? await getUserTimeZone(db, userId) : undefined;
+      const reminderRow = await db
+        .prepare("SELECT reminder_user_id FROM todos WHERE id = ? AND list_id = ?")
+        .bind(id, activeListId)
+        .first<{ reminder_user_id: string | null }>();
+      const tzUserId = reminderRow?.reminder_user_id || (isLoggedIn ? userId : "");
+      const timeZone = tzUserId ? await getUserTimeZone(db, tzUserId) : undefined;
       const { todo, rescheduled } = await todoManager.setCompleted(id, completed, { timeZone });
       scheduleActivityLog({
         listId: activeListId,
@@ -846,14 +906,18 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const textError = taskTextError(text.trim());
       if (textError) return Response.json({ error: textError }, { status: 400 });
       const previous = await db
-        .prepare("SELECT text, reminder_at FROM todos WHERE id = ? AND list_id = ?")
+        .prepare("SELECT text, reminder_at, reminder_user_id FROM todos WHERE id = ? AND list_id = ?")
         .bind(id, activeListId)
-        .first<{ text: string; reminder_at: number | null }>();
-      if (!isLoggedIn) {
-        // Reminder text goes to the list owner, so guests can't reword a task
-        // that has a reminder.
-        if (previous?.reminder_at != null) {
+        .first<{ text: string; reminder_at: number | null; reminder_user_id: string | null }>();
+      if (previous?.reminder_at != null) {
+        if (!isLoggedIn) {
+          // Reminder text goes to the user who set the reminder, so guests can't
+          // reword a task that has a reminder.
           return Response.json({ error: "Sign in to edit tasks that have reminders." }, { status: 403 });
+        }
+        const reminderOwnerId = previous.reminder_user_id || listOwnerId;
+        if (reminderOwnerId && reminderOwnerId !== userId) {
+          return Response.json({ error: "Only the user who set the reminder can edit this task's text." }, { status: 403 });
         }
       }
       await todoManager.updateText(id, text.trim());
@@ -876,7 +940,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       const id = formData.get("id") as string;
       const reminderAtVal = formData.get("reminderAt");
       const reminderAt = reminderAtVal ? Number(reminderAtVal) : undefined;
-      await todoManager.updateReminder(id, reminderAt);
+      await todoManager.updateReminder(id, reminderAt, isLoggedIn ? userId : null);
       scheduleActivityLog({
         listId: activeListId,
         taskId: id,
@@ -1125,7 +1189,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
 
       if (ownsList && activeListId === listId) {
         try {
-          const firstList = await db.prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1").bind(userId).first<any>();
+          const firstList = await db.prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1").bind(userId).first<{ id: string }>();
           if (firstList) {
             return redirect(`/${firstList.id}`);
           } else {
@@ -1781,10 +1845,13 @@ function TodoItem({
   canEdit?: boolean;
   onNotify?: (message: string) => void;
 }) {
-  const { isLoggedIn, canSetReminders, onGuestAction } = useContext(GuestContext);
-  // A task's reminder text goes to the list owner, so guests on a shared list
-  // can't reword tasks that have reminders.
-  const canEditText = canEdit && (canSetReminders || !todo.reminderAt);
+  const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
+  // A task's reminder text goes to the user who set the reminder, so guests or
+  // other collaborators on a shared list can't reword someone else's reminder.
+  const reminderOwnerId = todo.reminderUserId || listOwnerId;
+  const canEditText =
+    canEdit &&
+    (!todo.reminderAt || (canSetReminders && (!reminderOwnerId || reminderOwnerId === currentUserId)));
   const toggleFetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
   const deleteFetcher = useFetcher<{
     success?: boolean;
@@ -2295,9 +2362,9 @@ export default function TodoPage() {
     const raw = readStoredValue(GUEST_STORAGE_KEY);
     if (!raw) return;
     try {
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as unknown;
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const validLists = parsed.filter((gList: any) => {
+        const validLists = parsed.filter((gList: { name?: string; todos?: unknown[] }) => {
           const listName = (gList.name || "My Tasks").trim();
           const hasTodos = Array.isArray(gList.todos) && gList.todos.length > 0;
           if (listName === "My Tasks" && !hasTodos) {
@@ -2318,14 +2385,14 @@ export default function TodoPage() {
     }
   }, [isLoggedIn, userId, submitListFetcher]);
 
-  const isSharedServerList = serverLists.some((l: any) => l.id === activeListId && l.owner_id !== userId);
+  const isSharedServerList = serverLists.some((l) => l.id === activeListId && l.owner_id !== userId);
   const lists = isLoggedIn || isSharedServerList ? serverLists : guestLists;
-  const activeListMeta = lists.find((l: any) => l.id === activeListId) || lists[0];
+  const activeListMeta = lists.find((l) => l.id === activeListId) || lists[0];
   const effectiveActiveListId = activeListMeta ? activeListMeta.id : activeListId;
   const activeTodos: Todo[] | undefined = activeListMeta?.todos;
   const todos: Todo[] = useMemo(() => activeTodos || [], [activeTodos]);
 
-  const handleGuestAction = useCallback((intent: string, payload: any) => {
+  const handleGuestAction = useCallback((intent: string, payload: GuestActionPayload = {}) => {
     if (isLoggedIn) return;
     // Task changes on a shared list go to the server. List changes (create,
     // rename, delete, category) always target the guest's own local lists.
@@ -2352,7 +2419,7 @@ export default function TodoPage() {
         const newTodo: Todo = {
           id: crypto.randomUUID(),
           listId: targetListId || userId || "guest_default",
-          text: payload.text,
+          text: payload.text || "",
           completed: false,
           createdAt: Date.now(),
           priority: payload.priority || "none",
@@ -2360,7 +2427,7 @@ export default function TodoPage() {
           reminderSent: payload.reminderAt ? false : undefined,
           parentId: payload.parentId || undefined,
           recurrence: payload.recurrence || "none",
-          durationMinutes: payload.durationMinutes ?? null,
+          durationMinutes: payload.durationMinutes ?? undefined,
         };
         if (prevLists.length === 0) {
           const defaultList: GuestList = {
@@ -2416,7 +2483,7 @@ export default function TodoPage() {
           if (l.id !== targetListId) return l;
           return {
             ...l,
-            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, priority: payload.priority } : t)),
+            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, priority: payload.priority || "none" } : t)),
           };
         });
         break;
@@ -2426,7 +2493,7 @@ export default function TodoPage() {
           if (l.id !== targetListId) return l;
           return {
             ...l,
-            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, text: payload.text } : t)),
+            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, text: payload.text || t.text } : t)),
           };
         });
         break;
@@ -2454,7 +2521,7 @@ export default function TodoPage() {
           if (l.id !== targetListId) return l;
           return {
             ...l,
-            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, recurrence: payload.recurrence } : t)),
+            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, recurrence: payload.recurrence || "none" } : t)),
           };
         });
         break;
@@ -2464,7 +2531,7 @@ export default function TodoPage() {
           if (l.id !== targetListId) return l;
           return {
             ...l,
-            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, durationMinutes: payload.durationMinutes ?? null } : t)),
+            todos: l.todos.map((t) => (t.id === payload.id ? { ...t, durationMinutes: payload.durationMinutes ?? undefined } : t)),
           };
         });
         break;
@@ -2479,7 +2546,7 @@ export default function TodoPage() {
       case "createList": {
         const newList: GuestList = {
           id: payload.id || crypto.randomUUID(),
-          name: payload.name,
+          name: payload.name || "My Tasks",
           owner_id: userId,
           created_at: Date.now(),
           share_mode: "private",
@@ -2490,7 +2557,7 @@ export default function TodoPage() {
       }
       case "renameList": {
         updatedLists = prevLists.map((l) =>
-          l.id === payload.listId ? { ...l, name: payload.newName } : l
+          l.id === payload.listId ? { ...l, name: payload.newName || l.name } : l
         );
         break;
       }
@@ -2511,9 +2578,16 @@ export default function TodoPage() {
 
   // Guests on someone else's shared list can edit tasks but not reminders.
   const canSetReminders = isLoggedIn || !isSharedServerList;
+  const activeListOwnerId = activeListMeta?.owner_id;
   const guestContextValue = useMemo(
-    () => ({ isLoggedIn, canSetReminders, onGuestAction: handleGuestAction }),
-    [isLoggedIn, canSetReminders, handleGuestAction]
+    () => ({
+      isLoggedIn,
+      canSetReminders,
+      currentUserId: userId,
+      listOwnerId: activeListOwnerId,
+      onGuestAction: handleGuestAction,
+    }),
+    [isLoggedIn, canSetReminders, userId, activeListOwnerId, handleGuestAction]
   );
   
   const inputRef = useRef<HTMLInputElement>(null);
@@ -2552,32 +2626,25 @@ export default function TodoPage() {
   const [showSharePopover, setShowSharePopover] = useState(false);
   const sharePopoverRef = useRef<HTMLDivElement>(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
-  const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>(
-    () => (loaderListActivity as ListActivityEntry[]) || []
-  );
-  const [activityHasMore, setActivityHasMore] = useState(
-    () => ((loaderListActivity as ListActivityEntry[]) || []).length >= 50
-  );
-  const activityLoadMoreSent = useRef(false);
-
-  // Keep the Activity panel in sync when the active list (or its loader data) changes.
-  useEffect(() => {
-    const seeded = (loaderListActivity as ListActivityEntry[]) || [];
-    setActivityEntries(seeded);
-    setActivityHasMore(seeded.length >= 50);
-  }, [loaderListActivity, activeListId]);
-
-  useEffect(() => {
-    if (activityFetcher.state !== "idle" || !activityLoadMoreSent.current) return;
-    activityLoadMoreSent.current = false;
+  const seededActivity = (loaderListActivity as ListActivityEntry[]) || [];
+  const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>(seededActivity);
+  const [activityHasMore, setActivityHasMore] = useState(seededActivity.length >= 50);
+  const [syncedActivitySeed, setSyncedActivitySeed] = useState<ListActivityEntry[]>(seededActivity);
+  if (syncedActivitySeed !== seededActivity) {
+    setSyncedActivitySeed(seededActivity);
+    setActivityEntries(seededActivity);
+    setActivityHasMore(seededActivity.length >= 50);
+  }
+  const [syncedActivityData, setSyncedActivityData] = useState(activityFetcher.data);
+  if (activityFetcher.state === "idle" && activityFetcher.data !== syncedActivityData) {
+    setSyncedActivityData(activityFetcher.data);
     const data = activityFetcher.data;
-    if (!data?.success || !Array.isArray(data.entries)) return;
-    setActivityEntries((prev) => {
-      const seen = new Set(prev.map((e) => e.id));
-      return [...prev, ...data.entries!.filter((e) => !seen.has(e.id))];
-    });
-    setActivityHasMore(data.entries.length >= 50);
-  }, [activityFetcher.state, activityFetcher.data]);
+    if (data?.success && Array.isArray(data.entries)) {
+      const seen = new Set(activityEntries.map((e) => e.id));
+      setActivityEntries([...activityEntries, ...data.entries.filter((e) => !seen.has(e.id))]);
+      setActivityHasMore(data.entries.length >= 50);
+    }
+  }
 
   // Apply the saved theme to the page once it is read from localStorage.
   useEffect(() => {
@@ -2756,7 +2823,7 @@ export default function TodoPage() {
       const notifiedStr = sessionStorage.getItem("synx_notified_ids") || "[]";
       const notifiedSet = new Set<string>(JSON.parse(notifiedStr));
 
-      lists.forEach((list: any) => {
+      lists.forEach((list) => {
         const listTitle = (list.name && String(list.name).trim()) || "Reminder";
         ((list.todos || []) as Todo[]).forEach((todo) => {
           if (
@@ -2764,6 +2831,7 @@ export default function TodoPage() {
             todo.reminderAt &&
             !todo.reminderSent &&
             todo.reminderAt <= now &&
+            (!todo.reminderUserId || todo.reminderUserId === userId) &&
             !notifiedSet.has(todo.id)
           ) {
             notifiedSet.add(todo.id);
@@ -2791,7 +2859,7 @@ export default function TodoPage() {
     checkReminders();
     const interval = setInterval(checkReminders, 10000);
     return () => clearInterval(interval);
-  }, [lists]);
+  }, [lists, userId]);
   
   // Custom modals state
   const [listToDelete, setListToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -2841,7 +2909,7 @@ export default function TodoPage() {
 
   // Inline List Title Edit State (Main Panel Header)
   const activeListName = activeListMeta?.name || "My Tasks";
-  const activeListShareMode = activeListMeta?.share_mode || "private";
+  const activeListShareMode: "private" | "public_read" | "public_edit" = activeListMeta?.share_mode === "public_read" || activeListMeta?.share_mode === "public_edit" ? activeListMeta.share_mode : "private";
   const isOwner = activeListMeta ? activeListMeta.owner_id === userId : false;
   // Name others see on this user's shared lists (saved value, not unsaved edits).
   const ownDisplayName = settings?.displayNameSet ? settings?.displayName : null;
@@ -2849,7 +2917,7 @@ export default function TodoPage() {
   const ownedPendingDeleteRequests = useMemo(
     () =>
       (pendingDeleteRequests as PendingDeleteRequest[]).filter((r) => {
-        const list = lists.find((l: any) => l.id === r.listId);
+        const list = lists.find((l) => l.id === r.listId);
         return list ? list.owner_id === userId : true;
       }),
     [pendingDeleteRequests, lists, userId]
@@ -2868,6 +2936,34 @@ export default function TodoPage() {
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleInput, setTitleInput] = useState(activeListName);
+  const titleEditInputRef = useRef<HTMLInputElement>(null);
+  const renameListInputRef = useRef<HTMLInputElement>(null);
+  const createListInputRef = useRef<HTMLInputElement>(null);
+  const editCategoryInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditingTitle && isOwner) {
+      titleEditInputRef.current?.focus();
+    }
+  }, [isEditingTitle, isOwner]);
+
+  useEffect(() => {
+    if (listToRename) {
+      renameListInputRef.current?.focus();
+    }
+  }, [listToRename]);
+
+  useEffect(() => {
+    if (isCreateListOpen) {
+      createListInputRef.current?.focus();
+    }
+  }, [isCreateListOpen]);
+
+  useEffect(() => {
+    if (listToEditCategory && editCategorySelection === "Custom") {
+      editCategoryInputRef.current?.focus();
+    }
+  }, [listToEditCategory, editCategorySelection]);
   // Follow the list name when it changes (switching lists, renames).
   const [syncedListName, setSyncedListName] = useState(activeListName);
   if (syncedListName !== activeListName) {
@@ -2909,7 +3005,11 @@ export default function TodoPage() {
   const submitCreate = createFetcher.submit;
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const nav = window.navigator as any;
+    const nav = window.navigator as Navigator & {
+      modelContext?: {
+        registerTool?: (tool: Record<string, unknown>, options?: { signal?: AbortSignal }) => void;
+      };
+    };
     if (!nav?.modelContext?.registerTool) return;
 
     const controller = new AbortController();
@@ -2952,7 +3052,7 @@ export default function TodoPage() {
         inputSchema: { type: "object", properties: {} },
         execute: async () => {
           return {
-            tasks: todos.map((t: any) => ({
+            tasks: todos.map((t) => ({
               id: t.id,
               text: t.text,
               completed: t.completed,
@@ -3056,7 +3156,6 @@ export default function TodoPage() {
     if (listFetcher.state !== "idle" || !listFetcher.data) return;
     if (listFetcher.data.pendingApproval && listFetcher.data.message) {
       showToast(listFetcher.data.message);
-      setListToDelete(null);
     } else if (listFetcher.data.error) {
       showToast(listFetcher.data.error);
     }
@@ -3083,7 +3182,7 @@ export default function TodoPage() {
         return;
       }
       listFetcher.submit(
-        { intent: "renameList", listId: activeListId, newName: titleInput.trim() } as any,
+        { intent: "renameList", listId: activeListId || "", newName: titleInput.trim() },
         { method: "post" }
       );
     }
@@ -3166,6 +3265,7 @@ export default function TodoPage() {
       {/* ── Mobile Sidebar Overlay ───────────────────────── */}
       {isSidebarOpen && (
         <div
+          role="presentation"
           onClick={() => setIsSidebarOpen(false)}
           className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden cursor-pointer"
         />
@@ -3200,11 +3300,11 @@ export default function TodoPage() {
           {/* Lists Section — My lists vs Shared with me */}
           <div className="flex-1 flex flex-col min-h-0">
             {(() => {
-              const myLists = lists.filter((l: any) => l.owner_id === userId);
-              const sharedLists = lists.filter((l: any) => l.owner_id !== userId);
-              const renderListRow = (list: any, opts: { shared?: boolean }) => {
+              const myLists = lists.filter((l) => l.owner_id === userId);
+              const sharedLists = lists.filter((l) => l.owner_id !== userId);
+              const renderListRow = (list: GuestList, opts: { shared?: boolean }) => {
                 const isActive = list.id === activeListId;
-                const remainingCount = (list.todos || []).filter((t: any) => !t.completed).length;
+                const remainingCount = (list.todos || []).filter((t) => !t.completed).length;
                 const pendingForList = (pendingDeleteRequests as PendingDeleteRequest[]).filter(
                   (r) => r.listId === list.id
                 ).length;
@@ -3338,7 +3438,7 @@ export default function TodoPage() {
                       </button>
                     </div>
                     <div className="space-y-1">
-                      {myLists.map((list: any) => renderListRow(list, {}))}
+                      {myLists.map((list) => renderListRow(list, {}))}
                       {myLists.length === 0 && (
                         <p className="text-[10px] text-slate-500 px-1 py-2">No lists yet</p>
                       )}
@@ -3350,7 +3450,7 @@ export default function TodoPage() {
                         <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Shared with me</h3>
                       </div>
                       <div className="space-y-1">
-                        {sharedLists.map((list: any) => renderListRow(list, { shared: true }))}
+                        {sharedLists.map((list) => renderListRow(list, { shared: true }))}
                         {sharedLists.length === 0 && (
                           <p className="text-[10px] text-slate-500 px-1 py-2">Open a shared link to add lists here</p>
                         )}
@@ -3511,6 +3611,7 @@ export default function TodoPage() {
             {isEditingTitle && isOwner ? (
               <div className="flex items-center gap-2 max-w-md">
                 <input
+                  ref={titleEditInputRef}
                   type="text"
                   value={titleInput}
                   maxLength={MAX_LIST_NAME_LENGTH}
@@ -3524,7 +3625,6 @@ export default function TodoPage() {
                     }
                   }}
                   className="text-2xl sm:text-3xl font-extrabold bg-transparent border-b-2 border-themeAccentFrom text-slate-100 focus:outline-none py-0.5 w-full font-display"
-                  autoFocus
                 />
                 <button
                   onClick={handleTitleSubmit}
@@ -3537,12 +3637,19 @@ export default function TodoPage() {
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-2 group">
-                <h1
-                  onClick={() => { if (isOwner) setIsEditingTitle(true); }}
-                  className={`text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-white via-slate-100 to-slate-350 bg-clip-text text-transparent font-display truncate pr-2 ${isOwner ? "cursor-pointer hover:opacity-85" : ""}`}
-                  title={isOwner ? "Click to rename list" : undefined}
-                >
-                  {activeListName}
+                <h1 className="text-2xl sm:text-3xl font-extrabold bg-gradient-to-r from-white via-slate-100 to-slate-350 bg-clip-text text-transparent font-display truncate pr-2">
+                  {isOwner ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingTitle(true)}
+                      className="text-left bg-gradient-to-r from-white via-slate-100 to-slate-350 bg-clip-text text-transparent font-extrabold font-display truncate cursor-pointer hover:opacity-85"
+                      title="Click to rename list"
+                    >
+                      {activeListName}
+                    </button>
+                  ) : (
+                    activeListName
+                  )}
                 </h1>
                 {isOwner && (
                   <button
@@ -3910,7 +4017,7 @@ export default function TodoPage() {
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sort by</span>
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
+                onChange={(e) => setSortBy(e.target.value as "created" | "priority" | "reminder" | "alphabetical")}
                 className="rounded-xl bg-white/[0.03] border border-white/[0.06] text-slate-300 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 cursor-pointer appearance-none bg-slate-900 pr-8 relative max-w-[11rem]"
                 style={{
                   backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
@@ -4171,10 +4278,12 @@ export default function TodoPage() {
       {/* ── Profile and Statistics Modal ─────────────────── */}
       {isProfileOpen && (
         <div
+          role="presentation"
           onClick={requestCloseProfile}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex justify-center overflow-y-auto p-4 transition-all duration-300 cursor-pointer"
         >
           <div
+            role="presentation"
             onClick={(e) => e.stopPropagation()}
             className="my-auto bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full shadow-2xl p-6 relative overflow-hidden cursor-default"
           >
@@ -4569,10 +4678,12 @@ export default function TodoPage() {
       {/* ── Owner Activity Log Modal ──────────────────────── */}
       {showActivityModal && (
         <div
+          role="presentation"
           onClick={() => setShowActivityModal(false)}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex justify-center overflow-y-auto p-4 transition-all duration-300 cursor-pointer"
         >
           <div
+            role="presentation"
             onClick={(e) => e.stopPropagation()}
             className="my-auto bg-slate-900 border border-white/10 rounded-2xl max-w-lg w-full shadow-2xl p-6 relative overflow-hidden cursor-default text-slate-100"
           >
@@ -4640,7 +4751,6 @@ export default function TodoPage() {
                 onClick={() => {
                   const oldest = activityEntries[activityEntries.length - 1]?.createdAt;
                   if (oldest == null) return;
-                  activityLoadMoreSent.current = true;
                   activityFetcher.submit(
                     {
                       intent: "listActivity",
@@ -4670,10 +4780,12 @@ export default function TodoPage() {
       {/* ── What's New / Version Log Modal ─────────────────── */}
       {isChangelogOpen && (
         <div
+          role="presentation"
           onClick={handleCloseChangelog}
           className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex justify-center overflow-y-auto p-4 transition-all duration-300 cursor-pointer"
         >
           <div
+            role="presentation"
             onClick={(e) => e.stopPropagation()}
             className="my-auto bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full shadow-2xl p-6 relative overflow-hidden cursor-default text-slate-100"
           >
@@ -4795,13 +4907,13 @@ export default function TodoPage() {
           <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
             <h3 className="text-base font-bold text-slate-200 mb-3 font-display">Rename List</h3>
             <input
+              ref={renameListInputRef}
               type="text"
               value={renameInput}
               maxLength={MAX_LIST_NAME_LENGTH}
               onChange={(e) => setRenameInput(e.target.value)}
               className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 mb-5"
               placeholder="Enter new list name..."
-              autoFocus
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   if (renameInput.trim()) {
@@ -4854,7 +4966,7 @@ export default function TodoPage() {
       {listToDelete && (() => {
         const deletingOwned =
           !isLoggedIn ||
-          lists.find((l: any) => l.id === listToDelete.id)?.owner_id === userId;
+          lists.find((l) => l.id === listToDelete.id)?.owner_id === userId;
         return (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-sm w-full p-6 shadow-2xl relative">
@@ -4897,7 +5009,7 @@ export default function TodoPage() {
                       { intent: "deleteList", listId: listToDelete.id },
                       { method: "post" }
                     );
-                    if (deletingOwned) setListToDelete(null);
+                    setListToDelete(null);
                   }
                 }}
                 className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-xl shadow-lg transition-all duration-200"
@@ -4916,18 +5028,19 @@ export default function TodoPage() {
           <div className="bg-slate-900 border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
             <h3 className="text-base font-bold text-slate-200 mb-3 font-display">Create New List</h3>
             
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">List Name</label>
+            <label htmlFor="create-list-name" className="block text-xs font-semibold text-slate-400 mb-1.5">List Name</label>
             <input
+              id="create-list-name"
+              ref={createListInputRef}
               type="text"
               value={newListInput}
               maxLength={MAX_LIST_NAME_LENGTH}
               onChange={(e) => setNewListInput(e.target.value)}
               className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 mb-4"
               placeholder="Enter list name (e.g., Shopping, Work)..."
-              autoFocus
             />
 
-            <label className="block text-xs font-semibold text-slate-400 mb-1.5">Select Category Tag</label>
+            <span className="block text-xs font-semibold text-slate-400 mb-1.5">Select Category Tag</span>
             <div className="flex flex-wrap gap-1.5 mb-4">
               {["Checklist", "Study", "Shopping", "Movies", "Work", "Personal", "Travel", "Fitness", "Custom"].map((cat) => (
                 <button
@@ -4947,8 +5060,9 @@ export default function TodoPage() {
 
             {newListCategory === "Custom" && (
               <div className="mb-4">
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Custom Category Name</label>
+                <label htmlFor="create-list-custom-category" className="block text-xs font-semibold text-slate-400 mb-1">Custom Category Name</label>
                 <input
+                  id="create-list-custom-category"
                   type="text"
                   value={customCategoryInput}
                   maxLength={MAX_CATEGORY_LENGTH}
@@ -4985,7 +5099,7 @@ export default function TodoPage() {
                       navigate(`/${newId}`);
                     } else {
                       listFetcher.submit(
-                        { intent: "createList", listName: newListInput.trim(), category: finalCategory } as any,
+                        { intent: "createList", listName: newListInput.trim(), category: finalCategory },
                         { method: "post" }
                       );
                       setNewListInput("");
@@ -5033,15 +5147,16 @@ export default function TodoPage() {
 
             {editCategorySelection === "Custom" && (
               <div className="mb-4">
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Custom Category Name</label>
+                <label htmlFor="edit-list-custom-category" className="block text-xs font-semibold text-slate-400 mb-1">Custom Category Name</label>
                 <input
+                  id="edit-list-custom-category"
+                  ref={editCategoryInputRef}
                   type="text"
                   value={editCustomCategoryInput}
                   maxLength={MAX_CATEGORY_LENGTH}
                   onChange={(e) => setEditCustomCategoryInput(e.target.value)}
                   className="w-full text-sm rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 px-3.5 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50"
                   placeholder="e.g. Special Project..."
-                  autoFocus
                 />
               </div>
             )}
@@ -5062,7 +5177,7 @@ export default function TodoPage() {
                     handleGuestAction("updateListCategory", { id: listToEditCategory.id, category: finalCategory });
                   } else {
                     listFetcher.submit(
-                      { intent: "updateListCategory", listId: listToEditCategory.id, category: finalCategory } as any,
+                      { intent: "updateListCategory", listId: listToEditCategory.id, category: finalCategory },
                       { method: "post" }
                     );
                   }

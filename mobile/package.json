@@ -1,6 +1,7 @@
 {
   "name": "synx-mobile",
   "version": "3.4.0",
+  "license": "AGPL-3.0-or-later",
   "main": "expo/AppEntry.js",
   "scripts": {
     "postinstall": "node ./scripts/patch-expo-widgets.js",

@@ -282,12 +282,13 @@ export function buildProgressWidgetSnapshot(
 /**
  * Safely extracts validated pendingOps from raw widget props.
  */
-export function extractPendingWidgetOps(rawProps: Record<string, any> | null | undefined): WidgetPendingOp[] {
+export function extractPendingWidgetOps(rawProps: { pendingOps?: unknown } | Record<string, unknown> | null | undefined): WidgetPendingOp[] {
   if (!rawProps || !Array.isArray(rawProps.pendingOps)) {
     return [];
   }
   const ops: WidgetPendingOp[] = [];
-  for (const item of rawProps.pendingOps) {
+  for (const rawItem of rawProps.pendingOps) {
+    const item = rawItem as Record<string, unknown> | null | undefined;
     if (
       item &&
       typeof item.todoId === "string" &&

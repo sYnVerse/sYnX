@@ -30,6 +30,7 @@ import {
   resetDisplayNameSuggestion,
 } from "../services/displayNameSuggestion";
 import { releasePushTokenForSignOut } from "../services/notifications";
+import { clearPersistedQueryCache } from "../services/storage";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -144,6 +145,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // waits on the network).
     await releasePushTokenForSignOut();
     await secureSessionStore.clearSessionTokens();
+    await clearPersistedQueryCache();
     await clearWidgetPreferences();
     resetWidgetsLoggedOut();
     resetTimeZoneSync();
@@ -252,6 +254,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await releasePushTokenForSignOut();
       await secureSessionStore.clearSessionTokens();
+      await clearPersistedQueryCache();
+      await clearWidgetPreferences();
+      resetWidgetsLoggedOut();
 
       const logoutUrl = `${OPENAUTH_ISSUER}/logout?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
       try {

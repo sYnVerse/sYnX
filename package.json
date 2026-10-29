@@ -1,6 +1,7 @@
 {
   "name": "to-do-list",
   "description": "A simple to-do list app built with Cloudflare Workers Assets and Remix.",
+  "license": "AGPL-3.0-or-later",
   "cloudflare": {
     "label": "To-Do List App",
     "products": [
@@ -60,7 +61,7 @@
     "check": "tsc && remix vite:build && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler d1 migrations apply synx-db --remote && wrangler deploy",
     "dev": "remix vite:dev",
-    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+    "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint --max-warnings 0 .",
     "preview": "npm run build && wrangler dev",
     "start": "wrangler dev",
     "test": "vitest",

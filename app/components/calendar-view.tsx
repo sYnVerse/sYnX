@@ -437,13 +437,14 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                             )}
                           </button>
 
-                          <span
+                          <button
+                            type="button"
                             onClick={() => setEditingTodo(todo)}
-                            className={`text-[10px] md:text-xs truncate text-slate-355 group-hover/task:text-white cursor-pointer
+                            className={`text-left text-[10px] md:text-xs truncate text-slate-355 group-hover/task:text-white cursor-pointer
                               ${todo.completed ? "line-through text-slate-500 italic" : ""}`}
                           >
                             {todo.text}
-                          </span>
+                          </button>
                         </div>
                       </div>
                     );
@@ -540,13 +541,14 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                           )}
                         </button>
 
-                        <span
+                        <button
+                          type="button"
                           onClick={() => setEditingTodo(todo)}
-                          className={`text-xs truncate text-slate-350 group-hover:text-white cursor-pointer
+                          className={`text-left text-xs truncate text-slate-350 group-hover:text-white cursor-pointer
                             ${todo.completed ? "line-through text-slate-600 italic" : ""}`}
                         >
                           {todo.text}
-                        </span>
+                        </button>
                       </div>
                     </div>
                   );
@@ -638,7 +640,7 @@ function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       {/* Click outside to close */}
-      <div className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div role="presentation" className="absolute inset-0 cursor-default" onClick={onClose} />
       
       <div className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-5 shadow-2xl z-10 flex flex-col gap-4 animate-fade-in animate-scale-up">
         <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
@@ -656,8 +658,9 @@ function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Task Description</label>
+            <label htmlFor="quick-add-task-text" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Task Description</label>
             <input
+              id="quick-add-task-text"
               ref={inputRef}
               type="text"
               required
@@ -670,7 +673,7 @@ function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Priority Level</label>
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Priority Level</span>
             <div className="grid grid-cols-4 gap-2">
               {(["none", "low", "medium", "high"] as const).map((p) => {
                 const isSelected = priority === p;
@@ -721,10 +724,12 @@ interface EditTaskModalProps {
 
 function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
   const fetcher = useFetcher();
-  const { isLoggedIn, canSetReminders, onGuestAction } = useContext(GuestContext);
-  // Reminder text goes to the list owner, so guests on a shared list can't
-  // reword tasks that have reminders.
-  const canEditText = canSetReminders || !todo.reminderAt;
+  const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
+  // Reminder text goes to the user who set the reminder, so guests or other
+  // users on a shared list can't reword tasks with someone else's reminder.
+  const reminderOwnerId = todo.reminderUserId || listOwnerId;
+  const canEditText =
+    !todo.reminderAt || (canSetReminders && (!reminderOwnerId || reminderOwnerId === currentUserId));
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [text, setText] = useState(todo.text);
@@ -807,7 +812,7 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       {/* Click outside to close */}
-      <div className="absolute inset-0 cursor-default" onClick={onClose} />
+      <div role="presentation" className="absolute inset-0 cursor-default" onClick={onClose} />
       
       <div className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-5 shadow-2xl z-10 flex flex-col gap-4 animate-fade-in animate-scale-up">
         <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
@@ -822,8 +827,9 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
 
         <form onSubmit={handleSave} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Task Description</label>
+            <label htmlFor="edit-task-text" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Task Description</label>
             <input
+              id="edit-task-text"
               ref={inputRef}
               type="text"
               required
@@ -837,7 +843,7 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Priority Level</label>
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Priority Level</span>
             <div className="grid grid-cols-4 gap-2">
               {(["none", "low", "medium", "high"] as const).map((p) => {
                 const isSelected = priority === p;
@@ -861,9 +867,10 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Due / Reminder Date & Time</label>
+            <label htmlFor="edit-task-reminder" className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Due / Reminder Date & Time</label>
             <div className="flex gap-2">
               <input
+                id="edit-task-reminder"
                 type="datetime-local"
                 value={dateTime}
                 disabled={!canSetReminders}

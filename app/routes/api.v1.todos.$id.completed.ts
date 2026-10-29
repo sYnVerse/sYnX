@@ -30,7 +30,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return Response.json({ error: "Todo ID is required" }, { status: 400 });
   }
 
-  const todoRow = await db.prepare("SELECT list_id FROM todos WHERE id = ?").bind(todoId).first<any>();
+  const todoRow = await db
+    .prepare("SELECT list_id, reminder_user_id FROM todos WHERE id = ?")
+    .bind(todoId)
+    .first<{ list_id: string; reminder_user_id: string | null }>();
   if (!todoRow) {
     return Response.json({ error: "Todo not found" }, { status: 404 });
   }
@@ -45,16 +48,17 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     const body = await request.json();
     const parsed = v.parse(SetTodoCompletedSchema, body);
     completed = parsed.completed;
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "";
     return Response.json(
-      { error: err.message || "Invalid payload: completed boolean required" },
+      { error: message || "Invalid payload: completed boolean required" },
       { status: 400 }
     );
   }
 
   const manager = new TodoManager(db, todoRow.list_id);
-  // Repeats keep their local clock time in the user's stored time zone.
-  const timeZone = await getUserTimeZone(db, user.userId);
+  // Repeats keep their local clock time in the reminder owner's (or caller's) stored time zone.
+  const timeZone = await getUserTimeZone(db, todoRow.reminder_user_id || user.userId);
   const { todo, rescheduled } = await manager.setCompleted(todoId, completed, { timeZone });
 
   const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);

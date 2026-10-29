@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudfla
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { UpdateListSchema } from "../../shared";
-import { getListAccess, serializeListRow } from "../api-helpers.server";
+import { getListAccess, serializeListRow, type ListRow } from "../api-helpers.server";
 import {
   deleteRequestActivitySummary,
   logListActivity,
@@ -102,7 +102,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         .bind(newName, newCategory, listId)
         .run();
 
-      const updated = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
+      const updated = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<ListRow>();
+      if (!updated) {
+        return Response.json({ error: "List not found" }, { status: 404 });
+      }
       const list = await serializeListRow(db, updated, { viewerUserId: user.userId });
 
       const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
@@ -143,8 +146,9 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         success: true,
         list,
       });
-    } catch (err: any) {
-      return Response.json({ error: err.message || "Invalid payload" }, { status: 400 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
+      return Response.json({ error: message || "Invalid payload" }, { status: 400 });
     }
   }
 

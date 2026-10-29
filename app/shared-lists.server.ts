@@ -1,3 +1,5 @@
+import type { ListRow } from "./api-helpers.server";
+
 /**
  * Record that a signed-in non-owner opened an accessible shared list.
  * No-op for owners or when userId is empty.
@@ -44,7 +46,7 @@ export async function removeSharedListAccess(
 export async function listSharedWithMe(
   db: D1Database,
   userId: string
-): Promise<any[]> {
+): Promise<ListRow[]> {
   const { results } = await db
     .prepare(
       `SELECT l.*
@@ -56,6 +58,6 @@ export async function listSharedWithMe(
        ORDER BY s.opened_at DESC`
     )
     .bind(userId, userId)
-    .all<any>();
+    .all<ListRow>();
   return results || [];
 }

@@ -92,7 +92,7 @@ export default tseslint.config(
       "import/default": "off",
       "import/no-named-as-default-member": "off",
       // Existing code has many `any`s; flag them without failing lint.
-      "@typescript-eslint/no-explicit-any": "warn",
+      "@typescript-eslint/no-explicit-any": "error",
     },
   },
 
@@ -109,14 +109,14 @@ export default tseslint.config(
     files: ["**/*.{js,jsx,ts,tsx}"],
     rules: {
       // React Compiler rules added in eslint-plugin-react-hooks v6+.
-      "react-hooks/set-state-in-effect": "warn",
-      "react-hooks/purity": "warn",
+      "react-hooks/set-state-in-effect": "error",
+      "react-hooks/purity": "error",
       // Accessibility rules that need markup changes in existing views.
-      "jsx-a11y/click-events-have-key-events": "warn",
-      "jsx-a11y/no-static-element-interactions": "warn",
-      "jsx-a11y/no-noninteractive-element-interactions": "warn",
-      "jsx-a11y/label-has-associated-control": "warn",
-      "jsx-a11y/no-autofocus": "warn",
+      "jsx-a11y/click-events-have-key-events": "error",
+      "jsx-a11y/no-static-element-interactions": "error",
+      "jsx-a11y/no-noninteractive-element-interactions": "error",
+      "jsx-a11y/label-has-associated-control": "error",
+      "jsx-a11y/no-autofocus": "error",
     },
   },
 );

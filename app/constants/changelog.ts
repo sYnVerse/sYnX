@@ -31,6 +31,14 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Private and View-Only lists still work the same: View-Only can't delete, and Private stays owner-only."
+      },
+      {
+        type: "IMPR",
+        text: "On Collaborative lists, signed-in collaborators can set reminders for themselves. Each reminder goes to the person who set it rather than the list owner, and only that person can edit the task's wording while the reminder is active."
+      },
+      {
+        type: "FIX",
+        text: "When you sign in and your guest lists are saved to your account, subtasks now stay attached to their parent tasks."
       }
     ]
   },

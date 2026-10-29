@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
-import { TodoManager } from "../to-do-manager";
+import { TodoManager, type TodoRow } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
 import {
   deleteRequestActivitySummary,
@@ -26,9 +26,9 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   }
 
   const todoRow = await db
-    .prepare("SELECT list_id, text FROM todos WHERE id = ?")
+    .prepare("SELECT list_id, text, reminder_at, reminder_user_id FROM todos WHERE id = ?")
     .bind(todoId)
-    .first<{ list_id: string; text: string }>();
+    .first<{ list_id: string; text: string; reminder_at: number | null; reminder_user_id: string | null }>();
   if (!todoRow) {
     return Response.json({ error: "Todo not found" }, { status: 404 });
   }
@@ -52,6 +52,16 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       const textChanged =
         parsed.text !== undefined && parsed.text !== todoRow.text;
 
+      if (textChanged && todoRow.reminder_at != null && parsed.reminderAt === undefined) {
+        const reminderOwnerId = todoRow.reminder_user_id || access.list?.owner_id;
+        if (reminderOwnerId && reminderOwnerId !== user.userId) {
+          return Response.json(
+            { error: "Only the user who set the reminder can edit this task's text." },
+            { status: 403 }
+          );
+        }
+      }
+
       if (parsed.text !== undefined) {
         updatedTodo = await manager.updateText(todoId, parsed.text);
       }
@@ -59,7 +69,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         updatedTodo = await manager.updatePriority(todoId, parsed.priority);
       }
       if (parsed.reminderAt !== undefined) {
-        updatedTodo = await manager.updateReminder(todoId, parsed.reminderAt ?? undefined);
+        updatedTodo = await manager.updateReminder(todoId, parsed.reminderAt ?? undefined, user.userId);
       }
       if (parsed.recurrence !== undefined) {
         updatedTodo = await manager.updateRecurrence(todoId, parsed.recurrence);
@@ -68,7 +78,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         updatedTodo = await manager.updateDuration(todoId, parsed.durationMinutes);
       }
 
-      const current = await db.prepare("SELECT * FROM todos WHERE id = ?").bind(todoId).first<any>();
+      const current = await db.prepare("SELECT * FROM todos WHERE id = ?").bind(todoId).first<TodoRow>();
       updatedTodo = current;
 
       const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
@@ -85,8 +95,9 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       if (waitUntil) waitUntil(logPromise); else await logPromise;
 
       return Response.json({ success: true, todo: updatedTodo });
-    } catch (err: any) {
-      return Response.json({ error: err.message || "Invalid update payload" }, { status: 400 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
+      return Response.json({ error: message || "Invalid update payload" }, { status: 400 });
     }
   }
 

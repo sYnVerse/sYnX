@@ -76,8 +76,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
         .run();
 
       return Response.json({ success: true }, { status: 201 });
-    } catch (err: any) {
-      return Response.json({ error: err.message || "Invalid device token payload" }, { status: 400 });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
+      return Response.json({ error: message || "Invalid device token payload" }, { status: 400 });
     }
   }
 

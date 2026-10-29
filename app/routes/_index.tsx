@@ -11,7 +11,7 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
   }
 
   if (isLoggedIn) {
-    const firstList = await db.prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1").bind(userId).first<any>();
+    const firstList = await db.prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1").bind(userId).first<{ id: string }>();
     if (firstList) {
       return redirect(`/${firstList.id}`, { headers });
     }

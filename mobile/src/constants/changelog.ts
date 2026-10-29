@@ -32,6 +32,14 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "If you own a list and someone asks to delete something, you get an in-app review panel (and a push notification when your phone is set up for reminders)."
+      },
+      {
+        type: "IMPR",
+        text: "On Collaborative lists, signed-in collaborators can set reminders for themselves, and each reminder goes to the person who set it rather than the list owner."
+      },
+      {
+        type: "FIX",
+        text: "Signing out now clears saved lists from this phone and resets home screen widgets right away."
       }
     ]
   },

@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudfla
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { CreateListSchema } from "../../shared";
-import { parseListScope, serializeListRows } from "../api-helpers.server";
+import { parseListScope, serializeListRows, type ListRow } from "../api-helpers.server";
 import { listSharedWithMe } from "../shared-lists.server";
 import { ownerPayload, resolveDisplayName } from "../user-profile.server";
 import { categoryError, listNameError } from "../write-limits";
@@ -19,7 +19,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const scope = parseListScope(url.searchParams.get("scope"));
 
-  let rows: any[] = [];
+  let rows: ListRow[] = [];
 
   if (scope === "mine" || scope === "all") {
     const { results } = await db
@@ -29,7 +29,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
          ORDER BY created_at DESC`
       )
       .bind(user.userId)
-      .all<any>();
+      .all<ListRow>();
     rows = rows.concat(results || []);
   }
 
@@ -100,7 +100,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
     };
 
     return Response.json({ success: true, list: newList }, { status: 201 });
-  } catch (err: any) {
-    return Response.json({ error: err.message || "Invalid list creation payload" }, { status: 400 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "";
+    return Response.json({ error: message || "Invalid list creation payload" }, { status: 400 });
   }
 }

@@ -2,7 +2,7 @@ import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { UpdateShareModeSchema } from "../../shared";
-import { serializeListRow } from "../api-helpers.server";
+import { serializeListRow, type ListRow } from "../api-helpers.server";
 import { logListActivity } from "../list-activity.server";
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
@@ -23,7 +23,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return Response.json({ error: "List ID is required" }, { status: 400 });
   }
 
-  const listRow = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
+  const listRow = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<ListRow>();
   if (!listRow) {
     return Response.json({ error: "List not found" }, { status: 404 });
   }
@@ -38,7 +38,10 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     const previousShareMode = listRow.share_mode || "private";
 
     await db.prepare("UPDATE lists SET share_mode = ? WHERE id = ?").bind(parsed.shareMode, listId).run();
-    const updated = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
+    const updated = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<ListRow>();
+    if (!updated) {
+      return Response.json({ error: "List not found" }, { status: 404 });
+    }
     const list = await serializeListRow(db, updated, { viewerUserId: user.userId });
 
     // Prefer a non-private mode so the transition is recorded when leaving private,
@@ -61,7 +64,8 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       success: true,
       list,
     });
-  } catch (err: any) {
-    return Response.json({ error: err.message || "Invalid shareMode payload" }, { status: 400 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "";
+    return Response.json({ error: message || "Invalid shareMode payload" }, { status: 400 });
   }
 }

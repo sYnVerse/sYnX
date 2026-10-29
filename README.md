@@ -273,3 +273,9 @@ wrangler.jsonc       Worker config: D1 binding, cron trigger, assets
 ```
 
 Rules for coding agents are in [`CLAUDE.md`](CLAUDE.md), `.claude/rules/`, `.cursor/rules/` and the other agent rule folders.
+
+---
+
+## License
+
+Licensed under the [GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later)](LICENSE).

@@ -11,7 +11,7 @@ export interface FCMMessagePayload {
 export async function sendFCMPushNotification(
   token: string,
   payload: FCMMessagePayload,
-  env: any
+  env: { FIREBASE_SERVICE_ACCOUNT_JSON?: string; DB?: D1Database }
 ): Promise<boolean> {
   const serviceAccountRaw = env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!serviceAccountRaw) {
@@ -161,7 +161,7 @@ async function getGoogleOAuthToken(clientEmail: string, privateKeyPem: string): 
       return null;
     }
 
-    const tokenData: any = await tokenRes.json();
+    const tokenData = (await tokenRes.json()) as { access_token?: string };
     return tokenData.access_token || null;
   } catch (e) {
     console.error("[FCM] getGoogleOAuthToken error:", e);

@@ -7,6 +7,21 @@ import {
   syncUserProfileOnSignIn,
 } from "../user-profile.server";
 
+interface UserSettingsRow {
+  user_id: string;
+  email: string | null;
+  email_enabled: number | boolean | null;
+  sms_enabled: number | boolean | null;
+  phone_number: string | null;
+  phone_carrier: string | null;
+  discord_webhook_url: string | null;
+  display_name: string | null;
+  time_zone: string | null;
+  avatar_url?: string | null;
+  suggested_display_name?: string | null;
+  display_name_suggestion_dismissed?: number | null;
+}
+
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const env = context.cloudflare.env;
   const db = env.DB as D1Database;
@@ -25,7 +40,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     issuer: getAuthSettings(request, env).issuer,
   });
 
-  const row = await db.prepare("SELECT * FROM user_settings WHERE user_id = ?").bind(user.userId).first<any>();
+  const row = await db.prepare("SELECT * FROM user_settings WHERE user_id = ?").bind(user.userId).first<UserSettingsRow>();
 
   const settings = {
     userId: user.userId,
@@ -61,14 +76,21 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   try {
-    const body = (await request.json()) as any;
-    const parseBool = (v: any) => v === true || v === "true" || v === 1;
+    const body = (await request.json()) as Record<string, unknown>;
+    const parseBool = (v: unknown) => v === true || v === "true" || v === 1;
     const emailEnabled = parseBool(body.emailEnabled);
     const smsEnabled = parseBool(body.smsEnabled);
     const phoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber.trim() : "";
     const phoneCarrier = typeof body.phoneCarrier === "string" ? body.phoneCarrier.trim() : "";
     const discordWebhookUrl =
       typeof body.discordWebhookUrl === "string" ? body.discordWebhookUrl.trim() : "";
+
+    if (phoneNumber.length > 32) {
+      return Response.json({ error: "Phone number is too long" }, { status: 400 });
+    }
+    if (phoneCarrier.length > 64) {
+      return Response.json({ error: "Phone carrier is too long" }, { status: 400 });
+    }
 
     if (discordWebhookUrl) {
       const DISCORD_WEBHOOK_REGEX =
@@ -156,7 +178,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
         ...providerProfileFields(row),
       },
     });
-  } catch (err: any) {
-    return Response.json({ error: err.message || "Invalid settings payload" }, { status: 400 });
-  }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "";
+      return Response.json({ error: message || "Invalid settings payload" }, { status: 400 });
+    }
 }
