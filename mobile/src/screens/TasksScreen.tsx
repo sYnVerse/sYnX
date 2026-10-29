@@ -403,43 +403,47 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 
   const canViewActivity = isOwner && shareMode !== "private";
   const [showActivity, setShowActivity] = useState(false);
-  const [activityBefore, setActivityBefore] = useState<number | null>(null);
-
-  const {
-    data: activityPage,
-    isFetching: activityFetching,
-    isError: activityError,
-    refetch: refetchActivity,
-  } = useQuery({
-    queryKey: ["list-activity", listId, activityBefore],
-    queryFn: async () => {
-      const params = new URLSearchParams({ limit: "50" });
-      if (activityBefore != null) params.set("before", String(activityBefore));
-      const res = await apiClient.get(`/api/v1/lists/${listId}/activity?${params.toString()}`);
-      return {
-        entries: (res.data.entries || []) as ListActivityEntry[],
-        listName: res.data.listName as string | undefined,
-      };
-    },
-    enabled: canViewActivity && showActivity,
-  });
-
   const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>([]);
-  React.useEffect(() => {
-    if (!showActivity) {
-      setActivityEntries([]);
-      setActivityBefore(null);
-      return;
-    }
-    if (!activityPage) return;
-    setActivityEntries((prev) => {
-      if (activityBefore == null) return activityPage.entries;
-      const seen = new Set(prev.map((e) => e.id));
-      return [...prev, ...activityPage.entries.filter((e) => !seen.has(e.id))];
-    });
-  }, [activityPage, activityBefore, showActivity]);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityHasMore, setActivityHasMore] = useState(false);
+  const [activityError, setActivityError] = useState(false);
 
-  const activityHasMore = (activityPage?.entries.length ?? 0) >= 50;
+  const loadActivity = async (before: number | null, replace: boolean) => {
+    setActivityLoading(true);
+    setActivityError(false);
+    try {
+      const params = new URLSearchParams({ limit: "50" });
+      if (before != null) params.set("before", String(before));
+      const res = await apiClient.get(`/api/v1/lists/${listId}/activity?${params.toString()}`);
+      const entries = (res.data.entries || []) as ListActivityEntry[];
+      setActivityEntries((prev) => {
+        if (replace) return entries;
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...entries.filter((e) => !seen.has(e.id))];
+      });
+      setActivityHasMore(entries.length >= 50);
+    } catch {
+      setActivityError(true);
+    } finally {
+      setActivityLoading(false);
+    }
+  };
+
+  const openActivity = () => {
+    triggerImpactHaptic();
+    setActivityEntries([]);
+    setActivityHasMore(false);
+    setActivityError(false);
+    setShowActivity(true);
+    void loadActivity(null, true);
+  };
+
+  const closeActivity = () => {
+    setShowActivity(false);
+    setActivityEntries([]);
+    setActivityHasMore(false);
+    setActivityError(false);
+  };
 
   const filteredTodos = structuredTodos.filter((parent) => {
     if (!search.trim()) return true;
@@ -543,11 +547,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
           {canViewActivity ? (
             <TouchableOpacity
               style={[styles.switchListBtn, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
-              onPress={() => {
-                triggerImpactHaptic();
-                setActivityBefore(null);
-                setShowActivity(true);
-              }}
+              onPress={openActivity}
               accessibilityRole="button"
               accessibilityLabel="View activity"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -915,13 +915,13 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         visible={showActivity}
         animationType="slide"
         transparent
-        onRequestClose={() => setShowActivity(false)}
+        onRequestClose={closeActivity}
       >
         <View style={styles.activityOverlay}>
           <TouchableOpacity
             style={styles.activityDismiss}
             activeOpacity={1}
-            onPress={() => setShowActivity(false)}
+            onPress={closeActivity}
             accessibilityLabel="Close activity"
           />
           <View
@@ -934,12 +934,15 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             <Text style={[styles.activitySubtitle, { color: theme.textMuted }]}>
               Who changed this shared list, and from which IP. Only you can see this.
             </Text>
-            {activityFetching && activityEntries.length === 0 ? (
+            {activityLoading && activityEntries.length === 0 ? (
               <ActivityIndicator color={theme.accent} style={{ marginVertical: 24 }} />
             ) : activityError && activityEntries.length === 0 ? (
-              <TouchableOpacity onPress={() => refetchActivity()} accessibilityRole="button">
+              <TouchableOpacity
+                onPress={() => void loadActivity(null, true)}
+                accessibilityRole="button"
+              >
                 <Text style={[styles.activityEmpty, { color: theme.accent }]}>
-                  Couldn't load activity. Tap to retry.
+                  {"Couldn't load activity. Tap to retry."}
                 </Text>
               </TouchableOpacity>
             ) : (
@@ -990,17 +993,17 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 {activityHasMore && activityEntries.length > 0 ? (
                   <TouchableOpacity
                     style={[styles.activityLoadMore, { backgroundColor: theme.accentLight }]}
-                    disabled={activityFetching}
+                    disabled={activityLoading}
                     onPress={() => {
                       const oldest = activityEntries[activityEntries.length - 1]?.createdAt;
                       if (oldest == null) return;
-                      setActivityBefore(oldest);
+                      void loadActivity(oldest, false);
                     }}
                     accessibilityRole="button"
                     accessibilityLabel="Load more activity"
                   >
                     <Text style={[styles.activityLoadMoreText, { color: theme.accent }]}>
-                      {activityFetching ? "Loading…" : "Load more"}
+                      {activityLoading ? "Loading…" : "Load more"}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -1008,7 +1011,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             )}
             <TouchableOpacity
               style={[styles.activityCloseBtn, { backgroundColor: theme.accent }]}
-              onPress={() => setShowActivity(false)}
+              onPress={closeActivity}
               accessibilityRole="button"
               accessibilityLabel="Close activity"
             >

@@ -1160,7 +1160,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                 accessibilityRole="button"
               >
                 <Text style={[styles.hintText, { color: theme.accent, textAlign: "center" }]}>
-                  Couldn't load activity. Tap to retry.
+                  {"Couldn't load activity. Tap to retry."}
                 </Text>
               </TouchableOpacity>
             ) : (
