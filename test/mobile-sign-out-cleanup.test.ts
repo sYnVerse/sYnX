@@ -34,12 +34,21 @@ vi.mock("../mobile/src/api/client", () => mocks.client);
 vi.mock("../mobile/src/services/notifications", () => mocks.notifications);
 vi.mock("../mobile/src/services/widgetSync", () => mocks.widgetSync);
 
-import { clearSignedOutDeviceData } from "../mobile/src/services/signOutCleanup";
 import { queryClient } from "../mobile/src/services/storage";
 import {
   STORAGE_KEY_LAST_ACTIVE_LIST_ID,
   STORAGE_KEY_PINNED_WIDGET_CONFIG,
 } from "../mobile/src/services/widgetPreferences";
+
+// signOutCleanup imports widgetSync, which pulls in the widget components.
+// Those only type-check under the mobile app's own config (Mobile typecheck),
+// not this test config, so load the module through a non-literal specifier
+// that tsc doesn't follow. Vitest still resolves it with the mocks above.
+const SIGN_OUT_CLEANUP_MODULE = "../mobile/src/services/signOutCleanup";
+type SignOutCleanupModule = { clearSignedOutDeviceData: () => Promise<void> };
+function loadSignOutCleanup(): Promise<SignOutCleanupModule> {
+  return import(/* @vite-ignore */ SIGN_OUT_CLEANUP_MODULE) as Promise<SignOutCleanupModule>;
+}
 
 // Default key of @tanstack/query-async-storage-persister.
 const QUERY_CACHE_KEY = "REACT_QUERY_OFFLINE_CACHE";
@@ -57,6 +66,7 @@ describe("mobile sign-out cleanup", () => {
     mocks.storage.set(STORAGE_KEY_PINNED_WIDGET_CONFIG, "{\"listId\":\"list-1\"}");
     mocks.storage.set("unrelated_key", "kept");
 
+    const { clearSignedOutDeviceData } = await loadSignOutCleanup();
     await clearSignedOutDeviceData();
 
     expect(queryClient.getQueryData(["todos", "list-1"])).toBeUndefined();
