@@ -15,6 +15,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "When you sign in and your guest lists are saved to your account, subtasks now stay attached to their parent tasks."
+      },
+      {
+        type: "FIX",
+        text: "Fixed an issue where pages wouldn't load their data, leaving the side menu, stats and settings unresponsive."
       }
     ]
   },
