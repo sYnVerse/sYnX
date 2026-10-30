@@ -6,7 +6,7 @@ Security updates are applied to the latest `main` branch and the current product
 
 | Surface | Supported Version |
 | :--- | :--- |
-| Web & Cloudflare Worker API | Latest `main` (`2.x`) |
+| Web & Cloudflare Worker API | Latest `main` (`5.x`) |
 | Mobile (Android / iOS) | Latest release (`3.x`) |
 
 ## Reporting a Vulnerability
