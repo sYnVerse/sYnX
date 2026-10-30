@@ -16,3 +16,19 @@ updates:
       interval: "weekly"
     allow:
       - dependency-type: "production"
+    groups:
+      production-dependencies:
+        patterns:
+          - "*"
+    ignore:
+      # Pinned to Expo SDK version matrix; managed via `npx expo install` during SDK upgrades
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "@expo/*"
+      - dependency-name: "react"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-screens"
+      - dependency-name: "react-native-safe-area-context"
+      - dependency-name: "react-native-svg"
+      - dependency-name: "@react-native-async-storage/async-storage"
+      - dependency-name: "eslint-config-expo"
