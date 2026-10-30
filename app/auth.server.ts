@@ -30,11 +30,17 @@ export {
 } from "./auth-cookies.server";
 export type { OAuthPkceChallenge } from "./auth-cookies.server";
 
+export interface AuthEnv {
+  CLIENT_ID_MAP?: string | Record<string, string>;
+  OPENAUTH_ISSUER?: string;
+  SYNX_ALLOWED_CLIENT_IDS?: string;
+}
+
 export const subjects = createSubjects({
   user: object({
     id: string(),
     email: string(),
-  }) as any,
+  }),
 });
 
 const clients = new Map<string, ReturnType<typeof createClient>>();
@@ -63,20 +69,21 @@ export function recordRefreshedCookies(request: Request, cookies: string[]) {
   requestRefreshedCookiesMap.set(request, [...existing, ...cookies]);
 }
 
-function getClientID(request: Request, env: any, defaultClientID: string): string {
+function getClientID(request: Request, env: AuthEnv | null | undefined, defaultClientID: string): string {
   const url = new URL(request.url);
   if (env && env.CLIENT_ID_MAP) {
     try {
-      const map = typeof env.CLIENT_ID_MAP === "string"
+      const map: unknown = typeof env.CLIENT_ID_MAP === "string"
         ? JSON.parse(env.CLIENT_ID_MAP)
         : env.CLIENT_ID_MAP;
       if (map && typeof map === "object") {
-        if (map[url.hostname]) {
-          return map[url.hostname];
+        const record = map as Record<string, unknown>;
+        if (typeof record[url.hostname] === "string") {
+          return record[url.hostname] as string;
         }
-        for (const [key, value] of Object.entries(map)) {
-          if (url.hostname.includes(key)) {
-            return value as string;
+        for (const [key, value] of Object.entries(record)) {
+          if (url.hostname.includes(key) && typeof value === "string") {
+            return value;
           }
         }
       }
@@ -87,13 +94,13 @@ function getClientID(request: Request, env: any, defaultClientID: string): strin
   return defaultClientID;
 }
 
-export function getAuthSettings(request: Request, env: any) {
+export function getAuthSettings(request: Request, env: AuthEnv | null | undefined) {
   const clientID = getClientID(request, env, "synx");
   const issuer = (env && env.OPENAUTH_ISSUER) || "https://auth.christran.io";
   return { clientID, issuer };
 }
 
-export function getAuthClient(request: Request, env: any) {
+export function getAuthClient(request: Request, env: AuthEnv | null | undefined) {
   const { clientID, issuer } = getAuthSettings(request, env);
   const cacheKey = `${clientID}:${issuer}`;
   let client = clients.get(cacheKey);
@@ -122,7 +129,7 @@ export const DEFAULT_ALLOWED_CLIENT_IDS: readonly string[] = ["synx"];
  * can override the default, e.g. for a preview host mapped to another client via
  * `CLIENT_ID_MAP`. Unset or empty falls back to the safe default.
  */
-export function getAllowedClientIDs(env: any): string[] {
+export function getAllowedClientIDs(env: AuthEnv | null | undefined): string[] {
   const raw = env?.SYNX_ALLOWED_CLIENT_IDS;
   if (typeof raw === "string") {
     const ids = raw
@@ -154,22 +161,22 @@ export type VerifiedAccessToken = { userId: string; email: string };
  */
 export async function verifyAccessToken(
   request: Request,
-  env: any,
+  env: AuthEnv | null | undefined,
   token: string | null | undefined,
 ): Promise<VerifiedAccessToken | null> {
   if (!token) return null;
   const client = getAuthClient(request, env);
   try {
-    const verified = await client.verify(subjects as any, token);
+    const verified = await client.verify(subjects, token);
     if (verified.err) return null;
     if (!isAllowedAudience(verified.aud, getAllowedClientIDs(env))) {
       console.warn("Rejected sYnID access token issued to another client");
       return null;
     }
-    const properties = (verified.subject as any).properties;
+    const properties = verified.subject.properties;
     return {
-      userId: properties.id as string,
-      email: properties.email as string,
+      userId: properties.id,
+      email: properties.email,
     };
   } catch {
     // Verification error (e.g. expired, malformed, JWKS unavailable)
@@ -184,7 +191,7 @@ export async function verifyAccessToken(
  */
 export async function trySilentRefresh(
   request: Request,
-  env: any,
+  env: AuthEnv | null | undefined,
   expiredToken?: string | null,
 ): Promise<{ userId: string; email: string; token: string } | null> {
   const refreshToken = parseRefreshCookie(request);
@@ -227,7 +234,7 @@ export async function trySilentRefresh(
   }
 }
 
-export async function requireUser(request: Request, env: any) {
+export async function requireUser(request: Request, env: AuthEnv | null | undefined) {
   const cookieHeader = request.headers.get("Cookie") || "";
   const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
   const token = match ? decodeURIComponent(match[1]) : null;
@@ -249,7 +256,7 @@ export async function requireUser(request: Request, env: any) {
   });
 }
 
-export async function getOptionalUser(request: Request, env: any) {
+export async function getOptionalUser(request: Request, env: AuthEnv | null | undefined) {
   const cookieHeader = request.headers.get("Cookie") || "";
   const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
   const token = match ? decodeURIComponent(match[1]) : null;
@@ -310,7 +317,7 @@ export async function getOptionalUser(request: Request, env: any) {
   };
 }
 
-export async function verifyBearerToken(request: Request, env: any) {
+export async function verifyBearerToken(request: Request, env: AuthEnv | null | undefined) {
   const authHeader = request.headers.get("Authorization") || "";
   let token: string | null = null;
   const isBearer = authHeader.startsWith("Bearer ");

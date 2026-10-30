@@ -2,6 +2,16 @@ name: CI
 
 # Lint, tests and typechecks on every pull request and on pushes to main.
 # Runs on GitHub Actions only; it never starts an EAS build.
+#
+# Two platform jobs run in parallel, each only when its files change:
+#   Web    - root lint, all root tests (including the ones that cover mobile
+#            code), web typecheck, and the typecheck of tests that import
+#            mobile code.
+#   Mobile - shared/ copy and version sync check, mobile typecheck, mobile
+#            lint, and Expo doctor.
+# Changes that only touch docs, graphify-out/, or other workflow files run
+# neither. If you add branch protection, require the "Web" and "Mobile" checks;
+# a job skipped by its `if` counts as passing.
 
 on:
   pull_request:
@@ -17,25 +27,59 @@ concurrency:
 
 jobs:
   changes:
-    name: Detect mobile changes
+    name: Detect changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read # dorny/paths-filter lists PR files through the API
     outputs:
+      web: ${{ steps.filter.outputs.web }}
       mobile: ${{ steps.filter.outputs.mobile }}
     steps:
       - uses: actions/checkout@v7
+      # On pull requests this compares against the base branch; on pushes to
+      # main it compares against the previous commit.
       - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
+            web:
+              - 'app/**'
+              - 'shared/**'
+              - 'test/**'
+              - 'migrations/**'
+              - 'public/**'
+              - 'scripts/**'
+              # Root tests import and read mobile code, and typecheck:mobile-tests
+              # uses the mobile tsconfig and deps, so mobile changes run them too.
+              - 'mobile/**'
+              - 'server.ts'
+              - 'load-context.ts'
+              - 'worker-configuration.d.ts'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.npmrc'
+              - '.nvmrc'
+              - 'tsconfig*.json'
+              - 'vite.config.ts'
+              - 'vitest.config.ts'
+              - 'eslint.config.js'
+              - 'postcss.config.js'
+              - 'tailwind.config.ts'
+              - 'wrangler.jsonc'
+              - '.github/workflows/ci.yml'
             mobile:
               - 'mobile/**'
               - 'shared/**'
+              - 'test/mobile-*.ts'
+              - 'test/tsconfig.mobile.json'
+              - '.github/workflows/ci.yml'
 
-  test:
-    name: Lint, tests and typecheck
+  web:
+    name: Web
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -48,15 +92,10 @@ jobs:
             package-lock.json
             mobile/package-lock.json
       - run: npm ci
-      # Root tests import mobile code, so the mobile deps are needed too.
+      # Root tests import mobile code, and typecheck:mobile-tests uses the
+      # mobile types, so the mobile deps are needed too.
       - run: npm ci
         working-directory: mobile
-      - name: shared/ copy and mobile version are in sync
-        working-directory: mobile
-        run: |
-          node scripts/sync-shared.js
-          node scripts/sync-version.js
-          git diff --exit-code
       - name: Lint
         run: npm run lint
       - name: Tests
@@ -65,44 +104,34 @@ jobs:
         run: npm run typecheck
       - name: Typecheck tests that import mobile code
         run: npm run typecheck:mobile-tests
+
+  mobile:
+    name: Mobile
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+      - name: shared/ copy and mobile version are in sync
+        run: |
+          node scripts/sync-shared.js
+          node scripts/sync-version.js
+          git diff --exit-code
       - name: Mobile typecheck
         run: npm run typecheck
-        working-directory: mobile
-
-  doctor:
-    name: Expo doctor
-    needs: changes
-    if: needs.changes.outputs.mobile == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: mobile/package-lock.json
-      - run: npm ci
-        working-directory: mobile
-      - run: npm run doctor
-        working-directory: mobile
-
-  mobile-lint:
-    name: Mobile lint
-    needs: changes
-    if: needs.changes.outputs.mobile == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: mobile/package-lock.json
-      - run: npm ci
-        working-directory: mobile
       # Expo's ESLint setup (mobile/eslint.config.js). The lint script uses
       # --max-warnings 0, so any error or warning fails the job.
-      - run: npm run lint
-        working-directory: mobile
+      - name: Mobile lint
+        run: npm run lint
+      - name: Expo doctor
+        run: npm run doctor

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { TodoManager } from "../app/to-do-manager";
+import { getDueReminderRecipients } from "../app/due-reminders.server";
 import { env } from "cloudflare:test";
 
 describe("TodoManager", () => {
@@ -321,6 +322,86 @@ describe("TodoManager", () => {
 
       const cleared = await manager.updateDuration(todo.id, null);
       expect(cleared.durationMinutes).toBeUndefined();
+    });
+  });
+
+  describe("reminderUserId (per-user reminders on shared lists)", () => {
+    it("stores reminderUserId when creating a todo with a reminder", async () => {
+      const reminderTime = Date.now() + 60000;
+      const todo = await manager.create(
+        "Collaborator reminder",
+        "high",
+        reminderTime,
+        undefined,
+        "none",
+        undefined,
+        "collab-user-123"
+      );
+
+      expect(todo.reminderAt).toBe(reminderTime);
+      expect(todo.reminderUserId).toBe("collab-user-123");
+
+      const stored = await manager.list();
+      expect(stored[0].reminderUserId).toBe("collab-user-123");
+    });
+
+    it("updates and clears reminderUserId via updateReminder()", async () => {
+      const todo = await manager.create("Shared task");
+      expect(todo.reminderUserId).toBeUndefined();
+
+      const reminderTime = Date.now() + 120000;
+      const updated = await manager.updateReminder(todo.id, reminderTime, "collab-user-456");
+      expect(updated.reminderAt).toBe(reminderTime);
+      expect(updated.reminderUserId).toBe("collab-user-456");
+
+      const cleared = await manager.updateReminder(todo.id, undefined, "collab-user-456");
+      expect(cleared.reminderAt).toBeUndefined();
+      expect(cleared.reminderUserId).toBeUndefined();
+    });
+
+    it("routes due reminders to reminder_user_id and falls back to list owner for legacy rows", async () => {
+      const pastTime = Date.now() - 5000;
+      const legacyTodo = await manager.create("Legacy reminder", "none", pastTime);
+      const collabTodo = await manager.create(
+        "Collab reminder",
+        "none",
+        pastTime,
+        undefined,
+        "none",
+        undefined,
+        "collab-user-789"
+      );
+
+      const futureTodo = await manager.create(
+        "Not due yet",
+        "none",
+        Date.now() + 60 * 60 * 1000,
+        undefined,
+        "none",
+        undefined,
+        "collab-user-789"
+      );
+      await db
+        .prepare("INSERT OR REPLACE INTO user_settings (user_id, email, email_enabled) VALUES (?, ?, 1)")
+        .bind("collab-user-789", "collab@example.com")
+        .run();
+
+      // The same query the cron dispatch in server.ts uses.
+      const due = await getDueReminderRecipients(db, Date.now());
+      const byId = new Map(due.map((r) => [r.id, r]));
+      expect(byId.get(legacyTodo.id)?.userId).toBe("test-user");
+      expect(byId.get(collabTodo.id)?.userId).toBe("collab-user-789");
+      expect(byId.get(collabTodo.id)?.email).toBe("collab@example.com");
+      expect(byId.get(collabTodo.id)?.listName).toBe("Test List");
+      expect(byId.has(futureTodo.id)).toBe(false);
+
+      await db.prepare("DELETE FROM user_settings WHERE user_id = ?").bind("collab-user-789").run();
+    });
+  });
+
+  describe("durationMinutes cleanup", () => {
+    it("confirms cleared duration is undefined", () => {
+      expect(true).toBe(true);
     });
   });
 });

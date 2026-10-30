@@ -21,7 +21,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     return Response.json({ error: "Todo ID is required" }, { status: 400 });
   }
 
-  const todoRow = await db.prepare("SELECT list_id FROM todos WHERE id = ?").bind(todoId).first<any>();
+  const todoRow = await db.prepare("SELECT list_id FROM todos WHERE id = ?").bind(todoId).first<{ list_id: string }>();
   if (!todoRow) {
     return Response.json({ error: "Todo not found" }, { status: 404 });
   }

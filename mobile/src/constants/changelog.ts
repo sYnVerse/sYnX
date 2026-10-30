@@ -6,6 +6,21 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-10-30",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "On Collaborative lists, signed-in collaborators can set reminders for themselves, and each reminder goes to the person who set it rather than the list owner."
+      },
+      {
+        type: "FIX",
+        text: "Signing out now clears saved lists from this phone and resets home screen widgets right away."
+      }
+    ]
+  },
+  {
+    version: "v3.4.0",
     date: "2026-10-29",
     title: "What's new?",
     changes: [

@@ -16,7 +16,8 @@
     // types (e.g. FormData) clash with the web DOM types. They are type-checked
     // with the mobile types by test/tsconfig.mobile.json instead.
     "test/mobile-calendar-sync.test.ts",
-    "test/mobile-calendar-reconcile.test.ts"
+    "test/mobile-calendar-reconcile.test.ts",
+    "test/mobile-sign-out-cleanup.test.ts"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],

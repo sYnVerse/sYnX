@@ -6,7 +6,8 @@ import { getLoadContext } from "./load-context";
 
 import { sendFCMPushNotification } from "./app/fcm.server";
 import { buildReminderEmailHtml, sanitizeEmailSubject } from "./app/html-escape.server";
-import { getRefreshedCookies } from "./app/auth.server";
+import { finalizeWorkerResponse, unexpectedErrorResponse } from "./app/worker-response.server";
+import { getDueReminderRecipients, type DueReminderRow } from "./app/due-reminders.server";
 import { deleteExpiredGuestLists } from "./app/guest-access.server";
 import { pruneOldListActivity } from "./app/list-activity.server";
 
@@ -28,26 +29,14 @@ export default {
         },
       });
       const response = await handleRemixRequest(request, loadContext);
-      const refreshedCookies = getRefreshedCookies(request);
-      if (refreshedCookies && refreshedCookies.length > 0) {
-        const headers = new Headers(response.headers);
-        for (const cookie of refreshedCookies) {
-          headers.append("Set-Cookie", cookie);
-        }
-        return new Response(response.body, {
-          status: response.status,
-          statusText: response.statusText,
-          headers,
-        });
-      }
-      return response;
+      return finalizeWorkerResponse(request, response);
     } catch (error) {
       console.log(error);
-      return new Response("An unexpected error occurred", { status: 500 });
+      return unexpectedErrorResponse();
     }
   },
 
-  async scheduled(event, env: any, ctx) {
+  async scheduled(event, env: Env, ctx) {
     const db = env.DB;
     const now = Date.now();
 
@@ -71,24 +60,10 @@ export default {
       }
     }
 
-    // Fetch due reminders with user settings and emails
-    let dueReminders: any[] = [];
+    // Fetch due reminders with user settings and emails (routed to the user who created/set the reminder, falling back to list owner)
+    let dueReminders: DueReminderRow[] = [];
     try {
-      const { results } = await db.prepare(`
-        SELECT 
-          t.id, t.list_id as listId, t.text, t.reminder_at as reminderAt,
-          l.owner_id as userId, l.name as listName,
-          s.email, s.email_enabled as emailEnabled, s.sms_enabled as smsEnabled, 
-          s.phone_number as phoneNumber, s.phone_carrier as phoneCarrier, s.discord_webhook_url as discordWebhookUrl
-        FROM todos t
-        JOIN lists l ON t.list_id = l.id
-        LEFT JOIN user_settings s ON l.owner_id = s.user_id
-        WHERE t.completed = 0 
-          AND t.reminder_at IS NOT NULL 
-          AND (t.reminder_sent IS NULL OR t.reminder_sent = 0)
-          AND t.reminder_at <= ?
-      `).bind(now).all();
-      dueReminders = results || [];
+      dueReminders = await getDueReminderRecipients(db, now);
       console.log(`[Cron] Found ${dueReminders.length} due reminders.`);
     } catch (e) {
       console.error("[Cron] Failed to query due reminders:", e);
@@ -102,7 +77,7 @@ export default {
     }
 
     for (const reminder of dueReminders) {
-      const promises: Promise<any>[] = [];
+      const promises: Promise<unknown>[] = [];
       const listTitle = (reminder.listName && String(reminder.listName).trim()) || "Reminder";
       // User-controlled fields for HTML email channels (Resend HTML + subjects).
       const emailSubject = sanitizeEmailSubject(listTitle);

@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import {
   vitePlugin as remix,
   cloudflareDevProxyVitePlugin,
@@ -30,7 +30,7 @@ export default defineConfig(({ command }) => {
         },
       }),
       tsconfigPaths(),
-    ].filter(Boolean) as any,
+    ].filter(Boolean) as PluginOption[],
     ssr: {
       resolve: {
         conditions: ["workerd", "worker", "browser"],

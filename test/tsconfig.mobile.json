@@ -9,6 +9,7 @@
   "include": [
     "mobile-calendar-sync.test.ts",
     "mobile-calendar-reconcile.test.ts",
+    "mobile-sign-out-cleanup.test.ts",
     // Types for the `?raw` imports.
     "../node_modules/vite/client.d.ts"
   ]

@@ -1,0 +1,17 @@
+# Local development environment variables for Cloudflare Wrangler (.dev.vars)
+# Copy this file to `.dev.vars` (which is gitignored) and fill in your credentials.
+
+# sYnID OAuth 2.0 / OIDC Client Credentials
+SYNID_CLIENT_ID=synx-web
+SYNID_CLIENT_SECRET=your_synid_client_secret_here
+
+# Optional: Resend API Key (for email & carrier email-to-text reminders)
+RESEND_API_KEY=re_your_resend_api_key_here
+
+# Optional: Twilio Credentials (fallback SMS reminders when carrier gateway is not set)
+TWILIO_ACCOUNT_SID=AC_your_twilio_sid_here
+TWILIO_AUTH_TOKEN=your_twilio_auth_token_here
+TWILIO_FROM_NUMBER=+15550000000
+
+# Optional: Firebase Cloud Messaging Service Account JSON (for Android push notifications)
+FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}

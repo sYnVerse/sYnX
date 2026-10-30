@@ -4,13 +4,23 @@ export type ListAccessDenial = "not_found" | "private";
 
 export type ListScope = "mine" | "shared" | "all";
 
+export interface ListRow {
+  id: string;
+  name: string;
+  owner_id: string;
+  created_at: number;
+  expiration_ttl: number | null;
+  share_mode: string | null;
+  category: string | null;
+}
+
 export function parseListScope(raw: string | null): ListScope {
   if (raw === "shared" || raw === "all") return raw;
   return "mine";
 }
 
 export async function getListAccess(db: D1Database, listId: string, userId: string) {
-  const listRow = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<any>();
+  const listRow = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<ListRow>();
   if (!listRow) {
     return {
       list: null,
@@ -46,7 +56,7 @@ export type SerializeListOptions = {
 /** Map a D1 lists row to the public API list shape (includes additive `owner`). */
 export async function serializeListRow(
   db: D1Database,
-  row: any,
+  row: ListRow,
   options: SerializeListOptions
 ): Promise<Record<string, unknown>> {
   const viewerUserId = options.viewerUserId;
@@ -81,7 +91,7 @@ export async function serializeListRow(
 
 export async function serializeListRows(
   db: D1Database,
-  rows: any[],
+  rows: ListRow[],
   viewerUserId: string
 ): Promise<Record<string, unknown>[]> {
   const ownerIds = rows.map((r) => r.owner_id);
