@@ -34,7 +34,12 @@ vi.mock("../mobile/src/api/client", () => mocks.client);
 vi.mock("../mobile/src/services/notifications", () => mocks.notifications);
 vi.mock("../mobile/src/services/widgetSync", () => mocks.widgetSync);
 
-import { queryClient } from "../mobile/src/services/storage";
+import {
+  QUERY_CACHE_STORAGE_KEY,
+  asyncStoragePersister,
+  clearPersistedQueryCache,
+  queryClient,
+} from "../mobile/src/services/storage";
 import {
   STORAGE_KEY_LAST_ACTIVE_LIST_ID,
   STORAGE_KEY_PINNED_WIDGET_CONFIG,
@@ -50,7 +55,7 @@ function loadSignOutCleanup(): Promise<SignOutCleanupModule> {
   return import(/* @vite-ignore */ SIGN_OUT_CLEANUP_MODULE) as Promise<SignOutCleanupModule>;
 }
 
-// Default key of @tanstack/query-async-storage-persister.
+// The persister's default key. Changing it would orphan existing caches.
 const QUERY_CACHE_KEY = "REACT_QUERY_OFFLINE_CACHE";
 
 describe("mobile sign-out cleanup", () => {
@@ -78,6 +83,25 @@ describe("mobile sign-out cleanup", () => {
     expect(mocks.widgetSync.resetWidgetsLoggedOut).toHaveBeenCalledTimes(1);
     expect(mocks.client.secureSessionStore.clearSessionTokens).toHaveBeenCalledTimes(1);
     expect(mocks.notifications.releasePushTokenForSignOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs and removes the cache key directly when the persister cleanup fails", async () => {
+    expect(QUERY_CACHE_STORAGE_KEY).toBe(QUERY_CACHE_KEY);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const removeClient = vi
+      .spyOn(asyncStoragePersister, "removeClient")
+      .mockRejectedValueOnce(new Error("storage busy"));
+    queryClient.setQueryData(["todos", "list-1"], [{ id: "t1" }]);
+    mocks.storage.set(QUERY_CACHE_KEY, "{\"clientState\":{}}");
+
+    await expect(clearPersistedQueryCache()).resolves.toBeUndefined();
+
+    expect(removeClient).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(queryClient.getQueryData(["todos", "list-1"])).toBeUndefined();
+    expect(mocks.storage.has(QUERY_CACHE_KEY)).toBe(false);
+    removeClient.mockRestore();
+    warn.mockRestore();
   });
 
   it("is used by both manual logout and clearLocalSessionState", () => {

@@ -77,8 +77,17 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
       return Response.json({ success: true }, { status: 201 });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "";
-      return Response.json({ error: message || "Invalid device token payload" }, { status: 400 });
+      // request.json() throws a SyntaxError for a malformed body, v.parse
+      // throws a ValiError for a bad payload, and anything else is a server
+      // (database) error.
+      if (err instanceof v.ValiError) {
+        return Response.json({ error: err.message || "Invalid device token payload" }, { status: 400 });
+      }
+      if (err instanceof SyntaxError) {
+        return Response.json({ error: "Invalid device token payload" }, { status: 400 });
+      }
+      console.error("[devices] Failed to register push token:", err);
+      return Response.json({ error: "Failed to register device" }, { status: 500 });
     }
   }
 

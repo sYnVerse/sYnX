@@ -1,9 +1,9 @@
 {
-  "name": "to-do-list",
-  "description": "A simple to-do list app built with Cloudflare Workers Assets and Remix.",
+  "name": "synx",
+  "description": "sYnX: a to-do list app with shared lists, reminders, and sync across web and mobile, built on Remix and Cloudflare Workers.",
   "license": "AGPL-3.0-or-later",
   "cloudflare": {
-    "label": "To-Do List App",
+    "label": "sYnX",
     "products": [
       "Workers",
       "KV"

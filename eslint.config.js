@@ -91,7 +91,6 @@ export default tseslint.config(
       "import/namespace": "off",
       "import/default": "off",
       "import/no-named-as-default-member": "off",
-      // Existing code has many `any`s; flag them without failing lint.
       "@typescript-eslint/no-explicit-any": "error",
     },
   },
@@ -102,16 +101,11 @@ export default tseslint.config(
     rules: { "@typescript-eslint/no-explicit-any": "off" },
   },
 
-  // Temporarily warnings, not errors: fixing these needs UI or behavior changes
-  // (keyboard handlers / roles, label markup, effect refactors), so they are
-  // tracked here and should be fixed in follow-up changes, not in a lint migration.
   {
     files: ["**/*.{js,jsx,ts,tsx}"],
     rules: {
-      // React Compiler rules added in eslint-plugin-react-hooks v6+.
       "react-hooks/set-state-in-effect": "error",
       "react-hooks/purity": "error",
-      // Accessibility rules that need markup changes in existing views.
       "jsx-a11y/click-events-have-key-events": "error",
       "jsx-a11y/no-static-element-interactions": "error",
       "jsx-a11y/no-noninteractive-element-interactions": "error",
