@@ -5,7 +5,7 @@ export const WEB_VERSION = "v5.4.1";
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
     version: "v5.4.1",
-    date: "2026-10-29",
+    date: "2026-10-30",
     title: "What's new?",
     changes: [
       {
