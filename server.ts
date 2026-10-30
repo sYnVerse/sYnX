@@ -6,27 +6,13 @@ import { getLoadContext } from "./load-context";
 
 import { sendFCMPushNotification } from "./app/fcm.server";
 import { buildReminderEmailHtml, sanitizeEmailSubject } from "./app/html-escape.server";
-import { getRefreshedCookies } from "./app/auth.server";
+import { finalizeWorkerResponse, unexpectedErrorResponse } from "./app/worker-response.server";
+import { getDueReminderRecipients, type DueReminderRow } from "./app/due-reminders.server";
 import { deleteExpiredGuestLists } from "./app/guest-access.server";
 import { pruneOldListActivity } from "./app/list-activity.server";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
-
-interface DueReminderRow {
-  id: string;
-  listId: string;
-  text: string;
-  reminderAt: number;
-  userId: string;
-  listName: string | null;
-  email: string | null;
-  emailEnabled: number | boolean | null;
-  smsEnabled: number | boolean | null;
-  phoneNumber: string | null;
-  phoneCarrier: string | null;
-  discordWebhookUrl: string | null;
-}
 
 export default {
   async fetch(request, env, ctx) {
@@ -43,31 +29,10 @@ export default {
         },
       });
       const response = await handleRemixRequest(request, loadContext);
-      const headers = new Headers(response.headers);
-      headers.set("X-Content-Type-Options", "nosniff");
-      headers.set("X-Frame-Options", "DENY");
-      headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-      const refreshedCookies = getRefreshedCookies(request);
-      if (refreshedCookies && refreshedCookies.length > 0) {
-        for (const cookie of refreshedCookies) {
-          headers.append("Set-Cookie", cookie);
-        }
-      }
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers,
-      });
+      return finalizeWorkerResponse(request, response);
     } catch (error) {
       console.log(error);
-      return new Response("An unexpected error occurred", {
-        status: 500,
-        headers: {
-          "X-Content-Type-Options": "nosniff",
-          "X-Frame-Options": "DENY",
-          "Referrer-Policy": "strict-origin-when-cross-origin",
-        },
-      });
+      return unexpectedErrorResponse();
     }
   },
 
@@ -98,21 +63,7 @@ export default {
     // Fetch due reminders with user settings and emails (routed to the user who created/set the reminder, falling back to list owner)
     let dueReminders: DueReminderRow[] = [];
     try {
-      const { results } = await db.prepare(`
-        SELECT 
-          t.id, t.list_id as listId, t.text, t.reminder_at as reminderAt,
-          COALESCE(t.reminder_user_id, l.owner_id) as userId, l.name as listName,
-          s.email, s.email_enabled as emailEnabled, s.sms_enabled as smsEnabled, 
-          s.phone_number as phoneNumber, s.phone_carrier as phoneCarrier, s.discord_webhook_url as discordWebhookUrl
-        FROM todos t
-        JOIN lists l ON t.list_id = l.id
-        LEFT JOIN user_settings s ON COALESCE(t.reminder_user_id, l.owner_id) = s.user_id
-        WHERE t.completed = 0 
-          AND t.reminder_at IS NOT NULL 
-          AND (t.reminder_sent IS NULL OR t.reminder_sent = 0)
-          AND t.reminder_at <= ?
-      `).bind(now).all<DueReminderRow>();
-      dueReminders = results || [];
+      dueReminders = await getDueReminderRecipients(db, now);
       console.log(`[Cron] Found ${dueReminders.length} due reminders.`);
     } catch (e) {
       console.error("[Cron] Failed to query due reminders:", e);

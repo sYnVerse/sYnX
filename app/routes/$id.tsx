@@ -79,6 +79,7 @@ import {
   taskTextError,
 } from "~/write-limits";
 import { remapGuestTodoIds } from "~/guest-migration";
+import { canEditReminderText } from "~/reminder-ownership";
 
 
 export const GUEST_STORAGE_KEY = "synx_guest_lists";
@@ -908,8 +909,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
           // reword a task that has a reminder.
           return Response.json({ error: "Sign in to edit tasks that have reminders." }, { status: 403 });
         }
-        const reminderOwnerId = previous.reminder_user_id || listOwnerId;
-        if (reminderOwnerId && reminderOwnerId !== userId) {
+        if (!canEditReminderText(previous.reminder_user_id, listOwnerId, userId)) {
           return Response.json({ error: "Only the user who set the reminder can edit this task's text." }, { status: 403 });
         }
       }
@@ -1841,10 +1841,9 @@ function TodoItem({
   const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
   // A task's reminder text goes to the user who set the reminder, so guests or
   // other collaborators on a shared list can't reword someone else's reminder.
-  const reminderOwnerId = todo.reminderUserId || listOwnerId;
   const canEditText =
     canEdit &&
-    (!todo.reminderAt || (canSetReminders && (!reminderOwnerId || reminderOwnerId === currentUserId)));
+    (!todo.reminderAt || (canSetReminders && canEditReminderText(todo.reminderUserId, listOwnerId, currentUserId)));
   const toggleFetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
   const deleteFetcher = useFetcher<{
     success?: boolean;

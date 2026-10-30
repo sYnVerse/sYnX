@@ -18,19 +18,15 @@ import {
   OPENAUTH_CLIENT_ID,
   OPENAUTH_TOKEN_ENDPOINT,
   sessionRefresh,
-  secureSessionStore,
   setAuthFailureHandler,
 } from "../api/client";
 import { shouldSignOutAfterRefreshFailure } from "../shared/mobile-session";
-import { clearWidgetPreferences } from "../services/widgetPreferences";
-import { resetWidgetsLoggedOut } from "../services/widgetSync";
 import { checkHomeTimeZone, resetTimeZoneSync } from "../services/timeZoneSync";
 import {
   maybePromptDisplayNameSuggestion,
   resetDisplayNameSuggestion,
 } from "../services/displayNameSuggestion";
-import { releasePushTokenForSignOut } from "../services/notifications";
-import { clearPersistedQueryCache } from "../services/storage";
+import { clearSignedOutDeviceData } from "../services/signOutCleanup";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -141,13 +137,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const clearLocalSessionState = useCallback(async () => {
-    // Stop pushes to this device for the signed-out user (best effort, never
-    // waits on the network).
-    await releasePushTokenForSignOut();
-    await secureSessionStore.clearSessionTokens();
-    await clearPersistedQueryCache();
-    await clearWidgetPreferences();
-    resetWidgetsLoggedOut();
+    await clearSignedOutDeviceData();
     resetTimeZoneSync();
     resetDisplayNameSuggestion();
     setToken(null);
@@ -252,11 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = useCallback(async () => {
     try {
-      await releasePushTokenForSignOut();
-      await secureSessionStore.clearSessionTokens();
-      await clearPersistedQueryCache();
-      await clearWidgetPreferences();
-      resetWidgetsLoggedOut();
+      await clearSignedOutDeviceData();
 
       const logoutUrl = `${OPENAUTH_ISSUER}/logout?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
       try {

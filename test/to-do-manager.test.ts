@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import { TodoManager } from "../app/to-do-manager";
+import { getDueReminderRecipients } from "../app/due-reminders.server";
 import { env } from "cloudflare:test";
 
 describe("TodoManager", () => {
@@ -371,19 +372,30 @@ describe("TodoManager", () => {
         "collab-user-789"
       );
 
-      const { results } = await db
-        .prepare(
-          `SELECT t.id, COALESCE(t.reminder_user_id, l.owner_id) as recipient_id
-           FROM todos t
-           JOIN lists l ON t.list_id = l.id
-           WHERE t.reminder_at <= ? AND t.reminder_sent = 0`
-        )
-        .bind(Date.now())
-        .all<{ id: string; recipient_id: string }>();
+      const futureTodo = await manager.create(
+        "Not due yet",
+        "none",
+        Date.now() + 60 * 60 * 1000,
+        undefined,
+        "none",
+        undefined,
+        "collab-user-789"
+      );
+      await db
+        .prepare("INSERT OR REPLACE INTO user_settings (user_id, email, email_enabled) VALUES (?, ?, 1)")
+        .bind("collab-user-789", "collab@example.com")
+        .run();
 
-      const byId = new Map(results.map((r) => [r.id, r.recipient_id]));
-      expect(byId.get(legacyTodo.id)).toBe("test-user");
-      expect(byId.get(collabTodo.id)).toBe("collab-user-789");
+      // The same query the cron dispatch in server.ts uses.
+      const due = await getDueReminderRecipients(db, Date.now());
+      const byId = new Map(due.map((r) => [r.id, r]));
+      expect(byId.get(legacyTodo.id)?.userId).toBe("test-user");
+      expect(byId.get(collabTodo.id)?.userId).toBe("collab-user-789");
+      expect(byId.get(collabTodo.id)?.email).toBe("collab@example.com");
+      expect(byId.get(collabTodo.id)?.listName).toBe("Test List");
+      expect(byId.has(futureTodo.id)).toBe(false);
+
+      await db.prepare("DELETE FROM user_settings WHERE user_id = ?").bind("collab-user-789").run();
     });
   });
 

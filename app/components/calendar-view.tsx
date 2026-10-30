@@ -3,6 +3,7 @@ import { useFetcher } from "@remix-run/react";
 import type { Todo } from "~/to-do-manager";
 import { GUEST_REMINDER_HINT, GuestContext } from "~/guest-context";
 import { MAX_TASK_TEXT_LENGTH } from "~/write-limits";
+import { canEditReminderText } from "~/reminder-ownership";
 import { applySetCompletedLocal, formatRescheduledToast } from "../../shared";
 
 // Redefining priority config for local styling
@@ -727,9 +728,8 @@ function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
   const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
   // Reminder text goes to the user who set the reminder, so guests or other
   // users on a shared list can't reword tasks with someone else's reminder.
-  const reminderOwnerId = todo.reminderUserId || listOwnerId;
   const canEditText =
-    !todo.reminderAt || (canSetReminders && (!reminderOwnerId || reminderOwnerId === currentUserId));
+    !todo.reminderAt || (canSetReminders && canEditReminderText(todo.reminderUserId, listOwnerId, currentUserId));
   const inputRef = useRef<HTMLInputElement>(null);
 
   const [text, setText] = useState(todo.text);

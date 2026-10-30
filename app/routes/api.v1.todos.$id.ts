@@ -10,6 +10,7 @@ import { requestOrPerformDelete } from "../pending-deletes.server";
 import * as v from "valibot";
 import { UpdateTodoSchema } from "../../shared";
 import { taskTextError } from "../write-limits";
+import { canEditReminderText } from "../reminder-ownership";
 
 export async function action({ request, params, context }: ActionFunctionArgs) {
   const env = context.cloudflare.env;
@@ -53,8 +54,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
         parsed.text !== undefined && parsed.text !== todoRow.text;
 
       if (textChanged && todoRow.reminder_at != null && parsed.reminderAt === undefined) {
-        const reminderOwnerId = todoRow.reminder_user_id || access.list?.owner_id;
-        if (reminderOwnerId && reminderOwnerId !== user.userId) {
+        if (!canEditReminderText(todoRow.reminder_user_id, access.list?.owner_id, user.userId)) {
           return Response.json(
             { error: "Only the user who set the reminder can edit this task's text." },
             { status: 403 }
