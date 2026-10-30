@@ -30,4 +30,17 @@ export function categoryError(category: string): string | null {
     : null;
 }
 
+export const MAX_PHONE_NUMBER_LENGTH = 32;
+export const MAX_PHONE_CARRIER_LENGTH = 64;
+
+/**
+ * Error for an SMS phone number or carrier that is too long, or null when both
+ * fit. Pass trimmed values; the settings routes store them trimmed.
+ */
+export function phoneSettingsError(phoneNumber: string, phoneCarrier: string): string | null {
+  if (phoneNumber.length > MAX_PHONE_NUMBER_LENGTH) return "Phone number is too long";
+  if (phoneCarrier.length > MAX_PHONE_CARRIER_LENGTH) return "Phone carrier is too long";
+  return null;
+}
+
 export const TASK_LIMIT_ERROR = `This list is full (${MAX_TASKS_PER_LIST} tasks). Clear some tasks to add more.`;

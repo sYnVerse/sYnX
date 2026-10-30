@@ -75,8 +75,10 @@ import {
   TASK_LIMIT_ERROR,
   categoryError,
   listNameError,
+  phoneSettingsError,
   taskTextError,
 } from "~/write-limits";
+import { remapGuestTodoIds } from "~/guest-migration";
 
 
 export const GUEST_STORAGE_KEY = "synx_guest_lists";
@@ -480,18 +482,11 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
               .bind(newListId, listName, userId, Number(gList.created_at) || Date.now())
               .run();
 
-            // Pre-allocate new UUIDs so subtask parentId links within the list stay valid.
-            const idMap = new Map<string, string>();
-            for (const todo of todos) {
-              if (typeof todo.id === "string" && todo.id) {
-                idMap.set(todo.id, crypto.randomUUID());
-              }
-            }
+            // Fresh ids for the whole list first, so subtask parentId links within the list stay valid.
+            const remappedIds = remapGuestTodoIds(todos);
 
-            for (const todo of todos) {
-              const todoId = (typeof todo.id === "string" && idMap.get(todo.id)) || crypto.randomUUID();
-              const mappedParentId =
-                typeof todo.parentId === "string" ? (idMap.get(todo.parentId) ?? null) : null;
+            for (const [index, todo] of todos.entries()) {
+              const { id: todoId, parentId: mappedParentId } = remappedIds[index];
               await db.prepare(
                 "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
               ).bind(
@@ -558,11 +553,9 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     const discordWebhookUrl = discordWebhookUrlRaw.trim();
     const displayName = sanitizeDisplayNameInput(formData.get("displayName"));
 
-    if (phoneNumber.trim().length > 32) {
-      return Response.json({ error: "Phone number is too long" }, { status: 400 });
-    }
-    if (phoneCarrier.trim().length > 64) {
-      return Response.json({ error: "Phone carrier is too long" }, { status: 400 });
+    const phoneError = phoneSettingsError(phoneNumber.trim(), phoneCarrier.trim());
+    if (phoneError) {
+      return Response.json({ error: phoneError }, { status: 400 });
     }
 
     if (discordWebhookUrl) {

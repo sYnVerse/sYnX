@@ -6,6 +6,7 @@ import {
   sanitizeDisplayNameInput,
   syncUserProfileOnSignIn,
 } from "../user-profile.server";
+import { phoneSettingsError } from "../write-limits";
 
 interface UserSettingsRow {
   user_id: string;
@@ -85,11 +86,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const discordWebhookUrl =
       typeof body.discordWebhookUrl === "string" ? body.discordWebhookUrl.trim() : "";
 
-    if (phoneNumber.length > 32) {
-      return Response.json({ error: "Phone number is too long" }, { status: 400 });
-    }
-    if (phoneCarrier.length > 64) {
-      return Response.json({ error: "Phone carrier is too long" }, { status: 400 });
+    const phoneError = phoneSettingsError(phoneNumber, phoneCarrier);
+    if (phoneError) {
+      return Response.json({ error: phoneError }, { status: 400 });
     }
 
     if (discordWebhookUrl) {
