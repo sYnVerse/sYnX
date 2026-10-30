@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.4.0";
+export const WEB_VERSION = "v5.4.1";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.4.1",
+    date: "2026-10-29",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "On Collaborative lists, signed-in collaborators can set reminders for themselves. Each reminder goes to the person who set it rather than the list owner, and only that person can edit the task's wording while the reminder is active."
+      },
+      {
+        type: "FIX",
+        text: "When you sign in and your guest lists are saved to your account, subtasks now stay attached to their parent tasks."
+      }
+    ]
+  },
   {
     version: "v5.4.0",
     date: "2026-10-29",
@@ -31,14 +46,6 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "Private and View-Only lists still work the same: View-Only can't delete, and Private stays owner-only."
-      },
-      {
-        type: "IMPR",
-        text: "On Collaborative lists, signed-in collaborators can set reminders for themselves. Each reminder goes to the person who set it rather than the list owner, and only that person can edit the task's wording while the reminder is active."
-      },
-      {
-        type: "FIX",
-        text: "When you sign in and your guest lists are saved to your account, subtasks now stay attached to their parent tasks."
       }
     ]
   },
