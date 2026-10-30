@@ -16,3 +16,10 @@ updates:
       interval: "weekly"
     allow:
       - dependency-type: "production"
+    groups:
+      production-dependencies:
+        patterns:
+          - "*"
+    ignore:
+      - dependency-name: "@react-native-async-storage/async-storage"
+        update-types: ["version-update:semver-major"]
