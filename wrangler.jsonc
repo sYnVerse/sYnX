@@ -4,8 +4,13 @@
   "workers_dev": false,
   // Turns on workers.dev URLs for Worker Previews (see "previews" below).
   // The same setting also turns on Version URLs, which run with production
-  // bindings, so Cloudflare Access must cover this Worker's workers.dev URLs.
+  // bindings. In-code guard in server.ts checks APP_ENV and blocks workers.dev
+  // execution against production bindings, while requiring Cloudflare Access
+  // authentication on preview URLs.
   "preview_urls": true,
+  "vars": {
+    "APP_ENV": "production"
+  },
   "compatibility_date": "2025-04-01",
   "upload_source_maps": true,
   "main": "./server.ts",
@@ -59,6 +64,9 @@
   // Previews are served on workers.dev, not christran.io, so they never get
   // the production sign-in cookies set on .christran.io.
   "previews": {
+    "vars": {
+      "APP_ENV": "preview"
+    },
     "d1_databases": [
       {
         "binding": "DB",

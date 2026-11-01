@@ -7,6 +7,7 @@ import { getLoadContext } from "./load-context";
 import { sendFCMPushNotification } from "./app/fcm.server";
 import { buildReminderEmailHtml, sanitizeEmailSubject } from "./app/html-escape.server";
 import { finalizeWorkerResponse, unexpectedErrorResponse } from "./app/worker-response.server";
+import { verifyWorkersDevAccess } from "./app/access-guard.server";
 import { getDueReminderRecipients, type DueReminderRow } from "./app/due-reminders.server";
 import { deleteExpiredGuestLists } from "./app/guest-access.server";
 import { pruneOldListActivity } from "./app/list-activity.server";
@@ -16,6 +17,10 @@ const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
 
 export default {
   async fetch(request, env, ctx) {
+    const accessDeniedResponse = await verifyWorkersDevAccess(request, env);
+    if (accessDeniedResponse) {
+      return accessDeniedResponse;
+    }
     try {
       const loadContext = getLoadContext({
         request,

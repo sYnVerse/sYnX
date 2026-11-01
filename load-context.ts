@@ -23,6 +23,9 @@ declare global {
     TWILIO_AUTH_TOKEN?: string;
     TWILIO_FROM_NUMBER?: string;
     FIREBASE_SERVICE_ACCOUNT_JSON?: string;
+    APP_ENV?: string;
+    CF_ACCESS_TEAM_DOMAIN?: string;
+    CF_ACCESS_AUD?: string;
   }
 }
 

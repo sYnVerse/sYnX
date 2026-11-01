@@ -45,7 +45,7 @@ Every pull request gets a Preview URL from Workers Builds (`wrangler preview`), 
 - Previews don't inherit production settings. Any new binding the app needs must be added to `previews` too, pointed at a preview-safe resource. Never point a preview binding at a production resource.
 - Previews have no notification secrets (Resend, Twilio, Firebase), and cron triggers don't run on them. Don't add any of these.
 - Sign-in doesn't work on previews yet, so check changes there in guest mode.
-- Previews are served on `workers.dev`, behind Cloudflare Access. Don't move them to a `christran.io` hostname: production sign-in cookies are set on `.christran.io` and would reach preview code. `preview_urls: true` also turns on Version URLs, which run with production bindings, so Access must stay on for this Worker's `workers.dev` URLs.
+- Previews are served on `workers.dev`, behind Cloudflare Access. Don't move them to a `christran.io` hostname: production sign-in cookies are set on `.christran.io` and would reach preview code. `preview_urls: true` also turns on Version URLs, which run with production bindings. An in-code guard in `server.ts` checks `APP_ENV` and blocks `workers.dev` execution against production bindings, while requiring Cloudflare Access authentication (`cf-access-jwt-assertion`) on preview URLs.
 
 ## Versioning Rules (SemVer)
 
