@@ -92,6 +92,72 @@ describe("Regression Tests: Reminder Validation, Subtask Search, and Deep Link P
       expect(visibleParents).toHaveLength(1);
       expect(visibleParents[0].id).toBe("parent-1");
     });
+
+    it("filters subtasks to only matching subtasks under parent when searching ('Milk') (Issue 106)", () => {
+      const searchQuery = "Milk";
+      const searchQ = searchQuery.toLowerCase().trim();
+
+      const sub1 = { id: "sub-1", text: "Organic Milk 2%", parentId: "parent-1", createdAt: 100 };
+      const sub2 = { id: "sub-2", text: "Whole Wheat Bread", parentId: "parent-1", createdAt: 200 };
+      const subtasksByParent = { "parent-1": [sub1, sub2] };
+      const visibleParents = [{ id: "parent-1", text: "Buy Groceries", parentId: undefined }];
+
+      const subtasksMap: Record<string, typeof sub1[]> = {};
+      for (const parent of visibleParents) {
+        const subs = subtasksByParent[parent.id] || [];
+        const filteredSubs = searchQ
+          ? subs.filter((sub) => sub.text.toLowerCase().includes(searchQ))
+          : subs;
+        subtasksMap[parent.id] = [...filteredSubs].sort((a, b) => a.createdAt - b.createdAt);
+      }
+
+      expect(subtasksMap["parent-1"]).toHaveLength(1);
+      expect(subtasksMap["parent-1"][0].id).toBe("sub-1");
+      expect(subtasksMap["parent-1"][0].text).toBe("Organic Milk 2%");
+    });
+
+    it("hides non-matching subtasks when only parent text matches search query ('Groceries') (Issue 106)", () => {
+      const searchQuery = "Groceries";
+      const searchQ = searchQuery.toLowerCase().trim();
+
+      const sub1 = { id: "sub-1", text: "Organic Milk 2%", parentId: "parent-1", createdAt: 100 };
+      const sub2 = { id: "sub-2", text: "Whole Wheat Bread", parentId: "parent-1", createdAt: 200 };
+      const subtasksByParent = { "parent-1": [sub1, sub2] };
+      const visibleParents = [{ id: "parent-1", text: "Buy Groceries", parentId: undefined }];
+
+      const subtasksMap: Record<string, typeof sub1[]> = {};
+      for (const parent of visibleParents) {
+        const subs = subtasksByParent[parent.id] || [];
+        const filteredSubs = searchQ
+          ? subs.filter((sub) => sub.text.toLowerCase().includes(searchQ))
+          : subs;
+        subtasksMap[parent.id] = [...filteredSubs].sort((a, b) => a.createdAt - b.createdAt);
+      }
+
+      expect(subtasksMap["parent-1"]).toHaveLength(0);
+    });
+
+    it("restores all subtasks when search query is empty (Issue 106)", () => {
+      const searchQuery = "";
+      const searchQ = searchQuery.toLowerCase().trim();
+
+      const sub1 = { id: "sub-1", text: "Organic Milk 2%", parentId: "parent-1", createdAt: 100 };
+      const sub2 = { id: "sub-2", text: "Whole Wheat Bread", parentId: "parent-1", createdAt: 200 };
+      const subtasksByParent = { "parent-1": [sub1, sub2] };
+      const visibleParents = [{ id: "parent-1", text: "Buy Groceries", parentId: undefined }];
+
+      const subtasksMap: Record<string, typeof sub1[]> = {};
+      for (const parent of visibleParents) {
+        const subs = subtasksByParent[parent.id] || [];
+        const filteredSubs = searchQ
+          ? subs.filter((sub) => sub.text.toLowerCase().includes(searchQ))
+          : subs;
+        subtasksMap[parent.id] = [...filteredSubs].sort((a, b) => a.createdAt - b.createdAt);
+      }
+
+      expect(subtasksMap["parent-1"]).toHaveLength(2);
+      expect(subtasksMap["parent-1"].map(s => s.id)).toEqual(["sub-1", "sub-2"]);
+    });
   });
 
   describe("Deep Link Root UUID Parsing", () => {

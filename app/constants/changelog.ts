@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.4.2";
+export const WEB_VERSION = "v5.4.3";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.4.3",
+    date: "2026-11-01",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "When searching a list, matching subtasks now display under their parent task name with search matches highlighted, while non-matching subtasks are hidden."
+      }
+    ]
+  },
   {
     version: "v5.4.2",
     date: "2026-10-31",
