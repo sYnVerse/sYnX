@@ -9,8 +9,7 @@
     {
       "binding": "PREVIEW_DB",
       "database_name": "synx-preview",
-      // TODO: replace with the synx-preview database ID before merging.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "dd5b8ab6-9068-4c87-b1ea-5c9afeade6e3",
       "migrations_dir": "migrations"
     }
   ]
