@@ -99,7 +99,7 @@ describe("Regression Tests: Reminder Validation, Subtask Search, and Deep Link P
 
       const sub1 = { id: "sub-1", text: "Organic Milk 2%", parentId: "parent-1", createdAt: 100 };
       const sub2 = { id: "sub-2", text: "Whole Wheat Bread", parentId: "parent-1", createdAt: 200 };
-      const subtasksByParent = { "parent-1": [sub1, sub2] };
+      const subtasksByParent: Record<string, typeof sub1[]> = { "parent-1": [sub1, sub2] };
       const visibleParents = [{ id: "parent-1", text: "Buy Groceries", parentId: undefined }];
 
       const subtasksMap: Record<string, typeof sub1[]> = {};
@@ -122,7 +122,7 @@ describe("Regression Tests: Reminder Validation, Subtask Search, and Deep Link P
 
       const sub1 = { id: "sub-1", text: "Organic Milk 2%", parentId: "parent-1", createdAt: 100 };
       const sub2 = { id: "sub-2", text: "Whole Wheat Bread", parentId: "parent-1", createdAt: 200 };
-      const subtasksByParent = { "parent-1": [sub1, sub2] };
+      const subtasksByParent: Record<string, typeof sub1[]> = { "parent-1": [sub1, sub2] };
       const visibleParents = [{ id: "parent-1", text: "Buy Groceries", parentId: undefined }];
 
       const subtasksMap: Record<string, typeof sub1[]> = {};
@@ -143,7 +143,7 @@ describe("Regression Tests: Reminder Validation, Subtask Search, and Deep Link P
 
       const sub1 = { id: "sub-1", text: "Organic Milk 2%", parentId: "parent-1", createdAt: 100 };
       const sub2 = { id: "sub-2", text: "Whole Wheat Bread", parentId: "parent-1", createdAt: 200 };
-      const subtasksByParent = { "parent-1": [sub1, sub2] };
+      const subtasksByParent: Record<string, typeof sub1[]> = { "parent-1": [sub1, sub2] };
       const visibleParents = [{ id: "parent-1", text: "Buy Groceries", parentId: undefined }];
 
       const subtasksMap: Record<string, typeof sub1[]> = {};
