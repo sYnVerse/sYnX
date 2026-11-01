@@ -16,6 +16,7 @@ export interface Todo {
   durationMinutes?: number;
   /** Collaborator delete request awaiting owner approval. */
   pendingDelete?: boolean;
+  rescheduled?: boolean;
 }
 
 export interface TodoRow {
@@ -222,7 +223,7 @@ export class TodoManager {
    * Toggles the completed status of a todo item (legacy flip).
    * Prefer setCompleted for idempotent clients.
    */
-  async toggle(id: string, options: { timeZone?: string } = {}): Promise<Todo> {
+  async toggle(id: string, options: { timeZone?: string } = {}): Promise<Todo & { rescheduled: boolean }> {
     const todo = await this.db
       .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
       .bind(id, this.listId)
@@ -231,7 +232,7 @@ export class TodoManager {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
     const result = await this.setCompleted(id, !todo.completed, options);
-    return result.todo;
+    return { ...result.todo, rescheduled: result.rescheduled };
   }
 
   /**

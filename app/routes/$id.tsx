@@ -798,7 +798,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       scheduleActivityLog({
         listId: activeListId,
         taskId: id,
-        action: todo.completed ? "task_completed" : "task_uncompleted",
+        action: todo.completed || todo.rescheduled ? "task_completed" : "task_uncompleted",
         actorId: userId,
         isOwner: hasOwnership,
         shareMode: activeShareMode,
@@ -3739,7 +3739,8 @@ export default function TodoPage() {
                 text: textVal.trim(),
                 priority: newPriority,
                 reminderAt: timeMs > 0 ? timeMs : undefined,
-                recurrence: "none"
+                recurrence: "none",
+                durationMinutes: newDurationMinutes ?? undefined
               });
             }
           }}

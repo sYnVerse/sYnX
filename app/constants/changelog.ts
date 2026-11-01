@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.4.1";
+export const WEB_VERSION = "v5.4.2";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.4.2",
+    date: "2026-10-31",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Checking off a repeating task on a shared list is now correctly logged as completed in the Activity log instead of incomplete."
+      },
+      {
+        type: "FIX",
+        text: "As a guest, estimated durations chosen when adding a task to your browser list now save instead of being dropped."
+      }
+    ]
+  },
   {
     version: "v5.4.1",
     date: "2026-10-30",
