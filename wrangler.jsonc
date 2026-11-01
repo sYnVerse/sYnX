@@ -66,9 +66,11 @@
   "previews": {
     "vars": {
       "APP_ENV": "preview",
-      // Cloudflare Zero Trust Access settings for Worker Previews on workers.dev
-      "CF_ACCESS_TEAM_DOMAIN": "synx.cloudflareaccess.com",
-      "CF_ACCESS_AUD": "replace-with-access-aud"
+      // Cloudflare Zero Trust Access team domain for Worker Previews on workers.dev.
+      // CF_ACCESS_AUD must be set as a Secret or Environment Variable in the
+      // Cloudflare Dashboard (Workers & Pages -> synx -> Settings -> Variables and Secrets)
+      // and must never be committed to this public repository.
+      "CF_ACCESS_TEAM_DOMAIN": "synx.cloudflareaccess.com"
     },
     "d1_databases": [
       {
