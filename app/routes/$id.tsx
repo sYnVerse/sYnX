@@ -1817,18 +1817,49 @@ function DurationPicker({
   );
 }
 
+function renderHighlightedText(text: string, query: string) {
+  const trimmed = query.trim();
+  if (!trimmed) return text;
+
+  const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let regex: RegExp;
+  try {
+    regex = new RegExp("(" + escaped + ")", "gi");
+  } catch {
+    return text;
+  }
+  const parts = text.split(regex);
+  if (parts.length === 1) return text;
+
+  const lowerQuery = trimmed.toLowerCase();
+  return parts.map((part, i) =>
+    part.toLowerCase() === lowerQuery ? (
+      <mark
+        key={i}
+        className="bg-themeAccentFrom/20 text-themeAccentText font-semibold rounded px-0.5"
+      >
+        {part}
+      </mark>
+    ) : (
+      part
+    )
+  );
+}
+
 function TodoItem({
   todo,
   subtasks = [],
   isSubtask = false,
   canEdit = true,
   onNotify,
+  searchQuery = "",
 }: {
   todo: Todo;
   subtasks?: Todo[];
   isSubtask?: boolean;
   canEdit?: boolean;
   onNotify?: (message: string) => void;
+  searchQuery?: string;
 }) {
   const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
   // A task's reminder text goes to the user who set the reminder, so guests or
@@ -2065,7 +2096,7 @@ function TodoItem({
               }
             }}
           >
-            {todo.text}
+            {renderHighlightedText(todo.text, searchQuery)}
           </span>
         )}
 
@@ -2183,10 +2214,17 @@ function TodoItem({
       </li>
 
       {/* Render subtasks underneath the parent */}
-      {!isSubtask && (
+      {!isSubtask && (subtasks.length > 0 || showAddSubtask) && (
         <div className="pl-6 mt-1 flex flex-col gap-1 border-l border-white/[0.04] ml-5">
           {subtasks.map((sub) => (
-            <TodoItem key={sub.id} todo={sub} isSubtask={true} canEdit={canEdit} onNotify={onNotify} />
+            <TodoItem
+              key={sub.id}
+              todo={sub}
+              isSubtask={true}
+              canEdit={canEdit}
+              onNotify={onNotify}
+              searchQuery={searchQuery}
+            />
           ))}
 
           {/* Inline Add Subtask Input Form */}
@@ -3106,9 +3144,13 @@ export default function TodoPage() {
 
   // 5. Group subtasks by parent (sorted chronologically)
   const subtasksMap: Record<string, Todo[]> = {};
+  const searchQ = searchQuery.toLowerCase().trim();
   for (const parent of visibleParents) {
     const subs = allSubtasksByParent[parent.id] || [];
-    subtasksMap[parent.id] = [...subs].sort((a, b) => a.createdAt - b.createdAt);
+    const filteredSubs = searchQ
+      ? subs.filter((sub) => sub.text.toLowerCase().includes(searchQ))
+      : subs;
+    subtasksMap[parent.id] = [...filteredSubs].sort((a, b) => a.createdAt - b.createdAt);
   }
 
   const totalCount = optimisticTodos.filter(t => !t.parentId).length;
@@ -4229,6 +4271,7 @@ export default function TodoPage() {
                   subtasks={subtasksMap[todo.id] || []}
                   canEdit={canEdit}
                   onNotify={showToast}
+                  searchQuery={searchQuery}
                 />
               ))}
             </ul>
