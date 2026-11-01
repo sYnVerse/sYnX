@@ -2,7 +2,10 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "synx",
   "workers_dev": false,
-  "preview_urls": false,
+  // Turns on workers.dev URLs for Worker Previews (see "previews" below).
+  // The same setting also turns on Version URLs, which run with production
+  // bindings, so Cloudflare Access must cover this Worker's workers.dev URLs.
+  "preview_urls": true,
   "compatibility_date": "2025-04-01",
   "upload_source_maps": true,
   "main": "./server.ts",
@@ -53,8 +56,8 @@
   // - No notification secrets (Resend, Twilio, Firebase): reminders don't go
   //   out from previews, and crons never run there.
   // - Sign-in isn't set up for previews yet, so they work in guest mode only.
-  // Keep the old version preview_urls above set to false: those versions use
-  // production bindings, including synx-db.
+  // Previews are served on workers.dev, not christran.io, so they never get
+  // the production sign-in cookies set on .christran.io.
   "previews": {
     "d1_databases": [
       {
