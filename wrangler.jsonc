@@ -41,5 +41,39 @@
     "crons": [
       "* * * * *"
     ]
+  },
+  // Worker Previews: every pull request gets its own Preview URL. Previews
+  // don't inherit anything above, so only what's listed here exists on them.
+  // - DB points at the separate synx-preview database, never synx-db. The
+  //   Preview command applies migrations/ to it first, using
+  //   wrangler.preview-migrations.jsonc (keep the two files on the same
+  //   database).
+  // - The rate limiter gets its own namespace so preview traffic never counts
+  //   against production.
+  // - No notification secrets (Resend, Twilio, Firebase): reminders don't go
+  //   out from previews, and crons never run there.
+  // - Sign-in isn't set up for previews yet, so they work in guest mode only.
+  // Keep the old version preview_urls above set to false: those versions use
+  // production bindings, including synx-db.
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "synx-preview",
+        // TODO: replace with the synx-preview database ID before merging.
+        "database_id": "00000000-0000-0000-0000-000000000000",
+        "migrations_dir": "migrations"
+      }
+    ],
+    "ratelimits": [
+      {
+        "name": "GUEST_WRITE_LIMITER",
+        "namespace_id": "4202",
+        "simple": {
+          "limit": 60,
+          "period": 60
+        }
+      }
+    ]
   }
 }
