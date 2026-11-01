@@ -95,6 +95,7 @@ describe("TodoManager", () => {
 
       const toggled = await manager.toggle(todo.id);
       expect(toggled.completed).toBe(true);
+      expect(toggled.rescheduled).toBe(false);
 
       const storedTodos = await manager.list();
       expect(storedTodos[0].completed).toBe(true);
@@ -282,6 +283,7 @@ describe("TodoManager", () => {
       const toggled = await manager.toggle(todo.id);
       expect(toggled.completed).toBe(false);
       expect(toggled.reminderAt).toBe(now + 24 * 60 * 60 * 1000);
+      expect(toggled.rescheduled).toBe(true);
       expect(toggled.reminderSent).toBe(false);
     });
 
@@ -292,6 +294,7 @@ describe("TodoManager", () => {
 
       expect(toggled.completed).toBe(false);
       expect(toggled.reminderAt).toBe(now + 7 * 24 * 60 * 60 * 1000);
+      expect(toggled.rescheduled).toBe(true);
       expect(toggled.reminderSent).toBe(false);
     });
   });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  canEditList,
   getListPermissionPresentation,
   getShareModeLabel,
 } from "../shared/list-permissions";
@@ -79,7 +80,7 @@ describe("getListPermissionPresentation", () => {
       canEdit: true,
     });
     expect(p.label).toBe("Collaborative");
-    expect(p.description).toMatch(/Anyone with the link can view and edit/i);
+    expect(p.description).toMatch(/signed-in users can edit/i);
   });
 });
 
@@ -88,5 +89,25 @@ describe("getShareModeLabel", () => {
     expect(getShareModeLabel("private")).toBe("Private");
     expect(getShareModeLabel("public_read")).toBe("View-Only");
     expect(getShareModeLabel("public_edit")).toBe("Collaborative");
+  });
+});
+
+describe("canEditList", () => {
+  it("allows owners to edit any list regardless of share mode or sign-in state", () => {
+    expect(canEditList("private", true, true)).toBe(true);
+    expect(canEditList("public_read", true, true)).toBe(true);
+    expect(canEditList("public_edit", true, true)).toBe(true);
+  });
+
+  it("requires sign-in for non-owners on collaborative lists", () => {
+    expect(canEditList("public_edit", false, true)).toBe(true);
+    expect(canEditList("public_edit", false, false)).toBe(false);
+  });
+
+  it("disallows non-owners on view-only and private lists even when signed in", () => {
+    expect(canEditList("public_read", false, true)).toBe(false);
+    expect(canEditList("private", false, true)).toBe(false);
+    expect(canEditList("public_read", false, false)).toBe(false);
+    expect(canEditList("private", false, false)).toBe(false);
   });
 });

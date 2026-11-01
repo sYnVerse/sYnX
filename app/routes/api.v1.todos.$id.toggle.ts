@@ -45,7 +45,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   const logPromise = logListActivity(db, {
     listId: todoRow.list_id,
     taskId: todoId,
-    action: updatedTodo.completed ? "task_completed" : "task_uncompleted",
+    action: updatedTodo.completed || updatedTodo.rescheduled ? "task_completed" : "task_uncompleted",
     actorId: user.userId,
     isOwner: access.isOwner,
     shareMode: access.list?.share_mode,

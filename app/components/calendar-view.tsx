@@ -45,10 +45,11 @@ const priorityConfig = {
 interface CalendarViewProps {
   todos: Todo[];
   activeListId: string;
+  canEdit?: boolean;
   onNotify?: (message: string) => void;
 }
 
-export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProps) {
+export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: CalendarViewProps) {
   const fetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
   // Guests' own lists live in localStorage, so their changes go through
   // onGuestAction as well as the server (which ignores them). Guests on
@@ -387,7 +388,7 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                   {/* Plus button to quick-add (adds a dated task, so not for guests on shared lists) */}
                   {canSetReminders && (
                   <button
-                    onClick={() => setQuickAddDate(date)}
+                    onClick={() => canEdit && setQuickAddDate(date)}
                     className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-themeAccentText hover:bg-white/[0.04] p-0.5 rounded transition duration-150 cursor-pointer flex items-center justify-center"
                     title="Add task on this day"
                   >
@@ -406,7 +407,7 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                     return (
                       <div
                         key={todo.id}
-                        draggable={canSetReminders}
+                        draggable={canEdit && canSetReminders}
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/plain", todo.id);
                         }}
@@ -421,7 +422,7 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
                           
                           <button
                             type="button"
-                            disabled={pendingCompleteId === todo.id}
+                            disabled={!canEdit || pendingCompleteId === todo.id}
                             aria-busy={pendingCompleteId === todo.id}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -440,7 +441,7 @@ export function CalendarView({ todos, activeListId, onNotify }: CalendarViewProp
 
                           <button
                             type="button"
-                            onClick={() => setEditingTodo(todo)}
+                            onClick={() => canEdit && setEditingTodo(todo)}
                             className={`text-left text-[10px] md:text-xs truncate text-slate-355 group-hover/task:text-white cursor-pointer
                               ${todo.completed ? "line-through text-slate-500 italic" : ""}`}
                           >
