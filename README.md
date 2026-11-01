@@ -204,7 +204,7 @@ CI also checks that `mobile/src/shared/` and the mobile version files are in syn
 
 ## Deploy and database migrations
 
-The `to-do-list` Worker deploys through [Cloudflare Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/), which is connected to this repo:
+The `synx` Worker deploys through [Cloudflare Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/), which is connected to this repo:
 
 * **Pull requests and other branches** run `npx wrangler versions upload`. That uploads a version without deploying it. Preview URLs are turned off.
 * **`main`** runs `npm run deploy`: build, apply any pending D1 migrations to production, then `wrangler deploy`.

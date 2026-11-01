@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "to-do-list",
+  "name": "synx",
   "workers_dev": false,
   // Turns on workers.dev URLs for Worker Previews (see "previews" below).
   // The same setting also turns on Version URLs, which run with production
