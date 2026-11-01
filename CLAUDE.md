@@ -37,6 +37,16 @@ The D1 schema lives in `migrations/` (numbered SQL files applied by Wrangler and
 - No DDL (`CREATE`/`ALTER`/`DROP`) or `PRAGMA` schema checks in app code. The app assumes the schema from `migrations/` is in place; don't add "create if missing" or "add column if missing" code, and don't wrap queries in `try/catch` just to ignore schema errors.
 - Never run `wrangler d1 migrations apply` or `wrangler d1 execute` with `--remote` by hand. Production migrations run only in the deploy pipeline (`npm run deploy`, which Workers Builds runs on pushes to main). Don't run `npm run deploy` from your own machine either, since it applies migrations to production. `wrangler d1 migrations list synx-db --remote` is read-only and fine for checking.
 
+## Worker Previews (pull request previews)
+
+Every pull request gets a Preview URL from Workers Builds (`wrangler preview`), set up in the `previews` block of `wrangler.jsonc`.
+
+- Previews use their own `synx-preview` D1 database, never `synx-db`. Before each Preview deploys, the Preview command applies `migrations/` to it through `wrangler.preview-migrations.jsonc`. If you change the preview database, change it in both files.
+- Previews don't inherit production settings. Any new binding the app needs must be added to `previews` too, pointed at a preview-safe resource. Never point a preview binding at a production resource.
+- Previews have no notification secrets (Resend, Twilio, Firebase), and cron triggers don't run on them. Don't add any of these.
+- Sign-in doesn't work on previews yet, so check changes there in guest mode.
+- Keep the top-level `preview_urls` set to `false`. Those older version URLs run with production bindings, including `synx-db`.
+
 ## Versioning Rules (SemVer)
 
 Follow **`.claude/rules/versioning.md`** (canonical). Summary:

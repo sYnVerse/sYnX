@@ -1,0 +1,16 @@
+// Used only by the Worker Previews command to apply migrations/ to the
+// synx-preview database before each Preview deploys:
+//   npx wrangler d1 migrations apply PREVIEW_DB --remote --config wrangler.preview-migrations.jsonc
+// It must point at the same database as previews.d1_databases in
+// wrangler.jsonc. It never touches the production synx-db database.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "d1_databases": [
+    {
+      "binding": "PREVIEW_DB",
+      "database_name": "synx-preview",
+      "database_id": "dd5b8ab6-9068-4c87-b1ea-5c9afeade6e3",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
