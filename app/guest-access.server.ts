@@ -21,24 +21,14 @@ export function isGuestId(value: unknown): value is string {
 }
 
 /**
- * Page actions a guest may run on someone else's public_edit list: adding,
+ * Page actions a guest may run on someone else's shared list.
+ * Guests are view-only on all shared lists, even collaborative ones.
  * completing, editing tasks, and requesting deletes (task, clear completed,
  * or the list — the owner must approve). Anything that creates or changes a
  * reminder (reminders, repeats, marking a reminder sent) or renames/shares a
  * list needs a signed-in account.
  */
-export const GUEST_SHARED_LIST_INTENTS: ReadonlySet<string> = new Set([
-  "create",
-  "toggle",
-  "setCompleted",
-  "delete",
-  "updatePriority",
-  "updateText",
-  "updateDuration",
-  "clearCompleted",
-  // Guests on collaborative lists may request list deletion (owner must approve).
-  "deleteList",
-]);
+export const GUEST_SHARED_LIST_INTENTS: ReadonlySet<string> = new Set();
 
 export const GUEST_REMINDER_DENIAL = "Sign in to set reminders.";
 
@@ -50,7 +40,7 @@ export function guestIntentDenial(intent: string): string {
   if (intent === "createList") {
     return "Sign in to save lists to your account. Guest lists stay in this browser.";
   }
-  return "Sign in to make this change.";
+  return "Sign in to edit this list.";
 }
 
 /** Guest writes allowed per guest id, and separately per IP, per minute. */

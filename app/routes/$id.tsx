@@ -48,11 +48,8 @@ import {
 } from "~/provider-profile.server";
 import { listSharedWithMe, recordSharedListAccess, removeSharedListAccess } from "~/shared-lists.server";
 import {
-  GUEST_RATE_LIMIT_ERROR,
   GUEST_REMINDER_DENIAL,
-  GUEST_SHARED_LIST_INTENTS,
   guestIntentDenial,
-  guestWriteAllowed,
   isListFull,
 } from "~/guest-access.server";
 import {
@@ -711,21 +708,16 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   }
 
   if (!isLoggedIn) {
+    if (intent === "createList") {
+      return Response.json({ error: guestIntentDenial("createList") }, { status: 403 });
+    }
     // Guest lists (anything that isn't a shared D1 list) live in localStorage,
     // so there's nothing to write here.
-    if (!isCollaborative) {
+    if (!listOwnerId && !isCollaborative) {
       return json({ success: true, guestLocalStorage: true });
     }
-    // On a list shared as "anyone can edit", guests can work on tasks, but
-    // can't create lists, change the list, or set anything that sends a
-    // reminder to the owner.
-    const guestIntent = typeof intent === "string" ? intent : "";
-    if (!GUEST_SHARED_LIST_INTENTS.has(guestIntent)) {
-      return Response.json({ error: guestIntentDenial(guestIntent) }, { status: 403 });
-    }
-    if (!(await guestWriteAllowed(context.cloudflare.env, userId, request))) {
-      return Response.json({ error: GUEST_RATE_LIMIT_ERROR }, { status: 429 });
-    }
+    // Shared lists are view-only for guests, even in collaborative mode.
+    return Response.json({ error: "Sign in to edit this list." }, { status: 403 });
   }
 
   // For non-list creation actions, verify ownership or collaborative access of the active list
@@ -2905,7 +2897,7 @@ export default function TodoPage() {
   const isOwner = activeListMeta ? activeListMeta.owner_id === userId : false;
   // Name others see on this user's shared lists (saved value, not unsaved edits).
   const ownDisplayName = settings?.displayNameSet ? settings?.displayName : null;
-  const canEdit = isOwner || activeListShareMode === "public_edit" || !activeListMeta;
+  const canEdit = isOwner || (isLoggedIn && activeListShareMode === "public_edit") || (!isLoggedIn && !isSharedServerList) || !activeListMeta;
   const ownedPendingDeleteRequests = useMemo(
     () =>
       (pendingDeleteRequests as PendingDeleteRequest[]).filter((r) => {
@@ -3706,11 +3698,21 @@ export default function TodoPage() {
               <span>👁 View-Only Access</span>
               <span className="text-indigo-400/70 font-normal">
                 —{" "}
-                {activeListMeta?.owner_display_name
+                {!isLoggedIn && isSharedServerList
+                  ? "Sign in to edit this list."
+                  : activeListMeta?.owner_display_name
                   ? `Shared by ${activeListMeta.owner_display_name}. Editing is disabled.`
                   : "You are viewing a shared list with read-only permissions."}
               </span>
             </div>
+            {!isLoggedIn && isSharedServerList && (
+              <a
+                href="/login"
+                className="text-xs font-semibold text-indigo-300 hover:text-white underline ml-2 shrink-0"
+              >
+                Sign in
+              </a>
+            )}
           </div>
         ) : (
         <createFetcher.Form
@@ -4174,6 +4176,7 @@ export default function TodoPage() {
                         ))}
                         <p className="text-[10px] text-slate-400 leading-snug">
                           {getSharedNameNotice(activeListShareMode, ownDisplayName)}
+                          {activeListShareMode === "public_edit" && " Anyone with the link can view; editors must sign in."}
                         </p>
                       </div>
                     ) : (
@@ -4208,7 +4211,7 @@ export default function TodoPage() {
         {/* Todo List Area */}
         <div className="flex-1 min-h-0 mb-6 flex flex-col">
           {viewMode === "calendar" ? (
-            <CalendarView todos={optimisticTodos} activeListId={activeListId || ""} onNotify={showToast} />
+            <CalendarView todos={optimisticTodos} activeListId={activeListId || ""} canEdit={canEdit} onNotify={showToast} />
           ) : visibleParents.length === 0 && totalCount === 0 ? (
             <div className="flex-1 overflow-y-auto scrollbar-thin flex flex-col justify-center">
               <EmptyState />

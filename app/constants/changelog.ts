@@ -1,13 +1,17 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.4.2";
+export const WEB_VERSION = "v5.5.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
-    version: "v5.4.2",
+    version: "v5.5.0",
     date: "2026-10-31",
     title: "What's new?",
     changes: [
+      {
+        type: "IMPR",
+        text: "Shared lists are now view-only for guests, even in Collaborative mode. To add, check off, edit or request deletes on someone else's shared list, you must sign in. Lists you make as a guest in your own browser are unaffected."
+      },
       {
         type: "FIX",
         text: "Checking off a repeating task on a shared list is now correctly logged as completed in the Activity log instead of incomplete."
