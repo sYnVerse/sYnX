@@ -93,25 +93,37 @@ export async function verifyWorkersDevAccess(
     );
   }
 
-  // 3. Cryptographic JWT verification when Cloudflare Access team domain & AUD are configured:
-  if (env.CF_ACCESS_TEAM_DOMAIN && env.CF_ACCESS_AUD) {
-    const normalizedDomain =
-      "https://" +
-      env.CF_ACCESS_TEAM_DOMAIN.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    const jwks = customJWKS || getAccessJWKS(env.CF_ACCESS_TEAM_DOMAIN);
-    try {
-      await jwtVerify(token, jwks, {
-        issuer: normalizedDomain,
-        audience: env.CF_ACCESS_AUD,
-      });
-    } catch {
-      return new Response("Forbidden: Invalid Cloudflare Access token.", {
+  // 3. Cryptographic JWT verification:
+  // Both CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD must be configured so preview tokens
+  // are always cryptographically verified against Cloudflare Access certs.
+  if (!env.CF_ACCESS_TEAM_DOMAIN || !env.CF_ACCESS_AUD) {
+    return new Response(
+      "Forbidden: Cloudflare Access team domain and AUD must be configured on preview deployments.",
+      {
         status: 403,
         headers: applySecurityHeaders(
           new Headers({ "Content-Type": "text/plain; charset=utf-8" }),
         ),
-      });
-    }
+      },
+    );
+  }
+
+  const normalizedDomain =
+    "https://" +
+    env.CF_ACCESS_TEAM_DOMAIN.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const jwks = customJWKS || getAccessJWKS(env.CF_ACCESS_TEAM_DOMAIN);
+  try {
+    await jwtVerify(token, jwks, {
+      issuer: normalizedDomain,
+      audience: env.CF_ACCESS_AUD,
+    });
+  } catch {
+    return new Response("Forbidden: Invalid Cloudflare Access token.", {
+      status: 403,
+      headers: applySecurityHeaders(
+        new Headers({ "Content-Type": "text/plain; charset=utf-8" }),
+      ),
+    });
   }
 
   return null;

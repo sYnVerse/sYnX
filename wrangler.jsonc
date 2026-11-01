@@ -65,7 +65,10 @@
   // the production sign-in cookies set on .christran.io.
   "previews": {
     "vars": {
-      "APP_ENV": "preview"
+      "APP_ENV": "preview",
+      // Cloudflare Zero Trust Access settings for Worker Previews on workers.dev
+      "CF_ACCESS_TEAM_DOMAIN": "synx.cloudflareaccess.com",
+      "CF_ACCESS_AUD": "replace-with-access-aud"
     },
     "d1_databases": [
       {

@@ -123,16 +123,22 @@ describe("access-guard", () => {
       expect(response!.headers.get("X-Content-Type-Options")).toBe("nosniff");
     });
 
-    it("allows preview workers.dev requests when Access assertion is present and no AUD is configured", async () => {
+    it("rejects preview workers.dev requests when TEAM_DOMAIN or AUD is not configured", async () => {
       const previewReq = new Request("https://chore-preview-synx.workers.dev/lists", {
-        headers: { "cf-access-jwt-assertion": "valid.mock.token" },
+        headers: { "cf-access-jwt-assertion": "mock.token" },
       });
       const response = await verifyWorkersDevAccess(previewReq, {
         ...mockEnv,
         APP_ENV: "preview",
+        CF_ACCESS_TEAM_DOMAIN: undefined,
+        CF_ACCESS_AUD: undefined,
       });
 
-      expect(response).toBeNull();
+      expect(response).not.toBeNull();
+      expect(response!.status).toBe(403);
+      expect(await response!.text()).toContain(
+        "Cloudflare Access team domain and AUD must be configured on preview deployments",
+      );
     });
 
     it("cryptographically verifies Access JWT when TEAM_DOMAIN and AUD are configured", async () => {
