@@ -70,7 +70,7 @@
       // CF_ACCESS_AUD must be set as a Secret or Environment Variable in the
       // Cloudflare Dashboard (Workers & Pages -> synx -> Settings -> Variables and Secrets)
       // and must never be committed to this public repository.
-      "CF_ACCESS_TEAM_DOMAIN": "synx.cloudflareaccess.com"
+      "CF_ACCESS_TEAM_DOMAIN": "christran.cloudflareaccess.com"
     },
     "d1_databases": [
       {

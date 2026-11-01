@@ -17,5 +17,5 @@ TWILIO_FROM_NUMBER=+15550000000
 FIREBASE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 
 # Cloudflare Access (for validating workers.dev preview URLs; configure in Cloudflare Dashboard for Previews)
-CF_ACCESS_TEAM_DOMAIN=synx.cloudflareaccess.com
+CF_ACCESS_TEAM_DOMAIN=christran.cloudflareaccess.com
 CF_ACCESS_AUD=your_cloudflare_access_aud_tag_here
