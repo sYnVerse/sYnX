@@ -112,4 +112,29 @@ describe("list activity log", () => {
       .first<{ c: number }>();
     expect(Number(row?.c || 0)).toBe(0);
   });
+
+  it("logs task_completed when completing or rescheduling a recurring task", async () => {
+    const listId = "list-activity-rescheduled";
+    const todoId = "todo-activity-rescheduled";
+    await seedSharedList(listId);
+
+    const toggled = { completed: false, rescheduled: true };
+    const action = toggled.completed || toggled.rescheduled ? "task_completed" : "task_uncompleted";
+
+    await logListActivity(db, {
+      listId,
+      taskId: todoId,
+      action,
+      actorId: collaboratorId,
+      isOwner: false,
+      shareMode: "public_edit",
+      summary: "Repeating workout",
+    });
+
+    const asOwner = await listActivityForOwner(db, listId, ownerId);
+    expect(asOwner.kind).toBe("ok");
+    if (asOwner.kind !== "ok") return;
+    expect(asOwner.entries).toHaveLength(1);
+    expect(asOwner.entries[0].action).toBe("task_completed");
+  });
 });

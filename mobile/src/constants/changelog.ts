@@ -6,6 +6,17 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-10-31",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Collaborative lists are now view-only for guests, so only signed-in people can edit them. The sharing banner on your Collaborative lists now says so."
+      }
+    ]
+  },
+  {
+    version: "v3.4.1",
     date: "2026-10-30",
     title: "What's new?",
     changes: [

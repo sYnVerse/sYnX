@@ -62,13 +62,23 @@ export function getListPermissionPresentation(
   return {
     label: "Collaborative",
     description: isOwner
-      ? "Anyone with the link can view and edit this list."
+      ? "Anyone with the link can view; signed-in users can edit."
       : ownerLabel
         ? `Shared by ${ownerLabel}. You're editing a collaborative list.`
         : "You're editing a shared collaborative list.",
     tone: "collaborative",
     icon: "users",
   };
+}
+
+/**
+ * Whether a user can edit a list with the given share mode.
+ * On collaborative lists (public_edit), editors must be signed in.
+ */
+export function canEditList(shareMode: ShareMode, isOwner: boolean, isLoggedIn: boolean): boolean {
+  if (isOwner) return true;
+  if (shareMode === "public_edit") return isLoggedIn;
+  return false;
 }
 
 /** Human labels matching web + mobile share-mode pickers */
