@@ -5,7 +5,7 @@ import {
   type PendingDeleteRequest,
   type TaskCreatorInfo,
 } from "../shared";
-import { TodoManager } from "./to-do-manager";
+import { TodoManager, type TodoRow } from "./to-do-manager";
 import { sendFCMPushNotification } from "./fcm.server";
 
 export type { DeleteTargetType, PendingDeleteRequest };
@@ -23,13 +23,8 @@ export const CLEAR_COMPLETED_PARTIAL_MESSAGE =
 export const CLEAR_COMPLETED_PARTIAL_ALREADY_MESSAGE =
   "Your completed tasks were cleared. A delete request for completed tasks others added is already waiting for the list owner.";
 
-/** A todos row as read by loadTaskCreators. */
-interface TaskCreatorRow {
-  id: string;
-  parent_id: string | null;
-  created_by: string | null;
-  completed: number | boolean;
-}
+/** The todos columns loadTaskCreators reads. */
+type TaskCreatorRow = Pick<TodoRow, "id" | "parent_id" | "created_by" | "completed">;
 
 /** A task's id, parent and creator, plus whether it's completed. */
 export interface TaskCreatorWithStatus extends TaskCreatorInfo {
