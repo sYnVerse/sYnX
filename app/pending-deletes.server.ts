@@ -23,15 +23,28 @@ export const CLEAR_COMPLETED_PARTIAL_MESSAGE =
 export const CLEAR_COMPLETED_PARTIAL_ALREADY_MESSAGE =
   "Your completed tasks were cleared. A delete request for completed tasks others added is already waiting for the list owner.";
 
+/** A todos row as read by loadTaskCreators. */
+interface TaskCreatorRow {
+  id: string;
+  parent_id: string | null;
+  created_by: string | null;
+  completed: number | boolean;
+}
+
+/** A task's id, parent and creator, plus whether it's completed. */
+export interface TaskCreatorWithStatus extends TaskCreatorInfo {
+  completed: boolean;
+}
+
 /** id, parent and creator for every task on a list (for own-task checks). */
 export async function loadTaskCreators(
   db: D1Database,
   listId: string
-): Promise<Array<TaskCreatorInfo & { completed: boolean }>> {
+): Promise<TaskCreatorWithStatus[]> {
   const { results } = await db
     .prepare("SELECT id, parent_id, created_by, completed FROM todos WHERE list_id = ?")
     .bind(listId)
-    .all<{ id: string; parent_id: string | null; created_by: string | null; completed: number | boolean }>();
+    .all<TaskCreatorRow>();
   return (results || []).map((r) => ({
     id: r.id,
     parentId: r.parent_id,
