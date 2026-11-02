@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
+  canDeleteTaskDirectly,
   canEditList,
   getListPermissionPresentation,
+  isOwnTaskTree,
   getShareModeLabel,
 } from "../shared/list-permissions";
 
@@ -109,5 +111,58 @@ describe("canEditList", () => {
     expect(canEditList("private", false, true)).toBe(false);
     expect(canEditList("public_read", false, false)).toBe(false);
     expect(canEditList("private", false, false)).toBe(false);
+  });
+});
+
+describe("canDeleteTaskDirectly / isOwnTaskTree", () => {
+  const me = "user-me";
+  const other = "user-other";
+  const tasks = [
+    { id: "mine", parentId: null, createdBy: me },
+    { id: "theirs", parentId: null, createdBy: other },
+    { id: "legacy", parentId: null, createdBy: null },
+    { id: "mine-mixed", parentId: null, createdBy: me },
+    { id: "mixed-sub", parentId: "mine-mixed", createdBy: other },
+    { id: "mine-clean", parentId: null, createdBy: me },
+    { id: "clean-sub", parentId: "mine-clean", createdBy: me },
+    { id: "clean-subsub", parentId: "clean-sub", createdBy: me },
+  ];
+  const collab = (taskId: string) =>
+    canDeleteTaskDirectly({ tasks, taskId, userId: me, isOwner: false, canEdit: true });
+
+  it("lets a collaborator delete a task they added", () => {
+    expect(collab("mine")).toBe(true);
+  });
+
+  it("needs approval for a task someone else added", () => {
+    expect(collab("theirs")).toBe(false);
+  });
+
+  it("treats tasks with no recorded creator as someone else's", () => {
+    expect(collab("legacy")).toBe(false);
+  });
+
+  it("needs approval when a subtask was added by someone else", () => {
+    expect(collab("mine-mixed")).toBe(false);
+    expect(collab("mine-clean")).toBe(true);
+    expect(collab("clean-sub")).toBe(true);
+  });
+
+  it("always lets the owner delete directly", () => {
+    expect(
+      canDeleteTaskDirectly({ tasks, taskId: "theirs", userId: me, isOwner: true, canEdit: true })
+    ).toBe(true);
+  });
+
+  it("never lets people who can't edit delete", () => {
+    expect(
+      canDeleteTaskDirectly({ tasks, taskId: "mine", userId: me, isOwner: false, canEdit: false })
+    ).toBe(false);
+  });
+
+  it("needs a signed-in user and an existing task", () => {
+    expect(isOwnTaskTree(tasks, "mine", null)).toBe(false);
+    expect(isOwnTaskTree(tasks, "mine", "")).toBe(false);
+    expect(isOwnTaskTree(tasks, "missing", me)).toBe(false);
   });
 });

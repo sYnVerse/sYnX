@@ -382,14 +382,16 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const handleDeleteTask = (task: TodoItem) => {
     if (!canEdit || task.pendingDelete) return;
     triggerImpactHaptic();
-    const title = isOwner ? "Delete Task" : "Request task deletion?";
-    const message = isOwner
+    // Collaborators delete tasks they added right away; others need approval.
+    const deletesDirectly = isOwner || Boolean(task.canDeleteDirectly);
+    const title = deletesDirectly ? "Delete Task" : "Request task deletion?";
+    const message = deletesDirectly
       ? `Are you sure you want to delete "${task.text}"?`
       : `Ask the owner to delete "${task.text}"? They'll need to approve before it's removed.`;
     Alert.alert(title, message, [
       { text: "Cancel", style: "cancel" },
       {
-        text: isOwner ? "Delete" : "Send request",
+        text: deletesDirectly ? "Delete" : "Send request",
         style: "destructive",
         onPress: () => deleteMutation.mutate(task.id),
       },
@@ -847,7 +849,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                         onPress={() => handleDeleteTask(item)}
                         accessibilityRole="button"
                         accessibilityLabel={
-                          isOwner ? `Delete ${item.text}` : `Request delete for ${item.text}`
+                          isOwner || item.canDeleteDirectly
+                            ? `Delete ${item.text}`
+                            : `Request delete for ${item.text}`
                         }
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       >

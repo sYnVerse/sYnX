@@ -41,6 +41,27 @@ describe("TodoManager", () => {
   });
 
   describe("create()", () => {
+    it("records who added the task", async () => {
+      const todo = await manager.create("Added by me", "none", null, undefined, "none", null, null, "user-creator");
+      expect(todo.createdBy).toBe("user-creator");
+
+      const row = await env.DB.prepare("SELECT created_by FROM todos WHERE id = ?")
+        .bind(todo.id)
+        .first<{ created_by: string | null }>();
+      expect(row?.created_by).toBe("user-creator");
+
+      const [stored] = await manager.list();
+      expect(stored.createdBy).toBe("user-creator");
+    });
+
+    it("leaves the creator empty when none is given", async () => {
+      const todo = await manager.create("No creator");
+      const row = await env.DB.prepare("SELECT created_by FROM todos WHERE id = ?")
+        .bind(todo.id)
+        .first<{ created_by: string | null }>();
+      expect(row?.created_by).toBeNull();
+    });
+
     it("creates a new todo with default priority as none", async () => {
       const todo = await manager.create("Test todo");
 

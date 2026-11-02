@@ -32,6 +32,14 @@ export interface TodoItem {
   subtasks?: TodoItem[];
   /** True when a collaborator has requested deleting this task (awaits owner). */
   pendingDelete?: boolean;
+  /** Signed-in user who added the task (null for tasks added before this was recorded). */
+  createdBy?: string | null;
+  /**
+   * True when the signed-in caller's delete removes the task right away
+   * (owner, or a collaborator who added it and all its subtasks). False means
+   * a delete becomes a request the list owner must approve.
+   */
+  canDeleteDirectly?: boolean;
 }
 
 export type DeleteTargetType = "task" | "list" | "clear_completed";

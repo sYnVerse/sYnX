@@ -6,6 +6,17 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-02",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "On Collaborative lists, you can now delete tasks you added yourself right away, without waiting for the owner. Deleting tasks someone else added, or deleting the list, still sends a delete request the owner approves."
+      }
+    ]
+  },
+  {
+    version: "v3.4.2",
     date: "2026-10-31",
     title: "What's new?",
     changes: [

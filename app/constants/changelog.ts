@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.4.3";
+export const WEB_VERSION = "v5.5.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.5.0",
+    date: "2026-11-02",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "On Collaborative lists, you can now delete tasks you added yourself right away, without waiting for the owner. Deleting tasks someone else added, or a task with subtasks someone else added, still sends a delete request the owner approves, and so does deleting the whole list. Clear completed removes your own completed tasks right away and sends one request for the rest."
+      }
+    ]
+  },
   {
     version: "v5.4.3",
     date: "2026-11-01",

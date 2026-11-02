@@ -14,8 +14,12 @@ export interface Todo {
   parentId?: string;
   recurrence?: "none" | "daily" | "weekly" | "monthly";
   durationMinutes?: number;
+  /** Signed-in user who added the task (undefined for tasks added before this was recorded). */
+  createdBy?: string;
   /** Collaborator delete request awaiting owner approval. */
   pendingDelete?: boolean;
+  /** Caller's delete happens right away instead of becoming a delete request. */
+  canDeleteDirectly?: boolean;
   rescheduled?: boolean;
 }
 
@@ -32,6 +36,7 @@ export interface TodoRow {
   parent_id: string | null;
   recurrence: string | null;
   duration_minutes: number | null;
+  created_by?: string | null;
 }
 
 export interface UserSettings {
@@ -85,6 +90,7 @@ export class TodoManager {
       parentId: t.parent_id || undefined,
       recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
       durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : undefined,
+      createdBy: t.created_by || undefined,
     };
   }
 
@@ -109,6 +115,7 @@ export class TodoManager {
    * @param recurrence - Optional recurrence setting (defaults to "none")
    * @param durationMinutes - Optional estimated duration in minutes (defaults to null)
    * @param reminderUserId - Optional user ID who owns the reminder notification
+   * @param createdBy - Signed-in user ID who added the task (null when unknown)
    * @returns Promise containing the newly created Todo item
    */
   async create(
@@ -119,13 +126,14 @@ export class TodoManager {
     recurrence: "none" | "daily" | "weekly" | "monthly" = "none",
     durationMinutes: number | null = null,
     reminderUserId?: string | null,
+    createdBy?: string | null,
   ): Promise<Todo> {
     const id = crypto.randomUUID();
     const createdAt = Date.now();
     const effectiveReminderUserId = reminderAt ? (reminderUserId ?? null) : null;
     await this.db
       .prepare(
-        "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence, duration_minutes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence, duration_minutes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .bind(
         id,
@@ -139,7 +147,8 @@ export class TodoManager {
         effectiveReminderUserId,
         parentId ?? null,
         recurrence,
-        durationMinutes
+        durationMinutes,
+        createdBy ?? null
       )
       .run();
     return {
@@ -155,6 +164,7 @@ export class TodoManager {
       parentId,
       recurrence,
       durationMinutes: durationMinutes !== null && durationMinutes !== undefined ? durationMinutes : undefined,
+      createdBy: createdBy || undefined,
     };
   }
 

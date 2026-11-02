@@ -42,6 +42,19 @@ export async function action({ request, context }: ActionFunctionArgs) {
     waitUntil,
   });
 
+  if (result.kind === "requested" && result.deletedOwnCount) {
+    // The collaborator's own completed tasks were cleared right away.
+    const ownLogPromise = logListActivity(db, {
+      listId,
+      action: "clear_completed",
+      actorId: user.userId,
+      isOwner: access.isOwner,
+      shareMode: access.list?.share_mode,
+      request,
+    });
+    if (waitUntil) waitUntil(ownLogPromise); else await ownLogPromise;
+  }
+
   if (result.kind === "deleted" || result.kind === "requested") {
     const logPromise = logListActivity(db, {
       listId,
@@ -68,6 +81,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       alreadyRequested: result.alreadyExisted,
       requestId: result.requestId,
       message: result.message,
+      deletedOwnCount: result.deletedOwnCount ?? 0,
     });
   }
   return Response.json({ error: result.error }, { status: 403 });

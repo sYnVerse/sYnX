@@ -17,6 +17,8 @@ import { getAuthSettings, getOptionalUser } from "~/auth.server";
 import { WEB_VERSION, WEB_CHANGELOG } from "../constants/changelog";
 import {
   applySetCompletedLocal,
+  canDeleteTaskDirectly,
+  canEditList,
   describeDeleteTarget,
   describeListActivityAction,
   describeTimeZone,
@@ -30,6 +32,7 @@ import {
   sortChangelogItems,
   type ListActivityEntry,
   type PendingDeleteRequest,
+  type ShareMode,
 } from "../../shared";
 import {
   DEFAULT_DISPLAY_NAME,
@@ -313,8 +316,13 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
   }
 
   const listsWithTodos: GuestList[] = lists.map((list) => {
-    const listTodos: Todo[] = allTodos
-      .filter((t) => t.list_id === list.id)
+    const listRows = allTodos.filter((t) => t.list_id === list.id);
+    const listCreators = listRows.map((t) => ({
+      id: t.id,
+      parentId: t.parent_id,
+      createdBy: t.created_by,
+    }));
+    const listTodos: Todo[] = listRows
       .map((t) => ({
         id: t.id,
         listId: t.list_id,
@@ -329,6 +337,14 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
         recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
         durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : undefined,
         pendingDelete: pendingTaskIds.has(t.id),
+        createdBy: t.created_by || undefined,
+        canDeleteDirectly: canDeleteTaskDirectly({
+          tasks: listCreators,
+          taskId: t.id,
+          userId: isLoggedIn ? userId : null,
+          isOwner: isLoggedIn && list.owner_id === userId,
+          canEdit: canEditList((list.share_mode || "private") as ShareMode, isLoggedIn && list.owner_id === userId, isLoggedIn),
+        }),
       }))
       .sort((a, b) => b.createdAt - a.createdAt);
     return {
@@ -486,7 +502,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
             for (const [index, todo] of todos.entries()) {
               const { id: todoId, parentId: mappedParentId } = remappedIds[index];
               await db.prepare(
-                "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
               ).bind(
                 todoId,
                 newListId,
@@ -498,7 +514,8 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
                 todo.reminderSent ? 1 : (todo.reminderAt ? 0 : null),
                 todo.reminderAt ? userId : null,
                 mappedParentId,
-                todo.recurrence || "none"
+                todo.recurrence || "none",
+                userId
               ).run();
             }
           }
@@ -764,6 +781,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         parentId,
         recurrence,
         durationMinutes,
+        isLoggedIn ? userId : null,
         isLoggedIn ? userId : null
       );
       scheduleActivityLog({
@@ -1015,6 +1033,16 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
         env: context.cloudflare.env,
         waitUntil,
       });
+      if (result.kind === "requested" && result.deletedOwnCount) {
+        // The collaborator's own completed tasks were cleared right away.
+        scheduleActivityLog({
+          listId: activeListId,
+          action: "clear_completed",
+          actorId: userId,
+          isOwner: hasOwnership,
+          shareMode: activeShareMode,
+        });
+      }
       if (result.kind === "deleted" || result.kind === "requested") {
         scheduleActivityLog({
           listId: activeListId,
@@ -1867,6 +1895,10 @@ function TodoItem({
   const canEditText =
     canEdit &&
     (!todo.reminderAt || (canSetReminders && canEditReminderText(todo.reminderUserId, listOwnerId, currentUserId)));
+  // On someone else's Collaborative list, deleting a task you didn't add (or
+  // one with subtasks others added) sends a request the owner must approve.
+  const deleteNeedsApproval =
+    isLoggedIn && Boolean(listOwnerId) && listOwnerId !== currentUserId && !todo.canDeleteDirectly;
   const toggleFetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
   const deleteFetcher = useFetcher<{
     success?: boolean;
@@ -2192,7 +2224,8 @@ function TodoItem({
             <button
               type="submit"
               className="lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 text-slate-500 hover:text-rose-400 transition-all duration-200 p-1 rounded-lg hover:bg-rose-500/10 cursor-pointer"
-              aria-label="Delete task"
+              aria-label={deleteNeedsApproval ? "Request delete (owner must approve)" : "Delete task"}
+              title={deleteNeedsApproval ? "Request delete (owner must approve)" : "Delete task"}
             >
               <svg
                 className="w-4 h-4"
@@ -3155,6 +3188,11 @@ export default function TodoPage() {
 
   const totalCount = optimisticTodos.filter(t => !t.parentId).length;
   const completedCount = optimisticTodos.filter(t => !t.parentId && t.completed).length;
+  // A collaborator clears their own completed tasks right away; only tasks
+  // others added need the owner's approval.
+  const clearCompletedNeedsApproval = optimisticTodos.some(
+    (t) => t.completed && !t.canDeleteDirectly
+  );
   const activeCount = totalCount - completedCount;
 
   const showToast = useCallback((message: string) => {
@@ -4137,7 +4175,7 @@ export default function TodoPage() {
                     type="submit"
                     className="text-xs text-slate-500 hover:text-rose-400 font-semibold transition-colors duration-200 cursor-pointer bg-transparent"
                   >
-                    {isOwner || !isSharedServerList ? "Clear completed" : "Request clear completed"}
+                    {isOwner || !isSharedServerList || !clearCompletedNeedsApproval ? "Clear completed" : "Request clear completed"}
                   </button>
                 </clearFetcher.Form>
               )}
