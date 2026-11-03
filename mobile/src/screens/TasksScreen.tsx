@@ -16,21 +16,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import {
-  Search,
-  RefreshCw,
-  Plus,
-  Check,
-  Trash2,
-  Clock,
-  ListTree,
-  Repeat,
-  Pencil,
-  FolderKanban,
-  Bell,
-  Flag,
-  History,
-} from "lucide-react-native";
+import { Search, RefreshCw, Plus, FolderKanban, History } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import {
   TodoItem,
@@ -41,9 +27,9 @@ import {
   type ListAccessDenialCode,
   type ListActivityEntry,
   type PendingDeleteRequest,
-  type PriorityLevel,
 } from "../shared";
 import { TaskModal } from "../components/TaskModal";
+import { TaskRow } from "../components/TaskRow";
 import { TaskBreakdownModal } from "../components/TaskBreakdownModal";
 import { TaskCardSkeleton } from "../components/SkeletonLoader";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
@@ -57,7 +43,7 @@ import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
-import { formatReminderTime, priorityColor, priorityLabel, listOwnershipLabel } from "../utils/format";
+import { listOwnershipLabel } from "../utils/format";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
 import { syncActiveList, syncPinnedList } from "../services/widgetSync";
@@ -714,160 +700,18 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
               )}
             </View>
           }
-          renderItem={({ item }) => {
-            const subtaskCount = item.subtasks?.length || 0;
-            const completedSubtasks = item.subtasks?.filter((s) => s.completed).length || 0;
-            const prio = (item.priority || "none") as PriorityLevel;
-
-            return (
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[
-                  styles.todoCard,
-                  {
-                    backgroundColor: theme.cardBg,
-                    borderColor: theme.cardBorder,
-                    shadowColor: theme.shadowColor,
-                  },
-                ]}
-                onPress={() => setSelectedTaskForBreakdown(item)}
-                accessibilityRole="button"
-                accessibilityLabel={`Task ${item.text}`}
-              >
-                <TouchableOpacity
-                  disabled={!canEdit || isPendingId(item.id)}
-                  style={[
-                    styles.checkboxHit,
-                    (!canEdit || isPendingId(item.id)) && { opacity: 0.7 },
-                  ]}
-                  onPress={() => {
-                    if (!canEdit || isPendingId(item.id)) return;
-                    setCompleted(item);
-                  }}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{
-                    checked: item.completed,
-                    disabled: !canEdit || isPendingId(item.id),
-                  }}
-                  accessibilityLabel={`Mark ${item.text} ${item.completed ? "incomplete" : "complete"}`}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <View
-                    style={[
-                      styles.checkbox,
-                      { borderColor: theme.accent },
-                      item.completed && { backgroundColor: theme.accent },
-                    ]}
-                  >
-                    {item.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-                  </View>
-                </TouchableOpacity>
-
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={[
-                      styles.todoText,
-                      { color: theme.textPrimary },
-                      item.completed && [styles.todoTextCompleted, { color: theme.textMuted }],
-                    ]}
-                    maxFontSizeMultiplier={1.45}
-                  >
-                    {item.text}
-                  </Text>
-
-                  <View style={styles.badgeRow}>
-                    {prio !== "none" && (
-                      <View
-                        style={[
-                          styles.pillBadge,
-                          { backgroundColor: priorityColor(prio, theme) + "22" },
-                        ]}
-                      >
-                        <Flag size={11} color={priorityColor(prio, theme)} />
-                        <Text style={[styles.pillBadgeText, { color: priorityColor(prio, theme) }]}>
-                          {priorityLabel(prio)}
-                        </Text>
-                      </View>
-                    )}
-
-                    {item.reminderAt ? (
-                      <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
-                        <Bell size={11} color={theme.accent} />
-                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
-                          {formatReminderTime(item.reminderAt)}
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    {item.durationMinutes ? (
-                      <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
-                        <Clock size={11} color={theme.accent} />
-                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
-                          {item.durationMinutes} min
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    {item.pendingDelete ? (
-                      <View style={[styles.pillBadge, { backgroundColor: "rgba(245, 158, 11, 0.18)" }]}>
-                        <Text style={[styles.pillBadgeText, { color: "#F59E0B" }]}>
-                          Delete requested
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    {item.recurrence !== "none" && (
-                      <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
-                        <Repeat size={11} color={theme.accent} />
-                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
-                          {item.recurrence}
-                        </Text>
-                      </View>
-                    )}
-
-                    {subtaskCount > 0 && (
-                      <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
-                        <ListTree size={11} color={theme.accent} />
-                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
-                          {completedSubtasks}/{subtaskCount} subtasks
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                </View>
-
-                {canEdit && (
-                  <>
-                    <TouchableOpacity
-                      style={styles.actionBtn}
-                      onPress={() => setEditingTask(item)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Edit ${item.text}`}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Pencil size={16} color={theme.textMuted} />
-                    </TouchableOpacity>
-
-                    {!item.pendingDelete && (
-                      <TouchableOpacity
-                        style={styles.actionBtn}
-                        onPress={() => handleDeleteTask(item)}
-                        accessibilityRole="button"
-                        accessibilityLabel={
-                          isOwner || item.canDeleteDirectly
-                            ? `Delete ${item.text}`
-                            : `Request delete for ${item.text}`
-                        }
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <Trash2 size={16} color={theme.danger} />
-                      </TouchableOpacity>
-                    )}
-                  </>
-                )}
-              </TouchableOpacity>
-            );
-          }}
+          renderItem={({ item }) => (
+            <TaskRow
+              item={item}
+              canEdit={canEdit}
+              isOwner={isOwner}
+              isPending={isPendingId(item.id)}
+              onPress={setSelectedTaskForBreakdown}
+              onToggleCompleted={(task) => setCompleted(task)}
+              onEdit={setEditingTask}
+              onDelete={handleDeleteTask}
+            />
+          )}
         />
       )}
 
@@ -1243,64 +1087,6 @@ const styles = StyleSheet.create({
   retryBtnText: {
     color: "#FFFFFF",
     fontWeight: "700",
-  },
-  todoCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.md,
-    borderRadius: 20,
-    borderWidth: 1,
-    marginBottom: 12,
-    gap: 10,
-    elevation: 3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-  },
-  checkboxHit: {
-    width: MIN_TOUCH_TARGET,
-    height: MIN_TOUCH_TARGET,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 7,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  todoText: {
-    fontSize: typography.md,
-    fontWeight: "600",
-  },
-  todoTextCompleted: {
-    textDecorationLine: "line-through",
-  },
-  badgeRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 6,
-  },
-  pillBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    gap: 4,
-  },
-  pillBadgeText: {
-    fontSize: typography.xs,
-    fontWeight: "600",
-  },
-  actionBtn: {
-    width: MIN_TOUCH_TARGET,
-    height: MIN_TOUCH_TARGET,
-    alignItems: "center",
-    justifyContent: "center",
   },
   fab: {
     position: "absolute",
