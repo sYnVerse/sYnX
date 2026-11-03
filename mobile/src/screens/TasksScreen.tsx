@@ -13,7 +13,7 @@ import {
   Modal,
   ScrollView,
 } from "react-native";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { Search, RefreshCw, Plus, FolderKanban, History } from "lucide-react-native";
@@ -35,17 +35,14 @@ import { TaskCardSkeleton } from "../components/SkeletonLoader";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
 import { ListAccessErrorState, type ListAccessErrorKind } from "../components/ListAccessErrorState";
 import { useTheme } from "../context/ThemeContext";
-import { useToast } from "../context/ToastContext";
-import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../services/calendar";
-import { getCachedListName } from "../services/listNames";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
 import { listOwnershipLabel } from "../utils/format";
-import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
+import { useTaskMutations } from "../hooks/useTaskMutations";
 import { syncActiveList, syncPinnedList } from "../services/widgetSync";
 import { getPinnedWidgetConfig } from "../services/widgetPreferences";
 
@@ -94,7 +91,6 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   onSwitchLists,
 }) => {
   const { theme, hapticsEnabled } = useTheme();
-  const { showError, showSuccess, showToast } = useToast();
   const insets = useSafeAreaInsets();
   const fabBottom = getFabBottomOffset(insets.bottom);
   const queryClient = useQueryClient();
@@ -244,21 +240,10 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     return sortTasks(Object.values(parentMap), taskSortMode);
   }, [rawTodos, taskSortMode]);
 
-  const triggerSuccessHaptic = () => {
-    if (hapticsEnabled && Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    }
-  };
-
   const triggerImpactHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-  };
-
-  const onMutationError = (error: unknown, fallback: string) => {
-    triggerErrorHaptic(hapticsEnabled);
-    showError(getErrorMessage(error, fallback));
   };
 
   React.useEffect(() => {
@@ -268,107 +253,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   }, [listId, listMeta, refetch]);
 
   const { setCompleted, isPendingId } = useSetTodoCompleted(listId);
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const res = await apiClient.delete(`/api/v1/todos/${id}`);
-      return {
-        id,
-        pendingApproval: Boolean(res.data?.pendingApproval),
-        message: res.data?.message as string | undefined,
-      };
-    },
-    onSuccess: (result) => {
-      triggerImpactHaptic();
-      if (result.pendingApproval) {
-        showToast(
-          result.message || "Delete request sent. The list owner must approve it.",
-          "info"
-        );
-        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          old
-            ? old.map((t) => (t.id === result.id ? { ...t, pendingDelete: true } : t))
-            : []
-        );
-        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
-        queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
-        return;
-      }
-      if (result.id) {
-        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          old ? old.filter((t) => t.id !== result.id && t.parentId !== result.id) : []
-        );
-        removeTaskFromNativeCalendar(result.id).catch(() => {});
-      }
-      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
-      queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
-    },
-    onError: (e) => onMutationError(e, "Couldn't delete task"),
-  });
-
-  const reviewDeleteMutation = useMutation({
-    mutationFn: async ({
-      requestId,
-      decision,
-    }: {
-      requestId: string;
-      decision: "approve" | "decline";
-    }) => {
-      const res = await apiClient.post(`/api/v1/delete-requests/${requestId}`, { decision });
-      return res.data as { decision: string; listId?: string; targetType?: string };
-    },
-    onSuccess: (data) => {
-      triggerSuccessHaptic();
-      showSuccess(data.decision === "approve" ? "Delete approved" : "Delete declined");
-      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
-      queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
-      queryClient.invalidateQueries({ queryKey: ["lists"] });
-      if (data.targetType === "list") {
-        queryClient.invalidateQueries({ queryKey: ["list_meta", listId] });
-      }
-    },
-    onError: (e) => onMutationError(e, "Couldn't update delete request"),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: async (newTodo: any) => {
-      const res = await apiClient.post("/api/v1/todos", { ...newTodo, listId });
-      return res.data.todo as TodoItem;
-    },
-    onSuccess: (createdTodo) => {
-      triggerSuccessHaptic();
-      if (createdTodo) {
-        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          old ? [...old, createdTodo] : [createdTodo]
-        );
-        syncTaskToNativeCalendar(createdTodo, {
-          listName: getCachedListName(queryClient, createdTodo.listId),
-        }).catch(() => {});
-      }
-      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
-    },
-    onError: (e) => onMutationError(e, "Couldn't create task"),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, payload }: { id: string; payload: any }) => {
-      const res = await apiClient.put(`/api/v1/todos/${id}`, payload);
-      return res.data.todo as TodoItem;
-    },
-    onSuccess: (updatedTodo) => {
-      triggerSuccessHaptic();
-      if (updatedTodo) {
-        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          old ? old.map((t) => (t.id === updatedTodo.id ? updatedTodo : t)) : []
-        );
-        syncTaskToNativeCalendar(updatedTodo, {
-          listName: getCachedListName(queryClient, updatedTodo.listId),
-        }).catch(() => {});
-      }
-      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
-    },
-    onError: (e) => onMutationError(e, "Couldn't update task"),
-  });
+  const { createMutation, updateMutation, deleteMutation, reviewDeleteMutation } =
+    useTaskMutations(listId);
 
   const handleDeleteTask = (task: TodoItem) => {
     if (!canEdit || task.pendingDelete) return;
