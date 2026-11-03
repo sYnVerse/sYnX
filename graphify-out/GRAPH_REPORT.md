@@ -1,16 +1,16 @@
 # Graph Report - to-do-list  (2026-11-02)
 
 ## Corpus Check
-- 179 files · ~272,507 words
+- 186 files · ~272,712 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1331 nodes · 2514 edges · 95 communities (83 shown, 12 thin omitted)
+- 1340 nodes · 2571 edges · 95 communities (82 shown, 13 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 3 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `86a37b35`
+- Built from commit: `5f6997a7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -124,21 +124,21 @@
   mobile/scripts/post-build-comment.js → server.ts
 - `fetch()` --calls--> `getRefreshedCookies()`  [EXTRACTED]
   server.ts → app/auth.server.ts
-- `EditTaskModal()` --calls--> `canEditReminderText()`  [EXTRACTED]
-  app/components/calendar-view.tsx → app/reminder-ownership.ts
+- `scheduled()` --calls--> `getDueReminderRecipients()`  [EXTRACTED]
+  server.ts → app/due-reminders.server.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (95 total, 12 thin omitted)
+## Communities (95 total, 13 thin omitted)
 
 ### Community 0 - "$id.tsx"
-Cohesion: 0.40
-Nodes (4): ListPermissionBanner(), ListPermissionBannerProps, styles, TONE_COLORS
+Cohesion: 0.33
+Nodes (11): handleUpdateSettings(), fetchProviderProfile(), providerProfileFields(), ProviderProfileInfo, sanitizeProviderAvatarUrl(), syncProviderProfile(), sanitizeDisplayNameInput(), phoneSettingsError() (+3 more)
 
 ### Community 1 - "TodoManager"
-Cohesion: 0.07
-Nodes (26): GUEST_SHARED_LIST_INTENTS, guestWriteAllowed(), GuestActionPayload, GuestContext, Todo, TodoRow, UserSettings, CalendarView() (+18 more)
+Cohesion: 0.13
+Nodes (25): GuestActionPayload, GuestContext, canEditReminderText(), Todo, EditTaskModal(), EditTaskModalProps, QuickAddTaskModal(), QuickAddTaskModalProps (+17 more)
 
 ### Community 2 - "compilerOptions"
 Cohesion: 0.10
@@ -169,8 +169,8 @@ Cohesion: 0.25
 Nodes (8): dependencies, isbot, @openauthjs/openauth, react, react-dom, @remix-run/cloudflare, @remix-run/react, valibot
 
 ### Community 13 - ".eslintrc.js"
-Cohesion: 0.15
-Nodes (25): ListAccessDenial, ListRow, ListScope, parseListScope(), SerializeListOptions, serializeListRow(), serializeListRows(), listPendingDeletesForList() (+17 more)
+Cohesion: 0.11
+Nodes (36): ListAccessDenial, ListRow, ListScope, parseListScope(), SerializeListOptions, serializeListRow(), serializeListRows(), listActivityForOwner() (+28 more)
 
 ### Community 17 - "CLAUDE.md"
 Cohesion: 0.08
@@ -197,8 +197,8 @@ Cohesion: 0.40
 Nodes (4): config, { getDefaultConfig }, path, workspaceRoot
 
 ### Community 24 - "mobile.callback.tsx"
-Cohesion: 0.10
-Nodes (33): CalendarPickerModal(), CalendarPickerModalProps, styles, COMPLETED_BEHAVIOR_OPTIONS, SettingsScreenProps, styles, AvailableCalendar, CalendarPermissionResult (+25 more)
+Cohesion: 0.15
+Nodes (25): applyCompletedTreatment(), buildCompletedEventNotes(), buildCompletedEventTitle(), buildTaskEventNotes(), CalendarPermissionResult, CalendarPermissionStatus, calendarQueue, formatCompletedLine() (+17 more)
 
 ### Community 25 - "decode-google-services.js"
 Cohesion: 0.10
@@ -213,8 +213,8 @@ Cohesion: 0.10
 Nodes (8): contrastRatio(), formatFriendlyDate(), formatRescheduledToast(), PriorityLevel, PushPermissionStatus, relativeLuminance(), ShareMode, SoftAskPolicyInput
 
 ### Community 31 - "expo-constants"
-Cohesion: 0.12
-Nodes (24): CATEGORY_OPTIONS, ListsScreenProps, styles, getLastActiveListId(), getPinnedWidgetConfig(), PinnedWidgetConfig, setLastActiveListId(), setPinnedWidgetConfig() (+16 more)
+Cohesion: 0.06
+Nodes (52): REFRESH_TOKEN_KEY, secureSessionStore, sessionRefresh, setAuthFailureHandler(), TOKEN_KEY, AuthContext, AuthContextType, AuthProvider() (+44 more)
 
 ### Community 32 - "expo-haptics"
 Cohesion: 0.10
@@ -250,7 +250,7 @@ Nodes (8): expo, install, exclude, license, main, name, private, version
 
 ### Community 40 - "lucide-react-native"
 Cohesion: 0.15
-Nodes (24): styles, SubtaskDraft, SubtaskEdit, TaskBreakdownModal(), TaskBreakdownModalProps, useToast(), SetCompletedResult, SetCompletedVars (+16 more)
+Nodes (20): apiClient, AxiosRequestConfig, RetriableConfig, styles, SubtaskDraft, SubtaskEdit, TaskBreakdownModal(), TaskBreakdownModalProps (+12 more)
 
 ### Community 41 - "react"
 Cohesion: 0.25
@@ -269,8 +269,8 @@ Cohesion: 0.25
 Nodes (7): 1. Semantic Versioning (SemVer) Format, 2. Breaking Change Checklist (Requires MAJOR Bump), Compile-Time / Code Level, Data & Architecture, Runtime / Behavioral, Software Versioning & Breaking Change Rules for Antigravity AI, 3. Same-Day Versioning Policy
 
 ### Community 45 - "react-native-safe-area-context"
-Cohesion: 0.15
-Nodes (25): handleDeclineDeleteRequest(), handleListActivity(), getListAccess(), verifyBearerToken(), isGuestId(), ActivityRow, clientMetaFromRequest(), deleteRequestActivitySummary() (+17 more)
+Cohesion: 0.17
+Nodes (22): handleCreateTask(), getListAccess(), verifyBearerToken(), isGuestId(), isListFull(), ActivityRow, clientMetaFromRequest(), logListActivity() (+14 more)
 
 ### Community 46 - "react-native-screens"
 Cohesion: 0.15
@@ -325,24 +325,24 @@ Cohesion: 0.29
 Nodes (4): CHANGELOG_CATEGORY_ORDER, ChangelogCategory, ChangelogItem, ReleaseNote
 
 ### Community 61 - "Community 61"
-Cohesion: 0.15
-Nodes (18): apiClient, AxiosRequestConfig, REFRESH_TOKEN_KEY, RetriableConfig, secureSessionStore, sessionRefresh, setAuthFailureHandler(), TOKEN_KEY (+10 more)
+Cohesion: 0.26
+Nodes (9): checkListAccessGate(), getActiveListAccess(), ListAccessInfo, ACCOUNT_INTENTS, LIST_INTENTS, GUEST_SHARED_LIST_INTENTS, guestIntentDenial(), guestWriteAllowed() (+1 more)
 
 ### Community 64 - "Community 64"
 Cohesion: 0.17
 Nodes (13): compareMain(), isTaskSortMode(), PRIORITY_RANK, priorityRank(), reminderTime(), resolveTaskSortMode(), SortableTask, sortSubtasks() (+5 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.08
-Nodes (27): ChangelogModal(), ChangelogModalProps, styles, NotificationSoftAsk(), NotificationSoftAskProps, styles, OPTIONS, PhoneCarrierPickerModal() (+19 more)
+Cohesion: 0.10
+Nodes (23): ChangelogModal(), ChangelogModalProps, styles, NotificationSoftAsk(), NotificationSoftAskProps, styles, OPTIONS, PhoneCarrierPickerModal() (+15 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.14
-Nodes (24): handleUpdateText(), handleClearCompleted(), handleCreateTask(), handleDeleteTask(), handleSetCompleted(), handleToggleTask(), isListFull(), approvePendingDelete() (+16 more)
+Cohesion: 0.16
+Nodes (23): handleApproveDeleteRequest(), handleDeclineDeleteRequest(), handleClearCompleted(), handleDeleteTask(), handleSetCompleted(), handleToggleTask(), deleteRequestActivitySummary(), approvePendingDelete() (+15 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.15
-Nodes (22): handleAcceptSuggestedDisplayName(), handleDismissSuggestedDisplayName(), handleInitTimeZone(), handleMigrateGuestLists(), handleSetTimeZone(), handleUpdateSettings(), GuestTodoIds, remapGuestTodoIds() (+14 more)
+Cohesion: 0.16
+Nodes (15): handleAcceptSuggestedDisplayName(), handleDismissSuggestedDisplayName(), handleInitTimeZone(), handleMigrateGuestLists(), handleRemoveSharedList(), handleSetTimeZone(), GuestTodoIds, remapGuestTodoIds() (+7 more)
 
 ### Community 71 - "Community 71"
 Cohesion: 0.06
@@ -377,20 +377,20 @@ Cohesion: 0.18
 Nodes (7): defaultPickerValue(), formatReminderPreview(), localDayIndex(), nextFullHour(), ReminderPreview, ReminderSelection, ResolveReminderInput
 
 ### Community 79 - "Community 79"
-Cohesion: 0.14
-Nodes (25): checkListAccessGate(), getActiveListAccess(), ListAccessInfo, handleApproveDeleteRequest(), handleRemoveSharedList(), ListActionContext, ListActionHandler, redirect() (+17 more)
+Cohesion: 0.19
+Nodes (18): handleListActivity(), ListActionContext, ListActionHandler, redirect(), handleCreateList(), handleDeleteList(), handleRenameList(), handleUpdateListCategory() (+10 more)
 
 ### Community 80 - "Community 80"
-Cohesion: 0.21
-Nodes (12): FloatingTabBar(), FloatingTabBarProps, styles, TabType, ListCardSkeleton(), styles, TaskCardSkeleton(), useAuth() (+4 more)
+Cohesion: 0.16
+Nodes (13): FloatingTabBar(), FloatingTabBarProps, styles, TabType, useAuth(), useTaskSortPreferences(), MainAppContent(), styles (+5 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.14
-Nodes (13): AuthProvider(), ThemeProvider(), styles, ToastContext, ToastContextType, ToastProvider(), ToastState, ToastTone (+5 more)
+Cohesion: 0.29
+Nodes (6): styles, ToastContext, ToastContextType, ToastProvider(), ToastState, ToastTone
 
 ### Community 82 - "Community 82"
-Cohesion: 0.40
-Nodes (5): copyFor(), ListAccessErrorKind, ListAccessErrorState(), ListAccessErrorStateProps, styles
+Cohesion: 0.13
+Nodes (21): copyFor(), ListAccessErrorKind, ListAccessErrorState(), ListAccessErrorStateProps, styles, ListPermissionBanner(), ListPermissionBannerProps, styles (+13 more)
 
 ### Community 83 - "Community 83"
 Cohesion: 0.47
@@ -405,20 +405,16 @@ Cohesion: 0.50
 Nodes (3): { defineConfig }, expoConfig, globals
 
 ### Community 88 - "Community 88"
-Cohesion: 0.29
-Nodes (13): applyCompletedTreatment(), buildCompletedEventNotes(), buildCompletedEventTitle(), buildTaskEventNotes(), formatCompletedLine(), getEventMappings(), getEventStates(), moveSyncedEventsToCalendar() (+5 more)
+Cohesion: 0.31
+Nodes (9): checkCalendarPermissions(), getAvailableCalendars(), getOrCreateSynxCalendar(), getTargetCalendar(), pickIosSource(), requestCalendarPermissions(), resolveTargetCalendar(), syncAllTasksToNativeCalendar() (+1 more)
 
 ### Community 89 - "Community 89"
 Cohesion: 0.29
 Nodes (9): current, emit(), getTaskSortPreferences(), listeners, loadTaskSortPreferences(), setAppTaskSortMode(), setListTaskSortOverride(), subscribeTaskSortPreferences() (+1 more)
 
 ### Community 90 - "Community 90"
-Cohesion: 0.27
-Nodes (9): acceptDisplayNameSuggestion(), dismissDisplayNameSuggestion(), listeners, maybePromptDisplayNameSuggestion(), notify(), resetDisplayNameSuggestion(), subscribeDisplayNameSuggestion(), suggestionMessage() (+1 more)
-
-### Community 91 - "Community 91"
-Cohesion: 0.31
-Nodes (9): checkHomeTimeZone(), getKnownHomeTimeZone(), listeners, resetTimeZoneSync(), setHomeTimeZone(), setKnownHomeTimeZone(), showTravelPrompt(), subscribeHomeTimeZone() (+1 more)
+Cohesion: 0.12
+Nodes (21): CalendarPickerModal(), CalendarPickerModalProps, styles, COMPLETED_BEHAVIOR_OPTIONS, SettingsScreenProps, styles, AvailableCalendar, CompletedEventBehavior (+13 more)
 
 ### Community 92 - "Community 92"
 Cohesion: 0.36
@@ -433,24 +429,24 @@ Cohesion: 0.50
 Nodes (4): findPhoneCarrier(), PHONE_CARRIERS, PhoneCarrier, phoneCarrierGatewayDomain()
 
 ## Knowledge Gaps
-- **529 isolated node(s):** `ListAccessDenial`, `ListScope`, `SerializeListOptions`, `AuthEnv`, `subjects` (+524 more)
+- **528 isolated node(s):** `ListAccessDenial`, `ListScope`, `SerializeListOptions`, `AuthEnv`, `subjects` (+523 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **12 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **13 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `TodoManager` connect `BottomTabNavigator.tsx` to `TodoManager`, `Community 66`, `auth.server.ts`, `react-native-safe-area-context`, `Community 79`?**
-  _High betweenness centrality (0.005) - this node is a cross-community bridge._
-- **Why does `verifyBearerToken()` connect `react-native-safe-area-context` to `Community 66`, `Community 70`, `auth.server.ts`, `.eslintrc.js`, `Community 79`?**
-  _High betweenness centrality (0.003) - this node is a cross-community bridge._
+- **Why does `TodoManager` connect `BottomTabNavigator.tsx` to `Community 66`, `auth.server.ts`, `.eslintrc.js`, `react-native-safe-area-context`, `Community 79`, `Community 61`?**
+  _High betweenness centrality (0.004) - this node is a cross-community bridge._
 - **What connects `ListAccessDenial`, `ListScope`, `SerializeListOptions` to the rest of the system?**
-  _529 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _528 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `TodoManager` be split into smaller, more focused modules?**
-  _Cohesion score 0.06859903381642513 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.12605042016806722 - nodes in this community are weakly interconnected._
 - **Should `compilerOptions` be split into smaller, more focused modules?**
   _Cohesion score 0.1 - nodes in this community are weakly interconnected._
 - **Should `devDependencies` be split into smaller, more focused modules?**
   _Cohesion score 0.08695652173913043 - nodes in this community are weakly interconnected._
 - **Should `server.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.09059233449477352 - nodes in this community are weakly interconnected._
+- **Should `auth.server.ts` be split into smaller, more focused modules?**
+  _Cohesion score 0.09869375907111756 - nodes in this community are weakly interconnected._
