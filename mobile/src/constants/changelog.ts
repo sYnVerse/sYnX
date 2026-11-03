@@ -11,6 +11,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     changes: [
       {
         type: "NEW",
+        text: "Completed tasks now move into a Completed section at the bottom of each list, and completed subtasks into one at the bottom of the task's subtasks. It starts collapsed and shows how many items it holds; tap it to show them. Uncheck an item to move it back."
+      },
+      {
+        type: "NEW",
         text: "Choose how tasks are ordered: Date Created, Priority, Reminder Time or A to Z, the same options as on the web. Reminder Time is the default: tasks with a reminder come first, soonest first, then the rest by priority. Set it for all lists in Settings, or for one list when you edit it on the Lists tab. Subtasks stay under their task, oldest first."
       },
       {
