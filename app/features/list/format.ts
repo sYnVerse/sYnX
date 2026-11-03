@@ -51,16 +51,22 @@ export function formatReminder(reminderAt?: number, reminderSent?: boolean): str
   if (reminderSent) return "Sent";
 
   const diffMs = reminderAt - Date.now();
-  if (diffMs <= 0) return "Due Now";
+  if (diffMs <= 0) return "Due";
 
-  const diffMins = Math.round(diffMs / (60 * 1000));
-  if (diffMins < 60) return `In ${diffMins}m`;
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 1) return "<1m";
+  if (diffMin < 60) return `${diffMin}m`;
 
-  const diffHours = Math.round(diffMins / 60);
-  if (diffHours < 24) return `In ${diffHours}h`;
+  const date = new Date(reminderAt);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const timeStr = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
 
-  const d = new Date(reminderAt);
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) {
+    return timeStr;
+  }
+
+  return `${date.getMonth() + 1}/${date.getDate()} ${timeStr}`;
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
