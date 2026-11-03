@@ -238,6 +238,8 @@ export * from "./mobile-ux";
 
 export * from "./mobile-version";
 
+export * from "./phone-carriers";
+
 export * from "./reminder-time";
 
 export * from "./time-zone";
