@@ -22,6 +22,9 @@ export interface ListActionContext {
 
 export type ListActionHandler = (ctx: ListActionContext) => Promise<unknown> | unknown;
 
+// Local redirect helper so action handlers and dispatch maps can be loaded and
+// tested under Vitest/Miniflare without importing @remix-run/cloudflare runtime,
+// which fails in the worker test environment on createCookieFactory.
 export function redirect(url: string, init?: number | ResponseInit): Response {
   let responseInit = init;
   if (typeof responseInit === "number") {
@@ -37,3 +40,4 @@ export function redirect(url: string, init?: number | ResponseInit): Response {
     headers,
   });
 }
+
