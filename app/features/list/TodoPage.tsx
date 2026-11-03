@@ -369,12 +369,16 @@ export default function TodoPage() {
   const {
     optimisticTodos,
     visibleParents,
+    activeParents,
+    completedParents,
     subtasksMap,
     totalCount,
     completedCount,
     activeCount,
     clearCompletedNeedsApproval,
   } = useVisibleTodos({ todos, filter, searchQuery, sortBy });
+
+  const completedSectionOpen = completedOpenListId === effectiveActiveListId;
 
   // Surface server-side rejections of a new task (too long, list full, rate limited).
   const createData = createFetcher.data as { error?: string } | undefined;
