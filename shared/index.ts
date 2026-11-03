@@ -242,6 +242,8 @@ export * from "./phone-carriers";
 
 export * from "./reminder-time";
 
+export * from "./task-sort";
+
 export * from "./time-zone";
 
 export * from "./todo-completed";
