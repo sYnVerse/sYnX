@@ -32,7 +32,6 @@ import {
   PHONE_CARRIERS,
   resolveTaskSortMode,
   sortChangelogItems,
-  sortSubtasks,
   sortTasks,
   taskSortStorageKey,
   DEFAULT_TASK_SORT_MODE,
@@ -3178,7 +3177,7 @@ export default function TodoPage() {
   // 4. Sort visible parent tasks
   const visibleParents = sortTasks(filteredParents, sortBy);
 
-  // 5. Group subtasks by parent (sorted chronologically)
+  // 5. Group subtasks by parent, sorted the same way as the list
   const subtasksMap: Record<string, Todo[]> = {};
   const searchQ = searchQuery.toLowerCase().trim();
   for (const parent of visibleParents) {
@@ -3186,7 +3185,7 @@ export default function TodoPage() {
     const filteredSubs = searchQ
       ? subs.filter((sub) => sub.text.toLowerCase().includes(searchQ))
       : subs;
-    subtasksMap[parent.id] = sortSubtasks(filteredSubs);
+    subtasksMap[parent.id] = sortTasks(filteredSubs, sortBy);
   }
 
   const totalCount = optimisticTodos.filter(t => !t.parentId).length;

@@ -676,6 +676,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         visible={!!selectedTaskForBreakdown}
         task={selectedTaskForBreakdown}
         canEdit={canEdit}
+        sortMode={taskSortMode}
         onClose={() => setSelectedTaskForBreakdown(null)}
       />
 

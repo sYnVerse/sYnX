@@ -14,7 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { X, Plus, Minus, Clock, Check } from "lucide-react-native";
-import { TodoItem, sortSubtasks, splitCompletedTasks } from "../shared";
+import { TodoItem, sortTasks, splitCompletedTasks, type TaskSortMode } from "../shared";
 import { apiClient } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
@@ -28,6 +28,8 @@ interface TaskBreakdownModalProps {
   visible: boolean;
   task: TodoItem | null;
   canEdit?: boolean;
+  /** The list's sort, so subtasks are ordered the same way as the list. */
+  sortMode: TaskSortMode;
   onClose: () => void;
 }
 
@@ -49,6 +51,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   visible,
   task,
   canEdit = true,
+  sortMode,
   onClose,
 }) => {
   const { theme, resolvedMode, hapticsEnabled } = useTheme();
@@ -74,10 +77,10 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   const subtasks = useMemo(() => {
     if (!task) return [];
     if (listTodos) {
-      return sortSubtasks(listTodos.filter((t) => t.parentId === task.id));
+      return sortTasks(listTodos.filter((t) => t.parentId === task.id), sortMode);
     }
-    return sortSubtasks(task.subtasks || []);
-  }, [task, listTodos]);
+    return sortTasks(task.subtasks || [], sortMode);
+  }, [task, listTodos, sortMode]);
 
   // Server subtasks with local edits on top, so in-progress edits aren't stomped.
   const draftList = useMemo<SubtaskDraft[]>(
@@ -226,7 +229,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   const progressPercent =
     draftList.length > 0 ? Math.round((completedCount / draftList.length) * 100) : 0;
 
-  // Completed subtasks go in a collapsible section at the bottom, oldest first like the rest.
+  // Completed subtasks go in a collapsible section at the bottom, in the list's sort like the rest.
   const { active: activeDrafts, completed: completedDrafts } = splitCompletedTasks(draftList);
 
   const renderSubtaskRow = (st: SubtaskDraft) => (
