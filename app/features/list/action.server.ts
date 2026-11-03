@@ -26,7 +26,9 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     else void promise;
   };
 
-  const accountHandler = ACCOUNT_INTENTS[intent];
+  // Own keys only: a plain lookup would match Object.prototype names such as
+  // "constructor" (which would return ctx, env included, to the client).
+  const accountHandler = Object.hasOwn(ACCOUNT_INTENTS, intent) ? ACCOUNT_INTENTS[intent] : undefined;
   if (accountHandler) {
     const ctx: ListActionContext = {
       request,
@@ -49,7 +51,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     return accountHandler(ctx);
   }
 
-  const listHandler = LIST_INTENTS[intent];
+  const listHandler = Object.hasOwn(LIST_INTENTS, intent) ? LIST_INTENTS[intent] : undefined;
   if (!listHandler) {
     return Response.json({ error: "Invalid intent" }, { status: 400 });
   }

@@ -126,3 +126,5 @@ export function Confetti() {
     </div>
   );
 }
+
+export { CompletedSectionToggle } from "./CompletedSectionToggle";

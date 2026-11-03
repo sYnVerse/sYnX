@@ -24,7 +24,7 @@ import { useBrowserReminders } from "./hooks/useBrowserReminders";
 import { useWebMcpTools } from "./hooks/useWebMcpTools";
 
 import { CalendarView } from "~/components/calendar-view";
-import { Confetti, EmptyState, ProgressRing, Toast } from "./components/ui-bits";
+import { CompletedSectionToggle, Confetti, EmptyState, ProgressRing, Toast } from "./components/ui-bits";
 import { TodoItem } from "./components/TodoItem";
 import { Sidebar } from "./components/Sidebar";
 import { CreateTaskForm } from "./components/CreateTaskForm";
@@ -114,6 +114,9 @@ export default function TodoPage() {
   const listNameInputRef = useRef<HTMLInputElement>(null);
 
   const [filter, setFilter] = useState<Filter>("all");
+  // The list's Completed section starts collapsed, isn't remembered, and
+  // collapses again when another list is opened.
+  const [completedOpenListId, setCompletedOpenListId] = useState<string | null>(null);
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high" | "none">("none");
   const [newDurationMinutes, setNewDurationMinutes] = useState<number | null>(null);
   const [showDurationPicker, setShowDurationPicker] = useState<boolean>(false);
@@ -782,7 +785,7 @@ export default function TodoPage() {
               </div>
             ) : (
               <ul className="space-y-2 flex-1 overflow-y-auto pr-1 scrollbar-thin">
-                {visibleParents.map((todo) => (
+                {activeParents.map((todo) => (
                   <TodoItem 
                     key={todo.id} 
                     todo={todo} 
@@ -792,6 +795,29 @@ export default function TodoPage() {
                     searchQuery={searchQuery}
                   />
                 ))}
+                {completedParents.length > 0 && (
+                  <li className="list-none flex">
+                    <CompletedSectionToggle
+                      count={completedParents.length}
+                      expanded={completedSectionOpen}
+                      onToggle={() =>
+                        setCompletedOpenListId(completedSectionOpen ? null : effectiveActiveListId ?? null)
+                      }
+                      itemLabel="tasks"
+                    />
+                  </li>
+                )}
+                {completedSectionOpen &&
+                  completedParents.map((todo) => (
+                    <TodoItem
+                      key={todo.id}
+                      todo={todo}
+                      subtasks={subtasksMap[todo.id] || []}
+                      canEdit={canEdit}
+                      onNotify={showToast}
+                      searchQuery={searchQuery}
+                    />
+                  ))}
               </ul>
             )}
           </div>

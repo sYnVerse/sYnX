@@ -11,7 +11,15 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     changes: [
       {
         type: "NEW",
-        text: "Choose how tasks are ordered: Date Created, Priority, Reminder Time or A to Z, the same options as on the web. Reminder Time is the default: tasks with a reminder come first, soonest first, then the rest by priority. Set it for all lists in Settings, or for one list when you edit it on the Lists tab. Subtasks stay under their task, oldest first."
+        text: "Completed tasks now move into a Completed section at the bottom of each list, and completed subtasks into one at the bottom of the task's subtasks. It starts collapsed and shows how many items it holds; tap it to show them. Uncheck an item to move it back."
+      },
+      {
+        type: "NEW",
+        text: "Choose how tasks are ordered: Date Created, Priority, Reminder Time or A to Z, the same options as on the web. Reminder Time is the default: tasks with a reminder come first, soonest first, then the rest by priority. Set it for all lists in Settings, or for one list when you edit it on the Lists tab. Subtasks follow the same order under their task."
+      },
+      {
+        type: "NEW",
+        text: "Switch which list the Pinned List widget shows from the widget itself: tap the ⇄ button in its header, then tap a list. The widget changes right away and keeps that list after a restart. Tapping the list name still opens the list."
       },
       {
         type: "IMPR",
@@ -20,6 +28,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Text message settings now list all 8 phone carriers, the same as on the web, in a picker you tap to open. A carrier picked on the web now shows as selected here too, and you can pick \"None (Twilio)\" to go back to Twilio."
+      },
+      {
+        type: "FIX",
+        text: "Home screen list widgets now show tasks in the same order as the list in the app, using that list's task order or your Settings choice. The progress widget's next task is the first one in that order. The Up Next widget still shows the soonest reminder first."
       }
     ]
   },

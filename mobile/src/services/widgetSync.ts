@@ -16,7 +16,9 @@ import {
   removeHandledWidgetOps,
   mergePendingOpsIntoSnapshot,
   applyReplayedWidgetOpsToTodos,
+  resolveTaskSortMode,
   type ListWidgetSnapshot,
+  type TaskSortMode,
   type WidgetPendingOp,
   type WidgetReplayOutcome,
   type TodoItem,
@@ -25,6 +27,11 @@ import {
 import { apiClient, secureSessionStore } from '../api/client';
 import { reconcileTasksWithNativeCalendar } from './calendar';
 import { getCachedListName } from './listNames';
+import {
+  getTaskSortPreferences,
+  loadTaskSortPreferences,
+  subscribeTaskSortPreferences,
+} from './taskSortPreferences';
 
 let isDrainingOps = false;
 let drainRequestedWhileBusy = false;
@@ -260,6 +267,17 @@ export async function resolveListTodos(
 }
 
 /**
+ * The sort a list uses in the app: its own override if set, otherwise the
+ * app-wide setting (Reminder Time by default). Widgets use it so they show
+ * tasks in the same order as the app.
+ */
+async function resolveWidgetSortMode(listId: string): Promise<TaskSortMode> {
+  await loadTaskSortPreferences();
+  const prefs = getTaskSortPreferences();
+  return resolveTaskSortMode(prefs.appDefault, prefs.overrides[listId]);
+}
+
+/**
  * Syncs the active list to CurrentListWidget and ListProgressWidget snapshots.
  */
 export async function syncActiveList(
@@ -278,9 +296,11 @@ export async function syncActiveList(
     const todos =
       providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
 
-    writeListWidgetSnapshot(currentListWidget, buildListWidgetSnapshot(meta, todos));
+    const sortMode = await resolveWidgetSortMode(targetId);
 
-    const progressSnap = buildProgressWidgetSnapshot(meta, todos);
+    writeListWidgetSnapshot(currentListWidget, buildListWidgetSnapshot(meta, todos, { sortMode }));
+
+    const progressSnap = buildProgressWidgetSnapshot(meta, todos, { sortMode });
     listProgressWidget.updateSnapshot(toNativeWidgetProps(progressSnap));
   } catch (e) {
     console.warn('[widgetSync] Error syncing active list widgets:', e);
@@ -316,11 +336,12 @@ export async function syncPinnedList(
     const todos =
       providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
 
+    // The Up Next view stays earliest reminder first; the list view follows the list's sort.
     writeListWidgetSnapshot(
       pinnedListWidget,
       pinnedConfig?.mode === 'reminders'
         ? buildUpNextWidgetSnapshot(meta, todos)
-        : buildListWidgetSnapshot(meta, todos)
+        : buildListWidgetSnapshot(meta, todos, { sortMode: await resolveWidgetSortMode(targetId) })
     );
   } catch (e) {
     console.warn('[widgetSync] Error syncing pinned list widget:', e);
@@ -355,6 +376,7 @@ export async function syncWidgetsFromCache(queryClient: QueryClient): Promise<vo
  * - Listens for live widget interactions to immediately drain completions
  * - Observes React Query cache mutations to update widget snapshots
  * - Listens for AppState foreground transitions to replay pending ops and refresh widgets
+ * - Re-syncs when the app-wide task sort or a list's sort override changes
  */
 export function startWidgetSyncService(queryClient: QueryClient): () => void {
   // 1. Drain pending ops and immediately push initial snapshot sync
@@ -380,25 +402,32 @@ export function startWidgetSyncService(queryClient: QueryClient): () => void {
   });
 
   // 4. Subscribe to React Query cache changes (debounced by 300ms)
+  const scheduleSync = () => {
+    if (syncDebounceTimer) {
+      clearTimeout(syncDebounceTimer);
+    }
+    syncDebounceTimer = setTimeout(() => {
+      syncAllWidgets(queryClient);
+    }, 300);
+  };
   const queryCacheUnsub = queryClient.getQueryCache().subscribe((event) => {
     if (
       event?.type === 'updated' &&
       Array.isArray(event.query.queryKey) &&
       ['todos', 'list_meta', 'lists', 'active_list_todos_preview'].includes(String(event.query.queryKey[0]))
     ) {
-      if (syncDebounceTimer) {
-        clearTimeout(syncDebounceTimer);
-      }
-      syncDebounceTimer = setTimeout(() => {
-        syncAllWidgets(queryClient);
-      }, 300);
+      scheduleSync();
     }
   });
+
+  // 5. Re-sync when the task sort changes in Settings or on a list, so widgets keep the app's order
+  const taskSortUnsub = subscribeTaskSortPreferences(scheduleSync);
 
   return () => {
     widgetInteractionSub?.remove();
     appStateSub.remove();
     queryCacheUnsub();
+    taskSortUnsub();
     if (syncDebounceTimer) {
       clearTimeout(syncDebounceTimer);
     }

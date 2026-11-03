@@ -1,4 +1,6 @@
-export type PriorityLevel = "high" | "medium" | "low" | "none";
+import type { PriorityLevel } from "../../../shared";
+
+export type { PriorityLevel };
 
 export interface PriorityConfigItem {
   label: string;
@@ -49,32 +51,24 @@ export function formatReminder(reminderAt?: number, reminderSent?: boolean): str
   if (reminderSent) return "Sent";
 
   const diffMs = reminderAt - Date.now();
-  if (diffMs <= 0) return "Due";
+  if (diffMs <= 0) return "Due Now";
 
-  const diffMin = Math.round(diffMs / 60000);
-  if (diffMin < 1) return "<1m";
-  if (diffMin < 60) return `${diffMin}m`;
+  const diffMins = Math.round(diffMs / (60 * 1000));
+  if (diffMins < 60) return `In ${diffMins}m`;
 
-  const date = new Date(reminderAt);
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  const timeStr = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const diffHours = Math.round(diffMins / 60);
+  if (diffHours < 24) return `In ${diffHours}h`;
 
-  const today = new Date();
-  if (date.toDateString() === today.toDateString()) {
-    return timeStr;
-  }
-
-  return `${date.getMonth() + 1}/${date.getDate()} ${timeStr}`;
+  const d = new Date(reminderAt);
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
   if (typeof window === "undefined" || !("Notification" in window)) return false;
   if (Notification.permission === "granted") return true;
-  if (Notification.permission !== "denied") {
-    const permission = await Notification.requestPermission();
-    return permission === "granted";
-  }
-  return false;
+  if (Notification.permission === "denied") return false;
+  const permission = await Notification.requestPermission();
+  return permission === "granted";
 }
 
 export function formatActivityWhen(ts: number): string {

@@ -1,4 +1,4 @@
-import { sortSubtasks, sortTasks, type TaskSortMode } from "../../../../shared";
+import { sortTasks, splitCompletedTasks, type TaskSortMode } from "../../../../shared";
 import type { Todo } from "~/to-do-manager";
 
 export type Filter = "all" | "active" | "completed";
@@ -52,7 +52,7 @@ export function useVisibleTodos({
   // 4. Sort visible parent tasks
   const visibleParents = sortTasks(filteredParents, sortBy);
 
-  // 5. Group subtasks by parent (sorted chronologically)
+  // 5. Group subtasks by parent, sorted the same way as the list
   const subtasksMap: Record<string, Todo[]> = {};
   const searchQ = searchQuery.toLowerCase().trim();
   for (const parent of visibleParents) {
@@ -60,8 +60,16 @@ export function useVisibleTodos({
     const filteredSubs = searchQ
       ? subs.filter((sub) => sub.text.toLowerCase().includes(searchQ))
       : subs;
-    subtasksMap[parent.id] = sortSubtasks(filteredSubs);
+    subtasksMap[parent.id] = sortTasks(filteredSubs, sortBy);
   }
+
+  // 6. Under "All", completed tasks go in a collapsible section at the bottom,
+  // in the same sort. The "Completed" filter already shows only those, so it
+  // lists them directly; under "Active" there are none.
+  const { active: activeParents, completed: completedParents } =
+    filter === "all"
+      ? splitCompletedTasks(visibleParents)
+      : { active: visibleParents, completed: [] as Todo[] };
 
   const totalCount = optimisticTodos.filter((t) => !t.parentId).length;
   const completedCount = optimisticTodos.filter((t) => !t.parentId && t.completed).length;
@@ -73,6 +81,8 @@ export function useVisibleTodos({
   return {
     optimisticTodos,
     visibleParents,
+    activeParents,
+    completedParents,
     subtasksMap,
     totalCount,
     completedCount,
