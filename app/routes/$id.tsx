@@ -25,8 +25,8 @@ import {
   PHONE_CARRIERS,
   resolveTaskSortMode,
   sortChangelogItems,
-  sortSubtasks,
   sortTasks,
+  splitCompletedTasks,
   taskSortStorageKey,
   DEFAULT_TASK_SORT_MODE,
   TASK_SORT_OPTIONS,
@@ -71,6 +71,7 @@ import {
   ProgressRing,
   Toast,
   Confetti,
+  CompletedSectionToggle,
 } from "~/features/list/components/ui-bits";
 import { TodoItem } from "~/features/list/components/TodoItem";
 
@@ -376,6 +377,9 @@ export default function TodoPage() {
   const listNameInputRef = useRef<HTMLInputElement>(null);
   
   const [filter, setFilter] = useState<Filter>("all");
+  // The list's Completed section starts collapsed, isn't remembered, and
+  // collapses again when another list is opened.
+  const [completedOpenListId, setCompletedOpenListId] = useState<string | null>(null);
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high" | "none">("none");
   const [toast, setToast] = useState({ message: "", visible: false });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -889,7 +893,7 @@ export default function TodoPage() {
   // 4. Sort visible parent tasks
   const visibleParents = sortTasks(filteredParents, sortBy);
 
-  // 5. Group subtasks by parent (sorted chronologically)
+  // 5. Group subtasks by parent, sorted the same way as the list
   const subtasksMap: Record<string, Todo[]> = {};
   const searchQ = searchQuery.toLowerCase().trim();
   for (const parent of visibleParents) {
@@ -897,8 +901,17 @@ export default function TodoPage() {
     const filteredSubs = searchQ
       ? subs.filter((sub) => sub.text.toLowerCase().includes(searchQ))
       : subs;
-    subtasksMap[parent.id] = sortSubtasks(filteredSubs);
+    subtasksMap[parent.id] = sortTasks(filteredSubs, sortBy);
   }
+
+  // 6. Under "All", completed tasks go in a collapsible section at the bottom,
+  // in the same sort. The "Completed" filter already shows only those, so it
+  // lists them directly; under "Active" there are none.
+  const { active: activeParents, completed: completedParents } =
+    filter === "all"
+      ? splitCompletedTasks(visibleParents)
+      : { active: visibleParents, completed: [] as Todo[] };
+  const completedSectionOpen = completedOpenListId === effectiveActiveListId;
 
   const totalCount = optimisticTodos.filter(t => !t.parentId).length;
   const completedCount = optimisticTodos.filter(t => !t.parentId && t.completed).length;
@@ -2022,7 +2035,7 @@ export default function TodoPage() {
             </div>
           ) : (
             <ul className="space-y-2 flex-1 overflow-y-auto pr-1 scrollbar-thin">
-              {visibleParents.map((todo) => (
+              {activeParents.map((todo) => (
                 <TodoItem 
                   key={todo.id} 
                   todo={todo} 
@@ -2032,6 +2045,29 @@ export default function TodoPage() {
                   searchQuery={searchQuery}
                 />
               ))}
+              {completedParents.length > 0 && (
+                <li className="list-none flex">
+                  <CompletedSectionToggle
+                    count={completedParents.length}
+                    expanded={completedSectionOpen}
+                    onToggle={() =>
+                      setCompletedOpenListId(completedSectionOpen ? null : effectiveActiveListId ?? null)
+                    }
+                    itemLabel="tasks"
+                  />
+                </li>
+              )}
+              {completedSectionOpen &&
+                completedParents.map((todo) => (
+                  <TodoItem
+                    key={todo.id}
+                    todo={todo}
+                    subtasks={subtasksMap[todo.id] || []}
+                    canEdit={canEdit}
+                    onNotify={showToast}
+                    searchQuery={searchQuery}
+                  />
+                ))}
             </ul>
           )}
         </div>

@@ -1,6 +1,7 @@
 import { TodoItem, TodoList } from "./index";
 import { formatReminderTime, listOwnershipLabel, stripLeadingCategoryEmoji } from "./mobile-ux";
 import { applySetCompletedLocal } from "./todo-completed";
+import { DEFAULT_TASK_SORT_MODE, sortTasks, type TaskSortMode } from "./task-sort";
 
 export interface WidgetTaskItem {
   id: string;
@@ -65,16 +66,15 @@ export function getCategoryEmoji(category?: string | null): string {
   return CATEGORY_EMOJIS[category] || "📋";
 }
 
-const PRIORITY_ORDER: Record<string, number> = {
-  high: 0,
-  medium: 1,
-  low: 2,
-  none: 3,
-};
-
 export interface BuildSnapshotOptions {
   maxTasks?: number;
   now?: number;
+  /**
+   * How to order the list's open tasks, so the widget matches the app's list.
+   * The caller resolves it (the list's own sort, else the app-wide setting).
+   * Defaults to the app default, Reminder Time.
+   */
+  sortMode?: TaskSortMode;
 }
 
 /**
@@ -127,21 +127,11 @@ export function buildListWidgetSnapshot(
     }
   }
 
-  const openTopLevel = topLevelTasks.filter((t) => !t.completed);
-
-  openTopLevel.sort((a, b) => {
-    const pA = PRIORITY_ORDER[a.priority] ?? 3;
-    const pB = PRIORITY_ORDER[b.priority] ?? 3;
-    if (pA !== pB) return pA - pB;
-
-    if (a.reminderAt && b.reminderAt) {
-      return a.reminderAt - b.reminderAt;
-    }
-    if (a.reminderAt) return -1;
-    if (b.reminderAt) return 1;
-
-    return b.createdAt - a.createdAt;
-  });
+  // Same order as the app's list for this sort.
+  const openTopLevel = sortTasks(
+    topLevelTasks.filter((t) => !t.completed),
+    options?.sortMode ?? DEFAULT_TASK_SORT_MODE
+  );
 
   const widgetTasks: WidgetTaskItem[] = openTopLevel.slice(0, maxTasks).map((t) => {
     const subtasks = subtasksByParent[t.id] || [];
@@ -230,7 +220,7 @@ export function buildUpNextWidgetSnapshot(
 export function buildProgressWidgetSnapshot(
   listMeta: TodoList | null | undefined,
   todos: TodoItem[] | null | undefined,
-  options?: { now?: number }
+  options?: { now?: number; sortMode?: TaskSortMode }
 ): ProgressWidgetSnapshot {
   const now = options?.now ?? Date.now();
 
@@ -252,17 +242,11 @@ export function buildProgressWidgetSnapshot(
   const doneCount = allTodos.filter((t) => t.completed).length;
   const progressPercent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
-  // Find next urgent uncompleted task
-  const openTasks = allTodos.filter((t) => !t.completed && !t.parentId);
-  openTasks.sort((a, b) => {
-    const pA = PRIORITY_ORDER[a.priority] ?? 3;
-    const pB = PRIORITY_ORDER[b.priority] ?? 3;
-    if (pA !== pB) return pA - pB;
-    if (a.reminderAt && b.reminderAt) return a.reminderAt - b.reminderAt;
-    if (a.reminderAt) return -1;
-    if (b.reminderAt) return 1;
-    return b.createdAt - a.createdAt;
-  });
+  // The next task is the first open task in the list's order, the one the app shows on top.
+  const openTasks = sortTasks(
+    allTodos.filter((t) => !t.completed && !t.parentId),
+    options?.sortMode ?? DEFAULT_TASK_SORT_MODE
+  );
 
   const nextTaskText = openTasks.length > 0 ? openTasks[0].text : undefined;
 

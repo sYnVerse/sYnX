@@ -9,12 +9,16 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "NEW",
+        text: "Completed tasks now move into a Completed section at the bottom of the list, and completed subtasks into one at the bottom of their task's subtasks. It starts collapsed and shows how many items it holds; click it to show them. Uncheck an item to move it back."
+      },
+      {
         type: "IMPR",
         text: "On Collaborative lists, you can now delete tasks you added yourself right away, without waiting for the owner. Deleting tasks someone else added, or a task with subtasks someone else added, still sends a delete request the owner approves, and so does deleting the whole list. Clear completed removes your own completed tasks right away and sends one request for the rest."
       },
       {
         type: "IMPR",
-        text: "A list's Sort by now starts on Reminder Time, and tasks without a reminder follow by priority. The choice you pick is remembered for each list on this browser."
+        text: "A list's Sort by now starts on Reminder Time, and tasks without a reminder follow by priority. The choice you pick is remembered for each list on this browser, and subtasks now follow the same order under their task."
       }
     ]
   },

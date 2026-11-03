@@ -18,6 +18,13 @@ export default defineConfig({
       };
     }),
   ],
+  resolve: {
+    // Resolve `~/...` imports from tsconfig.json's `paths`, the same map the app
+    // build uses (through vite-tsconfig-paths in vite.config.ts). Vitest runs on
+    // its own Vite 8, which supports this natively, so vite.config.ts (Vite 6 and
+    // the Remix plugin) isn't reused here.
+    tsconfigPaths: true,
+  },
   test: {
     include: ["test/**/*.test.ts"],
     setupFiles: ["./test/apply-migrations.ts"],

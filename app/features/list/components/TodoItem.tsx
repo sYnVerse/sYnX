@@ -3,10 +3,11 @@ import { useFetcher } from "@remix-run/react";
 import { GuestContext } from "~/guest-context";
 import { canEditReminderText } from "~/reminder-ownership";
 import { MAX_TASK_TEXT_LENGTH } from "~/write-limits";
-import { applySetCompletedLocal, formatRescheduledToast } from "../../../../shared";
+import { applySetCompletedLocal, formatRescheduledToast, splitCompletedTasks } from "../../../../shared";
 import type { Todo } from "~/to-do-manager";
 import { ReminderPicker } from "./ReminderPicker";
 import { DurationPicker, PriorityPicker, RecurrencePicker } from "./pickers";
+import { CompletedSectionToggle } from "./CompletedSectionToggle";
 
 export function renderHighlightedText(text: string, query: string) {
   const trimmed = query.trim();
@@ -85,6 +86,8 @@ export function TodoItem({
   }, [deleteFetcher.state, deleteFetcher.data, onNotify]);
 
   const [showAddSubtask, setShowAddSubtask] = useState(false);
+  // Completed subtasks sit in a section that starts collapsed and isn't remembered.
+  const [showCompletedSubtasks, setShowCompletedSubtasks] = useState(false);
   const [subtaskText, setSubtaskText] = useState("");
   const subtaskInputRef = useRef<HTMLInputElement>(null);
 
@@ -112,6 +115,8 @@ export function TodoItem({
   const optimisticCompleted = optimistic.todo.completed;
   const isToggling = isSetCompletedPending;
   const isDeleting = deleteFetcher.formData?.get("intent") === "delete";
+
+  const { active: activeSubtasks, completed: completedSubtasks } = splitCompletedTasks(subtasks);
 
   useEffect(() => {
     if (toggleFetcher.state !== "idle") return;
@@ -414,7 +419,7 @@ export function TodoItem({
       {/* Render subtasks underneath the parent */}
       {!isSubtask && (subtasks.length > 0 || showAddSubtask) && (
         <div className="pl-6 mt-1 flex flex-col gap-1 border-l border-white/[0.04] ml-5">
-          {subtasks.map((sub) => (
+          {activeSubtasks.map((sub) => (
             <TodoItem
               key={sub.id}
               todo={sub}
@@ -424,6 +429,28 @@ export function TodoItem({
               searchQuery={searchQuery}
             />
           ))}
+
+          {/* Completed subtasks, collapsed by default */}
+          {completedSubtasks.length > 0 && (
+            <CompletedSectionToggle
+              count={completedSubtasks.length}
+              expanded={showCompletedSubtasks}
+              onToggle={() => setShowCompletedSubtasks((open) => !open)}
+              itemLabel="subtasks"
+              isSubtask
+            />
+          )}
+          {showCompletedSubtasks &&
+            completedSubtasks.map((sub) => (
+              <TodoItem
+                key={sub.id}
+                todo={sub}
+                isSubtask={true}
+                canEdit={canEdit}
+                onNotify={onNotify}
+                searchQuery={searchQuery}
+              />
+            ))}
 
           {/* Inline Add Subtask Input Form */}
           {showAddSubtask && (

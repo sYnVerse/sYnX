@@ -1,4 +1,7 @@
 import { describe, it, expect } from "vitest";
+import { env } from "cloudflare:test";
+import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import { action } from "../app/features/list/action.server";
 import { ACCOUNT_INTENTS, LIST_INTENTS } from "../app/features/list/actions/index.server";
 import { checkListAccessGate, type ListAccessInfo } from "../app/features/list/actions/access.server";
 import { canDeleteTaskDirectly } from "../shared/list-permissions";
@@ -119,5 +122,53 @@ describe("Issue 87 task delete permission rules", () => {
 
   it("requires approval when collaborator's task has subtasks created by others", () => {
     expect(canDeleteTaskDirectly({ tasks, taskId: "task-3", userId: "user-collab", isOwner: false, canEdit: true })).toBe(false);
+  });
+});
+
+describe("intent lookup ignores Object.prototype names", () => {
+  // A plain map lookup matches these, e.g. "constructor" is Object itself, which
+  // would hand the whole action context (env included) back to the client.
+  const PROTOTYPE_NAMES = [
+    "constructor",
+    "toString",
+    "toLocaleString",
+    "valueOf",
+    "hasOwnProperty",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "__proto__",
+    "__defineGetter__",
+    "__lookupGetter__",
+  ];
+  const SECRET = "test-secret-do-not-leak";
+
+  async function postIntent(intent: string) {
+    const body = new FormData();
+    body.set("intent", intent);
+    const request = new Request("https://synx.test/list-1", { method: "POST", body });
+    return action({
+      request,
+      params: { id: "list-1" },
+      context: { cloudflare: { env: { ...env, TEST_SECRET: SECRET } } },
+    } as unknown as ActionFunctionArgs);
+  }
+
+  it("neither dispatch map has them as its own keys", () => {
+    for (const name of PROTOTYPE_NAMES) {
+      expect(Object.hasOwn(ACCOUNT_INTENTS, name)).toBe(false);
+      expect(Object.hasOwn(LIST_INTENTS, name)).toBe(false);
+    }
+  });
+
+  it("returns 400 Invalid intent for each, without leaking the context or env", async () => {
+    for (const name of PROTOTYPE_NAMES) {
+      const res = await postIntent(name);
+      expect(res, name).toBeInstanceOf(Response);
+      const response = res as Response;
+      expect(response.status, name).toBe(400);
+      const text = await response.text();
+      expect(JSON.parse(text), name).toEqual({ error: "Invalid intent" });
+      expect(text).not.toContain(SECRET);
+    }
   });
 });

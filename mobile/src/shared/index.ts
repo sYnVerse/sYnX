@@ -244,6 +244,8 @@ export * from "./reminder-time";
 
 export * from "./task-sort";
 
+export * from "./task-sections";
+
 export * from "./time-zone";
 
 export * from "./todo-completed";
