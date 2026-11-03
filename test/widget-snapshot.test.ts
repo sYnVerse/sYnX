@@ -10,6 +10,7 @@ import {
   type WidgetTaskItem,
 } from "../shared/widget-snapshot";
 import type { TodoItem, TodoList } from "../shared";
+import { DEFAULT_TASK_SORT_MODE, sortTasks, type TaskSortMode } from "../shared/task-sort";
 
 describe("Widget Snapshot & Replay Pure Functions", () => {
   const mockList: TodoList = {
@@ -272,5 +273,111 @@ describe("list widget title", () => {
       []
     );
     expect(snap.listTitle).toBe("Groceries");
+  });
+});
+
+describe("widgets follow the list's task sort", () => {
+  const list: TodoList = {
+    id: "list-sort",
+    name: "Errands",
+    category: "Personal",
+    ownerId: "user-1",
+    createdAt: 1000,
+    shareMode: "private",
+    isOwner: true,
+    canEdit: true,
+  };
+  const now = 1700000000000;
+
+  function task(id: string, fields: Partial<TodoItem>): TodoItem {
+    return {
+      id,
+      listId: "list-sort",
+      text: id,
+      completed: false,
+      priority: "none",
+      recurrence: "none",
+      reminderSent: false,
+      createdAt: 1000,
+      ...fields,
+    };
+  }
+
+  // a: oldest, high priority, no reminder
+  // b: medium priority, reminder in 2 hours
+  // c: newest, low priority, reminder in 1 hour
+  // d: no priority, no reminder
+  // e: completed (never shown)
+  // s: open subtask of a (never a top-level row)
+  const todos: TodoItem[] = [
+    task("a", { text: "Buy milk", priority: "high", createdAt: 1000 }),
+    task("b", { text: "Call bank", priority: "medium", reminderAt: now + 7200000, createdAt: 2000 }),
+    task("c", { text: "Drop off package", priority: "low", reminderAt: now + 3600000, createdAt: 4000 }),
+    task("d", { text: "apples", createdAt: 3000 }),
+    task("e", { text: "Done already", priority: "high", completed: true, createdAt: 5000 }),
+    task("s", { text: "Oat milk", parentId: "a", priority: "high", createdAt: 6000 }),
+  ];
+
+  const ids = (sortMode?: TaskSortMode) =>
+    buildListWidgetSnapshot(list, todos, { now, sortMode }).tasks.map((t) => t.id);
+
+  it("orders by Reminder Time: soonest reminder first, then the rest by priority", () => {
+    expect(ids("reminder")).toEqual(["c", "b", "a", "d"]);
+  });
+
+  it("defaults to Reminder Time when no sort is passed", () => {
+    expect(ids()).toEqual(ids("reminder"));
+    expect(ids()).toEqual(ids(DEFAULT_TASK_SORT_MODE));
+  });
+
+  it("orders by Priority, high to low", () => {
+    expect(ids("priority")).toEqual(["a", "b", "c", "d"]);
+  });
+
+  it("orders by Date Created, newest first", () => {
+    expect(ids("created")).toEqual(["c", "d", "b", "a"]);
+  });
+
+  it("orders A to Z, ignoring case", () => {
+    expect(ids("alphabetical")).toEqual(["d", "a", "b", "c"]);
+  });
+
+  it("matches the app's order for every sort", () => {
+    const appOrder = (mode: TaskSortMode) =>
+      sortTasks(todos.filter((t) => !t.parentId && !t.completed), mode).map((t) => t.id);
+    for (const mode of ["created", "priority", "reminder", "alphabetical"] as const) {
+      expect(ids(mode)).toEqual(appOrder(mode));
+    }
+  });
+
+  it("breaks ties newest first", () => {
+    const tied = [
+      task("old", { text: "Same", priority: "high", createdAt: 1000 }),
+      task("new", { text: "Same", priority: "high", createdAt: 2000 }),
+    ];
+    const snap = buildListWidgetSnapshot(list, tied, { now, sortMode: "priority" });
+    expect(snap.tasks.map((t) => t.id)).toEqual(["new", "old"]);
+  });
+
+  it("keeps subtask counts on the right task after sorting", () => {
+    const snap = buildListWidgetSnapshot(list, todos, { now, sortMode: "alphabetical" });
+    expect(snap.tasks.find((t) => t.id === "a")?.subtaskProgress).toBe("0/1");
+  });
+
+  it("picks the progress widget's next task as the first open task in the list's sort", () => {
+    const next = (sortMode?: TaskSortMode) =>
+      buildProgressWidgetSnapshot(list, todos, { now, sortMode }).nextTaskText;
+    expect(next("reminder")).toBe("Drop off package");
+    expect(next()).toBe("Drop off package");
+    expect(next("priority")).toBe("Buy milk");
+    expect(next("created")).toBe("Drop off package");
+    expect(next("alphabetical")).toBe("apples");
+  });
+
+  it("keeps the Up Next view earliest reminder first for every sort", () => {
+    for (const sortMode of ["created", "priority", "reminder", "alphabetical"] as const) {
+      const snap = buildUpNextWidgetSnapshot(list, todos, { now, sortMode });
+      expect(snap.tasks.map((t) => t.id)).toEqual(["c", "b"]);
+    }
   });
 });
