@@ -167,15 +167,6 @@ export const cardThemePresets: CardThemePreset[] = [
   },
 ];
 
-/** Known SMS email-gateway carriers (matches web settings). */
-export const PHONE_CARRIERS = [
-  { value: "verizon", label: "Verizon" },
-  { value: "att", label: "AT&T" },
-  { value: "tmobile", label: "T-Mobile" },
-] as const;
-
-export type PhoneCarrierValue = (typeof PHONE_CARRIERS)[number]["value"];
-
 export {
   FLOATING_TAB_BAR_HEIGHT,
   getFabBottomOffset,

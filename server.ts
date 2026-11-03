@@ -10,6 +10,7 @@ import { finalizeWorkerResponse, unexpectedErrorResponse } from "./app/worker-re
 import { getDueReminderRecipients, type DueReminderRow } from "./app/due-reminders.server";
 import { deleteExpiredGuestLists } from "./app/guest-access.server";
 import { pruneOldListActivity } from "./app/list-activity.server";
+import { phoneCarrierGatewayDomain } from "./shared/phone-carriers";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
@@ -122,18 +123,7 @@ export default {
       if (reminder.phoneNumber && smsEnabled) {
         if (reminder.phoneCarrier) {
           if (env.RESEND_API_KEY) {
-            const carrierDomains: Record<string, string> = {
-              verizon: "vtext.com",
-              att: "txt.att.net",
-              tmobile: "tmomail.net",
-              sprint: "messaging.sprintpcs.com",
-              boost: "myboostmobile.com",
-              cricket: "sms.cricketwireless.net",
-              uscellular: "email.uscc.net",
-              googlefi: "msg.fi.google.com",
-            };
-
-            const domain = carrierDomains[reminder.phoneCarrier.toLowerCase()];
+            const domain = phoneCarrierGatewayDomain(reminder.phoneCarrier);
             if (domain) {
               const cleanPhone = reminder.phoneNumber.replace(/\D/g, "");
               const displayPhone = cleanPhone.length > 10 ? cleanPhone.substring(cleanPhone.length - 10) : cleanPhone;
