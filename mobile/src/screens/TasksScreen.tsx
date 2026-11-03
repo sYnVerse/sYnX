@@ -24,12 +24,14 @@ import {
   describeListActivityAction,
   resolveTaskSortMode,
   sortTasks,
+  splitCompletedTasks,
   type ListAccessDenialCode,
   type ListActivityEntry,
   type PendingDeleteRequest,
 } from "../shared";
 import { TaskModal } from "../components/TaskModal";
 import { TaskRow } from "../components/TaskRow";
+import { CompletedSectionHeader } from "../components/CompletedSectionHeader";
 import { TaskBreakdownModal } from "../components/TaskBreakdownModal";
 import { TaskCardSkeleton } from "../components/SkeletonLoader";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
@@ -55,6 +57,11 @@ export interface TasksScreenProps {
   onGoToMyLists?: () => void;
   onSwitchLists?: () => void;
 }
+
+/** A row in the task list: a task, or the header of the collapsible Completed section. */
+type TaskListRow =
+  | { kind: "task"; task: TodoItem }
+  | { kind: "completed-header"; count: number };
 
 function classifyListMetaError(error: unknown): {
   kind: ListAccessErrorKind;
@@ -99,6 +106,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const [editingTask, setEditingTask] = useState<TodoItem | null>(null);
   const [selectedTaskForBreakdown, setSelectedTaskForBreakdown] = useState<TodoItem | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
+  // The Completed section starts collapsed and isn't remembered; opening another list collapses it.
+  const [completedOpenListId, setCompletedOpenListId] = useState<string | null>(null);
+  const completedOpen = completedOpenListId === listId;
   const taskSortPrefs = useTaskSortPreferences();
   const taskSortMode = resolveTaskSortMode(taskSortPrefs.appDefault, taskSortPrefs.overrides[listId]);
 
@@ -332,6 +342,16 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     return parentMatches || subtaskMatches;
   });
 
+  // Completed tasks go in a collapsible section at the bottom, in the same sort order.
+  const { active: activeTodos, completed: completedTodos } = splitCompletedTasks(filteredTodos);
+  const taskRows: TaskListRow[] = activeTodos.map((task) => ({ kind: "task", task }));
+  if (completedTodos.length > 0) {
+    taskRows.push({ kind: "completed-header", count: completedTodos.length });
+    if (completedOpen) {
+      completedTodos.forEach((task) => taskRows.push({ kind: "task", task }));
+    }
+  }
+
   const ownerDisplayName = listMeta?.owner?.displayName ?? null;
   const ownershipLabel = listOwnershipLabel(isOwner, ownerDisplayName);
 
@@ -543,8 +563,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         </View>
       ) : (
         <FlatList
-          data={filteredTodos}
-          keyExtractor={(item) => item.id}
+          data={taskRows}
+          keyExtractor={(row) => (row.kind === "task" ? row.task.id : "completed-header")}
           contentContainerStyle={{ paddingBottom: getListBottomPadding(insets.bottom) }}
           refreshControl={
             <RefreshControl
@@ -586,18 +606,29 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
               )}
             </View>
           }
-          renderItem={({ item }) => (
-            <TaskRow
-              item={item}
-              canEdit={canEdit}
-              isOwner={isOwner}
-              isPending={isPendingId(item.id)}
-              onPress={setSelectedTaskForBreakdown}
-              onToggleCompleted={(task) => setCompleted(task)}
-              onEdit={setEditingTask}
-              onDelete={handleDeleteTask}
-            />
-          )}
+          renderItem={({ item: row }) =>
+            row.kind === "completed-header" ? (
+              <CompletedSectionHeader
+                count={row.count}
+                expanded={completedOpen}
+                onToggle={() => {
+                  triggerImpactHaptic();
+                  setCompletedOpenListId(completedOpen ? null : listId);
+                }}
+              />
+            ) : (
+              <TaskRow
+                item={row.task}
+                canEdit={canEdit}
+                isOwner={isOwner}
+                isPending={isPendingId(row.task.id)}
+                onPress={setSelectedTaskForBreakdown}
+                onToggleCompleted={(task) => setCompleted(task)}
+                onEdit={setEditingTask}
+                onDelete={handleDeleteTask}
+              />
+            )
+          }
         />
       )}
 
