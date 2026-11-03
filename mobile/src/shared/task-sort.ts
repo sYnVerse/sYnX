@@ -87,9 +87,10 @@ function stableSort<U>(items: readonly U[], compare: (a: U, b: U) => number): U[
 }
 
 /**
- * Returns a sorted copy of top-level tasks without changing the input.
+ * Returns a sorted copy of tasks without changing the input.
  * Ties fall back to newest first, then to the order the tasks came in.
- * If a task carries `subtasks`, they stay under it, oldest first.
+ * If a task carries `subtasks`, they stay under it and are sorted the same way,
+ * so subtasks follow the list's sort too.
  */
 export function sortTasks<T extends SortableTask & { subtasks?: SortableTask[] }>(
   tasks: readonly T[],
@@ -100,12 +101,7 @@ export function sortTasks<T extends SortableTask & { subtasks?: SortableTask[] }
     (a, b) => compareMain(mode, a, b) || createdTime(b) - createdTime(a)
   ).map((task) =>
     task.subtasks && task.subtasks.length > 0
-      ? ({ ...task, subtasks: sortSubtasks(task.subtasks) } as T)
+      ? ({ ...task, subtasks: sortTasks(task.subtasks, mode) } as T)
       : task
   );
-}
-
-/** Subtasks are always oldest first, whatever the list's sort. Returns a copy. */
-export function sortSubtasks<U extends Pick<TodoItem, "createdAt">>(subtasks: readonly U[]): U[] {
-  return stableSort(subtasks, (a, b) => createdTime(a) - createdTime(b));
 }
