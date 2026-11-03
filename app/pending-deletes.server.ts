@@ -1,9 +1,11 @@
 import {
   describeDeleteTarget,
+  isOwnTaskTree,
   type DeleteTargetType,
   type PendingDeleteRequest,
+  type TaskCreatorInfo,
 } from "../shared";
-import { TodoManager } from "./to-do-manager";
+import { TodoManager, type TodoRow } from "./to-do-manager";
 import { sendFCMPushNotification } from "./fcm.server";
 
 export type { DeleteTargetType, PendingDeleteRequest };
@@ -14,6 +16,37 @@ export const DELETE_REQUEST_MESSAGE =
 
 export const DELETE_REQUEST_ALREADY_MESSAGE =
   "A delete request for this is already waiting for the list owner.";
+
+export const CLEAR_COMPLETED_PARTIAL_MESSAGE =
+  "Your completed tasks were cleared. A delete request was sent for completed tasks others added; the list owner must approve it.";
+
+export const CLEAR_COMPLETED_PARTIAL_ALREADY_MESSAGE =
+  "Your completed tasks were cleared. A delete request for completed tasks others added is already waiting for the list owner.";
+
+/** The todos columns loadTaskCreators reads. */
+type TaskCreatorRow = Pick<TodoRow, "id" | "parent_id" | "created_by" | "completed">;
+
+/** A task's id, parent and creator, plus whether it's completed. */
+export interface TaskCreatorWithStatus extends TaskCreatorInfo {
+  completed: boolean;
+}
+
+/** id, parent and creator for every task on a list (for own-task checks). */
+export async function loadTaskCreators(
+  db: D1Database,
+  listId: string
+): Promise<TaskCreatorWithStatus[]> {
+  const { results } = await db
+    .prepare("SELECT id, parent_id, created_by, completed FROM todos WHERE list_id = ?")
+    .bind(listId)
+    .all<TaskCreatorRow>();
+  return (results || []).map((r) => ({
+    id: r.id,
+    parentId: r.parent_id,
+    createdBy: r.created_by,
+    completed: Boolean(r.completed),
+  }));
+}
 
 type PendingRow = {
   id: string;
@@ -45,8 +78,11 @@ function normalizeTargetId(targetType: DeleteTargetType, targetId?: string | nul
 }
 
 /**
- * Owner deletes immediately. Collaborators on a public_edit list create a
- * pending request the owner must approve. Everyone else is forbidden.
+ * Owner deletes immediately. On a public_edit list a collaborator deletes a
+ * task right away when they added it and every subtask under it; any other
+ * task, the rest of Clear Completed, and the whole list become a pending
+ * request the owner must approve. Tasks with no recorded creator count as
+ * added by someone else. Everyone else is forbidden.
  */
 export async function requestOrPerformDelete(
   db: D1Database,
@@ -62,7 +98,14 @@ export async function requestOrPerformDelete(
   }
 ): Promise<
   | { kind: "deleted" }
-  | { kind: "requested"; requestId: string; alreadyExisted: boolean; message: string }
+  | {
+      kind: "requested";
+      requestId: string;
+      alreadyExisted: boolean;
+      message: string;
+      /** Clear Completed only: how many of the caller's own completed tasks were deleted right away. */
+      deletedOwnCount?: number;
+    }
   | { kind: "forbidden"; error: string }
   | { kind: "not_found"; error: string }
   | { kind: "bad_request"; error: string }
@@ -91,7 +134,37 @@ export async function requestOrPerformDelete(
     if (!todo) {
       return { kind: "not_found", error: "Todo not found" };
     }
+    const tasks = await loadTaskCreators(db, listId);
+    if (isOwnTaskTree(tasks, targetId, userId)) {
+      await performDelete(db, listId, "task", targetId);
+      return { kind: "deleted" };
+    }
   }
+
+  let deletedOwnCount: number | undefined;
+  if (targetType === "clear_completed") {
+    const tasks = await loadTaskCreators(db, listId);
+    const completed = tasks.filter((t) => t.completed);
+    const ownIds = completed
+      .filter((t) => isOwnTaskTree(tasks, t.id, userId))
+      .map((t) => t.id);
+    if (ownIds.length > 0) {
+      await deleteTasksById(db, listId, ownIds);
+    }
+    if (ownIds.length === completed.length) {
+      // Nothing added by others is left to clear, so any earlier request is moot.
+      await db
+        .prepare(
+          `DELETE FROM pending_delete_requests
+           WHERE list_id = ? AND target_type = 'clear_completed'`
+        )
+        .bind(listId)
+        .run();
+      return { kind: "deleted" };
+    }
+    deletedOwnCount = ownIds.length;
+  }
+  const partialClear = deletedOwnCount !== undefined && deletedOwnCount > 0;
 
   const existing = await db
     .prepare(
@@ -106,7 +179,8 @@ export async function requestOrPerformDelete(
       kind: "requested",
       requestId: existing.id,
       alreadyExisted: true,
-      message: DELETE_REQUEST_ALREADY_MESSAGE,
+      message: partialClear ? CLEAR_COMPLETED_PARTIAL_ALREADY_MESSAGE : DELETE_REQUEST_ALREADY_MESSAGE,
+      ...(deletedOwnCount !== undefined ? { deletedOwnCount } : {}),
     };
   }
 
@@ -135,7 +209,8 @@ export async function requestOrPerformDelete(
         kind: "requested",
         requestId: raced.id,
         alreadyExisted: true,
-        message: DELETE_REQUEST_ALREADY_MESSAGE,
+        message: partialClear ? CLEAR_COMPLETED_PARTIAL_ALREADY_MESSAGE : DELETE_REQUEST_ALREADY_MESSAGE,
+        ...(deletedOwnCount !== undefined ? { deletedOwnCount } : {}),
       };
     }
     throw e;
@@ -152,8 +227,30 @@ export async function requestOrPerformDelete(
     kind: "requested",
     requestId,
     alreadyExisted: false,
-    message: DELETE_REQUEST_MESSAGE,
+    message: partialClear ? CLEAR_COMPLETED_PARTIAL_MESSAGE : DELETE_REQUEST_MESSAGE,
+    ...(deletedOwnCount !== undefined ? { deletedOwnCount } : {}),
   };
+}
+
+/** Delete specific tasks (and, by cascade, their subtasks) and any task delete requests for them. */
+async function deleteTasksById(db: D1Database, listId: string, ids: string[]): Promise<void> {
+  const statements: D1PreparedStatement[] = [];
+  for (const id of ids) {
+    statements.push(
+      db.prepare("DELETE FROM todos WHERE id = ? AND list_id = ?").bind(id, listId)
+    );
+  }
+  statements.push(
+    db
+      .prepare(
+        `DELETE FROM pending_delete_requests
+         WHERE list_id = ?
+           AND target_type = 'task'
+           AND target_id NOT IN (SELECT id FROM todos WHERE list_id = ?)`
+      )
+      .bind(listId, listId)
+  );
+  await db.batch(statements);
 }
 
 async function performDelete(

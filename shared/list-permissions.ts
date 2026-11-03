@@ -116,3 +116,68 @@ export function getSharedNameNotice(
     ? `Anyone with the link can see your display name, "${name}".`
     : "Anyone with the link can see your display name.";
 }
+
+/** Minimal task shape for deciding who added a task and its subtasks. */
+export interface TaskCreatorInfo {
+  id: string;
+  parentId?: string | null;
+  /** Signed-in user who added the task; null/undefined for tasks added before this was recorded. */
+  createdBy?: string | null;
+}
+
+/**
+ * True when `userId` added the task and every subtask under it. Tasks with no
+ * recorded creator count as added by someone else. Deleting a parent also
+ * deletes its subtasks, so one subtask added by someone else is enough to
+ * make the whole delete need the owner's approval.
+ */
+export function isOwnTaskTree(
+  tasks: readonly TaskCreatorInfo[],
+  taskId: string,
+  userId: string | null | undefined
+): boolean {
+  if (!userId) return false;
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const root = byId.get(taskId);
+  if (!root || root.createdBy !== userId) return false;
+
+  const childrenByParent = new Map<string, TaskCreatorInfo[]>();
+  for (const t of tasks) {
+    if (!t.parentId) continue;
+    const siblings = childrenByParent.get(t.parentId);
+    if (siblings) siblings.push(t);
+    else childrenByParent.set(t.parentId, [t]);
+  }
+
+  const seen = new Set<string>([taskId]);
+  const queue = [taskId];
+  while (queue.length > 0) {
+    const current = queue.shift() as string;
+    for (const child of childrenByParent.get(current) || []) {
+      if (seen.has(child.id)) continue;
+      if (child.createdBy !== userId) return false;
+      seen.add(child.id);
+      queue.push(child.id);
+    }
+  }
+  return true;
+}
+
+/**
+ * Whether a delete of this task happens right away (true) or becomes a
+ * delete request the list owner must approve (false). The owner always
+ * deletes directly; a collaborator does only for tasks they added themselves
+ * (including every subtask). People who can't edit can't delete at all, so
+ * this is false for them too. Server-side checks stay authoritative.
+ */
+export function canDeleteTaskDirectly(input: {
+  tasks: readonly TaskCreatorInfo[];
+  taskId: string;
+  userId: string | null | undefined;
+  isOwner: boolean;
+  canEdit: boolean;
+}): boolean {
+  if (input.isOwner) return true;
+  if (!input.canEdit) return false;
+  return isOwnTaskTree(input.tasks, input.taskId, input.userId);
+}

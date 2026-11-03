@@ -19,12 +19,30 @@ async function seedCollaborativeList(listId: string) {
     .run();
 }
 
-async function seedTodo(todoId: string, listId: string, text = "Task") {
+async function seedTodo(
+  todoId: string,
+  listId: string,
+  text = "Task",
+  options: { createdBy?: string | null; parentId?: string | null; completed?: boolean } = {}
+) {
   await env.DB.prepare(
-    "INSERT INTO todos (id, list_id, text, completed, created_at) VALUES (?, ?, ?, 0, ?)"
+    "INSERT INTO todos (id, list_id, text, completed, created_at, created_by, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
   )
-    .bind(todoId, listId, text, Date.now())
+    .bind(
+      todoId,
+      listId,
+      text,
+      options.completed ? 1 : 0,
+      Date.now(),
+      options.createdBy ?? null,
+      options.parentId ?? null
+    )
     .run();
+}
+
+async function todoExists(todoId: string): Promise<boolean> {
+  const row = await env.DB.prepare("SELECT id FROM todos WHERE id = ?").bind(todoId).first();
+  return row !== null;
 }
 
 describe("pending delete requests (collaborative lists)", () => {
@@ -257,5 +275,173 @@ describe("pending delete requests (collaborative lists)", () => {
 
     const stillThere = await db.prepare("SELECT id FROM lists WHERE id = ?").bind(listId).first();
     expect(stillThere).not.toBeNull();
+  });
+
+  describe("collaborator deleting tasks they added", () => {
+    const collabDelete = (listId: string, todoId: string) =>
+      requestOrPerformDelete(db, {
+        listId,
+        userId: collaboratorId,
+        isOwner: false,
+        canEdit: true,
+        targetType: "task",
+        targetId: todoId,
+      });
+
+    it("deletes the collaborator's own task right away", async () => {
+      const listId = "list-own-task";
+      await seedCollaborativeList(listId);
+      await seedTodo("todo-own", listId, "Mine", { createdBy: collaboratorId });
+
+      const result = await collabDelete(listId, "todo-own");
+
+      expect(result.kind).toBe("deleted");
+      expect(await todoExists("todo-own")).toBe(false);
+      expect(await listPendingDeletesForList(db, listId)).toHaveLength(0);
+    });
+
+    it("still sends a request for a task someone else added", async () => {
+      const listId = "list-others-task";
+      await seedCollaborativeList(listId);
+      await seedTodo("todo-others", listId, "Theirs", { createdBy: ownerId });
+
+      const result = await collabDelete(listId, "todo-others");
+
+      expect(result.kind).toBe("requested");
+      expect(await todoExists("todo-others")).toBe(true);
+      expect(await listPendingDeletesForList(db, listId)).toHaveLength(1);
+    });
+
+    it("sends a request for a task with no recorded creator", async () => {
+      const listId = "list-null-creator";
+      await seedCollaborativeList(listId);
+      await seedTodo("todo-null", listId, "Old task", { createdBy: null });
+
+      const result = await collabDelete(listId, "todo-null");
+
+      expect(result.kind).toBe("requested");
+      expect(await todoExists("todo-null")).toBe(true);
+    });
+
+    it("sends a request when their own task has a subtask someone else added", async () => {
+      const listId = "list-mixed-subtasks";
+      await seedCollaborativeList(listId);
+      await seedTodo("todo-parent", listId, "Parent", { createdBy: collaboratorId });
+      await seedTodo("todo-child", listId, "Child", {
+        createdBy: ownerId,
+        parentId: "todo-parent",
+      });
+
+      const result = await collabDelete(listId, "todo-parent");
+
+      expect(result.kind).toBe("requested");
+      expect(await todoExists("todo-parent")).toBe(true);
+      expect(await todoExists("todo-child")).toBe(true);
+    });
+
+    it("deletes their own task together with their own subtasks", async () => {
+      const listId = "list-own-subtasks";
+      await seedCollaborativeList(listId);
+      await seedTodo("todo-own-parent", listId, "Parent", { createdBy: collaboratorId });
+      await seedTodo("todo-own-child", listId, "Child", {
+        createdBy: collaboratorId,
+        parentId: "todo-own-parent",
+      });
+
+      const result = await collabDelete(listId, "todo-own-parent");
+
+      expect(result.kind).toBe("deleted");
+      expect(await todoExists("todo-own-parent")).toBe(false);
+      expect(await todoExists("todo-own-child")).toBe(false);
+    });
+
+    it("does not let a different collaborator delete someone's task directly", async () => {
+      const listId = "list-other-collab";
+      await seedCollaborativeList(listId);
+      await seedTodo("todo-collab2", listId, "Other collaborator", {
+        createdBy: "user-collab-two",
+      });
+
+      const result = await collabDelete(listId, "todo-collab2");
+
+      expect(result.kind).toBe("requested");
+      expect(await todoExists("todo-collab2")).toBe(true);
+    });
+
+    it("clears their own completed tasks and sends one request for the rest", async () => {
+      const listId = "list-mixed-clear";
+      await seedCollaborativeList(listId);
+      await seedTodo("todo-done-mine", listId, "Mine done", {
+        createdBy: collaboratorId,
+        completed: true,
+      });
+      await seedTodo("todo-done-theirs", listId, "Theirs done", {
+        createdBy: ownerId,
+        completed: true,
+      });
+      await seedTodo("todo-done-legacy", listId, "Legacy done", { completed: true });
+      await seedTodo("todo-open-theirs", listId, "Still open", { createdBy: ownerId });
+
+      const result = await requestOrPerformDelete(db, {
+        listId,
+        userId: collaboratorId,
+        isOwner: false,
+        canEdit: true,
+        targetType: "clear_completed",
+      });
+
+      expect(result.kind).toBe("requested");
+      if (result.kind !== "requested") return;
+      expect(result.deletedOwnCount).toBe(1);
+      expect(await todoExists("todo-done-mine")).toBe(false);
+      expect(await todoExists("todo-done-theirs")).toBe(true);
+      expect(await todoExists("todo-done-legacy")).toBe(true);
+      expect(await todoExists("todo-open-theirs")).toBe(true);
+
+      const pending = await listPendingDeletesForList(db, listId);
+      expect(pending).toHaveLength(1);
+      expect(pending[0].targetType).toBe("clear_completed");
+    });
+
+    it("clears right away when every completed task is their own", async () => {
+      const listId = "list-own-clear";
+      await seedCollaborativeList(listId);
+      await seedTodo("todo-own-done", listId, "Mine done", {
+        createdBy: collaboratorId,
+        completed: true,
+      });
+      await seedTodo("todo-theirs-open", listId, "Theirs open", { createdBy: ownerId });
+
+      const result = await requestOrPerformDelete(db, {
+        listId,
+        userId: collaboratorId,
+        isOwner: false,
+        canEdit: true,
+        targetType: "clear_completed",
+      });
+
+      expect(result.kind).toBe("deleted");
+      expect(await todoExists("todo-own-done")).toBe(false);
+      expect(await todoExists("todo-theirs-open")).toBe(true);
+      expect(await listPendingDeletesForList(db, listId)).toHaveLength(0);
+    });
+
+    it("still needs approval to delete the whole list", async () => {
+      const listId = "list-own-only";
+      await seedCollaborativeList(listId);
+      await seedTodo("todo-only-mine", listId, "Mine", { createdBy: collaboratorId });
+
+      const result = await requestOrPerformDelete(db, {
+        listId,
+        userId: collaboratorId,
+        isOwner: false,
+        canEdit: true,
+        targetType: "list",
+      });
+
+      expect(result.kind).toBe("requested");
+      const list = await db.prepare("SELECT id FROM lists WHERE id = ?").bind(listId).first();
+      expect(list).not.toBeNull();
+    });
   });
 });

@@ -2,7 +2,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudfla
 import { verifyBearerToken } from "../auth.server";
 import { TodoManager } from "../to-do-manager";
 import * as v from "valibot";
-import { CreateTodoSchema } from "../../shared";
+import { CreateTodoSchema, canDeleteTaskDirectly } from "../../shared";
 
 import { getListAccess } from "../api-helpers.server";
 import { isListFull } from "../guest-access.server";
@@ -40,6 +40,13 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const todosWithPending = todos.map((t) => ({
     ...t,
     pendingDelete: pendingTaskIds.has(t.id),
+    canDeleteDirectly: canDeleteTaskDirectly({
+      tasks: todos,
+      taskId: t.id,
+      userId: user.userId,
+      isOwner: access.isOwner,
+      canEdit: access.canEdit,
+    }),
   }));
   return Response.json({
     success: true,
@@ -95,6 +102,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       parsed.parentId,
       parsed.recurrence,
       parsed.durationMinutes,
+      user.userId,
       user.userId
     );
 
