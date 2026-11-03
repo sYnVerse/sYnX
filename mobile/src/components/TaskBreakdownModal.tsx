@@ -14,7 +14,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { X, Plus, Minus, Clock, Check } from "lucide-react-native";
-import { TodoItem } from "../shared";
+import { TodoItem, sortSubtasks, splitCompletedTasks } from "../shared";
 import { apiClient } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
@@ -22,6 +22,7 @@ import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { parseSubtaskDurationMinutes } from "../shared/mobile-ux";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
+import { CompletedSectionHeader } from "./CompletedSectionHeader";
 
 interface TaskBreakdownModalProps {
   visible: boolean;
@@ -57,6 +58,13 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   const [newSubtaskDuration, setNewSubtaskDuration] = useState("5");
   const [edits, setEdits] = useState<Record<string, SubtaskEdit>>({});
   const durationTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // The Completed section starts collapsed each time the sheet opens; it isn't remembered.
+  const [completedOpen, setCompletedOpen] = useState(false);
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) setCompletedOpen(false);
+  }
 
   const { data: listTodos } = useQuery<TodoItem[]>({
     queryKey: ["todos", task?.listId],
@@ -66,9 +74,9 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   const subtasks = useMemo(() => {
     if (!task) return [];
     if (listTodos) {
-      return listTodos.filter((t) => t.parentId === task.id);
+      return sortSubtasks(listTodos.filter((t) => t.parentId === task.id));
     }
-    return task.subtasks || [];
+    return sortSubtasks(task.subtasks || []);
   }, [task, listTodos]);
 
   // Server subtasks with local edits on top, so in-progress edits aren't stomped.
@@ -218,6 +226,108 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   const progressPercent =
     draftList.length > 0 ? Math.round((completedCount / draftList.length) * 100) : 0;
 
+  // Completed subtasks go in a collapsible section at the bottom, oldest first like the rest.
+  const { active: activeDrafts, completed: completedDrafts } = splitCompletedTasks(draftList);
+
+  const renderSubtaskRow = (st: SubtaskDraft) => (
+    <View
+      key={st.id}
+      style={[
+        styles.subtaskRow,
+        {
+          backgroundColor:
+            resolvedMode === "light" ? "#F8FAFC" : "rgba(255,255,255,0.03)",
+          borderColor: theme.cardBorder,
+        },
+      ]}
+    >
+      <TouchableOpacity
+        disabled={!canEdit || isPendingId(st.id)}
+        style={[styles.checkboxHit, isPendingId(st.id) && { opacity: 0.7 }]}
+        onPress={() => {
+          if (!canEdit || isPendingId(st.id)) return;
+          setCompleted({ id: st.id, completed: st.completed });
+        }}
+        accessibilityRole="checkbox"
+        accessibilityState={{
+          checked: st.completed,
+          disabled: !canEdit || isPendingId(st.id),
+        }}
+        accessibilityLabel={`Mark subtask ${st.completed ? "incomplete" : "complete"}`}
+      >
+        <View
+          style={[
+            styles.checkbox,
+            { borderColor: theme.accent },
+            st.completed && { backgroundColor: theme.accent },
+          ]}
+        >
+          {st.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+        </View>
+      </TouchableOpacity>
+
+      <TextInput
+        editable={canEdit}
+        style={[
+          styles.subtaskTextInput,
+          {
+            color: theme.textPrimary,
+            backgroundColor: "transparent",
+          },
+          st.completed && { color: theme.textMuted, textDecorationLine: "line-through" },
+        ]}
+        value={st.text}
+        onChangeText={(val) =>
+          setEdits((prev) => ({
+            ...prev,
+            [st.id]: { ...prev[st.id], text: val },
+          }))
+        }
+        onBlur={() => saveText(st.id, st.text)}
+        accessibilityLabel="Subtask text"
+      />
+
+      <View style={styles.minsInputWrapper}>
+        <TextInput
+          editable={canEdit}
+          style={[
+            styles.minsInput,
+            { color: theme.textSecondary, backgroundColor: theme.inputBg },
+          ]}
+          keyboardType="number-pad"
+          value={st.durationText}
+          placeholder="—"
+          placeholderTextColor={theme.inputPlaceholder}
+          onChangeText={(val) => {
+            const next = val.replace(/[^\d]/g, "");
+            setEdits((prev) => ({
+              ...prev,
+              [st.id]: { ...prev[st.id], durationText: next },
+            }));
+            if (canEdit) scheduleDurationSave(st.id, next);
+          }}
+          onBlur={() => {
+            if (canEdit) saveDuration(st.id, st.durationText);
+          }}
+          accessibilityLabel="Subtask duration minutes"
+        />
+        <Text style={[styles.minsLabel, { color: theme.textMuted }]}>min.</Text>
+      </View>
+
+      {canEdit && (
+        <TouchableOpacity
+          style={styles.removeBtn}
+          onPress={() => removeSubtaskMutation.mutate(st.id)}
+          accessibilityRole="button"
+          accessibilityLabel="Remove subtask"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Minus size={16} color={theme.danger} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
   // Note: drag-to-reorder skipped — TodoItem/API has no sort/position field without backend changes.
 
   return (
@@ -276,104 +386,21 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
                 </Text>
               </View>
             ) : (
-              draftList.map((st) => (
-                <View
-                  key={st.id}
-                  style={[
-                    styles.subtaskRow,
-                    {
-                      backgroundColor:
-                        resolvedMode === "light" ? "#F8FAFC" : "rgba(255,255,255,0.03)",
-                      borderColor: theme.cardBorder,
-                    },
-                  ]}
-                >
-                  <TouchableOpacity
-                    disabled={!canEdit || isPendingId(st.id)}
-                    style={[styles.checkboxHit, isPendingId(st.id) && { opacity: 0.7 }]}
-                    onPress={() => {
-                      if (!canEdit || isPendingId(st.id)) return;
-                      setCompleted({ id: st.id, completed: st.completed });
+              <>
+                {activeDrafts.map(renderSubtaskRow)}
+                {completedDrafts.length > 0 ? (
+                  <CompletedSectionHeader
+                    count={completedDrafts.length}
+                    expanded={completedOpen}
+                    itemLabel="subtasks"
+                    onToggle={() => {
+                      triggerHaptic();
+                      setCompletedOpen((open) => !open);
                     }}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{
-                      checked: st.completed,
-                      disabled: !canEdit || isPendingId(st.id),
-                    }}
-                    accessibilityLabel={`Mark subtask ${st.completed ? "incomplete" : "complete"}`}
-                  >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        { borderColor: theme.accent },
-                        st.completed && { backgroundColor: theme.accent },
-                      ]}
-                    >
-                      {st.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-                    </View>
-                  </TouchableOpacity>
-
-                  <TextInput
-                    editable={canEdit}
-                    style={[
-                      styles.subtaskTextInput,
-                      {
-                        color: theme.textPrimary,
-                        backgroundColor: "transparent",
-                      },
-                      st.completed && { color: theme.textMuted, textDecorationLine: "line-through" },
-                    ]}
-                    value={st.text}
-                    onChangeText={(val) =>
-                      setEdits((prev) => ({
-                        ...prev,
-                        [st.id]: { ...prev[st.id], text: val },
-                      }))
-                    }
-                    onBlur={() => saveText(st.id, st.text)}
-                    accessibilityLabel="Subtask text"
                   />
-
-                  <View style={styles.minsInputWrapper}>
-                    <TextInput
-                      editable={canEdit}
-                      style={[
-                        styles.minsInput,
-                        { color: theme.textSecondary, backgroundColor: theme.inputBg },
-                      ]}
-                      keyboardType="number-pad"
-                      value={st.durationText}
-                      placeholder="—"
-                      placeholderTextColor={theme.inputPlaceholder}
-                      onChangeText={(val) => {
-                        const next = val.replace(/[^\d]/g, "");
-                        setEdits((prev) => ({
-                          ...prev,
-                          [st.id]: { ...prev[st.id], durationText: next },
-                        }));
-                        if (canEdit) scheduleDurationSave(st.id, next);
-                      }}
-                      onBlur={() => {
-                        if (canEdit) saveDuration(st.id, st.durationText);
-                      }}
-                      accessibilityLabel="Subtask duration minutes"
-                    />
-                    <Text style={[styles.minsLabel, { color: theme.textMuted }]}>min.</Text>
-                  </View>
-
-                  {canEdit && (
-                    <TouchableOpacity
-                      style={styles.removeBtn}
-                      onPress={() => removeSubtaskMutation.mutate(st.id)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Remove subtask"
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Minus size={16} color={theme.danger} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              ))
+                ) : null}
+                {completedOpen ? completedDrafts.map(renderSubtaskRow) : null}
+              </>
             )}
           </ScrollView>
 
