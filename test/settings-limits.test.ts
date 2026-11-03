@@ -44,7 +44,7 @@ describe("phone settings length limits", () => {
     expect(MAX_PHONE_CARRIER_LENGTH).toBe(64);
   });
 
-  // The web settings action in $id.tsx and the REST route both call this.
+  // The web settings action in ~/features/list/actions/account.server and the REST route both call this.
   it("phoneSettingsError accepts values at the limit and rejects longer ones", () => {
     expect(phoneSettingsError("1".repeat(32), "c".repeat(64))).toBeNull();
     expect(phoneSettingsError("1".repeat(33), "")).toBe("Phone number is too long");
