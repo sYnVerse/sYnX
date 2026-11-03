@@ -4,6 +4,8 @@ import { describe, it, expect } from "vitest";
 import * as viaAlias from "~/write-limits";
 import * as viaRelative from "../app/write-limits";
 /* eslint-enable import/no-duplicates */
+// This module imports its own dependencies through ~/ too.
+import { action as listAction } from "~/features/list/action.server";
 
 // Guards the `~/` alias in vitest.config.ts. App code imports with `~/...`
 // (tsconfig.json `paths`), so if the alias stops resolving, tests that load
@@ -14,8 +16,7 @@ describe("~/ path alias", () => {
     expect(viaAlias.MAX_TASK_TEXT_LENGTH).toBe(viaRelative.MAX_TASK_TEXT_LENGTH);
   });
 
-  it("loads app modules that import other modules through ~/", async () => {
-    const mod = await import("~/features/list/action.server");
-    expect(typeof mod.action).toBe("function");
+  it("loads app modules that import other modules through ~/", () => {
+    expect(typeof listAction).toBe("function");
   });
 });
