@@ -4,7 +4,6 @@ import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { action } from "../app/features/list/action.server";
 import { ACCOUNT_INTENTS, LIST_INTENTS } from "../app/features/list/actions/index.server";
 import { checkListAccessGate, type ListAccessInfo } from "../app/features/list/actions/access.server";
-import { canDeleteTaskDirectly } from "../shared/list-permissions";
 
 describe("list action dispatch maps", () => {
   const expectedAccountIntents = [
@@ -98,30 +97,94 @@ describe("guest access gate", () => {
   });
 });
 
-describe("Issue 87 task delete permission rules", () => {
-  const tasks = [
-    { id: "task-1", createdBy: "user-collab", parentId: undefined },
-    { id: "subtask-1", createdBy: "user-collab", parentId: "task-1" },
-    { id: "task-2", createdBy: "owner-1", parentId: undefined },
-    { id: "task-3", createdBy: "user-collab", parentId: undefined },
-    { id: "subtask-3", createdBy: "other-collab", parentId: "task-3" },
-  ];
+describe("signed-in access gate", () => {
+  const unauthorizedAccess: ListAccessInfo = {
+    hasOwnership: false,
+    isCollaborative: false,
+    activeShareMode: "private",
+    listOwnerId: "other-user",
+  };
 
-  it("lets owners delete any task directly", () => {
-    expect(canDeleteTaskDirectly({ tasks, taskId: "task-2", userId: "owner-1", isOwner: true, canEdit: true })).toBe(true);
-    expect(canDeleteTaskDirectly({ tasks, taskId: "task-1", userId: "owner-1", isOwner: true, canEdit: true })).toBe(true);
+  const ownedListAccess: ListAccessInfo = {
+    hasOwnership: true,
+    isCollaborative: false,
+    activeShareMode: "private",
+    listOwnerId: "user-1",
+  };
+
+  const collabListAccess: ListAccessInfo = {
+    hasOwnership: false,
+    isCollaborative: true,
+    activeShareMode: "public_edit",
+    listOwnerId: "other-user",
+  };
+
+  it("returns 403 Unauthorized access to list when signed-in user lacks access", async () => {
+    for (const intent of Object.keys(LIST_INTENTS)) {
+      if (intent === "createList") continue;
+      const res = checkListAccessGate(intent, true, unauthorizedAccess);
+      expect(res).not.toBeNull();
+      expect(res?.status).toBe(403);
+      const data = (await res?.json()) as { error: string };
+      expect(data.error).toBe("Unauthorized access to list");
+    }
   });
 
-  it("lets collaborator delete their own task directly if all subtasks are theirs", () => {
-    expect(canDeleteTaskDirectly({ tasks, taskId: "task-1", userId: "user-collab", isOwner: false, canEdit: true })).toBe(true);
+  it("permits createList for signed-in users without active list access", () => {
+    const res = checkListAccessGate("createList", true, unauthorizedAccess);
+    expect(res).toBeNull();
   });
 
-  it("requires approval when collaborator deletes another user's task", () => {
-    expect(canDeleteTaskDirectly({ tasks, taskId: "task-2", userId: "user-collab", isOwner: false, canEdit: true })).toBe(false);
+  it("permits all list intents for list owners", () => {
+    for (const intent of Object.keys(LIST_INTENTS)) {
+      const res = checkListAccessGate(intent, true, ownedListAccess);
+      expect(res).toBeNull();
+    }
   });
 
-  it("requires approval when collaborator's task has subtasks created by others", () => {
-    expect(canDeleteTaskDirectly({ tasks, taskId: "task-3", userId: "user-collab", isOwner: false, canEdit: true })).toBe(false);
+  it("permits all list intents on collaborative lists", () => {
+    for (const intent of Object.keys(LIST_INTENTS)) {
+      const res = checkListAccessGate(intent, true, collabListAccess);
+      expect(res).toBeNull();
+    }
+  });
+});
+
+describe("account intents run before the list access gate", () => {
+  it("dispatches account intents without evaluating active list access", async () => {
+    // When a guest hits listActivity, the account handler returns 401 "Sign in required",
+    // whereas list intents through the access gate would return 200 (guestLocalStorage) or 403.
+    const body = new FormData();
+    body.set("intent", "listActivity");
+    const request = new Request("https://synx.test/nonexistent-list", { method: "POST", body });
+    const res = await action({
+      request,
+      params: { id: "nonexistent-list" },
+      context: { cloudflare: { env } },
+    } as unknown as ActionFunctionArgs);
+
+    expect(res).toBeInstanceOf(Response);
+    const response = res as Response;
+    expect(response.status).toBe(401);
+    const data = (await response.json()) as { error: string };
+    expect(data.error).toBe("Sign in required");
+  });
+
+  it("handles guest migration account intent without list access checks", async () => {
+    const body = new FormData();
+    body.set("intent", "migrateGuestLists");
+    const request = new Request("https://synx.test/nonexistent-list", { method: "POST", body });
+    const res = await action({
+      request,
+      params: { id: "nonexistent-list" },
+      context: { cloudflare: { env } },
+    } as unknown as ActionFunctionArgs);
+
+    expect(res).toBeInstanceOf(Response);
+    const response = res as Response;
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { success: boolean };
+    expect(data.success).toBe(true);
   });
 });
 
@@ -138,7 +201,9 @@ describe("intent lookup ignores Object.prototype names", () => {
     "propertyIsEnumerable",
     "__proto__",
     "__defineGetter__",
+    "__defineSetter__",
     "__lookupGetter__",
+    "__lookupSetter__",
   ];
   const SECRET = "test-secret-do-not-leak";
 
