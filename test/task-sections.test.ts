@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sortSubtasks, sortTasks, splitCompletedTasks, type PriorityLevel } from "../shared";
+import { sortTasks, splitCompletedTasks, type PriorityLevel } from "../shared";
 
 interface T {
   id: string;
@@ -87,13 +87,15 @@ describe("splitCompletedTasks", () => {
     expect(ids(completed)).toEqual(["high-done", "med-done", "low-done"]);
   });
 
-  it("keeps subtasks oldest first in both groups after sortSubtasks", () => {
-    const s1 = task("s1", { createdAt: 1, completed: true });
-    const s2 = task("s2", { createdAt: 2 });
-    const s3 = task("s3", { createdAt: 3, completed: true });
-    const s4 = task("s4", { createdAt: 4 });
-    const { active, completed } = splitCompletedTasks(sortSubtasks([s4, s3, s2, s1]));
-    expect(ids(active)).toEqual(["s2", "s4"]);
-    expect(ids(completed)).toEqual(["s1", "s3"]);
+  it("keeps the list's sort inside both subtask groups", () => {
+    const s1 = task("s1", { text: "d", createdAt: 1, completed: true });
+    const s2 = task("s2", { text: "c", createdAt: 2 });
+    const s3 = task("s3", { text: "b", createdAt: 3, completed: true });
+    const s4 = task("s4", { text: "a", createdAt: 4 });
+    const parent = task("parent", { subtasks: [s1, s2, s3, s4] });
+    const [sorted] = sortTasks([parent], "alphabetical");
+    const { active, completed } = splitCompletedTasks(sorted.subtasks ?? []);
+    expect(ids(active)).toEqual(["s4", "s2"]);
+    expect(ids(completed)).toEqual(["s3", "s1"]);
   });
 });

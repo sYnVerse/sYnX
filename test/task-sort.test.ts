@@ -4,7 +4,6 @@ import {
   TASK_SORT_OPTIONS,
   isTaskSortMode,
   resolveTaskSortMode,
-  sortSubtasks,
   sortTasks,
   taskSortStorageKey,
   type PriorityLevel,
@@ -137,32 +136,36 @@ describe("sortTasks: Alphabetical", () => {
 });
 
 describe("subtasks", () => {
-  it("stay under their parent, oldest first, whatever the sort", () => {
-    const subs = [
-      task("s-new", { text: "a", priority: "high", reminderAt: 1, createdAt: 300 }),
-      task("s-old", { text: "z", priority: "none", createdAt: 100 }),
-      task("s-mid", { text: "m", priority: "low", createdAt: 200 }),
-    ];
-    const tasks = [task("b-parent", { text: "B", subtasks: subs }), task("a-parent", { text: "A" })];
-    for (const mode of ["created", "priority", "reminder", "alphabetical"] as const) {
-      const sorted = sortTasks(tasks, mode);
-      const parent = sorted.find((t) => t.id === "b-parent");
-      expect(ids(parent?.subtasks ?? [])).toEqual(["s-old", "s-mid", "s-new"]);
-    }
+  const subs = () => [
+    task("s-old", { text: "z", priority: "none", createdAt: 100 }),
+    task("s-mid", { text: "m", priority: "low", reminderAt: 5000, createdAt: 200 }),
+    task("s-new", { text: "a", priority: "high", createdAt: 300 }),
+  ];
+
+  it("stay under their parent and follow the list's sort", () => {
+    const tasks = [task("b-parent", { text: "B", subtasks: subs() }), task("a-parent", { text: "A" })];
+    const subIds = (mode: "created" | "priority" | "reminder" | "alphabetical") =>
+      ids(sortTasks(tasks, mode).find((t) => t.id === "b-parent")?.subtasks ?? []);
+
+    expect(subIds("created")).toEqual(["s-new", "s-mid", "s-old"]);
+    expect(subIds("priority")).toEqual(["s-new", "s-mid", "s-old"]);
+    expect(subIds("reminder")).toEqual(["s-mid", "s-new", "s-old"]);
+    expect(subIds("alphabetical")).toEqual(["s-new", "s-mid", "s-old"]);
     expect(ids(sortTasks(tasks, "alphabetical"))).toEqual(["a-parent", "b-parent"]);
   });
 
-  it("sortSubtasks orders oldest first and keeps the incoming order for ties", () => {
-    const subs = [task("b", { createdAt: 20 }), task("a", { createdAt: 10 }), task("c", { createdAt: 20 })];
-    expect(ids(sortSubtasks(subs))).toEqual(["a", "b", "c"]);
+  it("sorts a bare subtask list the same way as top-level tasks", () => {
+    expect(ids(sortTasks(subs(), "reminder"))).toEqual(["s-mid", "s-new", "s-old"]);
+    expect(ids(sortTasks(subs(), "alphabetical"))).toEqual(["s-new", "s-mid", "s-old"]);
   });
 
   it("does not change the input arrays", () => {
-    const subtasks = [task("s2", { createdAt: 20 }), task("s1", { createdAt: 10 })];
+    const subtasks = [task("s1", { text: "a", createdAt: 10 }), task("s2", { text: "b", createdAt: 20 })];
     const tasks = [task("b", { text: "b", subtasks }), task("a", { text: "a" })];
-    sortTasks(tasks, "alphabetical");
+    const sorted = sortTasks(tasks, "created");
     expect(ids(tasks)).toEqual(["b", "a"]);
-    expect(ids(subtasks)).toEqual(["s2", "s1"]);
+    expect(ids(subtasks)).toEqual(["s1", "s2"]);
+    expect(ids(sorted.find((t) => t.id === "b")?.subtasks ?? [])).toEqual(["s2", "s1"]);
   });
 });
 
