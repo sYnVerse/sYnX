@@ -10,6 +10,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "NEW",
+        text: "Choose how tasks are ordered: Date Created, Priority, Reminder Time or A to Z, the same options as on the web. Reminder Time is the default: tasks with a reminder come first, soonest first, then the rest by priority. Set it for all lists in Settings, or for one list when you edit it on the Lists tab. Subtasks stay under their task, oldest first."
+      },
+      {
         type: "IMPR",
         text: "On Collaborative lists, you can now delete tasks you added yourself right away, without waiting for the owner. Deleting tasks someone else added, or deleting the list, still sends a delete request the owner approves."
       },

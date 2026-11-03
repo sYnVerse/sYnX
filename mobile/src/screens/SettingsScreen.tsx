@@ -42,11 +42,19 @@ import {
   type PushPermissionStatus,
 } from "../services/notifications";
 import { useTheme } from "../context/ThemeContext";
+import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
+import { setAppTaskSortMode } from "../services/taskSortPreferences";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../context/ToastContext";
 import { getCachedListName } from "../services/listNames";
 import type { TodoItem } from "../shared";
-import { describeTimeZone, findPhoneCarrier, getLocalTimeZone, NO_PHONE_CARRIER_LABEL } from "../shared";
+import {
+  describeTimeZone,
+  findPhoneCarrier,
+  getLocalTimeZone,
+  NO_PHONE_CARRIER_LABEL,
+  TASK_SORT_OPTIONS,
+} from "../shared";
 import {
   getKnownHomeTimeZone,
   setHomeTimeZone,
@@ -104,6 +112,7 @@ interface SettingsScreenProps {
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, onRegisterActions }) => {
   const { logout, user } = useAuth();
   const { theme, themeMode, setThemeMode, hapticsEnabled, setHapticsEnabled } = useTheme();
+  const { appDefault: taskSortMode } = useTaskSortPreferences();
   const { showError, showSuccess } = useToast();
 
   const [emailEnabled, setEmailEnabled] = useState(false);
@@ -800,6 +809,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             accessibilityLabel="Tactile haptic feedback"
           />
         </View>
+
+        <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 16 }]}>TASK ORDER</Text>
+        <View style={styles.themeRow} accessibilityRole="radiogroup" accessibilityLabel="Task order">
+          {TASK_SORT_OPTIONS.map((opt) => {
+            const selected = taskSortMode === opt.value;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`Task order: ${opt.label}`}
+                accessibilityHint={opt.description}
+                style={[
+                  styles.themeOption,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  selected && { backgroundColor: theme.accentLight, borderColor: theme.accent, borderWidth: 2 },
+                ]}
+                onPress={() => {
+                  triggerImpact();
+                  void setAppTaskSortMode(opt.value);
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.themeOptionText, { color: theme.textPrimary }]}>{opt.label}</Text>
+                  <Text style={[styles.hint, { color: theme.textMuted }]}>{opt.description}</Text>
+                </View>
+                {selected && <Check size={14} color={theme.accent} />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={[styles.hint, { color: theme.textMuted, marginTop: -8 }]}>
+          Applies to all your lists on this phone. To change one list, edit it on the Lists tab.
+        </Text>
       </View>
 
       {/* Device Calendar */}

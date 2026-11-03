@@ -30,10 +30,17 @@ import {
   isValidTimeZone,
   listTimeZones,
   PHONE_CARRIERS,
+  resolveTaskSortMode,
   sortChangelogItems,
+  sortSubtasks,
+  sortTasks,
+  taskSortStorageKey,
+  DEFAULT_TASK_SORT_MODE,
+  TASK_SORT_OPTIONS,
   type ListActivityEntry,
   type PendingDeleteRequest,
   type ShareMode,
+  type TaskSortMode,
 } from "../../shared";
 import {
   DEFAULT_DISPLAY_NAME,
@@ -82,6 +89,14 @@ import {
 import { remapGuestTodoIds } from "~/guest-migration";
 import { canEditReminderText } from "~/reminder-ownership";
 
+
+/** Emoji shown before each "Sort by" option on the list page. */
+const TASK_SORT_EMOJI: Record<TaskSortMode, string> = {
+  created: "🕒",
+  priority: "🔴",
+  reminder: "⏰",
+  alphabetical: "🔤",
+};
 
 export const GUEST_STORAGE_KEY = "synx_guest_lists";
 
@@ -2678,7 +2693,10 @@ export default function TodoPage() {
   const [savedTheme, setSavedTheme] = useStoredValue("synx_theme");
   const theme = savedTheme || "midnight";
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"created" | "priority" | "reminder" | "alphabetical">("created");
+  // Each list remembers its "Sort by" choice in this browser (Reminder Time
+  // until one is picked). The server render and hydration use the default.
+  const [savedSortBy, setSavedSortBy] = useStoredValue(taskSortStorageKey(effectiveActiveListId));
+  const sortBy = resolveTaskSortMode(DEFAULT_TASK_SORT_MODE, savedSortBy);
   const [showSharePopover, setShowSharePopover] = useState(false);
   const sharePopoverRef = useRef<HTMLDivElement>(null);
   const [showActivityModal, setShowActivityModal] = useState(false);
@@ -3158,23 +3176,7 @@ export default function TodoPage() {
   });
 
   // 4. Sort visible parent tasks
-  const visibleParents = [...filteredParents].sort((a, b) => {
-    if (sortBy === "priority") {
-      const pMap = { high: 3, medium: 2, low: 1, none: 0 };
-      const aVal = a.priority ? (pMap[a.priority] ?? 0) : 0;
-      const bVal = b.priority ? (pMap[b.priority] ?? 0) : 0;
-      return bVal - aVal;
-    }
-    if (sortBy === "reminder") {
-      const aVal = a.reminderAt || Infinity;
-      const bVal = b.reminderAt || Infinity;
-      return aVal - bVal;
-    }
-    if (sortBy === "alphabetical") {
-      return a.text.localeCompare(b.text);
-    }
-    return b.createdAt - a.createdAt;
-  });
+  const visibleParents = sortTasks(filteredParents, sortBy);
 
   // 5. Group subtasks by parent (sorted chronologically)
   const subtasksMap: Record<string, Todo[]> = {};
@@ -3184,7 +3186,7 @@ export default function TodoPage() {
     const filteredSubs = searchQ
       ? subs.filter((sub) => sub.text.toLowerCase().includes(searchQ))
       : subs;
-    subtasksMap[parent.id] = [...filteredSubs].sort((a, b) => a.createdAt - b.createdAt);
+    subtasksMap[parent.id] = sortSubtasks(filteredSubs);
   }
 
   const totalCount = optimisticTodos.filter(t => !t.parentId).length;
@@ -4093,7 +4095,7 @@ export default function TodoPage() {
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sort by</span>
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as "created" | "priority" | "reminder" | "alphabetical")}
+                onChange={(e) => setSavedSortBy(resolveTaskSortMode(DEFAULT_TASK_SORT_MODE, e.target.value))}
                 className="rounded-xl bg-white/[0.03] border border-white/[0.06] text-slate-300 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 cursor-pointer appearance-none bg-slate-900 pr-8 relative max-w-[11rem]"
                 style={{
                   backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
@@ -4102,10 +4104,16 @@ export default function TodoPage() {
                   backgroundRepeat: 'no-repeat'
                 }}
               >
-                <option value="created" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>🕒 Date Created</option>
-                <option value="priority" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>🔴 Priority</option>
-                <option value="reminder" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>⏰ Reminder Time</option>
-                <option value="alphabetical" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>🔤 Alphabetical</option>
+                {TASK_SORT_OPTIONS.map((opt) => (
+                  <option
+                    key={opt.value}
+                    value={opt.value}
+                    className="bg-slate-900 text-slate-100"
+                    style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}
+                  >
+                    {`${TASK_SORT_EMOJI[opt.value]} ${opt.label}`}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

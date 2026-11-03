@@ -40,6 +40,8 @@ import {
   type PinnedWidgetConfig,
 } from "../services/widgetPreferences";
 import { syncPinnedList } from "../services/widgetSync";
+import { setListTaskSortOverride } from "../services/taskSortPreferences";
+import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { apiClient } from "../api/client";
 import {
   TodoList,
@@ -49,7 +51,9 @@ import {
   getShareModeLabel,
   getSharedNameNotice,
   isMakingListPublic,
+  TASK_SORT_OPTIONS,
   type ListActivityEntry,
+  type TaskSortOverride,
 } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
@@ -112,6 +116,14 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const [editName, setEditName] = useState("");
   const [editCategory, setEditCategory] = useState(CATEGORY_OPTIONS[0]);
   const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
+  const [editSortOverride, setEditSortOverride] = useState<TaskSortOverride>("app_default");
+  const taskSortPrefs = useTaskSortPreferences();
+  const appSortLabel =
+    TASK_SORT_OPTIONS.find((o) => o.value === taskSortPrefs.appDefault)?.label ?? "Reminder Time";
+  const listSortOptions: { value: TaskSortOverride; label: string }[] = [
+    { value: "app_default", label: `App default (${appSortLabel})` },
+    ...TASK_SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
+  ];
 
   const { data: lists, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ["lists", "all"],
@@ -330,6 +342,8 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     const categoryName =
       editCategory.name === "Custom" ? editCustomCategoryText.trim() || "Custom" : editCategory.name;
     const fullName = buildCategorizedListName(editCategory.emoji, editCategory.name, editName);
+    // Task order is saved on this phone only, so it doesn't wait on the server.
+    void setListTaskSortOverride(editingList.id, editSortOverride);
     updateListMutation.mutate({
       id: editingList.id,
       name: fullName,
@@ -362,6 +376,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     setEditCategory(cat);
     setEditCustomCategoryText(matchingCat ? "" : list.category || "");
     setEditName(stripLeadingCategoryEmoji(list.name, matchingCat?.emoji || ""));
+    setEditSortOverride(taskSortPrefs.overrides[list.id] ?? "app_default");
   };
 
   const listLink = (list: TodoList) => `https://synx.christran.io/${list.id}`;
@@ -992,6 +1007,47 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
               onChangeText={setEditName}
               autoFocus
             />
+
+            <Text style={[styles.label, { color: theme.textMuted }]}>Task Order</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.catRow}
+              accessibilityRole="radiogroup"
+              accessibilityLabel="Task order for this list"
+            >
+              {listSortOptions.map((opt) => {
+                const selected = editSortOverride === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={`Task order: ${opt.label}`}
+                    style={[
+                      styles.catBtn,
+                      { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                      selected && {
+                        backgroundColor: theme.accentLight,
+                        borderColor: theme.accent,
+                        borderWidth: 2,
+                      },
+                    ]}
+                    onPress={() => setEditSortOverride(opt.value)}
+                  >
+                    <Text
+                      style={[
+                        styles.catName,
+                        { color: theme.textPrimary },
+                        selected && { color: theme.accent, fontWeight: "700" },
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
 
             <View style={styles.modalActions}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingList(null)}>
