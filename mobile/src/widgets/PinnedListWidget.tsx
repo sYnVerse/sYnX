@@ -27,15 +27,20 @@ export function PinnedListWidget(
   const isDark = environment?.colorScheme !== 'light';
 
   // Header sizing. Android widget rows can't share leftover space, so a long
-  // title would push the count and the add button off the edge. Give the
-  // title a width that leaves room for both, and use a compact "+" button
-  // when the widget is narrow.
+  // title would push the count, the switch button and the add button off the
+  // edge. Give the title a width that leaves room for them, and use a compact
+  // "+" button when the widget is narrow.
   const widgetWidth = environment?.width ?? 300;
   const isNarrowHeader = widgetWidth < 240;
   const countLabel = `${props.doneCount}/${props.totalCount}`;
   const countWidth = countLabel.length * 7 + 12;
   const addButtonWidth = props.canEdit ? (isNarrowHeader ? 36 : 64) : 0;
-  const titleWidth = Math.max(48, widgetWidth - 24 - countWidth - addButtonWidth - 12);
+  // Switch button (plus its gap) that opens the app to choose another list.
+  const switchButtonWidth = 32;
+  const titleWidth = Math.max(
+    48,
+    widgetWidth - 24 - countWidth - (switchButtonWidth + 6) - addButtonWidth - 12
+  );
 
   // Task rows: the text column gets a fixed width so long task names truncate
   // instead of squeezing the reminder label into a tall, wrapped column.
@@ -124,8 +129,8 @@ export function PinnedListWidget(
           </Row>
         </Button>
 
-        {/* Android widget rows don't support spaceBetween, so the count and add
-            button sit in a row that fills the rest of the header, aligned to the end. */}
+        {/* Android widget rows don't support spaceBetween, so the count, switch and add
+            buttons sit in a row that fills the rest of the header, aligned to the end. */}
         <Row modifiers={[fillMaxWidth()]} verticalAlignment="center" horizontalArrangement="end">
           <Box
             modifiers={[
@@ -138,6 +143,19 @@ export function PinnedListWidget(
               {countLabel}
             </Text>
           </Box>
+
+          {/* Switch list: opens the app's Lists tab to pick which list this widget
+              shows. Tapping the list name still opens the list itself. */}
+          <Box modifiers={[width(6)]} />
+          <Button
+            target="open:synx://pick-pinned-list"
+            colors={{ containerColor: cardBg, contentColor: textPrimary }}
+            modifiers={[padding(0, 4, 0, 4), width(switchButtonWidth), cornerRadius(8)]}
+          >
+            <Text style={{ fontSize: 13, fontWeight: 'bold' }} color={textPrimary} maxLines={1}>
+              ⇄
+            </Text>
+          </Button>
 
           {props.canEdit ? <Box modifiers={[width(6)]} /> : null}
           {props.canEdit ? (

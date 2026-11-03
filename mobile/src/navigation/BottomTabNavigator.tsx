@@ -47,6 +47,9 @@ const MainAppContent: React.FC = () => {
    */
   const [newTaskRequest, setNewTaskRequest] = useState<{ id: number; listId: string | null } | null>(null);
   const clearNewTaskRequest = useCallback(() => setNewTaskRequest(null), []);
+  /** One-shot request from the Pinned List widget's switch button to choose its list. */
+  const [pickPinnedListRequest, setPickPinnedListRequest] = useState<number | null>(null);
+  const clearPickPinnedListRequest = useCallback(() => setPickPinnedListRequest(null), []);
   const [listLoading, setListLoading] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [settingsDirty, setSettingsDirty] = useState(false);
@@ -76,6 +79,11 @@ const MainAppContent: React.FC = () => {
     (url: string | null) => {
       if (!url) return;
       const parsed = parseDeepLinkUrl(url);
+      if (parsed.action === "pickPinnedList") {
+        setActiveTab("lists");
+        setPickPinnedListRequest(Date.now());
+        return;
+      }
       if (parsed.listId) {
         applyDeepLinkedList(parsed.listId);
       }
@@ -314,6 +322,8 @@ const MainAppContent: React.FC = () => {
             <ListsScreen
               activeListId={activeListId}
               onSelectList={selectOwnedOrOtherList}
+              pickPinnedListRequestId={pickPinnedListRequest}
+              onPickPinnedListHandled={clearPickPinnedListRequest}
             />
           )}
           {activeTab === "settings" && (
