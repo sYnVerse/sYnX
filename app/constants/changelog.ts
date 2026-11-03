@@ -11,6 +11,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "On Collaborative lists, you can now delete tasks you added yourself right away, without waiting for the owner. Deleting tasks someone else added, or a task with subtasks someone else added, still sends a delete request the owner approves, and so does deleting the whole list. Clear completed removes your own completed tasks right away and sends one request for the rest."
+      },
+      {
+        type: "IMPR",
+        text: "A list's Sort by now starts on Reminder Time, and tasks without a reminder follow by priority. The choice you pick is remembered for each list on this browser."
       }
     ]
   },
