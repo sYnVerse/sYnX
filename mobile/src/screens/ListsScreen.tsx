@@ -75,6 +75,10 @@ function ShareModeIcon({ mode, color, size = 10 }: { mode: ShareMode; color: str
 interface ListsScreenProps {
   activeListId: string;
   onSelectList: (id: string) => void;
+  /** Set when the Pinned List widget's switch button opened the app to choose its list. */
+  pickPinnedListRequestId?: number | null;
+  /** Called once the request is picked up, so a later visit to the tab doesn't reopen it. */
+  onPickPinnedListHandled?: () => void;
 }
 
 const CATEGORY_OPTIONS = [
@@ -89,7 +93,12 @@ const CATEGORY_OPTIONS = [
   { name: "Custom", emoji: "✏️" },
 ];
 
-export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelectList }) => {
+export const ListsScreen: React.FC<ListsScreenProps> = ({
+  activeListId,
+  onSelectList,
+  pickPinnedListRequestId,
+  onPickPinnedListHandled,
+}) => {
   const { theme, hapticsEnabled } = useTheme();
   const { showError, showSuccess } = useToast();
   const insets = useSafeAreaInsets();
@@ -108,6 +117,23 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   useEffect(() => {
     getPinnedWidgetConfig().then(setPinnedConfig);
   }, []);
+
+  // Choosing the Pinned List widget's list (from the widget's switch button): tapping a
+  // list then shows it on the widget instead of opening it. Started during render
+  // (React's "adjust state when a prop changes" pattern), then the parent is told in an
+  // effect that the request was used up.
+  const [pickingPinnedList, setPickingPinnedList] = useState(false);
+  const [handledPickRequestId, setHandledPickRequestId] = useState<number | null>(null);
+  if (pickPinnedListRequestId && pickPinnedListRequestId !== handledPickRequestId) {
+    setHandledPickRequestId(pickPinnedListRequestId);
+    setPickingPinnedList(true);
+  }
+  useEffect(() => {
+    if (handledPickRequestId === null) return;
+    // Re-read the widget's setting so the PINNED badge and its view are current.
+    getPinnedWidgetConfig().then(setPinnedConfig);
+    onPickPinnedListHandled?.();
+  }, [handledPickRequestId, onPickPinnedListHandled]);
 
   const [newListName, setNewListName] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(CATEGORY_OPTIONS[0]);
@@ -200,6 +226,22 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
     if (hapticsEnabled && Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
+  };
+
+  /** Shows a list on the Pinned List widget and updates the widget right away. */
+  const pinListToWidget = async (item: TodoList, mode: PinnedWidgetConfig["mode"]) => {
+    const newConfig: PinnedWidgetConfig = { mode, listId: item.id };
+    await setPinnedWidgetConfig(newConfig);
+    setPinnedConfig(newConfig);
+    await syncPinnedList(item.id, item, undefined, queryClient);
+  };
+
+  const pickPinnedList = async (item: TodoList) => {
+    triggerImpactHaptic();
+    setPickingPinnedList(false);
+    // Keep the widget's current view (list or Up Next) and change only its list.
+    await pinListToWidget(item, pinnedConfig?.mode ?? "list");
+    showSuccess(`Widget now shows "${item.name}"`);
   };
 
   const onMutationError = (e: unknown, fallback: string) => {
@@ -532,6 +574,26 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
         </Text>
       </View>
 
+      {pickingPinnedList ? (
+        <View
+          style={[styles.pickBanner, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
+          accessibilityRole="summary"
+        >
+          <Pin size={16} color={theme.accent} fill={theme.accent} />
+          <Text style={[styles.pickBannerText, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.3}>
+            Tap a list to show it on your Pinned List widget
+          </Text>
+          <TouchableOpacity
+            onPress={() => setPickingPinnedList(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel choosing a widget list"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={[styles.pickBannerCancel, { color: theme.accent }]}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {isLoading ? (
         <View style={{ gap: 12 }}>
           <ListCardSkeleton />
@@ -599,12 +661,18 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                   },
                 ]}
                 onPress={() => {
+                  if (pickingPinnedList) {
+                    void pickPinnedList(item);
+                    return;
+                  }
                   triggerImpactHaptic();
                   onSelectList(item.id);
                 }}
                 accessibilityRole="button"
-                accessibilityState={{ selected: isActive }}
-                accessibilityLabel={`List ${item.name}`}
+                accessibilityState={{ selected: pickingPinnedList ? isPinned : isActive }}
+                accessibilityLabel={
+                  pickingPinnedList ? `Show ${item.name} on the widget` : `List ${item.name}`
+                }
               >
                 <View style={styles.listRowHeader}>
                   <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -657,10 +725,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
                           await syncPinnedList(null);
                           showSuccess("Unpinned from widget");
                         } else {
-                          const newConfig: PinnedWidgetConfig = { mode: "list", listId: item.id };
-                          await setPinnedWidgetConfig(newConfig);
-                          setPinnedConfig(newConfig);
-                          await syncPinnedList(item.id, item, undefined, queryClient);
+                          await pinListToWidget(item, "list");
                           showSuccess(`Pinned "${item.name}" to widget`);
                         }
                       }}
@@ -1318,6 +1383,25 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: typography.sm,
     marginTop: 2,
+  },
+  pickBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  pickBannerText: {
+    flex: 1,
+    fontSize: typography.sm,
+    fontWeight: "600",
+  },
+  pickBannerCancel: {
+    fontSize: typography.sm,
+    fontWeight: "700",
   },
   sectionHeaderRow: {
     marginTop: spacing.sm,
