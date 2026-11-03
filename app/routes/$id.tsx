@@ -33,6 +33,7 @@ import {
   resolveTaskSortMode,
   sortChangelogItems,
   sortTasks,
+  splitCompletedTasks,
   taskSortStorageKey,
   DEFAULT_TASK_SORT_MODE,
   TASK_SORT_OPTIONS,
@@ -1889,6 +1890,47 @@ function renderHighlightedText(text: string, query: string) {
   );
 }
 
+/**
+ * Header of the collapsible "Completed" section at the bottom of a list or a
+ * task's subtasks. Same behavior as mobile: collapsed by default, not remembered.
+ */
+function CompletedSectionToggle({
+  count,
+  expanded,
+  onToggle,
+  itemLabel,
+  isSubtask = false,
+}: {
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  itemLabel: "tasks" | "subtasks";
+  isSubtask?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={expanded}
+      aria-label={`Completed ${itemLabel}, ${count}. ${expanded ? "Hide" : "Show"} them`}
+      className={`flex items-center gap-1.5 font-bold text-slate-500 hover:text-slate-300 uppercase tracking-wider transition-colors duration-200 cursor-pointer self-start
+        ${isSubtask ? "text-[10px] py-1 px-2" : "text-[10px] pt-3 pb-1 px-1"}`}
+    >
+      <svg
+        className={`w-3 h-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth="3"
+        aria-hidden="true"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+      </svg>
+      Completed ({count})
+    </button>
+  );
+}
+
 function TodoItem({
   todo,
   subtasks = [],
@@ -1935,6 +1977,8 @@ function TodoItem({
   }, [deleteFetcher.state, deleteFetcher.data, onNotify]);
 
   const [showAddSubtask, setShowAddSubtask] = useState(false);
+  // Completed subtasks sit in a section that starts collapsed and isn't remembered.
+  const [showCompletedSubtasks, setShowCompletedSubtasks] = useState(false);
   const [subtaskText, setSubtaskText] = useState("");
   const subtaskInputRef = useRef<HTMLInputElement>(null);
 
@@ -1995,6 +2039,8 @@ function TodoItem({
   }, [isEditing]);
 
   if (isDeleting) return null;
+
+  const { active: activeSubtasks, completed: completedSubtasks } = splitCompletedTasks(subtasks);
 
   const handleAddSubtask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2264,7 +2310,7 @@ function TodoItem({
       {/* Render subtasks underneath the parent */}
       {!isSubtask && (subtasks.length > 0 || showAddSubtask) && (
         <div className="pl-6 mt-1 flex flex-col gap-1 border-l border-white/[0.04] ml-5">
-          {subtasks.map((sub) => (
+          {activeSubtasks.map((sub) => (
             <TodoItem
               key={sub.id}
               todo={sub}
@@ -2274,6 +2320,28 @@ function TodoItem({
               searchQuery={searchQuery}
             />
           ))}
+
+          {/* Completed subtasks, collapsed by default */}
+          {completedSubtasks.length > 0 && (
+            <CompletedSectionToggle
+              count={completedSubtasks.length}
+              expanded={showCompletedSubtasks}
+              onToggle={() => setShowCompletedSubtasks((open) => !open)}
+              itemLabel="subtasks"
+              isSubtask
+            />
+          )}
+          {showCompletedSubtasks &&
+            completedSubtasks.map((sub) => (
+              <TodoItem
+                key={sub.id}
+                todo={sub}
+                isSubtask={true}
+                canEdit={canEdit}
+                onNotify={onNotify}
+                searchQuery={searchQuery}
+              />
+            ))}
 
           {/* Inline Add Subtask Input Form */}
           {showAddSubtask && (
@@ -2664,6 +2732,9 @@ export default function TodoPage() {
   const listNameInputRef = useRef<HTMLInputElement>(null);
   
   const [filter, setFilter] = useState<Filter>("all");
+  // The list's Completed section starts collapsed, isn't remembered, and
+  // collapses again when another list is opened.
+  const [completedOpenListId, setCompletedOpenListId] = useState<string | null>(null);
   const [newPriority, setNewPriority] = useState<"low" | "medium" | "high" | "none">("none");
   const [toast, setToast] = useState({ message: "", visible: false });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -3187,6 +3258,15 @@ export default function TodoPage() {
       : subs;
     subtasksMap[parent.id] = sortTasks(filteredSubs, sortBy);
   }
+
+  // 6. Under "All", completed tasks go in a collapsible section at the bottom,
+  // in the same sort. The "Completed" filter already shows only those, so it
+  // lists them directly; under "Active" there are none.
+  const { active: activeParents, completed: completedParents } =
+    filter === "all"
+      ? splitCompletedTasks(visibleParents)
+      : { active: visibleParents, completed: [] as Todo[] };
+  const completedSectionOpen = completedOpenListId === effectiveActiveListId;
 
   const totalCount = optimisticTodos.filter(t => !t.parentId).length;
   const completedCount = optimisticTodos.filter(t => !t.parentId && t.completed).length;
@@ -4310,7 +4390,7 @@ export default function TodoPage() {
             </div>
           ) : (
             <ul className="space-y-2 flex-1 overflow-y-auto pr-1 scrollbar-thin">
-              {visibleParents.map((todo) => (
+              {activeParents.map((todo) => (
                 <TodoItem 
                   key={todo.id} 
                   todo={todo} 
@@ -4320,6 +4400,29 @@ export default function TodoPage() {
                   searchQuery={searchQuery}
                 />
               ))}
+              {completedParents.length > 0 && (
+                <li className="list-none flex">
+                  <CompletedSectionToggle
+                    count={completedParents.length}
+                    expanded={completedSectionOpen}
+                    onToggle={() =>
+                      setCompletedOpenListId(completedSectionOpen ? null : effectiveActiveListId ?? null)
+                    }
+                    itemLabel="tasks"
+                  />
+                </li>
+              )}
+              {completedSectionOpen &&
+                completedParents.map((todo) => (
+                  <TodoItem
+                    key={todo.id}
+                    todo={todo}
+                    subtasks={subtasksMap[todo.id] || []}
+                    canEdit={canEdit}
+                    onNotify={showToast}
+                    searchQuery={searchQuery}
+                  />
+                ))}
             </ul>
           )}
         </div>
