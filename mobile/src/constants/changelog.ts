@@ -24,6 +24,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Text message settings now list all 8 phone carriers, the same as on the web, in a picker you tap to open. A carrier picked on the web now shows as selected here too, and you can pick \"None (Twilio)\" to go back to Twilio."
+      },
+      {
+        type: "FIX",
+        text: "Home screen list widgets now show tasks in the same order as the list in the app, using that list's task order or your Settings choice. The progress widget's next task is the first one in that order. The Up Next widget still shows the soonest reminder first."
       }
     ]
   },
