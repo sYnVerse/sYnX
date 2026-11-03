@@ -1,6 +1,9 @@
 import { describe, it, expect } from "vitest";
+// Both imports name the same file on purpose: the test checks they resolve to it.
+/* eslint-disable import/no-duplicates */
 import * as viaAlias from "~/write-limits";
 import * as viaRelative from "../app/write-limits";
+/* eslint-enable import/no-duplicates */
 
 // Guards the `~/` alias in vitest.config.ts. App code imports with `~/...`
 // (tsconfig.json `paths`), so if the alias stops resolving, tests that load
