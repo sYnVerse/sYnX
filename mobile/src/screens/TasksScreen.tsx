@@ -51,6 +51,8 @@ import { useToast } from "../context/ToastContext";
 import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../services/calendar";
 import { getCachedListName } from "../services/listNames";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
+import { resolveTaskSortMode, sortTasks } from "../shared/task-sort";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
@@ -114,6 +116,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const [editingTask, setEditingTask] = useState<TodoItem | null>(null);
   const [selectedTaskForBreakdown, setSelectedTaskForBreakdown] = useState<TodoItem | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
+  const taskSortPrefs = useTaskSortPreferences();
+  const taskSortMode = resolveTaskSortMode(taskSortPrefs.appDefault, taskSortPrefs.overrides[listId]);
 
   React.useEffect(() => {
     async function checkChangelogVersion() {
@@ -250,8 +254,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       }
     });
 
-    return Object.values(parentMap);
-  }, [rawTodos]);
+    return sortTasks(Object.values(parentMap), taskSortMode);
+  }, [rawTodos, taskSortMode]);
 
   const triggerSuccessHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
