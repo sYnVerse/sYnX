@@ -15,7 +15,7 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       },
       {
         type: "NEW",
-        text: "Choose how tasks are ordered: Date Created, Priority, Reminder Time or A to Z, the same options as on the web. Reminder Time is the default: tasks with a reminder come first, soonest first, then the rest by priority. Set it for all lists in Settings, or for one list when you edit it on the Lists tab. Subtasks stay under their task, oldest first."
+        text: "Choose how tasks are ordered: Date Created, Priority, Reminder Time or A to Z, the same options as on the web. Reminder Time is the default: tasks with a reminder come first, soonest first, then the rest by priority. Set it for all lists in Settings, or for one list when you edit it on the Lists tab. Subtasks follow the same order under their task."
       },
       {
         type: "IMPR",
