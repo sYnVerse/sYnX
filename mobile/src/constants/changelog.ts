@@ -16,6 +16,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "On Collaborative lists, you can now delete tasks you added yourself right away, without waiting for the owner. Deleting tasks someone else added, or deleting the list, still sends a delete request the owner approves."
+      },
+      {
+        type: "FIX",
+        text: "Text message settings now list all 8 phone carriers, the same as on the web, in a picker you tap to open. A carrier picked on the web now shows as selected here too, and you can pick \"None (Twilio)\" to go back to Twilio."
       }
     ]
   },

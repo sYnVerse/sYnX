@@ -29,6 +29,7 @@ import {
   isMakingListPublic,
   isValidTimeZone,
   listTimeZones,
+  PHONE_CARRIERS,
   sortChangelogItems,
   type ListActivityEntry,
   type PendingDeleteRequest,
@@ -4598,14 +4599,9 @@ export default function TodoPage() {
                             className="w-full rounded-lg bg-slate-950 border border-white/[0.08] text-slate-400 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 appearance-none bg-slate-955"
                           >
                             <option value="" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>-- Mobile Carrier (Optional / Twilio) --</option>
-                            <option value="verizon" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Verizon</option>
-                            <option value="att" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>AT&T</option>
-                            <option value="tmobile" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>T-Mobile</option>
-                            <option value="sprint" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Sprint</option>
-                            <option value="googlefi" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Google Fi</option>
-                            <option value="boost" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Boost Mobile</option>
-                            <option value="cricket" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>Cricket Wireless</option>
-                            <option value="uscellular" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>US Cellular</option>
+                            {PHONE_CARRIERS.map((carrier) => (
+                              <option key={carrier.id} value={carrier.id} className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>{carrier.label}</option>
+                            ))}
                           </select>
                         </div>
                       </div>

@@ -49,7 +49,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../context/ToastContext";
 import { getCachedListName } from "../services/listNames";
 import type { TodoItem } from "../shared";
-import { describeTimeZone, getLocalTimeZone } from "../shared";
+import { describeTimeZone, findPhoneCarrier, getLocalTimeZone, NO_PHONE_CARRIER_LABEL } from "../shared";
 import {
   getKnownHomeTimeZone,
   setHomeTimeZone,
@@ -62,9 +62,10 @@ import {
   suggestionMessage,
 } from "../services/displayNameSuggestion";
 import { CalendarPickerModal } from "../components/CalendarPickerModal";
+import { PhoneCarrierPickerModal } from "../components/PhoneCarrierPickerModal";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
-import { typography, spacing, MIN_TOUCH_TARGET, PHONE_CARRIERS, type ThemeMode } from "../theme/theme";
+import { typography, spacing, MIN_TOUCH_TARGET, type ThemeMode } from "../theme/theme";
 import { getErrorMessage } from "../utils/feedback";
 import {
   isCalendarSyncEnabled,
@@ -114,6 +115,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [showChangelog, setShowChangelog] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneCarrier, setPhoneCarrier] = useState("");
+  // Unknown saved values (none today) show as-is so saving never drops them.
+  const carrierLabel = phoneCarrier
+    ? findPhoneCarrier(phoneCarrier)?.label ?? phoneCarrier
+    : NO_PHONE_CARRIER_LABEL;
   const [discordWebhookUrl, setDiscordWebhookUrl] = useState("");
   const [displayName, setDisplayName] = useState("");
   // Provider photo from sYnID (Google, GitHub, Microsoft work/school); initials show when unset or it fails to load.
@@ -135,6 +140,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   );
   const [availableCalendars, setAvailableCalendars] = useState<AvailableCalendar[]>([]);
   const [showCalendarPicker, setShowCalendarPicker] = useState(false);
+  const [showCarrierPicker, setShowCarrierPicker] = useState(false);
   const [homeTimeZone, setHomeTimeZoneState] = useState<string | null | undefined>(getKnownHomeTimeZone());
   const [homeTimeZoneBusy, setHomeTimeZoneBusy] = useState(false);
   const deviceTimeZone = getLocalTimeZone();
@@ -1069,42 +1075,35 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             />
 
             <Text style={[styles.subLabel, { color: theme.textMuted }]}>Phone Carrier</Text>
-            <View style={styles.carrierRow}>
-              {PHONE_CARRIERS.map((c) => {
-                const selected = phoneCarrier === c.value;
-                return (
-                  <TouchableOpacity
-                    key={c.value}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={c.label}
-                    style={[
-                      styles.carrierChip,
-                      { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                      selected && {
-                        backgroundColor: theme.accentLight,
-                        borderColor: theme.accent,
-                        borderWidth: 2,
-                      },
-                    ]}
-                    onPress={() => {
-                      triggerImpact();
-                      setPhoneCarrier(c.value);
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.carrierChipText,
-                        { color: theme.textPrimary },
-                        selected && { color: theme.accent, fontWeight: "700" },
-                      ]}
-                    >
-                      {c.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <TouchableOpacity
+              style={[
+                styles.calendarTargetRow,
+                styles.carrierField,
+                { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+              ]}
+              onPress={() => {
+                triggerImpact();
+                setShowCarrierPicker(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={`Phone carrier: ${carrierLabel}. Change`}
+            >
+              <Text
+                style={[styles.calendarTargetName, { color: theme.textPrimary, flex: 1, marginTop: 0 }]}
+                numberOfLines={1}
+              >
+                {carrierLabel}
+              </Text>
+              <View
+                style={[
+                  styles.changeBadge,
+                  { backgroundColor: theme.accentLight, borderColor: theme.accent },
+                ]}
+              >
+                <Text style={[styles.changeBadgeText, { color: theme.accent }]}>Change</Text>
+                <ChevronRight size={14} color={theme.accent} />
+              </View>
+            </TouchableOpacity>
           </>
         )}
 
@@ -1169,6 +1168,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           <Text style={{ color: theme.accent, fontSize: typography.sm, fontWeight: "700" }}>View</Text>
         </TouchableOpacity>
       </View>
+
+      <PhoneCarrierPickerModal
+        visible={showCarrierPicker}
+        onClose={() => setShowCarrierPicker(false)}
+        selectedCarrier={phoneCarrier}
+        onSelectCarrier={(carrierId) => {
+          setPhoneCarrier(carrierId);
+          setShowCarrierPicker(false);
+        }}
+      />
 
       <CalendarPickerModal
         visible={showCalendarPicker}
@@ -1343,23 +1352,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     minHeight: MIN_TOUCH_TARGET,
   },
-  carrierRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+  carrierField: {
+    marginTop: 0,
     marginBottom: 12,
-  },
-  carrierChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    minHeight: MIN_TOUCH_TARGET - 4,
-    justifyContent: "center",
-  },
-  carrierChipText: {
-    fontSize: typography.sm,
-    fontWeight: "600",
   },
   linkBtn: {
     flexDirection: "row",
