@@ -42,7 +42,6 @@ import {
 import { syncPinnedList } from "../services/widgetSync";
 import { setListTaskSortOverride } from "../services/taskSortPreferences";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
-import { TASK_SORT_OPTIONS, type TaskSortOverride } from "../shared/task-sort";
 import { apiClient } from "../api/client";
 import {
   TodoList,
@@ -52,7 +51,9 @@ import {
   getShareModeLabel,
   getSharedNameNotice,
   isMakingListPublic,
+  TASK_SORT_OPTIONS,
   type ListActivityEntry,
+  type TaskSortOverride,
 } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
@@ -118,7 +119,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({ activeListId, onSelect
   const [editSortOverride, setEditSortOverride] = useState<TaskSortOverride>("app_default");
   const taskSortPrefs = useTaskSortPreferences();
   const appSortLabel =
-    TASK_SORT_OPTIONS.find((o) => o.value === taskSortPrefs.appDefault)?.label ?? "Due time";
+    TASK_SORT_OPTIONS.find((o) => o.value === taskSortPrefs.appDefault)?.label ?? "Reminder Time";
   const listSortOptions: { value: TaskSortOverride; label: string }[] = [
     { value: "app_default", label: `App default (${appSortLabel})` },
     ...TASK_SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label })),

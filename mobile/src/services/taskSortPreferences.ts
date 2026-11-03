@@ -4,7 +4,7 @@ import {
   isTaskSortMode,
   type TaskSortMode,
   type TaskSortOverride,
-} from "../shared/task-sort";
+} from "../shared";
 
 /** App-wide task sort, saved on this device only. */
 export const STORAGE_KEY_TASK_SORT_MODE = "synx_task_sort_mode";

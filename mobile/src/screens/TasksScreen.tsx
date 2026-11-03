@@ -36,6 +36,8 @@ import {
   TodoItem,
   TodoList,
   describeListActivityAction,
+  resolveTaskSortMode,
+  sortTasks,
   type ListAccessDenialCode,
   type ListActivityEntry,
   type PendingDeleteRequest,
@@ -52,7 +54,6 @@ import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../servi
 import { getCachedListName } from "../services/listNames";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
-import { resolveTaskSortMode, sortTasks } from "../shared/task-sort";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";

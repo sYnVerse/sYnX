@@ -44,12 +44,17 @@ import {
 import { useTheme } from "../context/ThemeContext";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { setAppTaskSortMode } from "../services/taskSortPreferences";
-import { TASK_SORT_OPTIONS } from "../shared/task-sort";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../context/ToastContext";
 import { getCachedListName } from "../services/listNames";
 import type { TodoItem } from "../shared";
-import { describeTimeZone, findPhoneCarrier, getLocalTimeZone, NO_PHONE_CARRIER_LABEL } from "../shared";
+import {
+  describeTimeZone,
+  findPhoneCarrier,
+  getLocalTimeZone,
+  NO_PHONE_CARRIER_LABEL,
+  TASK_SORT_OPTIONS,
+} from "../shared";
 import {
   getKnownHomeTimeZone,
   setHomeTimeZone,
