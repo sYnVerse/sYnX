@@ -1,7 +1,14 @@
 export interface ParsedDeepLink {
   listId: string | null;
-  action: "newTask" | null;
+  /**
+   * - `newTask`: open the new task form.
+   * - `pickPinnedList`: open the Lists tab to choose the Pinned List widget's list.
+   */
+  action: "newTask" | "pickPinnedList" | null;
 }
+
+/** Opened by the Pinned List widget's switch button to choose which list it shows. */
+export const PICK_PINNED_LIST_URL = "synx://pick-pinned-list";
 
 const RESERVED_PATHS = new Set(["login", "logout", "mobile", "callback", "api"]);
 
@@ -15,6 +22,7 @@ const RESERVED_PATHS = new Set(["login", "logout", "mobile", "callback", "api"])
  * - `synx://<uuid>`
  * - `https://synx.christran.io/<listId>?action=newTask`
  * - `https://synx.christran.io/list/<listId>`
+ * - `synx://pick-pinned-list` (choose the Pinned List widget's list)
  */
 export function parseDeepLinkUrl(rawUrl: string | null | undefined): ParsedDeepLink {
   if (!rawUrl || typeof rawUrl !== "string") {
@@ -26,8 +34,13 @@ export function parseDeepLinkUrl(rawUrl: string | null | undefined): ParsedDeepL
     return { listId: null, action: null };
   }
 
+  // Checked before URL parsing, so the host isn't mistaken for a list ID.
+  if (/^synx:\/\/pick-pinned-list(?:[/?#]|$)/i.test(trimmed)) {
+    return { listId: null, action: "pickPinnedList" };
+  }
+
   let listId: string | null = null;
-  let action: "newTask" | null = null;
+  let action: ParsedDeepLink["action"] = null;
 
   try {
     const parsed = new URL(trimmed);
