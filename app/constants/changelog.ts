@@ -9,6 +9,14 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "IMPR",
+        text: "When you create a list or change its category tag, each preset category in the picker now shows its emoji, like 🛒 Shopping or 🎬 Movies, the same as on mobile."
+      },
+      {
+        type: "FIX",
+        text: "The progress ring next to a list's name now counts subtasks too, so checking one off moves it, and a list's category tag now shows its preset category's emoji, like 🛒 for Shopping or 🎬 for Movies."
+      },
+      {
         type: "FIX",
         text: "On phones and other touch screens, the rename and Add Tag buttons next to a list's name are now always shown instead of appearing only after a tap."
       }
