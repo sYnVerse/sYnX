@@ -1,5 +1,5 @@
 import type { ListActionContext } from "./context";
-import { DEFAULT_CATEGORY } from "~/shared";
+import { DEFAULT_CATEGORY } from "../../../../shared";
 import { redirect } from "./context";
 import { categoryError, listNameError } from "~/write-limits";
 import { requestOrPerformDelete } from "~/pending-deletes.server";

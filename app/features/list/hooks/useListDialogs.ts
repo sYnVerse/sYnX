@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { DEFAULT_CATEGORY } from "~/shared";
+import { DEFAULT_CATEGORY } from "../../../../shared";
 
 interface UseListDialogsOptions {
   showUnsavedPrompt: boolean;

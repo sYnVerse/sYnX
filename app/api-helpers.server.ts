@@ -1,4 +1,4 @@
-import { DEFAULT_CATEGORY } from "~/shared";
+import { DEFAULT_CATEGORY } from "../shared";
 import { getDisplayNamesForUsers, ownerPayload } from "./user-profile.server";
 
 export type ListAccessDenial = "not_found" | "private";
