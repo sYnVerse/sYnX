@@ -52,6 +52,7 @@ import {
   getSharedNameNotice,
   isMakingListPublic,
   TASK_SORT_OPTIONS,
+  PRESET_CATEGORIES,
   type ListActivityEntry,
   type TaskSortOverride,
 } from "../shared";
@@ -80,18 +81,6 @@ interface ListsScreenProps {
   /** Called once the request is picked up, so a later visit to the tab doesn't reopen it. */
   onPickPinnedListHandled?: () => void;
 }
-
-const CATEGORY_OPTIONS = [
-  { name: "Checklist", emoji: "📋" },
-  { name: "Study", emoji: "🎓" },
-  { name: "Shopping", emoji: "🛒" },
-  { name: "Movies", emoji: "🎬" },
-  { name: "Work", emoji: "💼" },
-  { name: "Personal", emoji: "🏠" },
-  { name: "Travel", emoji: "✈️" },
-  { name: "Fitness", emoji: "💪" },
-  { name: "Custom", emoji: "✏️" },
-];
 
 export const ListsScreen: React.FC<ListsScreenProps> = ({
   activeListId,
@@ -136,11 +125,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   }, [handledPickRequestId, onPickPinnedListHandled]);
 
   const [newListName, setNewListName] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState(CATEGORY_OPTIONS[0]);
+  const [selectedCategory, setSelectedCategory] = useState(PRESET_CATEGORIES[0]);
   const [customCategoryText, setCustomCategoryText] = useState("");
 
   const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState(CATEGORY_OPTIONS[0]);
+  const [editCategory, setEditCategory] = useState(PRESET_CATEGORIES[0]);
   const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
   const [editSortOverride, setEditSortOverride] = useState<TaskSortOverride>("app_default");
   const taskSortPrefs = useTaskSortPreferences();
@@ -413,8 +402,8 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   const openEditModal = (list: TodoList) => {
     triggerImpactHaptic();
     setEditingList(list);
-    const matchingCat = CATEGORY_OPTIONS.find((c) => c.name === list.category);
-    const cat = matchingCat || CATEGORY_OPTIONS.find((c) => c.name === "Custom") || CATEGORY_OPTIONS[0];
+    const matchingCat = PRESET_CATEGORIES.find((c) => c.name === list.category);
+    const cat = matchingCat || PRESET_CATEGORIES.find((c) => c.name === "Custom") || PRESET_CATEGORIES[0];
     setEditCategory(cat);
     setEditCustomCategoryText(matchingCat ? "" : list.category || "");
     setEditName(stripLeadingCategoryEmoji(list.name, matchingCat?.emoji || ""));
@@ -918,7 +907,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Select List Category Tag</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
-              {CATEGORY_OPTIONS.map((cat) => (
+              {PRESET_CATEGORIES.map((cat) => (
                 <TouchableOpacity
                   key={cat.name}
                   accessibilityRole="radio"
@@ -1016,7 +1005,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Category Tag</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
-              {CATEGORY_OPTIONS.map((cat) => (
+              {PRESET_CATEGORIES.map((cat) => (
                 <TouchableOpacity
                   key={cat.name}
                   accessibilityRole="radio"
