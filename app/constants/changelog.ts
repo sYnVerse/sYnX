@@ -19,6 +19,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "A list's Sort by now starts on Reminder Time, and tasks without a reminder follow by priority. The choice you pick is remembered for each list on this browser, and subtasks now follow the same order under their task."
+      },
+      {
+        type: "FIX",
+        text: "The progress ring next to a list's name now counts subtasks too, so checking one off moves it. The list's category tag now shows its emoji, like 🛒 for Shopping or 🎬 for Movies, and on phones the rename and Add Tag buttons next to the list name are always shown instead of appearing only after a tap."
       }
     ]
   },
