@@ -642,7 +642,8 @@ export default function TodoPage() {
                         title="Click to rename"
                       >
                         <span>{activeListName}</span>
-                        <svg className="w-4 h-4 text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        {/* Always shown on touch screens; revealed on hover or keyboard focus elsewhere. */}
+                        <svg className="w-4 h-4 text-slate-500 opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                         </svg>
                       </button>
@@ -698,7 +699,7 @@ export default function TodoPage() {
                         setEditCategorySelection("Checklist");
                         setEditCustomCategoryInput("");
                       }}
-                      className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-white/10 text-slate-400 hover:text-slate-200 hover:border-white/20 transition-all cursor-pointer opacity-0 group-hover:opacity-100"
+                      className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-white/10 text-slate-400 hover:text-slate-200 hover:border-white/20 transition-all cursor-pointer opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100"
                     >
                       + Add Tag
                     </button>
