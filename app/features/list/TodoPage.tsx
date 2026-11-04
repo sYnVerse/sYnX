@@ -8,6 +8,7 @@ import {
   DEFAULT_TASK_SORT_MODE,
   describeDeleteTarget,
   getCategoryTagEmoji,
+  isPresetCategory,
   getLocalTimeZone,
   resolveTaskSortMode,
   taskSortStorageKey,
@@ -664,16 +665,7 @@ export default function TodoPage() {
                               name: activeListMeta.name,
                               category: cat,
                             });
-                            const isPreset = [
-                              "Checklist",
-                              "Study",
-                              "Shopping",
-                              "Movies",
-                              "Work",
-                              "Personal",
-                              "Travel",
-                              "Fitness",
-                            ].includes(cat);
+                            const isPreset = isPresetCategory(cat);
                             setEditCategorySelection(isPreset ? cat : "Custom");
                             setEditCustomCategoryInput(isPreset ? "" : cat);
                           }

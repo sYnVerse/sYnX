@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import type { FetcherWithComponents } from "@remix-run/react";
 import type { GuestActionPayload } from "~/guest-context";
 import { MAX_CATEGORY_LENGTH, MAX_LIST_NAME_LENGTH } from "~/write-limits";
+import { PRESET_CATEGORIES } from "../../../../shared";
 import type { GuestList } from "../guest-lists";
 
 interface ListDialogsProps {
@@ -279,18 +280,18 @@ export function ListDialogs({
 
             <span className="block text-xs font-semibold text-slate-400 mb-1.5">Select Category Tag</span>
             <div className="flex flex-wrap gap-1.5 mb-4">
-              {["Checklist", "Study", "Shopping", "Movies", "Work", "Personal", "Travel", "Fitness", "Custom"].map((cat) => (
+              {PRESET_CATEGORIES.map(({ name, emoji }) => (
                 <button
-                  key={cat}
+                  key={name}
                   type="button"
-                  onClick={() => setNewListCategory(cat)}
+                  onClick={() => setNewListCategory(name)}
                   className={`text-xs px-3 py-1.5 rounded-lg border font-medium cursor-pointer transition-all ${
-                    newListCategory === cat
+                    newListCategory === name
                       ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-bold shadow-sm"
                       : "bg-white/[0.02] border-white/[0.06] text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  {cat === "Custom" ? "✏️ Custom" : cat}
+                  {emoji} {name}
                 </button>
               ))}
             </div>
@@ -366,18 +367,18 @@ export function ListDialogs({
             <p className="text-xs text-slate-400 mb-4">Set or update the category tag for &quot;{listToEditCategory.name}&quot;</p>
 
             <div className="flex flex-wrap gap-1.5 mb-4">
-              {["Checklist", "Study", "Shopping", "Movies", "Work", "Personal", "Travel", "Fitness", "Custom"].map((cat) => (
+              {PRESET_CATEGORIES.map(({ name, emoji }) => (
                 <button
-                  key={cat}
+                  key={name}
                   type="button"
-                  onClick={() => setEditCategorySelection(cat)}
+                  onClick={() => setEditCategorySelection(name)}
                   className={`text-xs px-3 py-1.5 rounded-lg border font-medium cursor-pointer transition-all ${
-                    editCategorySelection === cat
+                    editCategorySelection === name
                       ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-bold shadow-sm"
                       : "bg-white/[0.02] border-white/[0.06] text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  {cat === "Custom" ? "✏️ Custom" : cat}
+                  {emoji} {name}
                 </button>
               ))}
             </div>
