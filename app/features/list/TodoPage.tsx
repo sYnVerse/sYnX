@@ -7,6 +7,7 @@ import { WEB_VERSION } from "~/constants/changelog";
 import {
   DEFAULT_TASK_SORT_MODE,
   describeDeleteTarget,
+  DEFAULT_CATEGORY,
   getCategoryTagEmoji,
   isPresetCategory,
   getLocalTimeZone,
@@ -688,7 +689,7 @@ export default function TodoPage() {
                           id: activeListMeta.id,
                           name: activeListMeta.name,
                         });
-                        setEditCategorySelection("Checklist");
+                        setEditCategorySelection(DEFAULT_CATEGORY);
                         setEditCustomCategoryInput("");
                       }}
                       className="text-[10px] px-2 py-0.5 rounded-full border border-dashed border-white/10 text-slate-400 hover:text-slate-200 hover:border-white/20 transition-all cursor-pointer opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100"

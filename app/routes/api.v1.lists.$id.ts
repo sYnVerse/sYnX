@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
-import { UpdateListSchema } from "../../shared";
+import { DEFAULT_CATEGORY, UpdateListSchema } from "../../shared";
 import { getListAccess, serializeListRow, type ListRow } from "../api-helpers.server";
 import {
   deleteRequestActivitySummary,
@@ -84,7 +84,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       const parsed = v.parse(UpdateListSchema, body);
 
       const newName = parsed.name ?? access.list.name;
-      const newCategory = parsed.category ?? access.list.category ?? "Checklist";
+      const newCategory = parsed.category ?? access.list.category ?? DEFAULT_CATEGORY;
       const limitError =
         (parsed.name !== undefined ? listNameError(parsed.name) : null) ||
         (parsed.category !== undefined ? categoryError(parsed.category) : null);
@@ -95,7 +95,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       const nameChanged = parsed.name !== undefined && parsed.name !== access.list.name;
       const categoryChanged =
         parsed.category !== undefined &&
-        (parsed.category ?? "Checklist") !== (access.list.category ?? "Checklist");
+        (parsed.category ?? DEFAULT_CATEGORY) !== (access.list.category ?? DEFAULT_CATEGORY);
 
       await db
         .prepare("UPDATE lists SET name = ?, category = ? WHERE id = ?")
@@ -133,7 +133,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
             isOwner: access.isOwner,
             shareMode,
             request,
-            summary: `Category: ${access.list.category ?? "Checklist"} → ${newCategory}`,
+            summary: `Category: ${access.list.category ?? DEFAULT_CATEGORY} → ${newCategory}`,
           })
         );
       }
