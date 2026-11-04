@@ -7,7 +7,6 @@ import { WEB_VERSION } from "~/constants/changelog";
 import {
   DEFAULT_TASK_SORT_MODE,
   describeDeleteTarget,
-  getCategoryTagEmoji,
   getLocalTimeZone,
   resolveTaskSortMode,
   taskSortStorageKey,
@@ -683,7 +682,7 @@ export default function TodoPage() {
                         }`}
                         title={isOwner ? "Edit Category Tag" : undefined}
                       >
-                        <span>{getCategoryTagEmoji(cat)} {cat}</span>
+                        <span>🏷️ {cat}</span>
                       </button>
                     );
                   })()}
