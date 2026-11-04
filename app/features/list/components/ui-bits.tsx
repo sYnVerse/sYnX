@@ -27,14 +27,9 @@ export function EmptyState() {
   );
 }
 
-export function ProgressRing({
-  completed,
-  total,
-}: {
-  completed: number;
-  total: number;
-}) {
-  const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
+/** `percent` comes from the shared countTaskProgress (0 to 100). */
+export function ProgressRing({ percent }: { percent: number }) {
+  const pct = Math.min(100, Math.max(0, percent));
   const circumference = 2 * Math.PI * 18;
   const offset = circumference - (pct / 100) * circumference;
 
