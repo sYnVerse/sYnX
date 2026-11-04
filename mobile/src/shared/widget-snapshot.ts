@@ -2,7 +2,6 @@ import { TodoItem, TodoList } from "./index";
 import { formatReminderTime, listOwnershipLabel, stripLeadingCategoryEmoji } from "./mobile-ux";
 import { applySetCompletedLocal } from "./todo-completed";
 import { DEFAULT_TASK_SORT_MODE, sortTasks, type TaskSortMode } from "./task-sort";
-import { countTaskProgress } from "./task-progress";
 
 export interface WidgetTaskItem {
   id: string;
@@ -239,11 +238,9 @@ export function buildProgressWidgetSnapshot(
   }
 
   const allTodos = todos || [];
-  const {
-    done: doneCount,
-    total: totalCount,
-    percent: progressPercent,
-  } = countTaskProgress(allTodos);
+  const totalCount = allTodos.length;
+  const doneCount = allTodos.filter((t) => t.completed).length;
+  const progressPercent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
   // The next task is the first open task in the list's order, the one the app shows on top.
   const openTasks = sortTasks(

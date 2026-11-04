@@ -375,7 +375,6 @@ export default function TodoPage() {
     totalCount,
     completedCount,
     activeCount,
-    progress,
     clearCompletedNeedsApproval,
   } = useVisibleTodos({ todos, filter, searchQuery, sortBy });
 
@@ -718,7 +717,7 @@ export default function TodoPage() {
             </div>
 
             <div className="flex items-center gap-3 flex-shrink-0 self-start sm:self-auto">
-              <ProgressRing percent={progress.percent} />
+              <ProgressRing completed={completedCount} total={totalCount} />
             </div>
           </header>
 

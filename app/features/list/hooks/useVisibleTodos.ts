@@ -1,9 +1,4 @@
-import {
-  countTaskProgress,
-  sortTasks,
-  splitCompletedTasks,
-  type TaskSortMode,
-} from "../../../../shared";
+import { sortTasks, splitCompletedTasks, type TaskSortMode } from "../../../../shared";
 import type { Todo } from "~/to-do-manager";
 
 export type Filter = "all" | "active" | "completed";
@@ -82,8 +77,6 @@ export function useVisibleTodos({
     (t) => t.completed && !t.canDeleteDirectly
   );
   const activeCount = totalCount - completedCount;
-  // The progress ring counts subtasks too, the same way as the mobile widget.
-  const progress = countTaskProgress(optimisticTodos);
 
   return {
     optimisticTodos,
@@ -94,7 +87,6 @@ export function useVisibleTodos({
     totalCount,
     completedCount,
     activeCount,
-    progress,
     clearCompletedNeedsApproval,
   };
 }
