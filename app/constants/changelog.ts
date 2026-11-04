@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.5.0";
+export const WEB_VERSION = "v5.5.1";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.5.1",
+    date: "2026-11-03",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "On phones and other touch screens, the rename and Add Tag buttons next to a list's name are now always shown instead of appearing only after a tap."
+      }
+    ]
+  },
   {
     version: "v5.5.0",
     date: "2026-11-02",
@@ -19,10 +30,6 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "IMPR",
         text: "A list's Sort by now starts on Reminder Time, and tasks without a reminder follow by priority. The choice you pick is remembered for each list on this browser, and subtasks now follow the same order under their task."
-      },
-      {
-        type: "FIX",
-        text: "The progress ring next to a list's name now counts subtasks too, so checking one off moves it. The list's category tag now shows its emoji, like 🛒 for Shopping or 🎬 for Movies, and on phones the rename and Add Tag buttons next to the list name are always shown instead of appearing only after a tap."
       }
     ]
   },
