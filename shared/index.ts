@@ -228,6 +228,8 @@ export const RegisterDeviceTokenSchema = v.object({
 
 export type RegisterDeviceTokenInput = v.InferOutput<typeof RegisterDeviceTokenSchema>;
 
+export * from "./categories";
+
 export * from "./changelog";
 
 export * from "./deep-link";

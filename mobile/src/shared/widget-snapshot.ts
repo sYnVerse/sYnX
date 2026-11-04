@@ -3,6 +3,7 @@ import { formatReminderTime, listOwnershipLabel, stripLeadingCategoryEmoji } fro
 import { applySetCompletedLocal } from "./todo-completed";
 import { DEFAULT_TASK_SORT_MODE, sortTasks, type TaskSortMode } from "./task-sort";
 import { countTaskProgress } from "./task-progress";
+import { getCategoryEmoji } from "./categories";
 
 export interface WidgetTaskItem {
   id: string;
@@ -48,34 +49,6 @@ export interface ProgressWidgetSnapshot {
   nextTaskText?: string;
   isLoggedIn: boolean;
   lastUpdated: number;
-}
-
-const CATEGORY_EMOJIS: Record<string, string> = {
-  Checklist: "📋",
-  Study: "🎓",
-  Shopping: "🛒",
-  Movies: "🎬",
-  Work: "💼",
-  Personal: "🏠",
-  Travel: "✈️",
-  Fitness: "💪",
-  Custom: "✏️",
-};
-
-export function getCategoryEmoji(category?: string | null): string {
-  if (!category) return "📋";
-  return CATEGORY_EMOJIS[category] || "📋";
-}
-
-/**
- * Emoji for a list's category tag: a preset category (Shopping, Movies, ...)
- * gets its own emoji, the same one mobile shows, and a custom category gets 🏷️.
- */
-export function getCategoryTagEmoji(category?: string | null): string {
-  if (!category || category === "Custom" || !Object.hasOwn(CATEGORY_EMOJIS, category)) {
-    return "🏷️";
-  }
-  return CATEGORY_EMOJIS[category];
 }
 
 export interface BuildSnapshotOptions {
