@@ -703,8 +703,15 @@ export default function TodoPage() {
                   )}
                 </div>
               )}
-              <p className="text-xs text-slate-400 mt-1 font-medium">
-                {activeCount} active task{activeCount === 1 ? "" : "s"} • {completedCount} completed
+              <p className="text-xs text-slate-500 mt-1">
+                {!isOwner && activeListMeta?.owner_display_name
+                  ? `Shared by ${activeListMeta.owner_display_name}`
+                  : activeCount === 0 && totalCount > 0
+                    ? "🎉 All tasks completed!"
+                    : `${activeCount} task${activeCount !== 1 ? "s" : ""} remaining`}
+                {!isOwner && activeListMeta?.owner_display_name
+                  ? ` · ${activeCount} task${activeCount !== 1 ? "s" : ""} remaining`
+                  : null}
               </p>
             </div>
 
