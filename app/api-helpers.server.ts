@@ -1,3 +1,4 @@
+import { DEFAULT_CATEGORY } from "../shared";
 import { getDisplayNamesForUsers, ownerPayload } from "./user-profile.server";
 
 export type ListAccessDenial = "not_found" | "private";
@@ -82,7 +83,7 @@ export async function serializeListRow(
     createdAt: Number(row.created_at),
     expirationTtl: row.expiration_ttl != null ? Number(row.expiration_ttl) : null,
     shareMode,
-    category: row.category || "Checklist",
+    category: row.category || DEFAULT_CATEGORY,
     isOwner,
     canEdit,
     owner: ownerPayload(displayName),

@@ -2,6 +2,8 @@ import { TodoItem, TodoList } from "./index";
 import { formatReminderTime, listOwnershipLabel, stripLeadingCategoryEmoji } from "./mobile-ux";
 import { applySetCompletedLocal } from "./todo-completed";
 import { DEFAULT_TASK_SORT_MODE, sortTasks, type TaskSortMode } from "./task-sort";
+import { countTaskProgress } from "./task-progress";
+import { getCategoryEmoji } from "./categories";
 
 export interface WidgetTaskItem {
   id: string;
@@ -47,23 +49,6 @@ export interface ProgressWidgetSnapshot {
   nextTaskText?: string;
   isLoggedIn: boolean;
   lastUpdated: number;
-}
-
-const CATEGORY_EMOJIS: Record<string, string> = {
-  Checklist: "📋",
-  Study: "🎓",
-  Shopping: "🛒",
-  Movies: "🎬",
-  Work: "💼",
-  Personal: "🏠",
-  Travel: "✈️",
-  Fitness: "💪",
-  Custom: "✏️",
-};
-
-export function getCategoryEmoji(category?: string | null): string {
-  if (!category) return "📋";
-  return CATEGORY_EMOJIS[category] || "📋";
 }
 
 export interface BuildSnapshotOptions {
@@ -238,9 +223,11 @@ export function buildProgressWidgetSnapshot(
   }
 
   const allTodos = todos || [];
-  const totalCount = allTodos.length;
-  const doneCount = allTodos.filter((t) => t.completed).length;
-  const progressPercent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+  const {
+    done: doneCount,
+    total: totalCount,
+    percent: progressPercent,
+  } = countTaskProgress(allTodos);
 
   // The next task is the first open task in the list's order, the one the app shows on top.
   const openTasks = sortTasks(

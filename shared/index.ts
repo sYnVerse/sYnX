@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { DEFAULT_CATEGORY } from "./categories";
 
 // Share mode enum definition
 export type ShareMode = "private" | "public_read" | "public_edit";
@@ -203,7 +204,7 @@ export type SetTodoCompletedInput = v.InferOutput<typeof SetTodoCompletedSchema>
 
 export const CreateListSchema = v.object({
   name: v.pipe(v.string(), v.minLength(1, "List name cannot be empty")),
-  category: v.optional(v.string(), "Checklist"),
+  category: v.optional(v.string(), DEFAULT_CATEGORY),
 });
 
 export type CreateListInput = v.InferOutput<typeof CreateListSchema>;
@@ -228,6 +229,8 @@ export const RegisterDeviceTokenSchema = v.object({
 
 export type RegisterDeviceTokenInput = v.InferOutput<typeof RegisterDeviceTokenSchema>;
 
+export * from "./categories";
+
 export * from "./changelog";
 
 export * from "./deep-link";
@@ -243,6 +246,8 @@ export * from "./phone-carriers";
 export * from "./reminder-time";
 
 export * from "./task-sort";
+
+export * from "./task-progress";
 
 export * from "./task-sections";
 

@@ -1,4 +1,5 @@
 import type { ListActionContext } from "./context";
+import { DEFAULT_CATEGORY } from "../../../../shared";
 import { redirect } from "./context";
 import { categoryError, listNameError } from "~/write-limits";
 import { requestOrPerformDelete } from "~/pending-deletes.server";
@@ -35,7 +36,7 @@ export async function handleUpdateShareMode(ctx: ListActionContext) {
 export async function handleCreateList(ctx: ListActionContext) {
   const { formData, db, userId } = ctx;
   const listName = formData.get("listName");
-  const category = (formData.get("category") as string) || "Checklist";
+  const category = (formData.get("category") as string) || DEFAULT_CATEGORY;
   if (typeof listName !== "string" || !listName.trim()) {
     return Response.json({ error: "Invalid list name" }, { status: 400 });
   }
@@ -109,7 +110,7 @@ export async function handleUpdateListCategory(ctx: ListActionContext) {
       actorId: userId,
       isOwner: true,
       shareMode: ownRow.share_mode,
-      summary: `Category: ${ownRow.category || "Checklist"} → ${category}`,
+      summary: `Category: ${ownRow.category || DEFAULT_CATEGORY} → ${category}`,
     });
   } catch (e) {
     console.error("Failed to update list category:", e);

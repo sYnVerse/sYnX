@@ -1,7 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
-import { CreateListSchema } from "../../shared";
+import { CreateListSchema, DEFAULT_CATEGORY } from "../../shared";
 import { parseListScope, serializeListRows, type ListRow } from "../api-helpers.server";
 import { listSharedWithMe } from "../shared-lists.server";
 import { ownerPayload, resolveDisplayName } from "../user-profile.server";
@@ -64,7 +64,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const parsed = v.parse(CreateListSchema, body);
     const id = crypto.randomUUID();
     const createdAt = Date.now();
-    const category = parsed.category || "Checklist";
+    const category = parsed.category || DEFAULT_CATEGORY;
     const limitError = listNameError(parsed.name) || categoryError(category);
     if (limitError) {
       return Response.json({ error: limitError }, { status: 400 });
