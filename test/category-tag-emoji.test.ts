@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  DEFAULT_CATEGORY,
   PRESET_CATEGORIES,
   PRESET_CATEGORIES as SHARED_INDEX_PRESETS,
   CATEGORY_EMOJIS,
@@ -104,6 +105,22 @@ describe("shared PRESET_CATEGORIES and helpers", () => {
     expect(isPresetCategory(undefined)).toBe(false);
     expect(isPresetCategory("Project Alpha")).toBe(false);
     expect(isPresetCategory("constructor")).toBe(false);
+  });
+
+
+  it("freezes the preset list, each preset option, and emoji map at runtime", () => {
+    expect(Object.isFrozen(PRESET_CATEGORIES)).toBe(true);
+    for (const preset of PRESET_CATEGORIES) {
+      expect(Object.isFrozen(preset)).toBe(true);
+    }
+    expect(Object.isFrozen(CATEGORY_EMOJIS)).toBe(true);
+  });
+
+  it("defines DEFAULT_CATEGORY pointing to the first preset (Checklist)", () => {
+    expect(DEFAULT_CATEGORY).toBe("Checklist");
+    expect(DEFAULT_CATEGORY).toBe(PRESET_CATEGORIES[0].name);
+    expect(sharedCategories.DEFAULT_CATEGORY).toBe(DEFAULT_CATEGORY);
+    expect(mobileCategories.DEFAULT_CATEGORY).toBe(DEFAULT_CATEGORY);
   });
 
   it("is exported from shared/index for web and mobile", () => {
