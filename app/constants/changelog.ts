@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.5.0";
+export const WEB_VERSION = "v5.5.1";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.5.1",
+    date: "2026-11-03",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "On phones and other touch screens, the rename and Add Tag buttons next to a list's name are now always shown instead of appearing only after a tap."
+      }
+    ]
+  },
   {
     version: "v5.5.0",
     date: "2026-11-02",
