@@ -67,6 +67,17 @@ export function getCategoryEmoji(category?: string | null): string {
   return CATEGORY_EMOJIS[category] || "📋";
 }
 
+/**
+ * Emoji for a list's category tag: a preset category (Shopping, Movies, ...)
+ * gets its own emoji, the same one mobile shows, and a custom category gets 🏷️.
+ */
+export function getCategoryTagEmoji(category?: string | null): string {
+  if (!category || category === "Custom" || !Object.hasOwn(CATEGORY_EMOJIS, category)) {
+    return "🏷️";
+  }
+  return CATEGORY_EMOJIS[category];
+}
+
 export interface BuildSnapshotOptions {
   maxTasks?: number;
   now?: number;
