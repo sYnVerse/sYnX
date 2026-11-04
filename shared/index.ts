@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { DEFAULT_CATEGORY } from "./categories";
 
 // Share mode enum definition
 export type ShareMode = "private" | "public_read" | "public_edit";
@@ -203,7 +204,7 @@ export type SetTodoCompletedInput = v.InferOutput<typeof SetTodoCompletedSchema>
 
 export const CreateListSchema = v.object({
   name: v.pipe(v.string(), v.minLength(1, "List name cannot be empty")),
-  category: v.optional(v.string(), "Checklist"),
+  category: v.optional(v.string(), DEFAULT_CATEGORY),
 });
 
 export type CreateListInput = v.InferOutput<typeof CreateListSchema>;

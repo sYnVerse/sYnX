@@ -3,20 +3,24 @@ export interface CategoryOption {
   emoji: string;
 }
 
-export const PRESET_CATEGORIES: readonly CategoryOption[] = [
-  { name: "Checklist", emoji: "📋" },
-  { name: "Study", emoji: "🎓" },
-  { name: "Shopping", emoji: "🛒" },
-  { name: "Movies", emoji: "🎬" },
-  { name: "Work", emoji: "💼" },
-  { name: "Personal", emoji: "🏠" },
-  { name: "Travel", emoji: "✈️" },
-  { name: "Fitness", emoji: "💪" },
-  { name: "Custom", emoji: "✏️" },
-];
+export const PRESET_CATEGORIES: readonly CategoryOption[] = Object.freeze(
+  [
+    { name: "Checklist", emoji: "📋" },
+    { name: "Study", emoji: "🎓" },
+    { name: "Shopping", emoji: "🛒" },
+    { name: "Movies", emoji: "🎬" },
+    { name: "Work", emoji: "💼" },
+    { name: "Personal", emoji: "🏠" },
+    { name: "Travel", emoji: "✈️" },
+    { name: "Fitness", emoji: "💪" },
+    { name: "Custom", emoji: "✏️" },
+  ].map((c) => Object.freeze(c))
+);
 
-export const CATEGORY_EMOJIS: Record<string, string> = Object.fromEntries(
-  PRESET_CATEGORIES.map((c) => [c.name, c.emoji])
+export const DEFAULT_CATEGORY: string = PRESET_CATEGORIES[0].name;
+
+export const CATEGORY_EMOJIS: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(PRESET_CATEGORIES.map((c) => [c.name, c.emoji]))
 );
 
 /**
