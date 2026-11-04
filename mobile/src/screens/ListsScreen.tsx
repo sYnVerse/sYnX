@@ -53,6 +53,7 @@ import {
   isMakingListPublic,
   TASK_SORT_OPTIONS,
   PRESET_CATEGORIES,
+  DEFAULT_CATEGORY,
   type ListActivityEntry,
   type TaskSortOverride,
 } from "../shared";
@@ -632,7 +633,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
           )}
           renderItem={({ item, section }) => {
             const isActive = item.id === activeListId;
-            const categoryTag = item.category || "Checklist";
+            const categoryTag = item.category || DEFAULT_CATEGORY;
             const shareMode = item.shareMode || "private";
             const isShared = section.shared;
             const ownerName = item.owner?.displayName;
