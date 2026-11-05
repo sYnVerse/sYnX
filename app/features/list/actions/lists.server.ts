@@ -1,7 +1,6 @@
 import type { ListActionContext } from "./context";
-import { DEFAULT_CATEGORY } from "../../../../shared";
 import { redirect } from "./context";
-import { categoryError, listNameError } from "~/write-limits";
+import { categoryError, listNameError, normalizeOptionalCategory } from "~/write-limits";
 import { requestOrPerformDelete } from "~/pending-deletes.server";
 import { deleteRequestActivitySummary } from "~/list-activity.server";
 
@@ -36,7 +35,8 @@ export async function handleUpdateShareMode(ctx: ListActionContext) {
 export async function handleCreateList(ctx: ListActionContext) {
   const { formData, db, userId } = ctx;
   const listName = formData.get("listName");
-  const category = (formData.get("category") as string) || DEFAULT_CATEGORY;
+  const rawCategory = formData.get("category");
+  const category = normalizeOptionalCategory(rawCategory);
   if (typeof listName !== "string" || !listName.trim()) {
     return Response.json({ error: "Invalid list name" }, { status: 400 });
   }
@@ -89,10 +89,8 @@ export async function handleRenameList(ctx: ListActionContext) {
 export async function handleUpdateListCategory(ctx: ListActionContext) {
   const { formData, db, userId, scheduleActivityLog } = ctx;
   const listId = formData.get("listId") as string;
-  const category = formData.get("category") as string;
-  if (!category) {
-    return Response.json({ error: "Invalid category" }, { status: 400 });
-  }
+  const rawCategory = formData.get("category");
+  const category = normalizeOptionalCategory(rawCategory);
   const catError = categoryError(category);
   if (catError) return Response.json({ error: catError }, { status: 400 });
   const ownRow = await db
@@ -104,13 +102,15 @@ export async function handleUpdateListCategory(ctx: ListActionContext) {
   }
   try {
     await db.prepare("UPDATE lists SET category = ? WHERE id = ?").bind(category, listId).run();
+    const oldCatDisplay = ownRow.category || "None";
+    const newCatDisplay = category || "None";
     scheduleActivityLog({
       listId,
       action: "list_settings_changed",
       actorId: userId,
       isOwner: true,
       shareMode: ownRow.share_mode,
-      summary: `Category: ${ownRow.category || DEFAULT_CATEGORY} → ${category}`,
+      summary: `Category: ${oldCatDisplay} → ${newCatDisplay}`,
     });
   } catch (e) {
     console.error("Failed to update list category:", e);

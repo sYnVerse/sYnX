@@ -196,4 +196,54 @@ test.describe("List page smoke tests", () => {
     await fiveMinOption.click();
     await expect(taskItem.getByText("5m")).toBeVisible();
   });
+
+  test("creates a list with no category by default, allows adding a category tag, and clearing it back to none (#139)", async ({ page }) => {
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+
+    // Open create list modal
+    await page.getByRole("button", { name: "Create new list" }).click();
+    await expect(page.getByRole("heading", { name: "Create New List" })).toBeVisible();
+
+    // Verify "None" is selected by default
+    const noneChip = page.getByRole("button", { name: "🚫 None" });
+    await expect(noneChip).toBeVisible();
+
+    // Fill in name and create
+    await page.locator("#create-list-name").fill("No Tag List");
+    await page.getByRole("button", { name: "Create List" }).click();
+
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("No Tag List");
+
+    // The uncategorized list header should show "+ Add Tag" button and no category tag
+    const addTagButton = page.getByRole("button", { name: "+ Add Tag" });
+    await expect(addTagButton).toBeVisible();
+
+    // Click "+ Add Tag" to open category dialog
+    await addTagButton.click();
+    await expect(page.getByRole("heading", { name: "Edit Category Tag" })).toBeVisible();
+
+    // Select "Shopping" tag and save
+    const shoppingChip = page.getByRole("button", { name: "🛒 Shopping" });
+    await shoppingChip.click();
+    await page.getByRole("button", { name: "Save Category" }).click();
+
+    // Header now shows the category tag
+    const categoryTag = page.getByRole("button", { name: "🛒 Shopping" });
+    await expect(categoryTag).toBeVisible();
+    await expect(addTagButton).not.toBeVisible();
+
+    // Click category tag to open Edit Category Tag dialog again
+    await categoryTag.click();
+    await expect(page.getByRole("heading", { name: "Edit Category Tag" })).toBeVisible();
+
+    // Clear category tag by clicking "None"
+    const editNoneChip = page.getByRole("button", { name: "🚫 None" });
+    await editNoneChip.click();
+    await page.getByRole("button", { name: "Save Category" }).click();
+
+    // Verify tag is cleared and "+ Add Tag" is back
+    await expect(categoryTag).not.toBeVisible();
+    await expect(page.getByRole("button", { name: "+ Add Tag" })).toBeVisible();
+  });
 });

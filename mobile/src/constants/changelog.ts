@@ -10,6 +10,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "IMPR",
+        text: "Lists can now have no category selected. New lists start with no category by default, and existing lists can clear their category back to None."
+      },
+      {
         type: "FIX",
         text: "The New Task sheet, task breakdown, list sheet and activity log now keep their action buttons fully visible above the system navigation bar on Android and iOS."
       },

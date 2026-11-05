@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v6.0.1";
+export const WEB_VERSION = "v6.0.2";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v6.0.2",
+    date: "2026-11-06",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Lists can now be created without a category tag by default, and existing lists can clear their category back to None."
+      },
+      {
+        type: "FIX",
+        text: "The estimated duration popover on tasks now opens on screen when tapped on narrow mobile screens instead of overflowing the left edge."
+      }
+    ]
+  },
   {
     version: "v6.0.1",
     date: "2026-11-05",
@@ -11,10 +26,6 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Task pickers on the last tasks in a list now float above scrolling containers and open upward when near the bottom of the screen, so they never get clipped inside the task list."
-      },
-      {
-        type: "FIX",
-        text: "The estimated duration popover on tasks now opens on screen when tapped on narrow mobile screens instead of overflowing the left edge."
       }
     ]
   },

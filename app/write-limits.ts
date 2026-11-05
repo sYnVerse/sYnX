@@ -23,11 +23,19 @@ export function listNameError(name: string): string | null {
     : null;
 }
 
-/** Friendly error for a category that is too long, or null when it fits. */
-export function categoryError(category: string): string | null {
+/** Friendly error for a category that is too long, or null when it fits or is empty/unset. */
+export function categoryError(category?: string | null): string | null {
+  if (!category) return null;
   return category.length > MAX_CATEGORY_LENGTH
     ? `Categories can be up to ${MAX_CATEGORY_LENGTH} characters.`
     : null;
+}
+
+/** Normalizes an optional category input into a trimmed string or null when empty/unset. */
+export function normalizeOptionalCategory(category: unknown): string | null {
+  if (typeof category !== "string") return null;
+  const trimmed = category.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export const MAX_PHONE_NUMBER_LENGTH = 32;

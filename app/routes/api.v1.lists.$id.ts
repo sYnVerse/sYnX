@@ -2,7 +2,7 @@ import type { Route } from "./+types/api.v1.lists.$id";
 import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
-import { DEFAULT_CATEGORY, UpdateListSchema } from "../../shared";
+import { UpdateListSchema } from "../../shared";
 import { getListAccess, serializeListRow, type ListRow } from "../api-helpers.server";
 import {
   deleteRequestActivitySummary,
@@ -10,7 +10,7 @@ import {
 } from "../list-activity.server";
 import { recordSharedListAccess } from "../shared-lists.server";
 import { requestOrPerformDelete } from "../pending-deletes.server";
-import { categoryError, listNameError } from "../write-limits";
+import { categoryError, listNameError, normalizeOptionalCategory } from "../write-limits";
 
 export async function loader({  request, params, context  }: Route.LoaderArgs) {
   const env = getCloudflareContext(context).env;
@@ -85,22 +85,25 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
       const parsed = v.parse(UpdateListSchema, body);
 
       const newName = parsed.name ?? access.list.name;
-      const newCategory = parsed.category ?? access.list.category ?? DEFAULT_CATEGORY;
+      const categoryExplicitlyProvided = parsed.category !== undefined;
+      const normalizedCategory = categoryExplicitlyProvided
+        ? normalizeOptionalCategory(parsed.category)
+        : (access.list.category ?? null);
       const limitError =
         (parsed.name !== undefined ? listNameError(parsed.name) : null) ||
-        (parsed.category !== undefined ? categoryError(parsed.category) : null);
+        (categoryExplicitlyProvided ? categoryError(normalizedCategory) : null);
       if (limitError) {
         return Response.json({ error: limitError }, { status: 400 });
       }
 
       const nameChanged = parsed.name !== undefined && parsed.name !== access.list.name;
       const categoryChanged =
-        parsed.category !== undefined &&
-        (parsed.category ?? DEFAULT_CATEGORY) !== (access.list.category ?? DEFAULT_CATEGORY);
+        categoryExplicitlyProvided &&
+        (access.list.category ?? null) !== normalizedCategory;
 
       await db
         .prepare("UPDATE lists SET name = ?, category = ? WHERE id = ?")
-        .bind(newName, newCategory, listId)
+        .bind(newName, normalizedCategory, listId)
         .run();
 
       const updated = await db.prepare("SELECT * FROM lists WHERE id = ?").bind(listId).first<ListRow>();
@@ -126,6 +129,8 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
         );
       }
       if (categoryChanged) {
+        const oldCat = access.list.category || "None";
+        const newCat = normalizedCategory || "None";
         logJobs.push(
           logListActivity(db, {
             listId,
@@ -134,7 +139,7 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
             isOwner: access.isOwner,
             shareMode,
             request,
-            summary: `Category: ${access.list.category ?? DEFAULT_CATEGORY} → ${newCategory}`,
+            summary: `Category: ${oldCat} → ${newCat}`,
           })
         );
       }

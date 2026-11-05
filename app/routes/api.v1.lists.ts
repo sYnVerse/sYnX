@@ -2,11 +2,11 @@ import type { Route } from "./+types/api.v1.lists";
 import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
-import { CreateListSchema, DEFAULT_CATEGORY } from "../../shared";
+import { CreateListSchema } from "../../shared";
 import { parseListScope, serializeListRows, type ListRow } from "../api-helpers.server";
 import { listSharedWithMe } from "../shared-lists.server";
 import { ownerPayload, resolveDisplayName } from "../user-profile.server";
-import { categoryError, listNameError } from "../write-limits";
+import { categoryError, listNameError, normalizeOptionalCategory } from "../write-limits";
 
 export async function loader({  request, context  }: Route.LoaderArgs) {
   const env = getCloudflareContext(context).env;
@@ -65,7 +65,7 @@ export async function action({  request, context  }: Route.ActionArgs) {
     const parsed = v.parse(CreateListSchema, body);
     const id = crypto.randomUUID();
     const createdAt = Date.now();
-    const category = parsed.category || DEFAULT_CATEGORY;
+    const category = normalizeOptionalCategory(parsed.category);
     const limitError = listNameError(parsed.name) || categoryError(category);
     if (limitError) {
       return Response.json({ error: limitError }, { status: 400 });
