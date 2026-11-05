@@ -41,7 +41,7 @@ export default tseslint.config(
 
   // Node scripts and config files
   {
-    files: ["scripts/**/*.{js,mjs}", "*.config.{js,ts}"],
+    files: ["scripts/**/*.{js,mjs}", "*.config.{js,ts}", "e2e/*.config.{js,ts}"],
     languageOptions: { globals: { ...globals.node } },
   },
 
@@ -97,7 +97,7 @@ export default tseslint.config(
 
   // Tests use `any` for mocks and fixtures.
   {
-    files: ["test/**/*.ts"],
+    files: ["test/**/*.ts", "e2e/**/*.ts"],
     rules: { "@typescript-eslint/no-explicit-any": "off" },
   },
 

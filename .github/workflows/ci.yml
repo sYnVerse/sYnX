@@ -3,14 +3,15 @@ name: CI
 # Lint, tests and typechecks on every pull request and on pushes to main.
 # Runs on GitHub Actions only; it never starts an EAS build.
 #
-# Two platform jobs run in parallel, each only when its files change:
+# Three jobs run in parallel, each only when its files change:
 #   Web    - root lint, all root tests (including the ones that cover mobile
 #            code), web typecheck, and the typecheck of tests that import
 #            mobile code.
+#   E2E    - Playwright smoke tests for the web list page against local wrangler dev.
 #   Mobile - shared/ copy and version sync check, mobile typecheck, mobile
 #            lint, and Expo doctor.
 # Changes that only touch docs, graphify-out/, or other workflow files run
-# neither. If you add branch protection, require the "Web" and "Mobile" checks;
+# neither. If you add branch protection, require the "Web", "E2E", and "Mobile" checks;
 # a job skipped by its `if` counts as passing.
 
 on:
@@ -46,6 +47,7 @@ jobs:
           filters: |
             web:
               - 'app/**'
+              - 'e2e/**'
               - 'shared/**'
               - 'test/**'
               - 'migrations/**'
@@ -64,6 +66,7 @@ jobs:
               - 'tsconfig*.json'
               - 'vite.config.ts'
               - 'vitest.config.ts'
+              - 'playwright.config.ts'
               - 'eslint.config.js'
               - 'postcss.config.js'
               - 'tailwind.config.ts'
@@ -104,6 +107,34 @@ jobs:
         run: npm run typecheck
       - name: Typecheck tests that import mobile code
         run: npm run typecheck:mobile-tests
+
+  e2e:
+    name: E2E
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Apply D1 migrations locally
+        run: npx wrangler d1 migrations apply synx-db --local
+      - name: Run E2E tests
+        run: npm run test:e2e
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
 
   mobile:
     name: Mobile
