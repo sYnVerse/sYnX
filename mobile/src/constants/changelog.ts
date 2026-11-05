@@ -6,6 +6,17 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-05",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "The Settings screen now accounts for safe area insets above the floating tab bar, so the Log Out of sYnID button is fully accessible on phones with three-button navigation."
+      }
+    ]
+  },
+  {
+    version: "v3.5.0",
     date: "2026-11-02",
     title: "What's new?",
     changes: [

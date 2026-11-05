@@ -171,4 +171,5 @@ export {
   FLOATING_TAB_BAR_HEIGHT,
   getFabBottomOffset,
   getListBottomPadding,
+  getTabScreenBottomPadding,
 } from "../shared";

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import SettingsScreenSource from "../mobile/src/screens/SettingsScreen.tsx?raw";
 import {
   SOFT_ASK_REASK_MS,
   evaluateSoftAskPolicy,
@@ -14,8 +15,10 @@ import {
   stripLeadingCategoryEmoji,
   buildCategorizedListName,
   contrastRatio,
+  FLOATING_TAB_BAR_HEIGHT,
   getFabBottomOffset,
   getListBottomPadding,
+  getTabScreenBottomPadding,
 } from "../shared/mobile-ux";
 import { MOBILE_APP_VERSION, MOBILE_VERSION } from "../shared/mobile-version";
 
@@ -170,7 +173,7 @@ describe("mobile version single source of truth", () => {
     expect(MOBILE_APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
     expect(MOBILE_VERSION).toBe(`v${MOBILE_APP_VERSION}`);
     // Current release for this PR
-    expect(MOBILE_APP_VERSION).toBe("3.5.0");
+    expect(MOBILE_APP_VERSION).toBe("3.5.1");
   });
 });
 
@@ -207,5 +210,27 @@ describe("floating action button and tab bar layout math", () => {
     expect(getListBottomPadding(0)).toBe(160);
     expect(getListBottomPadding(28)).toBe(176);
     expect(getListBottomPadding(34)).toBe(182);
+    expect(getListBottomPadding(48)).toBe(196);
+  });
+
+  it("calculates tab screen bottom padding to clear floating tab bar without FAB", () => {
+    // 0 insets: FLOATING_TAB_BAR_HEIGHT (72) + Math.max(0, 12) + extra (24) = 108
+    expect(getTabScreenBottomPadding(0)).toBe(108);
+    expect(getTabScreenBottomPadding(12)).toBe(108);
+    // iPhone with home indicator (34px)
+    expect(getTabScreenBottomPadding(34)).toBe(130);
+    // Android 3-button navigation (48px) — old fixed 110px padding covered bottom 10px of Log Out button
+    expect(getTabScreenBottomPadding(48)).toBe(144);
+    expect(getTabScreenBottomPadding(48)).toBeGreaterThan(FLOATING_TAB_BAR_HEIGHT + 48);
+
+    // Custom extra clearance
+    expect(getTabScreenBottomPadding(0, 16)).toBe(100);
+    expect(getTabScreenBottomPadding(48, 76)).toBe(getListBottomPadding(48));
+  });
+
+  it("ensures SettingsScreen uses dynamic safe area tab screen bottom padding instead of hardcoded 110", () => {
+    expect(SettingsScreenSource).toContain("useSafeAreaInsets");
+    expect(SettingsScreenSource).toContain("getTabScreenBottomPadding(insets.bottom)");
+    expect(SettingsScreenSource).not.toContain("paddingBottom: 110");
   });
 });
