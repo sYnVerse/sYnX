@@ -1,14 +1,6 @@
-import { type PlatformProxy } from "wrangler";
-
-type GetLoadContextArgs = {
-  request: Request;
-  context: {
-    cloudflare: Omit<PlatformProxy<Env>, "dispose" | "caches" | "cf"> & {
-      caches: PlatformProxy<Env>["caches"] | CacheStorage;
-      cf: Request["cf"];
-    };
-  };
-};
+import { RouterContextProvider } from "react-router";
+import type { PlatformProxy } from "wrangler";
+import { cloudflareContext } from "./app/context.server";
 
 declare global {
   interface Env {
@@ -26,12 +18,23 @@ declare global {
   }
 }
 
-declare module "@remix-run/cloudflare" {
-  interface AppLoadContext extends ReturnType<typeof getLoadContext> {
-    // This will merge the result of `getLoadContext` into the `AppLoadContext`
-  }
-}
+export type GetLoadContextArgs = {
+  request: Request;
+  context: {
+    cloudflare: Omit<PlatformProxy<Env>, "dispose" | "caches" | "cf"> & {
+      caches: PlatformProxy<Env>["caches"] | CacheStorage;
+      cf?: Request["cf"];
+    };
+  };
+};
 
-export function getLoadContext({ context }: GetLoadContextArgs) {
-  return context;
+export function getLoadContext({ context }: GetLoadContextArgs): RouterContextProvider {
+  const routerContext = new RouterContextProvider();
+  routerContext.set(cloudflareContext, {
+    env: context.cloudflare.env,
+    ctx: context.cloudflare.ctx,
+    cf: context.cloudflare.cf,
+    caches: context.cloudflare.caches,
+  });
+  return routerContext;
 }

@@ -1,5 +1,6 @@
 {
   "include": [
+    ".react-router/types/**/*",
     "worker-configuration.d.ts",
     "env.d.ts",
     "**/*.ts",
@@ -22,11 +23,13 @@
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
     "types": [
-      "@remix-run/cloudflare",
+      "@react-router/cloudflare",
       "@cloudflare/workers-types",
       "vite/client",
-      "@cloudflare/vitest-pool-workers"
+      "@cloudflare/vitest-pool-workers",
+      "node"
     ],
+    "rootDirs": [".", "./.react-router/types"],
     "isolatedModules": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
@@ -42,8 +45,6 @@
     "paths": {
       "~/*": ["./app/*"]
     },
-
-    // Remix takes care of building everything in `remix build`.
     "noEmit": true
   }
 }

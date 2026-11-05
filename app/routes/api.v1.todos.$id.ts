@@ -1,4 +1,5 @@
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.todos.$id";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import { TodoManager, type TodoRow } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
@@ -12,8 +13,8 @@ import { UpdateTodoSchema } from "../../shared";
 import { taskTextError } from "../write-limits";
 import { canEditReminderText } from "../reminder-ownership";
 
-export async function action({ request, params, context }: ActionFunctionArgs) {
-  const env = context.cloudflare.env;
+export async function action({  request, params, context  }: Route.ActionArgs) {
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -81,7 +82,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       const current = await db.prepare("SELECT * FROM todos WHERE id = ?").bind(todoId).first<TodoRow>();
       updatedTodo = current;
 
-      const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+      const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
       const logPromise = logListActivity(db, {
         listId: todoRow.list_id,
         taskId: todoId,
@@ -102,7 +103,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   }
 
   if (request.method === "DELETE") {
-    const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+    const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
     const result = await requestOrPerformDelete(db, {
       listId: todoRow.list_id,
       userId: user.userId,

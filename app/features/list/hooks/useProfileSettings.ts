@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FetcherWithComponents } from "@remix-run/react";
+import type { FetcherWithComponents } from "react-router";
 import { getLocalTimeZone, isValidTimeZone, listTimeZones } from "../../../../shared";
 
 interface SettingsData {

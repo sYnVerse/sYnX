@@ -1,7 +1,7 @@
-import { createRequestHandler, type ServerBuild } from "@remix-run/cloudflare";
+import { createRequestHandler, type ServerBuild } from "react-router";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore This file won’t exist if it hasn’t yet been built
-import * as build from "./build/server";
+import * as build from "virtual:react-router/server-build";
 import { getLoadContext } from "./load-context";
 
 import { sendFCMPushNotification } from "./app/fcm.server";
@@ -13,7 +13,7 @@ import { pruneOldListActivity } from "./app/list-activity.server";
 import { phoneCarrierGatewayDomain } from "./shared/phone-carriers";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const handleRemixRequest = createRequestHandler(build as any as ServerBuild);
+const handleRequest = createRequestHandler(build as any as ServerBuild);
 
 export default {
   async fetch(request, env, ctx) {
@@ -29,7 +29,7 @@ export default {
           },
         },
       });
-      const response = await handleRemixRequest(request, loadContext);
+      const response = await handleRequest(request, loadContext);
       return finalizeWorkerResponse(request, response);
     } catch (error) {
       console.log(error);

@@ -1,4 +1,5 @@
-import type { LoaderFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.delete-requests";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import { getListAccess } from "../api-helpers.server";
 import {
@@ -11,8 +12,8 @@ import {
  *   ?scope=owned          — pending requests on lists the caller owns (default)
  *   ?listId=<id>          — pending requests for one list the caller can access
  */
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context.cloudflare.env;
+export async function loader({  request, context  }: Route.LoaderArgs) {
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 

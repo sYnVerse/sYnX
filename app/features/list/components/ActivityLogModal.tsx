@@ -1,4 +1,4 @@
-import type { FetcherWithComponents } from "@remix-run/react";
+import type { FetcherWithComponents } from "react-router";
 import { describeListActivityAction, type ListActivityEntry } from "../../../../shared";
 import { formatActivityWhen } from "../format";
 

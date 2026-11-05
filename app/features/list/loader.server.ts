@@ -1,8 +1,5 @@
-import {
-  type LoaderFunctionArgs,
-  redirect,
-  json,
-} from "@remix-run/cloudflare";
+import { redirect } from "react-router";
+import { getCloudflareContext } from "~/context.server";
 import { getAuthSettings, getOptionalUser } from "~/auth.server";
 import {
   DEFAULT_DISPLAY_NAME,
@@ -33,9 +30,10 @@ import type { GuestList } from "./guest-lists";
 
 type LoaderListRow = ListRow & { owner_display_name?: string };
 
-export const loader = async ({ request, params, context }: LoaderFunctionArgs) => {
-  const { userId, email, isLoggedIn, guestId, isNewGuest, accessToken } = await getOptionalUser(request, context.cloudflare.env);
-  const db = context.cloudflare.env.DB;
+export const loader = async ({ request, params, context }: { request: Request; params: Record<string, string | undefined>; context: unknown }) => {
+  const { env, ctx: execCtx } = getCloudflareContext(context);
+  const { userId, email, isLoggedIn, guestId, isNewGuest, accessToken } = await getOptionalUser(request, env);
+  const db = env.DB;
 
   const headers = new Headers();
   if (isNewGuest && guestId) {
@@ -55,9 +53,9 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
       userId,
       email,
       accessToken,
-      issuer: getAuthSettings(request, context.cloudflare.env).issuer,
+      issuer: getAuthSettings(request, env).issuer,
     });
-    const execCtx = context.cloudflare.ctx;
+    // execCtx is already retrieved from getCloudflareContext
     if (execCtx && typeof execCtx.waitUntil === "function") {
       execCtx.waitUntil(providerSync);
     } else {
@@ -334,8 +332,8 @@ export const loader = async ({ request, params, context }: LoaderFunctionArgs) =
   };
 
   if (isNewGuest && guestId) {
-    return json(responsePayload, { headers });
+    return Response.json(responsePayload, { headers });
   }
 
-  return json(responsePayload);
+  return responsePayload;
 };

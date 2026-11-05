@@ -1,23 +1,22 @@
-import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/cloudflare";
-import { json } from "@remix-run/cloudflare";
+import type { Route } from "./+types/mobile.callback";
 
 /**
  * Mobile OAuth redirect target for App Links / PKCE.
  * Intentionally does NOT exchange the authorization code — the Expo app
  * completes the token exchange client-side with its code_verifier.
  */
-export const meta: MetaFunction = () => [
+export const meta: Route.MetaFunction = () => [
   { name: "referrer", content: "no-referrer" },
 ];
 
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const hasCode = Boolean(url.searchParams.get("code"));
 
   // Never log the full URL (may contain the auth code).
   console.log(`[mobile/callback] Pass-through hit; code present: ${hasCode}`);
 
-  return json(
+  return Response.json(
     { ok: true },
     {
       headers: {

@@ -1,4 +1,5 @@
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.lists.$id";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { DEFAULT_CATEGORY, UpdateListSchema } from "../../shared";
@@ -11,8 +12,8 @@ import { recordSharedListAccess } from "../shared-lists.server";
 import { requestOrPerformDelete } from "../pending-deletes.server";
 import { categoryError, listNameError } from "../write-limits";
 
-export async function loader({ request, params, context }: LoaderFunctionArgs) {
-  const env = context.cloudflare.env;
+export async function loader({  request, params, context  }: Route.LoaderArgs) {
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -56,8 +57,8 @@ export async function loader({ request, params, context }: LoaderFunctionArgs) {
   });
 }
 
-export async function action({ request, params, context }: ActionFunctionArgs) {
-  const env = context.cloudflare.env;
+export async function action({  request, params, context  }: Route.ActionArgs) {
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -108,7 +109,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       }
       const list = await serializeListRow(db, updated, { viewerUserId: user.userId });
 
-      const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+      const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
       const shareMode = access.list.share_mode;
       const logJobs: Promise<void>[] = [];
       if (nameChanged) {
@@ -159,7 +160,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
       return Response.json({ error: "Only the list owner can perform this action" }, { status: 403 });
     }
 
-    const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+    const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
     const shareMode = access.list.share_mode;
     const result = await requestOrPerformDelete(db, {
       listId,

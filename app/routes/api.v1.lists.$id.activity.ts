@@ -1,4 +1,5 @@
-import type { LoaderFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.lists.$id.activity";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import {
   LIST_ACTIVITY_DEFAULT_LIMIT,
@@ -10,8 +11,8 @@ import {
  * GET /api/v1/lists/:id/activity?limit=&before=
  * Owner-only activity log for a shared list (newest first).
  */
-export async function loader({ request, params, context }: LoaderFunctionArgs) {
-  const env = context.cloudflare.env;
+export async function loader({  request, params, context  }: Route.LoaderArgs) {
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 

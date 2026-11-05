@@ -1,4 +1,5 @@
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.settings";
+import { getCloudflareContext } from "~/context.server";
 import { getAuthSettings, verifyBearerToken } from "../auth.server";
 import { providerProfileFields, syncProviderProfile } from "../provider-profile.server";
 import {
@@ -23,8 +24,8 @@ interface UserSettingsRow {
   display_name_suggestion_dismissed?: number | null;
 }
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context.cloudflare.env;
+export async function loader({  request, context  }: Route.LoaderArgs) {
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -63,12 +64,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   return Response.json({ success: true, settings });
 }
 
-export async function action({ request, context }: ActionFunctionArgs) {
+export async function action({  request, context  }: Route.ActionArgs) {
   if (request.method !== "PUT") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const env = context.cloudflare.env;
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 

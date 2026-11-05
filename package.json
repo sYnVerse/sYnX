@@ -1,6 +1,6 @@
 {
   "name": "synx",
-  "description": "sYnX: a to-do list app with shared lists, reminders, and sync across web and mobile, built on Remix and Cloudflare Workers.",
+  "description": "sYnX: a to-do list app with shared lists, reminders, and sync across web and mobile, built on React Router and Cloudflare Workers.",
   "license": "AGPL-3.0-or-later",
   "cloudflare": {
     "label": "sYnX",
@@ -21,19 +21,22 @@
   },
   "dependencies": {
     "@openauthjs/openauth": "^0.4.3",
-    "@remix-run/cloudflare": "^2.17.5",
-    "@remix-run/react": "^2.17.5",
+    "@react-router/cloudflare": "^8.5.1",
     "isbot": "5.2.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-router": "^8.5.1",
     "valibot": "^1.4.2"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.67.0",
     "@cloudflare/vitest-pool-workers": "^0.16.10",
     "@cloudflare/workers-types": "^4.20250404.0",
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.64.1",
-    "@remix-run/dev": "^2.17.5",
+    "@react-router/dev": "^8.5.1",
+    "@react-router/fs-routes": "^8.5.1",
+    "@types/node": "^26.6.6",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
     "autoprefixer": "10.4.21",
@@ -48,37 +51,31 @@
     "tailwindcss": "3.4.17",
     "typescript": "5.8.3",
     "typescript-eslint": "^8.72.1",
-    "vite": "^6.4.5",
+    "vite": "^8.3.6",
     "vite-tsconfig-paths": "5.1.4",
     "vitest": "^4.1.12",
     "wrangler": "^4.156.0"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=22.22.0"
   },
   "scripts": {
-    "build": "remix vite:build",
+    "build": "react-router build",
     "cf-typegen": "wrangler types",
-    "check": "tsc && remix vite:build && wrangler deploy --dry-run",
+    "check": "react-router typegen && tsc && react-router build && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler d1 migrations apply synx-db --remote && wrangler deploy",
-    "dev": "remix vite:dev",
+    "dev": "react-router dev",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint --max-warnings 0 .",
     "preview": "npm run build && wrangler dev",
     "start": "wrangler dev",
     "test": "vitest",
-    "test:e2e": "playwright test -c e2e/playwright.config.ts",
-    "typecheck": "tsc",
+    "test:e2e": "npm run build && playwright test -c e2e/playwright.config.ts",
+    "typecheck": "react-router typegen && tsc",
     "typecheck:mobile-tests": "tsc -p test/tsconfig.mobile.json"
   },
   "overrides": {
     "@babel/core": "^7.29.6",
     "@humanfs/node": "^0.16.8",
-    "@remix-run/dev": {
-      "ws": "^7.5.11"
-    },
-    "@remix-run/node": {
-      "undici": "^6.29.1"
-    },
     "body-parser": "^1.20.9",
     "browserslist": "^4.28.7",
     "estree-util-value-to-estree": "^3.3.3",
@@ -99,19 +96,13 @@
     },
     "proxy-addr": "^2.0.8",
     "qs": "^6.16.1",
-    "react-router": "^6.30.6",
-    "react-router-dom": "^6.30.6",
     "sharp": "^0.35.5",
     "source-map-js": "^1.2.2",
     "tailwindcss": {
       "postcss-selector-parser": "^6.1.5"
     },
     "tar": "^7.5.21",
-    "toml": "^5.0.1",
-    "vite": "^6.4.5",
-    "vitest": {
-      "vite": "^8.1.6"
-    }
+    "toml": "^5.0.1"
   },
   "sideEffects": false,
   "type": "module"

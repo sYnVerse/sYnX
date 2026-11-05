@@ -1,16 +1,17 @@
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.lists.$id.share-mode";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { UpdateShareModeSchema } from "../../shared";
 import { serializeListRow, type ListRow } from "../api-helpers.server";
 import { logListActivity } from "../list-activity.server";
 
-export async function action({ request, params, context }: ActionFunctionArgs) {
+export async function action({  request, params, context  }: Route.ActionArgs) {
   if (request.method !== "PUT") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const env = context.cloudflare.env;
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -48,7 +49,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
     // and when entering private (activity would otherwise be skipped).
     const shareModeForLog =
       parsed.shareMode !== "private" ? parsed.shareMode : previousShareMode;
-    const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+    const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
     const logPromise = logListActivity(db, {
       listId,
       action: "list_settings_changed",

@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { FetcherWithComponents } from "@remix-run/react";
+import type { FetcherWithComponents } from "react-router";
 import { GUEST_REMINDER_HINT, type GuestActionPayload } from "~/guest-context";
 import { MAX_TASK_TEXT_LENGTH } from "~/write-limits";
 import { requestNotificationPermission } from "../format";

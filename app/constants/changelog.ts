@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.5.1";
+export const WEB_VERSION = "v6.0.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v6.0.0",
+    date: "2026-11-04",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Upgraded the web runtime from Remix 2 to React Router 8 and Vite 8 with Cloudflare Vite plugin, delivering compile-time route type safety and retiring turbo-stream."
+      }
+    ]
+  },
   {
     version: "v5.5.1",
     date: "2026-11-03",

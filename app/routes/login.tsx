@@ -1,9 +1,12 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
+import type { Route } from "./+types/login";
+import { redirect } from "react-router";
 import { getAuthClient } from "~/auth.server";
 import { serializePkceCookie } from "~/auth-cookies.server";
+import { getCloudflareContext } from "~/context.server";
 
-export const loader = async ({ request, context }: LoaderFunctionArgs) => {
-  const client = getAuthClient(request, context.cloudflare.env);
+export const loader = async ({ request, context }: Route.LoaderArgs) => {
+  const { env } = getCloudflareContext(context);
+  const client = getAuthClient(request, env);
   const callbackUrl = new URL(request.url).origin + "/callback";
 
   // PKCE S256 is required by sYnID (REQUIRE_PKCE). OpenAuth returns challenge.state + verifier.

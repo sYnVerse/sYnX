@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { FetcherWithComponents } from "@remix-run/react";
+import type { FetcherWithComponents } from "react-router";
 import type { GuestActionPayload } from "~/guest-context";
 import { MAX_CATEGORY_LENGTH, MAX_LIST_NAME_LENGTH } from "~/write-limits";
 import { PRESET_CATEGORIES } from "../../../../shared";
