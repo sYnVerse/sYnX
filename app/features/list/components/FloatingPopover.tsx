@@ -125,6 +125,7 @@ export const FloatingPopover: React.FC<FloatingPopoverProps> = ({
         top: coords ? `${coords.top}px` : "-9999px",
         left: coords ? `${coords.left}px` : "-9999px",
         maxHeight: coords ? `${coords.maxHeight}px` : undefined,
+        maxWidth: "calc(100vw - 16px)",
         zIndex: 9999,
       }}
       className={className}

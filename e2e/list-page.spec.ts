@@ -167,4 +167,33 @@ test.describe("List page smoke tests", () => {
     await highOption.click();
     await expect(lastTask.getByRole("button", { name: /HIGH/i })).toBeVisible();
   });
+
+  test("opens duration selector completely on screen on narrow mobile viewport (#138)", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 640 });
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+
+    const taskInput = page.getByPlaceholder("What needs to be done?");
+    await taskInput.fill("Narrow screen task");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(page.locator("li", { hasText: "Narrow screen task" })).toBeVisible();
+
+    const taskItem = page.locator("li", { hasText: "Narrow screen task" });
+    const durationButton = taskItem.getByRole("button", { name: "Set estimated duration" });
+    await expect(durationButton).toBeVisible();
+    await durationButton.click();
+
+    // Find the 5m option button inside the open duration popover
+    const fiveMinOption = page.getByRole("button", { name: "5m", exact: true });
+    await expect(fiveMinOption).toBeVisible();
+
+    const box = await fiveMinOption.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(360);
+
+    // Click 5m and confirm duration is set
+    await fiveMinOption.click();
+    await expect(taskItem.getByText("5m")).toBeVisible();
+  });
 });
