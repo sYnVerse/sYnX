@@ -132,4 +132,39 @@ test.describe("List page smoke tests", () => {
     await page.getByRole("button", { name: "📝 List" }).click();
     await expect(page.getByRole("button", { name: "Today" })).not.toBeVisible();
   });
+
+  test("opens task pickers on the bottom-most item without getting clipped inside the scrolling list (#140)", async ({ page }) => {
+    await page.goto("/");
+    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+
+    const taskInput = page.getByPlaceholder("What needs to be done?");
+    const addButton = page.getByRole("button", { name: "Add", exact: true });
+    for (let i = 1; i <= 6; i++) {
+      await taskInput.fill(`Task item ${i}`);
+      await addButton.click();
+      await expect(page.locator("li", { hasText: `Task item ${i}` })).toBeVisible();
+      await expect(taskInput).toHaveValue("");
+    }
+
+    const lastTask = page.locator("li", { hasText: "Task item 6" });
+    await lastTask.scrollIntoViewIfNeeded();
+
+    // Open Priority picker on the last task
+    const priorityButton = lastTask.getByRole("button", { name: "NONE" });
+    await priorityButton.click();
+
+    // The popover options should be fully visible and rendered above or inside viewport
+    const highOption = page.getByRole("button", { name: /HIGH/i });
+    await expect(highOption).toBeVisible();
+
+    const box = await highOption.boundingBox();
+    expect(box).not.toBeNull();
+    const viewport = page.viewportSize();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height);
+
+    // Click HIGH and verify update
+    await highOption.click();
+    await expect(lastTask.getByRole("button", { name: /HIGH/i })).toBeVisible();
+  });
 });

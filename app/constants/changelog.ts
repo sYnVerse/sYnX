@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v6.0.0";
+export const WEB_VERSION = "v6.0.1";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v6.0.1",
+    date: "2026-11-05",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Task pickers on the last tasks in a list now float above scrolling containers and open upward when near the bottom of the screen, so they never get clipped inside the task list."
+      }
+    ]
+  },
   {
     version: "v6.0.0",
     date: "2026-11-04",
