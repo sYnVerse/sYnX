@@ -25,6 +25,20 @@ Notifications.setNotificationHandler({
 
 const SOFT_ASK_DECLINED_AT_KEY = "SYNX_PUSH_SOFT_ASK_DECLINED_AT";
 const SOFT_ASK_REMINDER_NUDGED_KEY = "SYNX_PUSH_SOFT_ASK_REMINDER_NUDGED";
+export const PUSH_USER_DISABLED_KEY = "SYNX_PUSH_USER_DISABLED";
+
+export async function isPushDisabledByUser(): Promise<boolean> {
+  const val = await AsyncStorage.getItem(PUSH_USER_DISABLED_KEY);
+  return val === "true";
+}
+
+export async function setPushDisabledByUser(disabled: boolean): Promise<void> {
+  if (disabled) {
+    await AsyncStorage.setItem(PUSH_USER_DISABLED_KEY, "true");
+  } else {
+    await AsyncStorage.removeItem(PUSH_USER_DISABLED_KEY);
+  }
+}
 
 export async function ensureAndroidReminderChannel(): Promise<void> {
   if (Platform.OS === "android") {
@@ -39,11 +53,27 @@ export async function ensureAndroidReminderChannel(): Promise<void> {
 
 export async function getPushPermissionStatus(): Promise<PushPermissionStatus> {
   const { status, canAskAgain } = await Notifications.getPermissionsAsync();
-  return mapExpoPermissionToStatus({ status, canAskAgain });
+  const mapped = mapExpoPermissionToStatus({ status, canAskAgain });
+  if (mapped === "granted" && Platform.OS === "android") {
+    try {
+      const channel = await Notifications.getNotificationChannelAsync("task_reminders");
+      if (channel && channel.importance === Notifications.AndroidImportance.NONE) {
+        return "blocked";
+      }
+    } catch {
+      // Ignore channel query errors and fall back to mapped permission
+    }
+  }
+  return mapped;
 }
 
 /** Obtain device token and register with API. Assumes OS permission already granted. */
-export async function registerPushTokenIfPermitted(): Promise<string | null> {
+export async function registerPushTokenIfPermitted(options?: {
+  respectUserOptOut?: boolean;
+}): Promise<string | null> {
+  if (options?.respectUserOptOut !== false && (await isPushDisabledByUser())) {
+    return null;
+  }
   await ensureAndroidReminderChannel();
   const status = await getPushPermissionStatus();
   if (status !== "granted") return null;
@@ -70,6 +100,7 @@ export async function registerPushTokenIfPermitted(): Promise<string | null> {
  * Returns the token, or null if denied / failed.
  */
 export async function requestAndRegisterPush(): Promise<string | null> {
+  await setPushDisabledByUser(false);
   await ensureAndroidReminderChannel();
 
   const existing = await Notifications.getPermissionsAsync();
