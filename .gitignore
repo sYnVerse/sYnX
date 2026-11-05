@@ -13,6 +13,9 @@ node_modules
 !migrations/*.sql
 vitest
 .vitest
+test-results/
+playwright-report/
+blob-report/
 
 # Graphify
 graphify-out/cost.json

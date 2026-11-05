@@ -15,6 +15,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs these on every pull request and
 
 - `npm run lint`
 - `npm test -- --run --maxWorkers=2`
+- `npm run test:e2e` (Playwright smoke tests for the web list page, run against local wrangler dev)
 - `npm run typecheck` (web, must report 0 errors) and `npm run typecheck:mobile-tests` (root tests that import mobile code, checked with the mobile types)
 - `cd mobile && npm run typecheck`
 - `cd mobile && npm run doctor` when `mobile/` or `shared/` changes (see below)
