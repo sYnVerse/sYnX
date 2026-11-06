@@ -15,13 +15,43 @@ GitHub Actions (`.github/workflows/ci.yml`) runs these on every pull request and
 
 - `npm run lint`
 - `npm test -- --run --maxWorkers=2`
-- `npm run test:e2e` (Playwright smoke tests for the web list page, run against local wrangler dev)
+- `npm run test:e2e` (Playwright E2E UI suite: guest, signed-in auth/profile, lists/tasks, and shared lists, run against local wrangler dev)
 - `npm run typecheck` (web, must report 0 errors) and `npm run typecheck:mobile-tests` (root tests that import mobile code, checked with the mobile types)
 - `cd mobile && npm run typecheck`
 - `cd mobile && npm run doctor` when `mobile/` or `shared/` changes (see below)
 - `cd mobile && npm run lint` when `mobile/` or `shared/` changes (Expo's ESLint setup in `mobile/eslint.config.js`; `--max-warnings 0`, so warnings fail CI too)
 
 Tests that import mobile code (and so React Native) go in `test/tsconfig.mobile.json` and the root `tsconfig.json` exclude list, not the web typecheck.
+
+## End-to-End Testing (Playwright)
+
+The web end-to-end suite lives in `e2e/` and runs with `npm run test:e2e` against local `wrangler dev` (which serves the built Remix server bundle on loopback with local D1 migrations applied).
+
+- **CI Enforcement**:
+  - The `e2e` job in `.github/workflows/ci.yml` runs on every pull request that touches web or test code.
+  - It executes `npm run test:e2e` (all guest and signed-in suites). Any test failure fails the job and blocks merging.
+
+- **Suites**:
+  - `e2e/guest-list-check.spec.ts`: Core guest smoke tests (kept intact from baseline).
+  - `e2e/guest-broader-coverage.spec.ts`: Empty states, filtering, searching, header/sidebar renaming, statistics modal, theme toggle, and sign-in CTA.
+  - `e2e/signed-in-auth-and-profile.spec.ts`: Loopback sign-in, session persistence on reload, sign-out (including verification that users remain signed out after reload and cannot open protected settings), guest data migration to signed-in account, profile display name / time zone / notification preferences, and unsaved changes prompt.
+  - `e2e/signed-in-lists-and-tasks.spec.ts`: Multi-list CRUD, category tags (preset & custom), task & subtask lifecycle, inline edit, priority/duration/recurrence/reminder persistence across reloads, toolbar sort & filter persistence, and calendar view scheduling.
+  - `e2e/shared-lists.spec.ts`: Private list access control (unauthorized collaborator redirect), view-only (`public_read`) list restrictions & "Shared with me" sidebar, collaborative (`public_edit`) workflow with delete requests/approval and leaving/unlinking ("Remove from Shared with me"), and permission revocation (owner locking list back to private).
+
+- **Contributor Setup & Test Auth Commands**:
+  - **Running all tests**: `npm run test:e2e` (rebuilds the server bundle and executes the full Playwright suite).
+  - **Running individual suites**: `npx playwright test e2e/<file>.spec.ts` (Playwright automatically starts `wrangler dev` with test auth enabled if not already running).
+  - **Local Test Auth Architecture**:
+    - Gated strictly by `ALLOW_DEV_TEST_AUTH="true"` AND a loopback request host (`127.0.0.1` or `localhost`). (`ALLOW_DEV_REDIRECTS` is reserved for OAuth dev redirect allowance and does NOT enable test auth bypass).
+    - Requires an explicit test login query parameter (`test_login=true`, `test_user_id`, or `userId`) so visiting plain `/login` starts real OAuth.
+    - Gating is verified by unit tests in `test/e2e-test-auth.test.ts` to ensure production safety (`wrangler.jsonc` does not set this flag, and public domains reject test auth).
+    - In tests, create and sign in a test user with helpers from `e2e/helpers.ts`:
+      ```typescript
+      import { createTestUser, signInAs } from "./helpers";
+      const user = createTestUser("my_feature");
+      await signInAs(page, user);
+      ```
+    - `signInAs` navigates to `/login?test_login=true&test_user_id=...&test_email=...&test_display_name=...`, minting a local session cookie instantly without hitting `auth.christran.io`.
 
 ## Mobile dependency check (expo-doctor)
 
@@ -40,9 +70,9 @@ The D1 schema lives in `migrations/` (numbered SQL files applied by Wrangler and
 
 ## Worker Previews (pull request previews)
 
-Every pull request gets a Preview URL from Workers Builds (`wrangler preview`), set up in the `previews` block of `wrangler.jsonc`.
+Every pull request gets a Preview URL from Workers Builds (`wrangler preview`), set up in the `previews` block of `wrangler.jsonc` and deployed via `npm run deploy:preview`.
 
-- Previews use their own `synx-preview` D1 database, never `synx-db`. Before each Preview deploys, the Preview command applies `migrations/` to it through `wrangler.preview-migrations.jsonc`. If you change the preview database, change it in both files.
+- Previews use their own `synx-preview` D1 database, never `synx-db`. Before each Preview deploys, `npm run deploy:preview` applies `migrations/` to it through `wrangler.preview-migrations.jsonc` and deploys via `wrangler preview`. If you change the preview database, change it in both files.
 - Previews don't inherit production settings. Any new binding the app needs must be added to `previews` too, pointed at a preview-safe resource. Never point a preview binding at a production resource.
 - Previews have no notification secrets (Resend, Twilio, Firebase), and cron triggers don't run on them. Don't add any of these.
 - Sign-in doesn't work on previews yet, so check changes there in guest mode.

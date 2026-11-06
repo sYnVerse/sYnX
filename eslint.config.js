@@ -22,6 +22,9 @@ export default tseslint.config(
       "mobile/**",
       ".artifacts/**",
       "worker-configuration.d.ts",
+      "test-results/**",
+      "playwright-report/**",
+      ".react-router/**",
     ],
   },
 

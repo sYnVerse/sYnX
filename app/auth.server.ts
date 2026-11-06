@@ -34,6 +34,171 @@ export interface AuthEnv {
   CLIENT_ID_MAP?: string | Record<string, string>;
   OPENAUTH_ISSUER?: string;
   SYNX_ALLOWED_CLIENT_IDS?: string;
+  ALLOW_DEV_TEST_AUTH?: string;
+  ALLOW_DEV_REDIRECTS?: string;
+}
+
+export const LOCAL_TEST_TOKEN_PREFIX = "e2e_test_session:";
+
+export function isLocalTestAuthAllowed(
+  request: Request,
+  env: AuthEnv | null | undefined,
+): boolean {
+  if (env?.ALLOW_DEV_TEST_AUTH !== "true") return false;
+
+  try {
+    const url = new URL(request.url);
+    if (url.protocol !== "http:") return false;
+    const host = url.hostname.toLowerCase();
+    return (
+      host === "127.0.0.1" ||
+      host === "localhost" ||
+      host === "::1" ||
+      host === "[::1]" ||
+      host.endsWith(".localhost")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function mintLocalTestToken({
+  userId,
+  email,
+}: {
+  userId: string;
+  email: string;
+}): string {
+  return `${LOCAL_TEST_TOKEN_PREFIX}${encodeURIComponent(userId)}:${encodeURIComponent(email)}`;
+}
+
+export function isLocalTestToken(token: string | null | undefined): boolean {
+  return Boolean(token && token.startsWith(LOCAL_TEST_TOKEN_PREFIX));
+}
+
+export function parseLocalTestToken(
+  token: string,
+): { userId: string; email: string } | null {
+  if (!isLocalTestToken(token)) return null;
+  const payload = token.slice(LOCAL_TEST_TOKEN_PREFIX.length);
+  const colon = payload.indexOf(":");
+  if (colon <= 0) return null;
+  try {
+    const userId = decodeURIComponent(payload.slice(0, colon)).trim();
+    const email = decodeURIComponent(payload.slice(colon + 1)).trim();
+    if (!userId || !email || userId === "guest" || userId.startsWith("guest_") || isGuestId(userId)) return null;
+    return { userId, email };
+  } catch {
+    return null;
+  }
+}
+
+export interface TestLoginResult {
+  allowed: boolean;
+  error?: { message: string; status: number };
+  session?: {
+    userId: string;
+    email: string;
+    displayName?: string;
+    suggestedName?: string;
+    redirectTo: string;
+    token: string;
+  };
+}
+
+export function parseTestLoginRequest(
+  request: Request,
+  env: AuthEnv | null | undefined,
+): TestLoginResult {
+  if (!isLocalTestAuthAllowed(request, env)) {
+    return { allowed: false };
+  }
+
+  const url = new URL(request.url);
+  const isTestLoginRequested =
+    url.searchParams.get("test_login") === "true" ||
+    url.searchParams.get("test_login") === "1" ||
+    url.searchParams.has("test_user_id") ||
+    url.searchParams.has("userId");
+
+  if (!isTestLoginRequested) {
+    return { allowed: false };
+  }
+
+  const hasRawUserIdParam =
+    url.searchParams.has("test_user_id") || url.searchParams.has("userId");
+  const rawUserId = (
+    url.searchParams.get("test_user_id") || url.searchParams.get("userId")
+  )?.trim();
+
+  if (hasRawUserIdParam && !rawUserId) {
+    return {
+      allowed: true,
+      error: { message: "Invalid test user ID: ID cannot be empty", status: 400 },
+    };
+  }
+
+  if (
+    rawUserId &&
+    (rawUserId === "guest" || rawUserId.startsWith("guest_") || isGuestId(rawUserId))
+  ) {
+    return {
+      allowed: true,
+      error: {
+        message: "Invalid test user ID: guest IDs cannot be used for authenticated sessions",
+        status: 400,
+      },
+    };
+  }
+
+  const rawEmail = (
+    url.searchParams.get("test_email") || url.searchParams.get("email")
+  )?.trim();
+
+  if (rawEmail && !rawEmail.includes("@")) {
+    return {
+      allowed: true,
+      error: { message: "Invalid test email: must be a valid email address", status: 400 },
+    };
+  }
+
+  const cookieHeader = request.headers.get("Cookie") || "";
+  const guestMatch = cookieHeader.match(/guest_session=([^;]+)/);
+  const guestId = guestMatch ? decodeURIComponent(guestMatch[1]) : null;
+
+  const userId =
+    rawUserId ||
+    (guestId ? `user_${guestId}` : `user_e2e_${crypto.randomUUID().slice(0, 8)}`);
+  const email = rawEmail || `${userId}@e2e.local`;
+  const displayName = (
+    url.searchParams.get("test_display_name") || url.searchParams.get("displayName")
+  )?.trim();
+  const suggestedName = (
+    url.searchParams.get("test_suggested_name") ||
+    url.searchParams.get("suggestedName")
+  )?.trim();
+  const redirectToRaw = url.searchParams.get("redirectTo")?.trim();
+  const redirectTo =
+    redirectToRaw &&
+    redirectToRaw.startsWith("/") &&
+    !redirectToRaw.startsWith("//") &&
+    !redirectToRaw.includes("\\")
+      ? redirectToRaw
+      : "/";
+
+  const token = mintLocalTestToken({ userId, email });
+
+  return {
+    allowed: true,
+    session: {
+      userId,
+      email,
+      displayName,
+      suggestedName,
+      redirectTo,
+      token,
+    },
+  };
 }
 
 export const subjects = createSubjects({
@@ -165,6 +330,10 @@ export async function verifyAccessToken(
   token: string | null | undefined,
 ): Promise<VerifiedAccessToken | null> {
   if (!token) return null;
+  if (isLocalTestToken(token)) {
+    if (!isLocalTestAuthAllowed(request, env)) return null;
+    return parseLocalTestToken(token);
+  }
   const client = getAuthClient(request, env);
   try {
     const verified = await client.verify(subjects, token);
