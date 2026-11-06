@@ -61,6 +61,7 @@
     "cf-typegen": "wrangler types",
     "check": "tsc && remix vite:build && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler d1 migrations apply synx-db --remote && wrangler deploy",
+    "deploy:preview": "npm run build && wrangler d1 migrations apply PREVIEW_DB --remote --config wrangler.preview-migrations.jsonc && wrangler preview",
     "dev": "remix vite:dev",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint --max-warnings 0 .",
     "preview": "npm run build && wrangler dev",

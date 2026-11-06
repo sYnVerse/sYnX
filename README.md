@@ -181,6 +181,7 @@ The local app runs in guest mode until you sign in. Signing in locally needs a s
 | `npm run typecheck` | Web typecheck |
 | `npm run typecheck:mobile-tests` | Typecheck the root tests that import mobile code, using the mobile types |
 | `npm run deploy` | Build, apply D1 migrations to production, then deploy. Workers Builds runs this; don't run it by hand |
+| `npm run deploy:preview` | Build, apply D1 migrations to the preview database, then deploy a Worker Preview. Workers Builds runs this for PRs; don't run it by hand |
 
 ---
 
@@ -206,7 +207,7 @@ CI also checks that `mobile/src/shared/` and the mobile version files are in syn
 
 The `synx` Worker deploys through [Cloudflare Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/), which is connected to this repo:
 
-* **Pull requests and other branches** run `npx wrangler versions upload`. That uploads a version without deploying it. Preview URLs are turned off.
+* **Pull requests and other branches** run `npm run deploy:preview`: build, apply any pending D1 migrations to the preview database (`synx-preview`), then `wrangler preview`.
 * **`main`** runs `npm run deploy`: build, apply any pending D1 migrations to production, then `wrangler deploy`.
 
 ### Database schema and migrations

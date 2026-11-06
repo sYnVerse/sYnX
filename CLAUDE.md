@@ -56,9 +56,9 @@ The D1 schema lives in `migrations/` (numbered SQL files applied by Wrangler and
 
 ## Worker Previews (pull request previews)
 
-Every pull request gets a Preview URL from Workers Builds (`wrangler preview`), set up in the `previews` block of `wrangler.jsonc`.
+Every pull request gets a Preview URL from Workers Builds (`wrangler preview`), set up in the `previews` block of `wrangler.jsonc` and deployed via `npm run deploy:preview`.
 
-- Previews use their own `synx-preview` D1 database, never `synx-db`. Before each Preview deploys, the Preview command applies `migrations/` to it through `wrangler.preview-migrations.jsonc`. If you change the preview database, change it in both files.
+- Previews use their own `synx-preview` D1 database, never `synx-db`. Before each Preview deploys, `npm run deploy:preview` applies `migrations/` to it through `wrangler.preview-migrations.jsonc` and deploys via `wrangler preview`. If you change the preview database, change it in both files.
 - Previews don't inherit production settings. Any new binding the app needs must be added to `previews` too, pointed at a preview-safe resource. Never point a preview binding at a production resource.
 - Previews have no notification secrets (Resend, Twilio, Firebase), and cron triggers don't run on them. Don't add any of these.
 - Sign-in doesn't work on previews yet, so check changes there in guest mode.
