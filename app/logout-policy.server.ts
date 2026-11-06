@@ -14,10 +14,10 @@ export type LogoutPlan = {
  */
 export function planLogoutAction(
   requestUrl: string,
-  opts: { clientID: string; issuer: string },
+  opts: { clientID: string; issuer: string; forceLocal?: boolean },
 ): LogoutPlan {
   const url = new URL(requestUrl);
-  const local = url.searchParams.get("local") === "true";
+  const local = url.searchParams.get("local") === "true" || Boolean(opts.forceLocal);
 
   if (local) {
     return {
@@ -34,9 +34,12 @@ export function planLogoutAction(
   };
 }
 
-export function planLogoutLoader(requestUrl: string): LogoutPlan {
+export function planLogoutLoader(
+  requestUrl: string,
+  opts?: { forceLocal?: boolean },
+): LogoutPlan {
   const url = new URL(requestUrl);
-  const local = url.searchParams.get("local") === "true";
+  const local = url.searchParams.get("local") === "true" || Boolean(opts?.forceLocal);
 
   if (local) {
     return {

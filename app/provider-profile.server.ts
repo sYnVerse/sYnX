@@ -1,3 +1,4 @@
+import { isLocalTestToken } from "./auth.server";
 import { sanitizeDisplayNameInput } from "./user-profile.server";
 
 /**
@@ -87,7 +88,7 @@ export async function syncProviderProfile(
     fetchImpl?: typeof fetch;
   }
 ): Promise<void> {
-  if (!input.accessToken) return;
+  if (!input.accessToken || isLocalTestToken(input.accessToken)) return;
   const now = input.now ?? Date.now();
   try {
     if (!input.force) {

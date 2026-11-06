@@ -90,4 +90,13 @@ describe("logout cookie clearing policy", () => {
     expect(plan.location).toBe("/");
     expect(plan.headers).toBeNull();
   });
+
+  it("forceLocal=true GET loader clears session, refresh, and PKCE even without local=true in URL", () => {
+    const plan = planLogoutLoader("http://localhost:5173/logout", { forceLocal: true });
+    expect(plan.location).toBe("/");
+    const cookies = setCookieValues(plan.headers);
+    expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_COOKIE}=;`))).toBe(true);
+    expect(cookies.some((c) => c.startsWith(`${AUTH_REFRESH_COOKIE}=;`))).toBe(true);
+    expect(cookies.some((c) => c.startsWith(`${PKCE_COOKIE_NAME}=;`))).toBe(true);
+  });
 });
