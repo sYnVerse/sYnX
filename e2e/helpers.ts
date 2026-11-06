@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { randomBytes } from "crypto";
 import { WEB_VERSION } from "../app/constants/changelog";
 
 export interface TestUser {
@@ -8,7 +9,7 @@ export interface TestUser {
 }
 
 export function createTestUser(prefix = "user"): TestUser {
-  const nonce = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const nonce = `${Date.now()}_${randomBytes(4).toString("hex")}`;
   return {
     userId: `e2e_${prefix}_${nonce}`,
     email: `e2e_${prefix}_${nonce}@example.com`,
