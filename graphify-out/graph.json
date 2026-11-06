@@ -13967,7 +13967,7 @@
       "label": "Mobile dependency check (expo-doctor)",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L42",
+      "source_location": "L55",
       "_origin": "ast",
       "id": "claude_mobile_dependency_check_expo_doctor",
       "community": 17,
@@ -13977,7 +13977,7 @@
       "label": "Database schema (D1 migrations)",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L47",
+      "source_location": "L60",
       "_origin": "ast",
       "id": "claude_database_schema_d1_migrations",
       "community": 17,
@@ -13987,7 +13987,7 @@
       "label": "Worker Previews (pull request previews)",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L57",
+      "source_location": "L70",
       "_origin": "ast",
       "id": "claude_worker_previews_pull_request_previews",
       "community": 17,
@@ -13997,7 +13997,7 @@
       "label": "Versioning Rules (SemVer)",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L67",
+      "source_location": "L80",
       "_origin": "ast",
       "id": "claude_versioning_rules_semver",
       "community": 17,
@@ -44089,5 +44089,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "20f6e6312fe4278062d617472ecfef207c41842a"
+  "built_at_commit": "88ea92ba525dd42d0fe91b81b4261193bf36730d"
 }

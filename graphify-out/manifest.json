@@ -105,8 +105,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1793940379.8082936,
-    "ast_hash": "6e51ebc8fd007c87f292cd900c44d010",
+    "mtime": 1793942216.414766,
+    "ast_hash": "6ba412eac477b09066caeb700713d442",
     "semantic_hash": ""
   },
   "app/api-helpers.server.ts": {
@@ -1300,18 +1300,18 @@
     "semantic_hash": ""
   },
   "e2e/shared-lists.spec.ts": {
-    "mtime": 1793925906.2970314,
-    "ast_hash": "b50986d50b316e43abd6252bd9472c2d",
+    "mtime": 1793942195.4641366,
+    "ast_hash": "e2c7b085c9690f67fbe958424a7bce76",
     "semantic_hash": ""
   },
   "e2e/signed-in-auth-and-profile.spec.ts": {
-    "mtime": 1793925219.6805818,
-    "ast_hash": "6779cf2081d576b1fd69505e232ad0f4",
+    "mtime": 1793942368.4677072,
+    "ast_hash": "8a26f38d6cf7ab0b401e9095631b4690",
     "semantic_hash": ""
   },
   "e2e/signed-in-lists-and-tasks.spec.ts": {
-    "mtime": 1793926411.2163053,
-    "ast_hash": "84a148e2620bb23699d85778421bd41d",
+    "mtime": 1793942180.9697094,
+    "ast_hash": "7c306fe512907efb243255bff1420d37",
     "semantic_hash": ""
   }
 }
