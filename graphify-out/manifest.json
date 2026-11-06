@@ -1,7 +1,7 @@
 {
   "app/auth.server.ts": {
-    "mtime": 1793945264.1464226,
-    "ast_hash": "61baffad73e0eaa159abc8cf442fb458",
+    "mtime": 1793947503.5240893,
+    "ast_hash": "bbbe9d45402c795124e42da5d764d695",
     "semantic_hash": ""
   },
   "app/entry.client.tsx": {
@@ -105,8 +105,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1793942216.414766,
-    "ast_hash": "6ba412eac477b09066caeb700713d442",
+    "mtime": 1793947495.8995845,
+    "ast_hash": "bf0a4c11e421611d0f30e13261f1d145",
     "semantic_hash": ""
   },
   "app/api-helpers.server.ts": {
