@@ -98,6 +98,7 @@ export async function action({  request, context  }: Route.ActionArgs) {
       isOwner: true,
       canEdit: true,
       owner: ownerPayload(displayName),
+      openTaskCount: 0,
     };
 
     return Response.json({ success: true, list: newList }, { status: 201 });

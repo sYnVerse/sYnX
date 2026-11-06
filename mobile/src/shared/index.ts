@@ -155,6 +155,8 @@ export interface TodoList {
   canEdit?: boolean;
   /** Additive: present on newer API responses */
   owner?: ListOwner;
+  /** Additive: count of open top-level tasks in this list */
+  openTaskCount?: number;
 }
 
 // User settings data structure

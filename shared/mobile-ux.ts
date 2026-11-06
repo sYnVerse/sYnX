@@ -1,3 +1,8 @@
+import { getCategoryEmoji, getCategoryTagEmoji, isPresetCategory } from "./categories";
+import { getShareModeLabel } from "./list-permissions";
+import { sortTasks, type TaskSortMode, type SortableTask } from "./task-sort";
+import { splitCompletedTasks } from "./task-sections";
+
 /** Mirrors types in index.ts — local to avoid circular imports. */
 type ShareMode = "private" | "public_read" | "public_edit";
 type PriorityLevel = "low" | "medium" | "high" | "none";
@@ -326,5 +331,151 @@ export function deriveCalendarSettingsState(input: CalendarSettingsStateInput): 
   return {
     isWarningVisible: input.syncEnabled && !input.permissionGranted,
     canSync: input.syncEnabled && input.permissionGranted,
+  };
+}
+
+export interface ListRowTitleAndEmojiInput {
+  name: string;
+  category?: string | null;
+}
+
+export interface ListRowTitleAndEmojiResult {
+  emoji: string | null;
+  title: string;
+}
+
+/**
+ * Returns the leading category emoji (if categorized) and the title with any
+ * duplicate leading preset emoji stripped. Uncategorized lists get no emoji badge.
+ */
+export function formatListRowTitleAndEmoji(
+  input: ListRowTitleAndEmojiInput
+): ListRowTitleAndEmojiResult {
+  const category = input.category?.trim() || null;
+  const name = input.name.trim();
+
+  if (!category) {
+    return {
+      emoji: null,
+      title: name,
+    };
+  }
+
+  const emoji = getCategoryTagEmoji(category);
+  const presetEmoji = isPresetCategory(category) ? getCategoryEmoji(category) : "";
+  const title = stripLeadingCategoryEmoji(name, presetEmoji) || name;
+
+  return {
+    emoji,
+    title,
+  };
+}
+
+export interface ListRowMetaInput {
+  openTaskCount?: number | null;
+  category?: string | null;
+  shareMode?: ShareMode;
+  isOwner?: boolean;
+  ownerDisplayName?: string | null;
+}
+
+/**
+ * Formats the muted subtitle line for a list row:
+ * Owned: "<N> tasks · <Category> · <ShareMode>"
+ * Shared: "<N> tasks · Shared by <Name> · <Category> · <ShareMode>"
+ */
+export function formatListRowMeta(input: ListRowMetaInput): string {
+  const parts: string[] = [];
+
+  if (typeof input.openTaskCount === "number" && input.openTaskCount >= 0) {
+    parts.push(`${input.openTaskCount} ${input.openTaskCount === 1 ? "task" : "tasks"}`);
+  }
+
+  const category = input.category?.trim();
+  const shareMode = input.shareMode || "private";
+
+  if (input.isOwner === false) {
+    parts.push(listOwnershipLabel(false, input.ownerDisplayName));
+    if (category) {
+      parts.push(category);
+    }
+    parts.push(getShareModeLabel(shareMode));
+  } else {
+    if (category) {
+      parts.push(category);
+    }
+    parts.push(getShareModeLabel(shareMode));
+  }
+
+  return parts.join(" · ");
+}
+
+export interface PreviewTaskItem<T> {
+  task: T;
+  openSubtasks: T[];
+  completedSubtaskCount: number;
+}
+
+export interface ListPreviewTasksResult<T> {
+  openTasks: PreviewTaskItem<T>[];
+  completedMainCount: number;
+  totalMainCount: number;
+}
+
+/**
+ * Groups and filters tasks for the Lists screen inline preview (#131):
+ * - Hides completed main tasks and completed subtasks
+ * - Sorts tasks according to sortMode
+ * - Reports counts for hidden completed items and overall completion state
+ */
+export function buildListPreviewTasks<T extends {
+  id: string;
+  parentId?: string | null;
+  completed: boolean;
+  subtasks?: T[];
+} & Partial<SortableTask>>(
+  todos: readonly T[],
+  sortMode?: TaskSortMode
+): ListPreviewTasksResult<T> {
+  const parentMap: Record<string, T & { subtasks: T[] }> = {};
+  const topLevel: (T & { subtasks: T[] })[] = [];
+
+  todos.forEach((t) => {
+    if (!t.parentId) {
+      const item = { ...t, subtasks: [] };
+      parentMap[t.id] = item;
+      topLevel.push(item);
+    }
+  });
+
+  todos.forEach((st) => {
+    if (st.parentId && parentMap[st.parentId]) {
+      parentMap[st.parentId].subtasks.push(st as T);
+    }
+  });
+
+  const sortedTopLevel = sortMode
+    ? (sortTasks(
+        topLevel as unknown as (SortableTask & { subtasks?: unknown[] })[],
+        sortMode
+      ) as unknown as (T & { subtasks: T[] })[])
+    : topLevel;
+
+  const { active: openMain, completed: completedMain } = splitCompletedTasks(sortedTopLevel);
+
+  const openTasks: PreviewTaskItem<T>[] = openMain.map((parent) => {
+    const rawSubtasks = parent.subtasks || [];
+    const { active: openSubtasks, completed: doneSubtasks } = splitCompletedTasks(rawSubtasks);
+    return {
+      task: parent,
+      openSubtasks,
+      completedSubtaskCount: doneSubtasks.length,
+    };
+  });
+
+  return {
+    openTasks,
+    completedMainCount: completedMain.length,
+    totalMainCount: sortedTopLevel.length,
   };
 }
