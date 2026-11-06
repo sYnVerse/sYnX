@@ -11,6 +11,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
       {
         type: "FIX",
         text: "Task pickers on the last tasks in a list now float above scrolling containers and open upward when near the bottom of the screen, so they never get clipped inside the task list."
+      },
+      {
+        type: "FIX",
+        text: "The estimated duration popover on tasks now opens on screen when tapped on narrow mobile screens instead of overflowing the left edge."
       }
     ]
   },

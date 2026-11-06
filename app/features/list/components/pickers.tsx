@@ -175,6 +175,7 @@ export function DurationPicker({
             : "bg-transparent border-transparent text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
           }`}
         title="Set Duration"
+        aria-label={hasDuration ? `Estimated duration: ${displayDuration} minutes` : "Set estimated duration"}
       >
         <span>⏱️</span>
         {hasDuration && <span>{displayDuration}m</span>}
