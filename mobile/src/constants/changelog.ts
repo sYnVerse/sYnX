@@ -6,6 +6,25 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-07",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Redesigned the Lists screen with compact single-line rows, a top-right Simple/Details view toggle, and a cleaner action sheet for pin, share, edit, and delete.",
+      },
+      {
+        type: "IMPR",
+        text: "The Lists screen task preview now hides completed tasks and subtasks so you only see what's left to do, with counts for completed items.",
+      },
+      {
+        type: "FIX",
+        text: "The new list button is now in the top header and no longer overlaps action buttons or list cards while scrolling.",
+      },
+    ],
+  },
+  {
+    version: "v3.5.2",
     date: "2026-11-06",
     title: "What's new?",
     changes: [

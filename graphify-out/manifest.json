@@ -110,8 +110,8 @@
     "semantic_hash": ""
   },
   "app/api-helpers.server.ts": {
-    "mtime": 1793993696.8332016,
-    "ast_hash": "2a8c7ae8df2b961bc4dd3ad9ca0105cb",
+    "mtime": 1793997166.9145615,
+    "ast_hash": "49b28764db1c6ec7bad0bbac45982e31",
     "semantic_hash": ""
   },
   "app/components/calendar-view.tsx": {
@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "app/routes/api.v1.lists.ts": {
-    "mtime": 1793993696.8727865,
-    "ast_hash": "158efc88a093b860b945ebe5df2f51a1",
+    "mtime": 1793997173.612311,
+    "ast_hash": "7228c2079658e7ce58e3f623aa0ecc43",
     "semantic_hash": ""
   },
   "app/routes/api.v1.settings.ts": {
@@ -185,8 +185,8 @@
     "semantic_hash": ""
   },
   "mobile/app.json": {
-    "mtime": 1793993696.9233685,
-    "ast_hash": "e4cd2676adbf86b256687bcb19d6aae2",
+    "mtime": 1793997444.4260938,
+    "ast_hash": "8d7c6defdeba5d0c5160ac60fd622b76",
     "semantic_hash": ""
   },
   "mobile/babel.config.js": {
@@ -205,8 +205,8 @@
     "semantic_hash": ""
   },
   "mobile/package.json": {
-    "mtime": 1793993696.925002,
-    "ast_hash": "02942869f2dd4a0235c1485c01cceb41",
+    "mtime": 1793997444.4213345,
+    "ast_hash": "6ea352b9bdbeb52cb43f0e671c703889",
     "semantic_hash": ""
   },
   "mobile/scripts/decode-google-services.js": {
@@ -230,8 +230,8 @@
     "semantic_hash": ""
   },
   "mobile/src/navigation/BottomTabNavigator.tsx": {
-    "mtime": 1793922923.6953652,
-    "ast_hash": "6ed76c5207c5936f3b658334034b3e90",
+    "mtime": 1793997276.760305,
+    "ast_hash": "f3729d06049020bb237d59effbac5b05",
     "semantic_hash": ""
   },
   "mobile/src/screens/CalendarScreen.tsx": {
@@ -240,12 +240,12 @@
     "semantic_hash": ""
   },
   "mobile/src/screens/ListsScreen.tsx": {
-    "mtime": 1793993696.9377408,
-    "ast_hash": "065894c1c87e29d9740c849756cf1865",
+    "mtime": 1793997529.3615103,
+    "ast_hash": "e68cba2f8628205665f960e70c83eefa",
     "semantic_hash": ""
   },
   "mobile/src/screens/SettingsScreen.tsx": {
-    "mtime": 1793993873.4001324,
+    "mtime": 1793997055.137118,
     "ast_hash": "58ebd35bead557432b9f3842e7ffede3",
     "semantic_hash": ""
   },
@@ -275,8 +275,8 @@
     "semantic_hash": ""
   },
   "shared/index.ts": {
-    "mtime": 1793993696.9528372,
-    "ast_hash": "8170d6e237b810fdb20ff7cc4c683dbc",
+    "mtime": 1793997076.504752,
+    "ast_hash": "2a7946d4fd940cb42b746609e4de2204",
     "semantic_hash": ""
   },
   "mobile/assets/adaptive-icon.png": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   "mobile/src/components/SkeletonLoader.tsx": {
-    "mtime": 1793922923.66314,
-    "ast_hash": "ed1d64e69f62dea96376460990b93ca1",
+    "mtime": 1793997268.4583316,
+    "ast_hash": "bba00ed8f29b15bb356749df517c99d3",
     "semantic_hash": ""
   },
   "mobile/src/components/TaskBreakdownModal.tsx": {
@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "mobile/src/constants/changelog.ts": {
-    "mtime": 1793993883.6074495,
-    "ast_hash": "4287867650bde49891fb10d6ce815c28",
+    "mtime": 1793997438.7093246,
+    "ast_hash": "a758fe3a35049f1bb32117dc07cf1a5b",
     "semantic_hash": ""
   },
   "mobile/src/constants/version.ts": {
@@ -455,7 +455,7 @@
     "semantic_hash": ""
   },
   "mobile/src/context/PushPromptContext.tsx": {
-    "mtime": 1793993852.2083468,
+    "mtime": 1793997055.1355426,
     "ast_hash": "fd45f6e20d0d8b470deb37e38c366a88",
     "semantic_hash": ""
   },
@@ -470,7 +470,7 @@
     "semantic_hash": ""
   },
   "mobile/src/services/calendar.ts": {
-    "mtime": 1793993782.3987145,
+    "mtime": 1793997055.138769,
     "ast_hash": "e1865785051e5b78a8a56222db32f361",
     "semantic_hash": ""
   },
@@ -480,8 +480,8 @@
     "semantic_hash": ""
   },
   "mobile/src/shared/index.ts": {
-    "mtime": 1793993696.9528372,
-    "ast_hash": "8170d6e237b810fdb20ff7cc4c683dbc",
+    "mtime": 1793997076.504752,
+    "ast_hash": "2a7946d4fd940cb42b746609e4de2204",
     "semantic_hash": ""
   },
   "mobile/src/shared/list-permissions.ts": {
@@ -495,13 +495,13 @@
     "semantic_hash": ""
   },
   "mobile/src/shared/mobile-ux.ts": {
-    "mtime": 1793993714.7733572,
-    "ast_hash": "c426a6ac1a5cdfe65e22f2ecfa1a54be",
+    "mtime": 1793997627.21985,
+    "ast_hash": "bd45b82f73ee652621a76802e197e7f2",
     "semantic_hash": ""
   },
   "mobile/src/shared/mobile-version.ts": {
-    "mtime": 1793993696.9547975,
-    "ast_hash": "d683d1b929acbfc4e6cb781bc3553884",
+    "mtime": 1793997429.200797,
+    "ast_hash": "d6b8f5e15147d06c5eed7343f632949a",
     "semantic_hash": ""
   },
   "mobile/src/shared/todo-completed.ts": {
@@ -515,8 +515,8 @@
     "semantic_hash": ""
   },
   "mobile/src/utils/format.ts": {
-    "mtime": 1793993720.7064877,
-    "ast_hash": "c6b4c6524d411bca705517ce0cae9ba4",
+    "mtime": 1793997129.7145317,
+    "ast_hash": "fcbf9ffb9f74c16e7c8c4f9713bc62ef",
     "semantic_hash": ""
   },
   "scripts/mock-synid-pkce.mjs": {
@@ -545,13 +545,13 @@
     "semantic_hash": ""
   },
   "shared/mobile-ux.ts": {
-    "mtime": 1793993714.7733572,
-    "ast_hash": "c426a6ac1a5cdfe65e22f2ecfa1a54be",
+    "mtime": 1793997627.21985,
+    "ast_hash": "bd45b82f73ee652621a76802e197e7f2",
     "semantic_hash": ""
   },
   "shared/mobile-version.ts": {
-    "mtime": 1793993696.9547975,
-    "ast_hash": "d683d1b929acbfc4e6cb781bc3553884",
+    "mtime": 1793997429.200797,
+    "ast_hash": "d6b8f5e15147d06c5eed7343f632949a",
     "semantic_hash": ""
   },
   "shared/todo-completed.ts": {
@@ -1080,7 +1080,7 @@
     "semantic_hash": ""
   },
   "mobile/src/components/TaskRow.tsx": {
-    "mtime": 1793993736.7657256,
+    "mtime": 1793997055.1333573,
     "ast_hash": "ec8c7de78eb22a876126c1061fb3092a",
     "semantic_hash": ""
   },
@@ -1335,8 +1335,18 @@
     "semantic_hash": ""
   },
   "mobile/src/components/CalendarAccessSoftAsk.tsx": {
-    "mtime": 1793993796.6748898,
+    "mtime": 1793997055.1322677,
     "ast_hash": "737c465618045213d3ed21333a247dad",
+    "semantic_hash": ""
+  },
+  "mobile/src/components/ListRow.tsx": {
+    "mtime": 1793997253.7482157,
+    "ast_hash": "39f1f0956584abfd242c07e814fd1859",
+    "semantic_hash": ""
+  },
+  "mobile/src/services/listViewPreferences.ts": {
+    "mtime": 1793997188.4882822,
+    "ast_hash": "b9d1aa82838c3f1f9d43929175c27373",
     "semantic_hash": ""
   }
 }
