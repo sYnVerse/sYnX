@@ -179,7 +179,10 @@ export function parseTestLoginRequest(
   )?.trim();
   const redirectToRaw = url.searchParams.get("redirectTo")?.trim();
   const redirectTo =
-    redirectToRaw && redirectToRaw.startsWith("/") && !redirectToRaw.startsWith("//")
+    redirectToRaw &&
+    redirectToRaw.startsWith("/") &&
+    !redirectToRaw.startsWith("//") &&
+    !redirectToRaw.includes("\\")
       ? redirectToRaw
       : "/";
 

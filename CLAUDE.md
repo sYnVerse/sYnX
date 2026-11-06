@@ -42,7 +42,8 @@ The web end-to-end suite lives in `e2e/` and runs with `npm run test:e2e` agains
   - **Running all tests**: `npm run test:e2e` (rebuilds the server bundle and executes the full Playwright suite).
   - **Running individual suites**: `npx playwright test e2e/<file>.spec.ts` (Playwright automatically starts `wrangler dev` with test auth enabled if not already running).
   - **Local Test Auth Architecture**:
-    - Gated by `ALLOW_DEV_TEST_AUTH="true"` (or `ALLOW_DEV_REDIRECTS="true"`) AND a loopback request host (`127.0.0.1` or `localhost`).
+    - Gated strictly by `ALLOW_DEV_TEST_AUTH="true"` AND a loopback request host (`127.0.0.1` or `localhost`). (`ALLOW_DEV_REDIRECTS` is reserved for OAuth dev redirect allowance and does NOT enable test auth bypass).
+    - Requires an explicit test login query parameter (`test_login=true`, `test_user_id`, or `userId`) so visiting plain `/login` starts real OAuth.
     - Gating is verified by unit tests in `test/e2e-test-auth.test.ts` to ensure production safety (`wrangler.jsonc` does not set this flag, and public domains reject test auth).
     - In tests, create and sign in a test user with helpers from `e2e/helpers.ts`:
       ```typescript
@@ -50,7 +51,7 @@ The web end-to-end suite lives in `e2e/` and runs with `npm run test:e2e` agains
       const user = createTestUser("my_feature");
       await signInAs(page, user);
       ```
-    - `signInAs` navigates to `/login?test_user_id=...&test_email=...&test_display_name=...`, minting a local session cookie instantly without hitting `auth.christran.io`.
+    - `signInAs` navigates to `/login?test_login=true&test_user_id=...&test_email=...&test_display_name=...`, minting a local session cookie instantly without hitting `auth.christran.io`.
 
 ## Mobile dependency check (expo-doctor)
 

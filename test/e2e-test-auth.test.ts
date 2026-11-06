@@ -118,6 +118,22 @@ describe("E2E Test Auth Guard & Tokens", () => {
       expect(result.session?.email).toBe("legacy@example.com");
       expect(result.session?.redirectTo).toBe("/");
     });
+
+    it("rejects open redirects with backslashes (such as /\\example.com) and falls back to /", () => {
+      const maliciousUrls = [
+        "http://127.0.0.1:8787/login?test_login=true&redirectTo=/\\example.com",
+        "http://127.0.0.1:8787/login?test_login=true&redirectTo=//example.com",
+        "http://127.0.0.1:8787/login?test_login=true&redirectTo=https://example.com",
+        "http://127.0.0.1:8787/login?test_login=true&redirectTo=\\\\example.com",
+        "http://127.0.0.1:8787/login?test_login=true&redirectTo=/safe\\unsafe",
+      ];
+      for (const rawUrl of maliciousUrls) {
+        const req = new Request(rawUrl);
+        const result = parseTestLoginRequest(req, env);
+        expect(result.allowed).toBe(true);
+        expect(result.session?.redirectTo).toBe("/");
+      }
+    });
   });
 
   describe("mintLocalTestToken and parseLocalTestToken", () => {
