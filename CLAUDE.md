@@ -15,13 +15,29 @@ GitHub Actions (`.github/workflows/ci.yml`) runs these on every pull request and
 
 - `npm run lint`
 - `npm test -- --run --maxWorkers=2`
-- `npm run test:e2e` (Playwright smoke tests for the web list page, run against local wrangler dev)
+- `npm run test:e2e` (Playwright E2E UI suite: guest, signed-in auth/profile, lists/tasks, and shared lists, run against local wrangler dev)
 - `npm run typecheck` (web, must report 0 errors) and `npm run typecheck:mobile-tests` (root tests that import mobile code, checked with the mobile types)
 - `cd mobile && npm run typecheck`
 - `cd mobile && npm run doctor` when `mobile/` or `shared/` changes (see below)
 - `cd mobile && npm run lint` when `mobile/` or `shared/` changes (Expo's ESLint setup in `mobile/eslint.config.js`; `--max-warnings 0`, so warnings fail CI too)
 
 Tests that import mobile code (and so React Native) go in `test/tsconfig.mobile.json` and the root `tsconfig.json` exclude list, not the web typecheck.
+
+## End-to-End Testing (Playwright)
+
+The web end-to-end suite lives in `e2e/` and runs with `npm run test:e2e` against local `wrangler dev` (which serves the built Remix server bundle on loopback with local D1 migrations applied).
+
+- **Suites**:
+  - `e2e/guest-list-check.spec.ts`: Core guest smoke tests (kept intact from baseline).
+  - `e2e/guest-broader-coverage.spec.ts`: Empty states, filtering, searching, header/sidebar renaming, statistics modal, theme toggle, and sign-in CTA.
+  - `e2e/signed-in-auth-and-profile.spec.ts`: Loopback sign-in, session persistence on reload, sign-out, guest data migration to signed-in account, profile display name / time zone / notification preferences, and unsaved changes prompt.
+  - `e2e/signed-in-lists-and-tasks.spec.ts`: Multi-list CRUD, category tags (preset & custom), task & subtask lifecycle, inline edit, priority/duration/recurrence/reminder persistence across reloads, toolbar sorting, and calendar view scheduling.
+  - `e2e/shared-lists.spec.ts`: Private list access control (unauthorized collaborator redirect), view-only (`public_read`) list restrictions & "Shared with me" sidebar, and collaborative (`public_edit`) workflow with delete requests and approval flow.
+
+- **Dev / CI Test Auth Architecture**:
+  - Test authentication bypass is strictly gated by `ALLOW_DEV_TEST_AUTH="true"` (or `ALLOW_DEV_REDIRECTS="true"`) AND a loopback request host (`127.0.0.1` or `localhost`). It is rejected in production and on non-loopback hosts.
+  - `isLocalTestToken(token)` recognizes test tokens prefixed with `test_token_` or matching sYnID test token formats, bypassing external network calls to `auth.christran.io`.
+  - Helpers in `e2e/helpers.ts` provide `createTestUser()`, `signInAs()`, `addTask()`, and `suppressWhatsNew()`.
 
 ## Mobile dependency check (expo-doctor)
 

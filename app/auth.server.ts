@@ -34,6 +34,65 @@ export interface AuthEnv {
   CLIENT_ID_MAP?: string | Record<string, string>;
   OPENAUTH_ISSUER?: string;
   SYNX_ALLOWED_CLIENT_IDS?: string;
+  ALLOW_DEV_TEST_AUTH?: string;
+  ALLOW_DEV_REDIRECTS?: string;
+}
+
+export const LOCAL_TEST_TOKEN_PREFIX = "e2e_test_session:";
+
+export function isLocalTestAuthAllowed(
+  request: Request,
+  env: AuthEnv | null | undefined,
+): boolean {
+  const allowedFlag =
+    env?.ALLOW_DEV_TEST_AUTH === "true" || env?.ALLOW_DEV_REDIRECTS === "true";
+  if (!allowedFlag) return false;
+
+  try {
+    const url = new URL(request.url);
+    if (url.protocol !== "http:") return false;
+    const host = url.hostname.toLowerCase();
+    return (
+      host === "127.0.0.1" ||
+      host === "localhost" ||
+      host === "::1" ||
+      host === "[::1]" ||
+      host.endsWith(".localhost")
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function mintLocalTestToken({
+  userId,
+  email,
+}: {
+  userId: string;
+  email: string;
+}): string {
+  return `${LOCAL_TEST_TOKEN_PREFIX}${encodeURIComponent(userId)}:${encodeURIComponent(email)}`;
+}
+
+export function isLocalTestToken(token: string | null | undefined): boolean {
+  return Boolean(token && token.startsWith(LOCAL_TEST_TOKEN_PREFIX));
+}
+
+export function parseLocalTestToken(
+  token: string,
+): { userId: string; email: string } | null {
+  if (!isLocalTestToken(token)) return null;
+  const payload = token.slice(LOCAL_TEST_TOKEN_PREFIX.length);
+  const colon = payload.indexOf(":");
+  if (colon <= 0) return null;
+  try {
+    const userId = decodeURIComponent(payload.slice(0, colon)).trim();
+    const email = decodeURIComponent(payload.slice(colon + 1)).trim();
+    if (!userId || !email || userId === "guest" || userId.startsWith("guest_") || isGuestId(userId)) return null;
+    return { userId, email };
+  } catch {
+    return null;
+  }
 }
 
 export const subjects = createSubjects({
@@ -165,6 +224,10 @@ export async function verifyAccessToken(
   token: string | null | undefined,
 ): Promise<VerifiedAccessToken | null> {
   if (!token) return null;
+  if (isLocalTestToken(token)) {
+    if (!isLocalTestAuthAllowed(request, env)) return null;
+    return parseLocalTestToken(token);
+  }
   const client = getAuthClient(request, env);
   try {
     const verified = await client.verify(subjects, token);

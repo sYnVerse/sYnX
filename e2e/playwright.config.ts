@@ -21,6 +21,7 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:8787",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    permissions: ["notifications"],
   },
   projects: [
     {
@@ -29,7 +30,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npx wrangler dev --ip 127.0.0.1 --port 8787",
+    command: "npx wrangler dev --ip 127.0.0.1 --port 8787 --var ALLOW_DEV_TEST_AUTH:true",
     url: "http://127.0.0.1:8787",
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
