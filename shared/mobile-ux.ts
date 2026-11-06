@@ -454,9 +454,10 @@ export function buildListPreviewTasks<T extends {
     }
   });
 
+  type PreviewSortItem = SortableTask & { subtasks?: SortableTask[] };
   const sortedTopLevel = sortMode
     ? (sortTasks(
-        topLevel as unknown as (SortableTask & { subtasks?: unknown[] })[],
+        topLevel as unknown as PreviewSortItem[],
         sortMode
       ) as unknown as (T & { subtasks: T[] })[])
     : topLevel;
