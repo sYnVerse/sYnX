@@ -1,7 +1,7 @@
 {
   "app/auth.server.ts": {
-    "mtime": 1793923827.5539534,
-    "ast_hash": "a7f5a6afbf309e333d3f329eb1580e69",
+    "mtime": 1793945264.1464226,
+    "ast_hash": "61baffad73e0eaa159abc8cf442fb458",
     "semantic_hash": ""
   },
   "app/entry.client.tsx": {
@@ -35,13 +35,13 @@
     "semantic_hash": ""
   },
   "app/routes/login.tsx": {
-    "mtime": 1793922981.198719,
-    "ast_hash": "e7c235674ff5772e0936f1414cdd46d5",
+    "mtime": 1793945294.364938,
+    "ast_hash": "e3b44f1bb1f9193be26a552abd67f20c",
     "semantic_hash": ""
   },
   "app/routes/logout.tsx": {
-    "mtime": 1793922993.7567508,
-    "ast_hash": "3b0d46a8aeff6c2594ceaaeecf665706",
+    "mtime": 1793945155.8795316,
+    "ast_hash": "8211499519f6a8e584db68990b450513",
     "semantic_hash": ""
   },
   "app/to-do-manager.ts": {
@@ -95,8 +95,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1793940379.8096938,
-    "ast_hash": "b2dbe0c3d7792025998e54892fee4f21",
+    "mtime": 1793945366.5340729,
+    "ast_hash": "7d324a98a7d9326a8df05eb97fa2e210",
     "semantic_hash": ""
   },
   ".claude/settings.json": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "app/logout-policy.server.ts": {
-    "mtime": 1793922989.0752652,
-    "ast_hash": "8c2c9027b5d4450c513310efd74a900a",
+    "mtime": 1793945145.6416938,
+    "ast_hash": "f686708a1f4d27223be55ea2ae67875d",
     "semantic_hash": ""
   },
   "app/routes/api.v1.lists.$id.shared.ts": {
@@ -1295,8 +1295,8 @@
     "semantic_hash": ""
   },
   "e2e/helpers.ts": {
-    "mtime": 1793940375.4677966,
-    "ast_hash": "f379a09e21c3a10be3a3839085555adb",
+    "mtime": 1793945137.4200056,
+    "ast_hash": "bfb24b83e38e6c24af260e6279d87f24",
     "semantic_hash": ""
   },
   "e2e/shared-lists.spec.ts": {
