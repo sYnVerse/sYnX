@@ -6,16 +6,27 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-06",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "The New Task sheet, task breakdown, list sheet and activity log now keep their action buttons fully visible above the system navigation bar on Android and iOS."
+      },
+      {
+        type: "FIX",
+        text: "Turning push notifications off in Settings now remembers your choice and stays off, and Settings now detects when notifications or calendar access have been turned off in system settings."
+      }
+    ]
+  },
+  {
+    version: "v3.5.1",
     date: "2026-11-05",
     title: "What's new?",
     changes: [
       {
         type: "FIX",
         text: "The Settings screen now accounts for safe area insets above the floating tab bar, so the Log Out of sYnID button is fully accessible on phones with three-button navigation."
-      },
-      {
-        type: "FIX",
-        text: "The New Task sheet, task breakdown, list sheet and activity log now keep their action buttons fully visible above the system navigation bar on Android and iOS."
       }
     ]
   },

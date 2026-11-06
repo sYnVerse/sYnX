@@ -237,3 +237,67 @@ export function getListBottomPadding(insetsBottom: number): number {
 export function getSheetBottomPadding(insetsBottom: number, basePadding = 24): number {
   return Math.max(insetsBottom, 0) + basePadding;
 }
+
+export interface PushSettingsStateInput {
+  permission: PushPermissionStatus;
+  hasStoredToken: boolean;
+  userDisabled: boolean;
+}
+
+export interface PushSettingsStateOutput {
+  pushEnabled: boolean;
+  shouldAutoRegister: boolean;
+  shouldUnregisterStaleToken: boolean;
+  statusLabel: string;
+}
+
+export function derivePushSettingsState(input: PushSettingsStateInput): PushSettingsStateOutput {
+  const { permission, hasStoredToken, userDisabled } = input;
+
+  if (permission !== "granted") {
+    return {
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: hasStoredToken,
+      statusLabel:
+        permission === "blocked"
+          ? "Blocked in system settings"
+          : permission === "denied"
+          ? "Off"
+          : "Not set up",
+    };
+  }
+
+  if (userDisabled) {
+    return {
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "Off",
+    };
+  }
+
+  return {
+    pushEnabled: true,
+    shouldAutoRegister: !hasStoredToken,
+    shouldUnregisterStaleToken: false,
+    statusLabel: "On",
+  };
+}
+
+export interface CalendarSettingsStateInput {
+  syncEnabled: boolean;
+  permissionGranted: boolean;
+}
+
+export interface CalendarSettingsStateOutput {
+  isWarningVisible: boolean;
+  canSync: boolean;
+}
+
+export function deriveCalendarSettingsState(input: CalendarSettingsStateInput): CalendarSettingsStateOutput {
+  return {
+    isWarningVisible: input.syncEnabled && !input.permissionGranted,
+    canSync: input.syncEnabled && input.permissionGranted,
+  };
+}

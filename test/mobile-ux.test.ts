@@ -27,6 +27,8 @@ import {
   getListBottomPadding,
   getSheetBottomPadding,
   getTabScreenBottomPadding,
+  derivePushSettingsState,
+  deriveCalendarSettingsState,
 } from "../shared/mobile-ux";
 import { MOBILE_APP_VERSION, MOBILE_VERSION } from "../shared/mobile-version";
 
@@ -181,7 +183,7 @@ describe("mobile version single source of truth", () => {
     expect(MOBILE_APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
     expect(MOBILE_VERSION).toBe(`v${MOBILE_APP_VERSION}`);
     // Current release for this PR
-    expect(MOBILE_APP_VERSION).toBe("3.5.1");
+    expect(MOBILE_APP_VERSION).toBe("3.5.2");
   });
 });
 
@@ -275,5 +277,176 @@ describe("floating action button and tab bar layout math", () => {
         /import\s+[^}]*SafeAreaView[^}]*\s+from\s+["']react-native["']/
       );
     }
+  });
+});
+
+describe("derivePushSettingsState (#133)", () => {
+  it("keeps push enabled and active when granted and stored", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "granted",
+        hasStoredToken: true,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: true,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "On",
+    });
+  });
+
+  it("requests auto-registration when granted but token is missing", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "granted",
+        hasStoredToken: false,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: true,
+      shouldAutoRegister: true,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "On",
+    });
+  });
+
+  it("respects user opt-out and does NOT auto-register when user toggled push off", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "granted",
+        hasStoredToken: false,
+        userDisabled: true,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "Off",
+    });
+
+    expect(
+      derivePushSettingsState({
+        permission: "granted",
+        hasStoredToken: true,
+        userDisabled: true,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "Off",
+    });
+  });
+
+  it("detects permission revoked in system settings and flags stale token for unregistration", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "blocked",
+        hasStoredToken: true,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: true,
+      statusLabel: "Blocked in system settings",
+    });
+
+    expect(
+      derivePushSettingsState({
+        permission: "denied",
+        hasStoredToken: true,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: true,
+      statusLabel: "Off",
+    });
+  });
+
+  it("handles undetermined status cleanly", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "undetermined",
+        hasStoredToken: false,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "Not set up",
+    });
+  });
+});
+
+describe("deriveCalendarSettingsState (#133)", () => {
+  it("flags warning when sync is enabled but permission is revoked in OS settings", () => {
+    expect(
+      deriveCalendarSettingsState({
+        syncEnabled: true,
+        permissionGranted: false,
+      })
+    ).toEqual({
+      isWarningVisible: true,
+      canSync: false,
+    });
+  });
+
+  it("shows healthy sync state when sync is enabled and permission is granted", () => {
+    expect(
+      deriveCalendarSettingsState({
+        syncEnabled: true,
+        permissionGranted: true,
+      })
+    ).toEqual({
+      isWarningVisible: false,
+      canSync: true,
+    });
+  });
+
+  it("shows no warning when sync is turned off, regardless of permission", () => {
+    expect(
+      deriveCalendarSettingsState({
+        syncEnabled: false,
+        permissionGranted: false,
+      })
+    ).toEqual({
+      isWarningVisible: false,
+      canSync: false,
+    });
+
+    expect(
+      deriveCalendarSettingsState({
+        syncEnabled: false,
+        permissionGranted: true,
+      })
+    ).toEqual({
+      isWarningVisible: false,
+      canSync: false,
+    });
+  });
+});
+
+describe("SettingsScreen permission synchronization source guards (#133)", () => {
+  it("guards user push opt-out persistence and permission reconciliation", () => {
+    expect(SettingsScreenSource).toContain("setPushDisabledByUser(true)");
+    expect(SettingsScreenSource).toContain("setPushDisabledByUser(false)");
+    expect(SettingsScreenSource).toContain("isPushDisabledByUser()");
+    expect(SettingsScreenSource).toContain("derivePushSettingsState");
+    expect(SettingsScreenSource).toContain("deriveCalendarSettingsState");
+  });
+
+  it("re-checks push state in the foreground AppState listener", () => {
+    expect(SettingsScreenSource).toMatch(/AppState\.addEventListener\("change",[^}]*refreshPushState/);
+  });
+
+  it("renders a clear warning and action when calendar sync is on without permission", () => {
+    expect(SettingsScreenSource).toContain("Calendar access is off in system settings");
+    expect(SettingsScreenSource).toContain("Linking.openSettings()");
+    expect(SettingsScreenSource).toContain("handleToggleCalendarSync(false)");
   });
 });

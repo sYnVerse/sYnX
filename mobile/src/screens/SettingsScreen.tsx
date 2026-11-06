@@ -35,6 +35,8 @@ import { apiClient } from "../api/client";
 import {
   getPushPermissionStatus,
   hasStoredPushToken,
+  isPushDisabledByUser,
+  setPushDisabledByUser,
   openAppSystemSettings,
   registerPushTokenIfPermitted,
   requestAndRegisterPush,
@@ -54,6 +56,8 @@ import {
   getLocalTimeZone,
   NO_PHONE_CARRIER_LABEL,
   TASK_SORT_OPTIONS,
+  derivePushSettingsState,
+  deriveCalendarSettingsState,
 } from "../shared";
 import {
   getKnownHomeTimeZone,
@@ -146,6 +150,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [pushBusy, setPushBusy] = useState(false);
   const [calendarSync, setCalendarSync] = useState(false);
   const [calendarPermission, setCalendarPermission] = useState<string>("Not Granted");
+  const [calendarPermissionGranted, setCalendarPermissionGranted] = useState(true);
   const queryClient = useQueryClient();
   const [targetCalendar, setTargetCalendar] = useState<AvailableCalendar | null>(null);
   const [completedBehavior, setCompletedBehaviorState] = useState<CompletedEventBehavior>(
@@ -179,12 +184,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     const status = await getPushPermissionStatus();
     setPushStatus(status);
     const stored = await hasStoredPushToken();
-    setPushEnabled(status === "granted" && stored);
-    if (status === "granted" && !stored) {
-      // Permission on but token missing — refresh silently
+    const userDisabled = await isPushDisabledByUser();
+    const derived = derivePushSettingsState({
+      permission: status,
+      hasStoredToken: stored,
+      userDisabled,
+    });
+
+    if (derived.shouldUnregisterStaleToken) {
+      await unregisterPushToken();
+    }
+    if (derived.shouldAutoRegister) {
       const token = await registerPushTokenIfPermitted();
       setPushEnabled(Boolean(token));
+      return;
     }
+    setPushEnabled(derived.pushEnabled);
   }, []);
 
   // Tells the parent the form is clean without making the load below depend on
@@ -240,6 +255,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         setCompletedBehaviorState(await getCompletedEventBehavior());
         const permission = await checkCalendarPermissions();
         setCalendarPermission(describeCalendarPermission(permission));
+        setCalendarPermissionGranted(permission.granted);
         if (syncEnabled && permission.granted) {
           const target = await getTargetCalendar();
           setTargetCalendar(target);
@@ -380,6 +396,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     setPushBusy(true);
     try {
       if (val) {
+        await setPushDisabledByUser(false);
         if (pushStatus === "blocked") {
           Alert.alert(
             "Notifications blocked",
@@ -402,6 +419,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           }
         }
       } else {
+        await setPushDisabledByUser(true);
         await unregisterPushToken();
         setPushEnabled(false);
         // Keep OS permission as-is; we just stop registering the token
@@ -434,6 +452,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
 
   const enableCalendarSync = useCallback(async () => {
     setCalendarPermission("Granted");
+    setCalendarPermissionGranted(true);
     await setCalendarSyncEnabled(true);
     setCalendarSync(true);
     const target = await getTargetCalendar();
@@ -520,9 +539,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   useEffect(() => {
     const subscription = AppState.addEventListener("change", async (state) => {
       if (state !== "active") return;
+      void refreshPushState();
       try {
         const permission = await checkCalendarPermissions();
         setCalendarPermission(describeCalendarPermission(permission));
+        setCalendarPermissionGranted(permission.granted);
         if (permission.granted && pendingCalendarEnable.current) {
           pendingCalendarEnable.current = false;
           await enableCalendarSync();
@@ -534,7 +555,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       }
     });
     return () => subscription.remove();
-  }, [enableCalendarSync]);
+  }, [enableCalendarSync, refreshPushState]);
 
   const handleSelectCompletedBehavior = async (behavior: CompletedEventBehavior) => {
     if (behavior === completedBehavior) return;
@@ -609,16 +630,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     { mode: "light", label: "Light Pastel", preview: "#FAF7F2", previewBorder: true },
   ];
 
-  const pushStatusLabel =
-    pushStatus === "granted"
-      ? pushEnabled
-        ? "On"
-        : "Allowed — tap to register"
-      : pushStatus === "blocked"
-      ? "Blocked in system settings"
-      : pushStatus === "denied"
-      ? "Off"
-      : "Not set up";
+  const pushStatusLabel = derivePushSettingsState({
+    permission: pushStatus,
+    hasStoredToken: pushEnabled,
+    userDisabled: !pushEnabled && pushStatus === "granted",
+  }).statusLabel;
+
+  const { isWarningVisible: calendarWarningVisible } = deriveCalendarSettingsState({
+    syncEnabled: calendarSync,
+    permissionGranted: calendarPermissionGranted,
+  });
 
   const nameForInitials = displayName.trim();
   const accountInitials = (
@@ -872,6 +893,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             accessibilityLabel="Sync tasks to device calendar"
           />
         </View>
+        {calendarWarningVisible && (
+          <View style={[styles.calendarWarningCard, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
+            <View style={styles.guidanceHeader}>
+              <Info size={16} color={theme.accent} />
+              <Text style={[styles.guidanceTitle, { color: theme.textPrimary }]}>
+                Calendar access is off in system settings
+              </Text>
+            </View>
+            <Text style={[styles.hint, { color: theme.textMuted, marginBottom: 12 }]}>
+              Tasks cannot sync to your calendar while permission is off.
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                style={[styles.linkBtn, { flex: 1, borderColor: theme.inputBorder, backgroundColor: theme.cardBg }]}
+                onPress={() => Linking.openSettings()}
+                accessibilityRole="button"
+                accessibilityLabel="Open system settings"
+              >
+                <ExternalLink size={14} color={theme.accent} />
+                <Text style={[styles.linkBtnText, { color: theme.accent }]}>Open settings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.linkBtn, { flex: 1, borderColor: theme.inputBorder, backgroundColor: theme.cardBg }]}
+                onPress={() => handleToggleCalendarSync(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Turn sync off"
+              >
+                <Text style={[styles.linkBtnText, { color: theme.textMuted }]}>Turn sync off</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
         {calendarSync ? (
           <>
             <TouchableOpacity
@@ -1428,6 +1481,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   calendarGuidanceCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  calendarWarningCard: {
     marginTop: 12,
     padding: 12,
     borderRadius: 12,
