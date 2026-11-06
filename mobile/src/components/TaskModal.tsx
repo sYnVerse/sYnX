@@ -28,7 +28,8 @@ import {
   resolveReminderAt,
 } from "../shared";
 import { useTheme } from "../context/ThemeContext";
-import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { typography, spacing, MIN_TOUCH_TARGET, getSheetBottomPadding } from "../theme/theme";
 import { getErrorMessage } from "../utils/feedback";
 import { useToast } from "../context/ToastContext";
 import { usePushPrompt } from "../context/PushPromptContext";
@@ -66,6 +67,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const { theme, hapticsEnabled } = useTheme();
   const { showError } = useToast();
   const { maybeAskOnReminder } = usePushPrompt();
+  const insets = useSafeAreaInsets();
   const [text, setText] = useState(initialText);
   const [priority, setPriority] = useState<PriorityLevel>(initialPriority);
   const [recurrence, setRecurrence] = useState<RecurrencePattern>(initialRecurrence);
@@ -221,12 +223,21 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={saving ? undefined : onClose}>
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={saving ? undefined : onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <View style={[styles.modalContainer, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+        <View
+          style={[
+            styles.modalContainer,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.cardBorder,
+              paddingBottom: getSheetBottomPadding(insets.bottom, spacing.lg),
+            },
+          ]}
+        >
           <Text style={[styles.modalTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
             {isEditing ? "Edit Task" : "New Task"}
           </Text>

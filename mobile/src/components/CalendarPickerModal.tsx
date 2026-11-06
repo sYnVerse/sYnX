@@ -6,8 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { X, Calendar as CalendarIcon, Check, Plus } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
 import type { AvailableCalendar } from "../services/calendar";

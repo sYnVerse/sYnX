@@ -60,7 +60,7 @@ import {
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
 import { ListCardSkeleton } from "../components/SkeletonLoader";
-import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
+import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding, getSheetBottomPadding } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { stripLeadingCategoryEmoji } from "../utils/format";
 import {
@@ -540,13 +540,22 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   };
 
   const sheetOverlay = (children: React.ReactNode, onClose: () => void) => (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.sheetOverlay}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <TouchableOpacity style={styles.sheetDismiss} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.sheetContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+        <View
+          style={[
+            styles.sheetContent,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.cardBorder,
+              paddingBottom: getSheetBottomPadding(insets.bottom, spacing.lg),
+            },
+          ]}
+        >
           {children}
         </View>
       </KeyboardAvoidingView>
