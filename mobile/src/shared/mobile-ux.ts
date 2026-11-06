@@ -213,9 +213,17 @@ export function getFabBottomOffset(insetsBottom: number, margin = 16): number {
 }
 
 /**
+ * Calculates bottom padding for tab-level screens (like Settings) so their scrollable
+ * content is not obscured by the floating tab bar or system navigation bar.
+ */
+export function getTabScreenBottomPadding(insetsBottom: number, extraClearance = 24): number {
+  return FLOATING_TAB_BAR_HEIGHT + Math.max(insetsBottom, 12) + extraClearance;
+}
+
+/**
  * Calculates list content padding bottom so scrollable content isn't obscured by the
  * floating tab bar or FAB.
  */
 export function getListBottomPadding(insetsBottom: number): number {
-  return FLOATING_TAB_BAR_HEIGHT + Math.max(insetsBottom, 12) + 76;
+  return getTabScreenBottomPadding(insetsBottom, 76);
 }
