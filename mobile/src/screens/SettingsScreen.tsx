@@ -70,7 +70,14 @@ import { CalendarPickerModal } from "../components/CalendarPickerModal";
 import { PhoneCarrierPickerModal } from "../components/PhoneCarrierPickerModal";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
-import { typography, spacing, MIN_TOUCH_TARGET, type ThemeMode } from "../theme/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  typography,
+  spacing,
+  MIN_TOUCH_TARGET,
+  getTabScreenBottomPadding,
+  type ThemeMode,
+} from "../theme/theme";
 import { getErrorMessage } from "../utils/feedback";
 import {
   isCalendarSyncEnabled,
@@ -114,6 +121,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const { theme, themeMode, setThemeMode, hapticsEnabled, setHapticsEnabled } = useTheme();
   const { appDefault: taskSortMode } = useTaskSortPreferences();
   const { showError, showSuccess } = useToast();
+  const insets = useSafeAreaInsets();
 
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [smsEnabled, setSmsEnabled] = useState(false);
@@ -627,7 +635,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.bg }]}
-      contentContainerStyle={{ paddingBottom: 110 }}
+      contentContainerStyle={{ paddingBottom: getTabScreenBottomPadding(insets.bottom) }}
     >
       {/* Account */}
       <View style={styles.sectionHeader}>
