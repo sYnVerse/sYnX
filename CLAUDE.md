@@ -27,17 +27,30 @@ Tests that import mobile code (and so React Native) go in `test/tsconfig.mobile.
 
 The web end-to-end suite lives in `e2e/` and runs with `npm run test:e2e` against local `wrangler dev` (which serves the built Remix server bundle on loopback with local D1 migrations applied).
 
+- **CI Enforcement**:
+  - The `e2e` job in `.github/workflows/ci.yml` runs on every pull request that touches web or test code.
+  - It executes `npm run test:e2e` (all guest and signed-in suites). Any test failure fails the job and blocks merging.
+
 - **Suites**:
   - `e2e/guest-list-check.spec.ts`: Core guest smoke tests (kept intact from baseline).
   - `e2e/guest-broader-coverage.spec.ts`: Empty states, filtering, searching, header/sidebar renaming, statistics modal, theme toggle, and sign-in CTA.
-  - `e2e/signed-in-auth-and-profile.spec.ts`: Loopback sign-in, session persistence on reload, sign-out, guest data migration to signed-in account, profile display name / time zone / notification preferences, and unsaved changes prompt.
-  - `e2e/signed-in-lists-and-tasks.spec.ts`: Multi-list CRUD, category tags (preset & custom), task & subtask lifecycle, inline edit, priority/duration/recurrence/reminder persistence across reloads, toolbar sorting, and calendar view scheduling.
-  - `e2e/shared-lists.spec.ts`: Private list access control (unauthorized collaborator redirect), view-only (`public_read`) list restrictions & "Shared with me" sidebar, and collaborative (`public_edit`) workflow with delete requests and approval flow.
+  - `e2e/signed-in-auth-and-profile.spec.ts`: Loopback sign-in, session persistence on reload, sign-out (including verification that users remain signed out after reload and cannot open protected settings), guest data migration to signed-in account, profile display name / time zone / notification preferences, and unsaved changes prompt.
+  - `e2e/signed-in-lists-and-tasks.spec.ts`: Multi-list CRUD, category tags (preset & custom), task & subtask lifecycle, inline edit, priority/duration/recurrence/reminder persistence across reloads, toolbar sort & filter persistence, and calendar view scheduling.
+  - `e2e/shared-lists.spec.ts`: Private list access control (unauthorized collaborator redirect), view-only (`public_read`) list restrictions & "Shared with me" sidebar, collaborative (`public_edit`) workflow with delete requests/approval and leaving/unlinking ("Remove from Shared with me"), and permission revocation (owner locking list back to private).
 
-- **Dev / CI Test Auth Architecture**:
-  - Test authentication bypass is strictly gated by `ALLOW_DEV_TEST_AUTH="true"` (or `ALLOW_DEV_REDIRECTS="true"`) AND a loopback request host (`127.0.0.1` or `localhost`). It is rejected in production and on non-loopback hosts.
-  - `isLocalTestToken(token)` recognizes test tokens prefixed with `test_token_` or matching sYnID test token formats, bypassing external network calls to `auth.christran.io`.
-  - Helpers in `e2e/helpers.ts` provide `createTestUser()`, `signInAs()`, `addTask()`, and `suppressWhatsNew()`.
+- **Contributor Setup & Test Auth Commands**:
+  - **Running all tests**: `npm run test:e2e` (rebuilds the server bundle and executes the full Playwright suite).
+  - **Running individual suites**: `npx playwright test e2e/<file>.spec.ts` (Playwright automatically starts `wrangler dev` with test auth enabled if not already running).
+  - **Local Test Auth Architecture**:
+    - Gated by `ALLOW_DEV_TEST_AUTH="true"` (or `ALLOW_DEV_REDIRECTS="true"`) AND a loopback request host (`127.0.0.1` or `localhost`).
+    - Gating is verified by unit tests in `test/e2e-test-auth.test.ts` to ensure production safety (`wrangler.jsonc` does not set this flag, and public domains reject test auth).
+    - In tests, create and sign in a test user with helpers from `e2e/helpers.ts`:
+      ```typescript
+      import { createTestUser, signInAs } from "./helpers";
+      const user = createTestUser("my_feature");
+      await signInAs(page, user);
+      ```
+    - `signInAs` navigates to `/login?test_user_id=...&test_email=...&test_display_name=...`, minting a local session cookie instantly without hitting `auth.christran.io`.
 
 ## Mobile dependency check (expo-doctor)
 

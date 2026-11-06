@@ -192,4 +192,54 @@ test.describe("Shared Lists Suite", () => {
     await ownerContext.close();
     await collabContext.close();
   });
+
+  test("permission revocation: owner changing list back to private revokes collaborator access", async ({ browser }) => {
+    // 1. Owner creates list and sets to Collaborative
+    const ownerContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+    await suppressWhatsNew(ownerPage);
+
+    const owner = createTestUser("owner_revoke");
+    await signInAs(ownerPage, owner);
+
+    await ownerPage.getByRole("button", { name: "Create new list" }).click();
+    await ownerPage.locator("#create-list-name").fill("Confidential Project");
+    await ownerPage.getByRole("button", { name: "Create List" }).click();
+
+    await ownerPage.locator("aside nav").getByText("Confidential Project").click();
+    await expect(ownerPage.getByRole("heading", { level: 1 })).toContainText("Confidential Project");
+
+    const listId = ownerPage.url().split("/").pop();
+
+    await ownerPage.getByRole("button", { name: /^Share List/ }).click();
+    await ownerPage.getByRole("button", { name: /Collaborative/i }).click();
+    await expect(ownerPage.getByRole("button", { name: /^Share List/ })).toContainText("Collaborative");
+
+    // 2. Collaborator accesses the collaborative list
+    const collabContext = await browser.newContext();
+    const collabPage = await collabContext.newPage();
+    await suppressWhatsNew(collabPage);
+
+    const collab = createTestUser("collab_revoke");
+    await signInAs(collabPage, collab);
+
+    await collabPage.goto(`/${listId}`);
+    await expect(collabPage.getByRole("heading", { level: 1 })).toContainText("Confidential Project");
+    await expect(collabPage.locator("aside nav").getByText("Confidential Project")).toBeVisible();
+
+    // 3. Owner revokes access by changing share mode back to Private
+    await ownerPage.goto(`/${listId}`);
+    await ownerPage.getByRole("button", { name: /^Share List/ }).click();
+    await ownerPage.getByRole("button", { name: /Private/i }).click();
+    await expect(ownerPage.getByRole("button", { name: /^Share List/ })).toContainText("Private");
+
+    // 4. Collaborator tries to access the list -> redirected away and access blocked
+    await collabPage.goto(`/${listId}`);
+    await expect(collabPage).not.toHaveURL(`/${listId}`);
+    await expect(collabPage.getByRole("heading", { level: 1 })).not.toContainText("Confidential Project");
+    await expect(collabPage.locator("aside nav").getByText("Confidential Project")).not.toBeVisible();
+
+    await ownerContext.close();
+    await collabContext.close();
+  });
 });

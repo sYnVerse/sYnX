@@ -23,6 +23,24 @@ test.describe("Signed-in Auth & Profile Suite", () => {
     // After sign-out, sidebar should show Unsaved Guest state
     await expect(page.locator("aside").getByText("Unsaved Guest")).toBeVisible();
     await expect(page.locator("aside").getByRole("link", { name: "Sign In to Save Lists" })).toBeVisible();
+
+    // Reload and assert user remains signed out as guest
+    await page.reload();
+    await expect(page.locator("aside").getByText("Unsaved Guest")).toBeVisible();
+    await expect(page.locator("aside").getByRole("link", { name: "Sign In to Save Lists" })).toBeVisible();
+
+    // Protected settings are inaccessible: "Profile, Statistics & Themes" is absent
+    await expect(page.getByRole("button", { name: "Profile, Statistics & Themes" })).not.toBeVisible();
+
+    // Guest modal shows only statistics and themes, omitting protected notification controls
+    await page.getByRole("button", { name: "Guest Statistics & Themes" }).click();
+    await expect(page.getByText("Sign in to configure Email, SMS, and Discord task notifications.")).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Select home timezone" })).not.toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // Direct API request to protected settings endpoint returns 401 Unauthorized
+    const apiRes = await page.request.get("/api/v1/settings");
+    expect(apiRes.status()).toBe(401);
   });
 
   test("migrates guest lists and tasks to the signed-in account and clears localStorage", async ({ page }) => {

@@ -168,19 +168,31 @@ test.describe("Signed-in Lists & Tasks Suite", () => {
     const user = createTestUser("sortfilter");
     await signInAs(page, user);
 
+    // Add two tasks and complete one
+    await addTask(page, "First Active Task");
+    await addTask(page, "Second Completed Task");
+    const secondTask = page.locator("li", { hasText: "Second Completed Task" });
+    await secondTask.locator("button[data-checked]").click();
+
     // Change Sort to Priority
     const sortSelect = page.locator("div:has(> span:text('Sort by')) select");
     await sortSelect.selectOption("priority");
+    await expect(sortSelect).toHaveValue("priority");
 
-    // Change Filter to Active
+    // Filter to Active -> only active task visible
     await page.getByRole("button", { name: /^Active/ }).click();
     await expect(page.getByRole("button", { name: /^Active/ })).toHaveClass(/bg-themeAccentBg/);
+    await expect(page.locator("li", { hasText: "First Active Task" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Completed tasks/i })).not.toBeVisible();
 
     // Reload page
     await page.reload();
 
-    // Verify sort is remembered from storage
+    // Verify sort is remembered from storage and default All filter restored
     await expect(sortSelect).toHaveValue("priority");
+    await expect(page.getByRole("button", { name: /^All/ })).toHaveClass(/bg-themeAccentBg/);
+    await expect(page.locator("li", { hasText: "First Active Task" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Completed tasks/i })).toBeVisible();
   });
 
   test("calendar view: unscheduled list, quick add date cell, edit task and clear date", async ({ page }) => {
