@@ -17,8 +17,9 @@ import { X, Plus, Minus, Clock, Check } from "lucide-react-native";
 import { TodoItem, sortTasks, splitCompletedTasks, type TaskSortMode } from "../shared";
 import { apiClient } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useToast } from "../context/ToastContext";
-import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
+import { typography, spacing, MIN_TOUCH_TARGET, getSheetBottomPadding } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import { parseSubtaskDurationMinutes } from "../shared/mobile-ux";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
@@ -56,6 +57,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
 }) => {
   const { theme, resolvedMode, hapticsEnabled } = useTheme();
   const { showError, showToast } = useToast();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [newSubtaskText, setNewSubtaskText] = useState("");
   const [newSubtaskDuration, setNewSubtaskDuration] = useState("5");
@@ -334,12 +336,21 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   // Note: drag-to-reorder skipped — TodoItem/API has no sort/position field without backend changes.
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <View style={[styles.modalCard, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+        <View
+          style={[
+            styles.modalCard,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.cardBorder,
+              paddingBottom: getSheetBottomPadding(insets.bottom, spacing.lg),
+            },
+          ]}
+        >
           <View style={styles.headerRow}>
             <View style={{ flex: 1 }}>
               <Text style={[styles.taskTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>

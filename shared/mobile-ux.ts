@@ -227,3 +227,13 @@ export function getTabScreenBottomPadding(insetsBottom: number, extraClearance =
 export function getListBottomPadding(insetsBottom: number): number {
   return getTabScreenBottomPadding(insetsBottom, 76);
 }
+
+/**
+ * Calculates bottom padding for bottom sheets (like TaskModal, TaskBreakdownModal,
+ * ListsScreen sheet, and TasksScreen activity sheet) so that action buttons at the
+ * bottom remain fully above the system navigation bar (Android 3-button/gesture or iOS home indicator)
+ * while preserving comfortable visual breathing room.
+ */
+export function getSheetBottomPadding(insetsBottom: number, basePadding = 24): number {
+  return Math.max(insetsBottom, 0) + basePadding;
+}

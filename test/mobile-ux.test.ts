@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import SettingsScreenSource from "../mobile/src/screens/SettingsScreen.tsx?raw";
+import TaskModalSource from "../mobile/src/components/TaskModal.tsx?raw";
+import TaskBreakdownModalSource from "../mobile/src/components/TaskBreakdownModal.tsx?raw";
+import ListsScreenSource from "../mobile/src/screens/ListsScreen.tsx?raw";
+import TasksScreenSource from "../mobile/src/screens/TasksScreen.tsx?raw";
+import CalendarPickerModalSource from "../mobile/src/components/CalendarPickerModal.tsx?raw";
+import ChangelogModalSource from "../mobile/src/components/ChangelogModal.tsx?raw";
+import PhoneCarrierPickerModalSource from "../mobile/src/components/PhoneCarrierPickerModal.tsx?raw";
 import {
   SOFT_ASK_REASK_MS,
   evaluateSoftAskPolicy,
@@ -18,6 +25,7 @@ import {
   FLOATING_TAB_BAR_HEIGHT,
   getFabBottomOffset,
   getListBottomPadding,
+  getSheetBottomPadding,
   getTabScreenBottomPadding,
 } from "../shared/mobile-ux";
 import { MOBILE_APP_VERSION, MOBILE_VERSION } from "../shared/mobile-version";
@@ -232,5 +240,40 @@ describe("floating action button and tab bar layout math", () => {
     expect(SettingsScreenSource).toContain("useSafeAreaInsets");
     expect(SettingsScreenSource).toContain("getTabScreenBottomPadding(insets.bottom)");
     expect(SettingsScreenSource).not.toContain("paddingBottom: 110");
+  });
+
+  it("calculates bottom sheet padding to keep buttons above the system navigation bar", () => {
+    // 0 insets: preserves base padding (24)
+    expect(getSheetBottomPadding(0)).toBe(24);
+    // iPhone with home indicator (34px)
+    expect(getSheetBottomPadding(34)).toBe(58);
+    // Android 3-button navigation (48px)
+    expect(getSheetBottomPadding(48)).toBe(72);
+    // Clamps negative insets to 0
+    expect(getSheetBottomPadding(-10)).toBe(24);
+    // Custom base padding
+    expect(getSheetBottomPadding(48, 16)).toBe(64);
+  });
+
+  it("ensures all mobile bottom sheets wire getSheetBottomPadding for system nav clearance", () => {
+    expect(TaskModalSource).toContain("getSheetBottomPadding(insets.bottom");
+    expect(TaskBreakdownModalSource).toContain("getSheetBottomPadding(insets.bottom");
+    expect(ListsScreenSource).toContain("getSheetBottomPadding(insets.bottom");
+    expect(TasksScreenSource).toContain("getSheetBottomPadding(insets.bottom");
+  });
+
+  it("ensures centered modals use SafeAreaView from react-native-safe-area-context, not react-native", () => {
+    for (const [name, source] of [
+      ["CalendarPickerModal", CalendarPickerModalSource],
+      ["ChangelogModal", ChangelogModalSource],
+      ["PhoneCarrierPickerModal", PhoneCarrierPickerModalSource],
+    ]) {
+      expect(source, `${name} must import SafeAreaView from react-native-safe-area-context`).toContain(
+        'from "react-native-safe-area-context"'
+      );
+      expect(source, `${name} must not import SafeAreaView from react-native`).not.toMatch(
+        /import\s+[^}]*SafeAreaView[^}]*\s+from\s+["']react-native["']/
+      );
+    }
   });
 });
