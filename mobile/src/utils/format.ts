@@ -8,3 +8,4 @@ export {
   buildCategorizedListName,
   listOwnershipLabel,
 } from "../shared/mobile-ux";
+export { formatReminderPillLabel } from "../shared/reminder-time";

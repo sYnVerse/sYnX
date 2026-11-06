@@ -14,6 +14,14 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Lists can now have no category selected. New lists start with no category by default, and existing lists can clear their category back to None."
       },
       {
+        type: "IMPR",
+        text: "The Tasks screen now shows both the reminder date and time on task cards so you can distinguish reminders on different days at a glance."
+      },
+      {
+        type: "IMPR",
+        text: "When calendar sync is on but calendar access is turned off, a prompt lets you turn access back on, snooze with Not now, or turn off calendar sync."
+      },
+      {
         type: "FIX",
         text: "The New Task sheet, task breakdown, list sheet and activity log now keep their action buttons fully visible above the system navigation bar on Android and iOS."
       },

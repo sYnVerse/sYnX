@@ -86,6 +86,7 @@ import { getErrorMessage } from "../utils/feedback";
 import {
   isCalendarSyncEnabled,
   setCalendarSyncEnabled,
+  subscribeCalendarSyncEnabled,
   checkCalendarPermissions,
   requestCalendarPermissions,
   getOrCreateSynxCalendar,
@@ -534,6 +535,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   // automatically once they come back with access granted.
   const pendingCalendarEnable = useRef(false);
 
+  useEffect(() => {
+    return subscribeCalendarSyncEnabled((enabled) => {
+      setCalendarSync(enabled);
+    });
+  }, []);
+
   // Re-check calendar access when the app returns to the foreground (e.g. after the user
   // changes it in system settings) so the toggle and label stay accurate.
   useEffect(() => {
@@ -541,6 +548,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       if (state !== "active") return;
       void refreshPushState();
       try {
+        const syncEnabled = await isCalendarSyncEnabled();
+        setCalendarSync(syncEnabled);
         const permission = await checkCalendarPermissions();
         setCalendarPermission(describeCalendarPermission(permission));
         setCalendarPermissionGranted(permission.granted);

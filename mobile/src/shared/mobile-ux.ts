@@ -23,6 +23,19 @@ export interface SoftAskPolicyInput {
 }
 
 /**
+ * Whether the 14-day back-off period after tapping "Not now" has elapsed.
+ */
+export function isSoftAskBackoffElapsed(
+  declinedAt: number | null | undefined,
+  now: number = Date.now()
+): boolean {
+  if (declinedAt == null || Number.isNaN(declinedAt)) {
+    return true;
+  }
+  return now - declinedAt >= SOFT_ASK_REASK_MS;
+}
+
+/**
  * Pure soft-ask eligibility (no OS / storage). Callers supply permission + persistence.
  * Never show when granted or permanently blocked.
  */
@@ -35,12 +48,7 @@ export function evaluateSoftAskPolicy(input: SoftAskPolicyInput): boolean {
   }
   // undetermined or denied-but-can-still-ask (caller maps canAskAgain=false → blocked)
 
-  if (declinedAt == null || Number.isNaN(declinedAt)) {
-    return true;
-  }
-
-  const elapsed = now - declinedAt;
-  if (elapsed >= SOFT_ASK_REASK_MS) {
+  if (isSoftAskBackoffElapsed(declinedAt, now)) {
     return true;
   }
 
@@ -49,6 +57,25 @@ export function evaluateSoftAskPolicy(input: SoftAskPolicyInput): boolean {
   }
 
   return false;
+}
+
+export interface CalendarSoftAskPolicyInput {
+  syncEnabled: boolean;
+  permissionGranted: boolean;
+  /** Epoch ms when user tapped Not now; null if never declined */
+  declinedAt: number | null | undefined;
+  now?: number;
+}
+
+/**
+ * Pure soft-ask eligibility for re-enabling calendar access when calendar sync is on.
+ * Reuses the same 14-day "Not now" back-off policy as push notifications.
+ */
+export function evaluateCalendarSoftAskPolicy(input: CalendarSoftAskPolicyInput): boolean {
+  if (!input.syncEnabled || input.permissionGranted) {
+    return false;
+  }
+  return isSoftAskBackoffElapsed(input.declinedAt, input.now ?? Date.now());
 }
 
 /** Map expo permission fields → our status enum. */

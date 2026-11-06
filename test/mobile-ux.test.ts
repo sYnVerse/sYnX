@@ -4,12 +4,15 @@ import TaskModalSource from "../mobile/src/components/TaskModal.tsx?raw";
 import TaskBreakdownModalSource from "../mobile/src/components/TaskBreakdownModal.tsx?raw";
 import ListsScreenSource from "../mobile/src/screens/ListsScreen.tsx?raw";
 import TasksScreenSource from "../mobile/src/screens/TasksScreen.tsx?raw";
+import TaskRowSource from "../mobile/src/components/TaskRow.tsx?raw";
+import CalendarAccessSoftAskSource from "../mobile/src/components/CalendarAccessSoftAsk.tsx?raw";
 import CalendarPickerModalSource from "../mobile/src/components/CalendarPickerModal.tsx?raw";
 import ChangelogModalSource from "../mobile/src/components/ChangelogModal.tsx?raw";
 import PhoneCarrierPickerModalSource from "../mobile/src/components/PhoneCarrierPickerModal.tsx?raw";
 import {
   SOFT_ASK_REASK_MS,
   evaluateSoftAskPolicy,
+  evaluateCalendarSoftAskPolicy,
   mapExpoPermissionToStatus,
   shouldWarnBeforeSharingPrivateList,
   listOwnershipLabel,
@@ -450,5 +453,99 @@ describe("SettingsScreen permission synchronization source guards (#133)", () =>
     expect(SettingsScreenSource).toContain("Calendar access is off in system settings");
     expect(SettingsScreenSource).toContain("Linking.openSettings()");
     expect(SettingsScreenSource).toContain("handleToggleCalendarSync(false)");
+  });
+});
+
+describe("TaskRow reminder date alongside time (#111)", () => {
+  it("uses formatReminderPillLabel to display date and time on task cards", () => {
+    expect(TaskRowSource).toContain("formatReminderPillLabel");
+    expect(TaskRowSource).toContain("formatReminderPillLabel(item.reminderAt)");
+    expect(TaskRowSource).not.toMatch(/formatReminderTime\(item\.reminderAt\)/);
+  });
+
+  it("guards against rendering reminder badges for tasks without reminders", () => {
+    expect(TaskRowSource).toContain("item.reminderAt ? (");
+  });
+});
+
+describe("evaluateCalendarSoftAskPolicy (#134)", () => {
+  const now = 1_000_000_000_000;
+
+  it("never shows when sync is disabled or permission is already granted", () => {
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: false,
+        permissionGranted: false,
+        declinedAt: null,
+        now,
+      })
+    ).toBe(false);
+
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: true,
+        declinedAt: null,
+        now,
+      })
+    ).toBe(false);
+
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: false,
+        permissionGranted: true,
+        declinedAt: null,
+        now,
+      })
+    ).toBe(false);
+  });
+
+  it("shows when sync is on, permission is not granted, and never declined", () => {
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: false,
+        declinedAt: null,
+        now,
+      })
+    ).toBe(true);
+  });
+
+  it("hides after tapping Not now until 14-day back-off elapses", () => {
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: false,
+        declinedAt: now - 1000,
+        now,
+      })
+    ).toBe(false);
+
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: false,
+        declinedAt: now - SOFT_ASK_REASK_MS + 1,
+        now,
+      })
+    ).toBe(false);
+
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: false,
+        declinedAt: now - SOFT_ASK_REASK_MS,
+        now,
+      })
+    ).toBe(true);
+  });
+});
+
+describe("CalendarAccessSoftAsk component source guards (#134)", () => {
+  it("includes Turn on, Turn off calendar sync, and Not now actions", () => {
+    expect(CalendarAccessSoftAskSource).toContain("Turn on");
+    expect(CalendarAccessSoftAskSource).toContain("Turn off calendar sync");
+    expect(CalendarAccessSoftAskSource).toContain("Not now");
+    expect(CalendarAccessSoftAskSource).toContain("Calendar sync is turned on in sYnX");
   });
 });
