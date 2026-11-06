@@ -34,9 +34,12 @@ export function planLogoutAction(
   };
 }
 
-export function planLogoutLoader(requestUrl: string): LogoutPlan {
+export function planLogoutLoader(
+  requestUrl: string,
+  opts?: { forceLocal?: boolean },
+): LogoutPlan {
   const url = new URL(requestUrl);
-  const local = url.searchParams.get("local") === "true";
+  const local = url.searchParams.get("local") === "true" || Boolean(opts?.forceLocal);
 
   if (local) {
     return {

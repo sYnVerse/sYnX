@@ -178,6 +178,7 @@ The local app runs in guest mode until you sign in. Signing in locally needs a s
 | `npm run cf-typegen` | Regenerate `worker-configuration.d.ts` (binding types) |
 | `npm run lint` | ESLint |
 | `npm test` | Vitest |
+| `npm run test:e2e` | Playwright end-to-end tests against local wrangler dev |
 | `npm run typecheck` | Web typecheck |
 | `npm run typecheck:mobile-tests` | Typecheck the root tests that import mobile code, using the mobile types |
 | `npm run deploy` | Build, apply D1 migrations to production, then deploy. Workers Builds runs this; don't run it by hand |
@@ -187,19 +188,54 @@ The local app runs in guest mode until you sign in. Signing in locally needs a s
 
 ## Testing and CI
 
-Tests live in [`test/`](test/) and run inside the Workers runtime with `@cloudflare/vitest-pool-workers`. Each test file gets its own D1 database, built from `migrations/`. The tests cover the web server code, `shared/` and parts of the mobile app.
+Tests live in [`test/`](test/) (Vitest) and [`e2e/`](e2e/) (Playwright).
 
-[GitHub Actions](.github/workflows/ci.yml) runs these checks on every pull request and every push to `main`:
+- **Unit and Integration Tests** (`test/`) run inside the Workers runtime with `@cloudflare/vitest-pool-workers`. Each test file gets its own isolated D1 database, built directly from `migrations/`. They cover the web server routes, `shared/`, and parts of the mobile app.
+- **End-to-End Tests** (`e2e/`) run in real Chromium via Playwright against a local `wrangler dev` Worker instance backed by a local D1 database. They test the full user-facing application: guest workflows, synthetic test authentication, multi-user list sharing, and permissions.
+
+[GitHub Actions](.github/workflows/ci.yml) runs three parallel CI jobs on every pull request and every push to `main` (branch protection gates merge on all checks passing):
 
 ```bash
+# Web Job
 npm run lint
 npm test -- --run --maxWorkers=2
 npm run typecheck
 npm run typecheck:mobile-tests
+
+# E2E Job
+npx wrangler d1 migrations apply synx-db --local
+npm run test:e2e
+
+# Mobile Job
 cd mobile && npm run typecheck
 ```
 
 CI also checks that `mobile/src/shared/` and the mobile version files are in sync, and runs `expo-doctor` and the mobile lint (`cd mobile && npm run lint`) when `mobile/` or `shared/` changes. Dependabot opens weekly pull requests for production npm dependencies.
+
+### Running End-to-End Tests Locally
+
+Playwright tests run against a local `wrangler dev` server automatically managed by `playwright.config.ts`.
+
+**1. One-time browser setup:**
+```bash
+npx playwright install --with-deps chromium
+```
+
+**2. Ensure local D1 migrations are applied:**
+```bash
+npx wrangler d1 migrations apply synx-db --local
+```
+
+**3. Run the E2E test suite:**
+```bash
+npm run test:e2e
+```
+
+**4. Run specific test files or UI mode:**
+```bash
+npx playwright test e2e/guest-list-check.spec.ts
+npx playwright test --ui
+```
 
 ---
 

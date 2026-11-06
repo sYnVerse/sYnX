@@ -30,14 +30,15 @@ export async function signInAs(
 ): Promise<TestUser> {
   const resolved = user ?? createTestUser();
   const searchParams = new URLSearchParams({
-    userId: resolved.userId,
-    email: resolved.email,
+    test_login: "true",
+    test_user_id: resolved.userId,
+    test_email: resolved.email,
   });
   if (resolved.displayName) {
-    searchParams.set("displayName", resolved.displayName);
+    searchParams.set("test_display_name", resolved.displayName);
   }
   if (options?.suggestedName) {
-    searchParams.set("suggestedName", options.suggestedName);
+    searchParams.set("test_suggested_name", options.suggestedName);
   }
   if (options?.redirectTo) {
     searchParams.set("redirectTo", options.redirectTo);

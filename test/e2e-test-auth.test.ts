@@ -6,6 +6,7 @@ import {
   mintLocalTestToken,
   isLocalTestToken,
   parseLocalTestToken,
+  parseTestLoginRequest,
   verifyAccessToken,
   type AuthEnv,
 } from "../app/auth.server";
@@ -24,10 +25,10 @@ describe("E2E Test Auth Guard & Tokens", () => {
       expect(isLocalTestAuthAllowed(req, env)).toBe(true);
     });
 
-    it("allows localhost when ALLOW_DEV_REDIRECTS is true", () => {
+    it("does not allow local test auth when only ALLOW_DEV_REDIRECTS is true", () => {
       const req = new Request(localhostUrl);
       const env: AuthEnv = { ALLOW_DEV_REDIRECTS: "true" };
-      expect(isLocalTestAuthAllowed(req, env)).toBe(true);
+      expect(isLocalTestAuthAllowed(req, env)).toBe(false);
     });
 
     it("rejects loopback when flags are missing or false", () => {
@@ -48,6 +49,74 @@ describe("E2E Test Auth Guard & Tokens", () => {
       const env: AuthEnv = { ALLOW_DEV_TEST_AUTH: "true" };
       expect(isLocalTestAuthAllowed(new Request("https://127.0.0.1:8787/login"), env)).toBe(false);
       expect(isLocalTestAuthAllowed(new Request("https://localhost:8787/login"), env)).toBe(false);
+    });
+  });
+
+  describe("parseTestLoginRequest parameter parsing and validation", () => {
+    const env: AuthEnv = { ALLOW_DEV_TEST_AUTH: "true" };
+
+    it("returns allowed: false when no explicit test login parameters are supplied", () => {
+      const req = new Request("http://127.0.0.1:8787/login");
+      const result = parseTestLoginRequest(req, env);
+      expect(result.allowed).toBe(false);
+      expect(result.session).toBeUndefined();
+    });
+
+    it("rejects guest IDs with 400 Bad Request", () => {
+      const guestIds = ["guest", "guest_12345", "guest_12345678-1234-1234-1234-123456789abc"];
+      for (const id of guestIds) {
+        const req = new Request(`http://127.0.0.1:8787/login?test_login=true&test_user_id=${id}`);
+        const result = parseTestLoginRequest(req, env);
+        expect(result.allowed).toBe(true);
+        expect(result.error).toBeDefined();
+        expect(result.error?.status).toBe(400);
+        expect(result.error?.message).toContain("guest IDs cannot be used for authenticated sessions");
+      }
+    });
+
+    it("rejects empty test user ID parameter with 400 Bad Request", () => {
+      const req = new Request("http://127.0.0.1:8787/login?test_user_id=");
+      const result = parseTestLoginRequest(req, env);
+      expect(result.allowed).toBe(true);
+      expect(result.error?.status).toBe(400);
+      expect(result.error?.message).toContain("ID cannot be empty");
+    });
+
+    it("rejects invalid test email with 400 Bad Request", () => {
+      const req = new Request("http://127.0.0.1:8787/login?test_login=true&test_email=notanemail");
+      const result = parseTestLoginRequest(req, env);
+      expect(result.allowed).toBe(true);
+      expect(result.error?.status).toBe(400);
+      expect(result.error?.message).toContain("Invalid test email");
+    });
+
+    it("mints test session and parses valid documented test_* parameters", () => {
+      const req = new Request(
+        "http://127.0.0.1:8787/login?test_login=true&test_user_id=valid_usr_1&test_email=usr1@example.com&test_display_name=UserOne&test_suggested_name=Knight&redirectTo=/dashboard",
+      );
+      const result = parseTestLoginRequest(req, env);
+      expect(result.allowed).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(result.session).toBeDefined();
+      expect(result.session?.userId).toBe("valid_usr_1");
+      expect(result.session?.email).toBe("usr1@example.com");
+      expect(result.session?.displayName).toBe("UserOne");
+      expect(result.session?.suggestedName).toBe("Knight");
+      expect(result.session?.redirectTo).toBe("/dashboard");
+      expect(result.session?.token).toContain("valid_usr_1");
+    });
+
+    it("supports legacy userId and email parameters for backwards compatibility", () => {
+      const req = new Request(
+        "http://127.0.0.1:8787/login?userId=legacy_usr_1&email=legacy@example.com",
+      );
+      const result = parseTestLoginRequest(req, env);
+      expect(result.allowed).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(result.session).toBeDefined();
+      expect(result.session?.userId).toBe("legacy_usr_1");
+      expect(result.session?.email).toBe("legacy@example.com");
+      expect(result.session?.redirectTo).toBe("/");
     });
   });
 

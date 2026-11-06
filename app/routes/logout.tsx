@@ -17,8 +17,11 @@ export const action = async ({ request, context }: ActionFunctionArgs) => {
   return redirect(plan.location, plan.headers ? { headers: plan.headers } : undefined);
 };
 
-export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const plan = planLogoutLoader(request.url);
+export const loader = async ({ request, context }: LoaderFunctionArgs) => {
+  const env = context.cloudflare.env;
+  const plan = planLogoutLoader(request.url, {
+    forceLocal: isLocalTestAuthAllowed(request, env),
+  });
   return redirect(plan.location, plan.headers ? { headers: plan.headers } : undefined);
 };
 
