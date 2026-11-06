@@ -171,7 +171,7 @@ export function buildCategorizedListName(
 ): string {
   const cleaned = title.trim();
   if (!cleaned) return cleaned;
-  if (categoryName === "Custom") return cleaned;
+  if (!categoryName || categoryName === "Custom" || categoryName === "None" || !emoji.trim()) return cleaned;
   return `${emoji} ${cleaned}`;
 }
 

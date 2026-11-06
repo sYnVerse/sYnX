@@ -53,7 +53,7 @@ import {
   isMakingListPublic,
   TASK_SORT_OPTIONS,
   PRESET_CATEGORIES,
-  DEFAULT_CATEGORY,
+  type CategoryOption,
   type ListActivityEntry,
   type TaskSortOverride,
 } from "../shared";
@@ -126,11 +126,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   }, [handledPickRequestId, onPickPinnedListHandled]);
 
   const [newListName, setNewListName] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState(PRESET_CATEGORIES[0]);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryOption | null>(null);
   const [customCategoryText, setCustomCategoryText] = useState("");
 
   const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState(PRESET_CATEGORIES[0]);
+  const [editCategory, setEditCategory] = useState<CategoryOption | null>(null);
   const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
   const [editSortOverride, setEditSortOverride] = useState<TaskSortOverride>("app_default");
   const taskSortPrefs = useTaskSortPreferences();
@@ -240,7 +240,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   };
 
   const createListMutation = useMutation({
-    mutationFn: async ({ name, category }: { name: string; category: string }) => {
+    mutationFn: async ({ name, category }: { name: string; category?: string | null }) => {
       const res = await apiClient.post("/api/v1/lists", { name, category });
       return res.data.list as TodoList;
     },
@@ -257,7 +257,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   });
 
   const updateListMutation = useMutation({
-    mutationFn: async ({ id, name, category }: { id: string; name: string; category: string }) => {
+    mutationFn: async ({ id, name, category }: { id: string; name: string; category?: string | null }) => {
       await apiClient.put(`/api/v1/lists/${id}`, { name, category });
     },
     onSuccess: (_, variables) => {
@@ -265,7 +265,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
       queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
         if (!old) return [];
         return old.map((l) =>
-          l.id === variables.id ? { ...l, name: variables.name, category: variables.category } : l
+          l.id === variables.id ? { ...l, name: variables.name, category: variables.category ?? null } : l
         );
       });
       queryClient.invalidateQueries({ queryKey: ["lists"] });
@@ -359,21 +359,27 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
   const handleCreateList = () => {
     if (!newListName.trim() || createListMutation.isPending) return;
-    const categoryName =
-      selectedCategory.name === "Custom" ? customCategoryText.trim() || "Custom" : selectedCategory.name;
-    const fullName = buildCategorizedListName(
-      selectedCategory.emoji,
-      selectedCategory.name,
-      newListName
-    );
-    createListMutation.mutate({ name: fullName, category: categoryName });
+    const categoryName = selectedCategory
+      ? selectedCategory.name === "Custom"
+        ? customCategoryText.trim() || "Custom"
+        : selectedCategory.name
+      : null;
+    const fullName = selectedCategory
+      ? buildCategorizedListName(selectedCategory.emoji, selectedCategory.name, newListName)
+      : newListName.trim();
+    createListMutation.mutate({ name: fullName, category: categoryName ?? undefined });
   };
 
   const handleUpdateList = () => {
     if (!editingList || !editName.trim() || updateListMutation.isPending) return;
-    const categoryName =
-      editCategory.name === "Custom" ? editCustomCategoryText.trim() || "Custom" : editCategory.name;
-    const fullName = buildCategorizedListName(editCategory.emoji, editCategory.name, editName);
+    const categoryName = editCategory
+      ? editCategory.name === "Custom"
+        ? editCustomCategoryText.trim() || "Custom"
+        : editCategory.name
+      : null;
+    const fullName = editCategory
+      ? buildCategorizedListName(editCategory.emoji, editCategory.name, editName)
+      : editName.trim();
     // Task order is saved on this phone only, so it doesn't wait on the server.
     void setListTaskSortOverride(editingList.id, editSortOverride);
     updateListMutation.mutate({
@@ -403,10 +409,10 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   const openEditModal = (list: TodoList) => {
     triggerImpactHaptic();
     setEditingList(list);
-    const matchingCat = PRESET_CATEGORIES.find((c) => c.name === list.category);
-    const cat = matchingCat || PRESET_CATEGORIES.find((c) => c.name === "Custom") || PRESET_CATEGORIES[0];
-    setEditCategory(cat);
-    setEditCustomCategoryText(matchingCat ? "" : list.category || "");
+    const matchingCat = list.category ? PRESET_CATEGORIES.find((c) => c.name === list.category) : null;
+    const cat = matchingCat || (list.category ? PRESET_CATEGORIES.find((c) => c.name === "Custom") : null);
+    setEditCategory(cat ?? null);
+    setEditCustomCategoryText(matchingCat || !list.category ? "" : list.category);
     setEditName(stripLeadingCategoryEmoji(list.name, matchingCat?.emoji || ""));
     setEditSortOverride(taskSortPrefs.overrides[list.id] ?? "app_default");
   };
@@ -642,7 +648,6 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
           )}
           renderItem={({ item, section }) => {
             const isActive = item.id === activeListId;
-            const categoryTag = item.category || DEFAULT_CATEGORY;
             const shareMode = item.shareMode || "private";
             const isShared = section.shared;
             const ownerName = item.owner?.displayName;
@@ -685,12 +690,12 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
                           {ownerName}
                         </Text>
                       </View>
-                    ) : (
+                    ) : item.category ? (
                       <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
                         <Tag size={10} color={theme.accent} />
-                        <Text style={[styles.categoryPillText, { color: theme.accent }]}>{categoryTag}</Text>
+                        <Text style={[styles.categoryPillText, { color: theme.accent }]}>{item.category}</Text>
                       </View>
-                    )}
+                    ) : null}
 
                     <View style={[styles.categoryPill, { backgroundColor: theme.inputBg }]}>
                       <ShareModeIcon mode={shareMode} color={theme.textSecondary} />
@@ -917,28 +922,55 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Select List Category Tag</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+              <TouchableOpacity
+                accessibilityRole="radio"
+                accessibilityState={{ selected: selectedCategory === null }}
+                style={[
+                  styles.catBtn,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  selectedCategory === null && {
+                    backgroundColor: theme.accentLight,
+                    borderColor: theme.accent,
+                    borderWidth: 2,
+                  },
+                ]}
+                onPress={() => setSelectedCategory(null)}
+              >
+                <Text style={styles.catEmoji}>🚫</Text>
+                <Text
+                  style={[
+                    styles.catName,
+                    { color: theme.textPrimary },
+                    selectedCategory === null && { color: theme.accent, fontWeight: "700" },
+                  ]}
+                >
+                  None
+                </Text>
+              </TouchableOpacity>
               {PRESET_CATEGORIES.map((cat) => (
                 <TouchableOpacity
                   key={cat.name}
                   accessibilityRole="radio"
-                  accessibilityState={{ selected: selectedCategory.name === cat.name }}
+                  accessibilityState={{ selected: selectedCategory?.name === cat.name }}
                   style={[
                     styles.catBtn,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                    selectedCategory.name === cat.name && {
+                    selectedCategory?.name === cat.name && {
                       backgroundColor: theme.accentLight,
                       borderColor: theme.accent,
                       borderWidth: 2,
                     },
                   ]}
-                  onPress={() => setSelectedCategory(cat)}
+                  onPress={() =>
+                    setSelectedCategory((prev) => (prev?.name === cat.name ? null : cat))
+                  }
                 >
                   <Text style={styles.catEmoji}>{cat.emoji}</Text>
                   <Text
                     style={[
                       styles.catName,
                       { color: theme.textPrimary },
-                      selectedCategory.name === cat.name && { color: theme.accent, fontWeight: "700" },
+                      selectedCategory?.name === cat.name && { color: theme.accent, fontWeight: "700" },
                     ]}
                   >
                     {cat.name}
@@ -947,7 +979,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
               ))}
             </ScrollView>
 
-            {selectedCategory.name === "Custom" && (
+            {selectedCategory?.name === "Custom" && (
               <View style={{ marginTop: 4 }}>
                 <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
                 <TextInput
@@ -1015,28 +1047,55 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Category Tag</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+              <TouchableOpacity
+                accessibilityRole="radio"
+                accessibilityState={{ selected: editCategory === null }}
+                style={[
+                  styles.catBtn,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  editCategory === null && {
+                    backgroundColor: theme.accentLight,
+                    borderColor: theme.accent,
+                    borderWidth: 2,
+                  },
+                ]}
+                onPress={() => setEditCategory(null)}
+              >
+                <Text style={styles.catEmoji}>🚫</Text>
+                <Text
+                  style={[
+                    styles.catName,
+                    { color: theme.textPrimary },
+                    editCategory === null && { color: theme.accent, fontWeight: "700" },
+                  ]}
+                >
+                  None
+                </Text>
+              </TouchableOpacity>
               {PRESET_CATEGORIES.map((cat) => (
                 <TouchableOpacity
                   key={cat.name}
                   accessibilityRole="radio"
-                  accessibilityState={{ selected: editCategory.name === cat.name }}
+                  accessibilityState={{ selected: editCategory?.name === cat.name }}
                   style={[
                     styles.catBtn,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                    editCategory.name === cat.name && {
+                    editCategory?.name === cat.name && {
                       backgroundColor: theme.accentLight,
                       borderColor: theme.accent,
                       borderWidth: 2,
                     },
                   ]}
-                  onPress={() => setEditCategory(cat)}
+                  onPress={() =>
+                    setEditCategory((prev) => (prev?.name === cat.name ? null : cat))
+                  }
                 >
                   <Text style={styles.catEmoji}>{cat.emoji}</Text>
                   <Text
                     style={[
                       styles.catName,
                       { color: theme.textPrimary },
-                      editCategory.name === cat.name && { color: theme.accent, fontWeight: "700" },
+                      editCategory?.name === cat.name && { color: theme.accent, fontWeight: "700" },
                     ]}
                   >
                     {cat.name}
@@ -1045,7 +1104,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
               ))}
             </ScrollView>
 
-            {editCategory.name === "Custom" && (
+            {editCategory?.name === "Custom" && (
               <View style={{ marginTop: 4 }}>
                 <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
                 <TextInput

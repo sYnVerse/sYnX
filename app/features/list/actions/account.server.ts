@@ -22,6 +22,7 @@ import {
   MAX_LIST_NAME_LENGTH,
   MAX_TASKS_PER_LIST,
   MAX_TASK_TEXT_LENGTH,
+  normalizeOptionalCategory,
   phoneSettingsError,
 } from "~/write-limits";
 import type { Todo } from "~/to-do-manager";
@@ -56,10 +57,12 @@ export async function handleMigrateGuestLists(ctx: ListActionContext) {
         const guestLists = JSON.parse(rawLists) as Array<{
           name?: unknown;
           created_at?: unknown;
+          category?: unknown;
           todos?: unknown[];
         }>;
         for (const gList of guestLists) {
           const listName = (String(gList.name || "") || "My Tasks").trim().slice(0, MAX_LIST_NAME_LENGTH) || "My Tasks";
+          const category = normalizeOptionalCategory(gList.category);
           const todos = (Array.isArray(gList.todos) ? gList.todos : [])
             .filter((todo): todo is Partial<Todo> & { text: string } => Boolean(todo && typeof (todo as { text?: unknown }).text === "string" && (todo as { text: string }).text.trim()))
             .slice(0, MAX_TASKS_PER_LIST);
@@ -68,8 +71,8 @@ export async function handleMigrateGuestLists(ctx: ListActionContext) {
           }
 
           const newListId = crypto.randomUUID();
-          await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, NULL)")
-            .bind(newListId, listName, userId, Number(gList.created_at) || Date.now())
+          await db.prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl, category) VALUES (?, ?, ?, ?, NULL, ?)")
+            .bind(newListId, listName, userId, Number(gList.created_at) || Date.now(), category)
             .run();
 
           // Fresh ids for the whole list first, so subtask parentId links within the list stay valid.

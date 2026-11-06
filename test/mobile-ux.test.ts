@@ -175,6 +175,8 @@ describe("date / priority / list name formatting", () => {
     expect(stripLeadingCategoryEmoji("🎓 French HW", "🎓")).toBe("French HW");
     expect(buildCategorizedListName("🎓", "Study", "French HW")).toBe("🎓 French HW");
     expect(buildCategorizedListName("✏️", "Custom", "Project X")).toBe("Project X");
+    expect(buildCategorizedListName("", "", "Uncategorized List")).toBe("Uncategorized List");
+    expect(buildCategorizedListName("🚫", "None", "No Category List")).toBe("No Category List");
   });
 });
 
