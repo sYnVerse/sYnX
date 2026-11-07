@@ -1,5 +1,8 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import * as SecureStore from "expo-secure-store";
+import * as Updates from "expo-updates";
+import Constants from "expo-constants";
+import { MOBILE_APP_VERSION } from "../shared/mobile-version";
 import {
   MOBILE_ACCESS_TOKEN_KEY,
   MOBILE_REFRESH_TOKEN_KEY,
@@ -76,6 +79,20 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   async (config) => {
+    config.headers["X-sYnX-Client-Version"] = MOBILE_APP_VERSION;
+    if (Constants.nativeAppVersion) {
+      config.headers["X-sYnX-Binary-Version"] = `${Constants.nativeAppVersion}${
+        Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ""
+      }`;
+    }
+    if (Updates.runtimeVersion) {
+      config.headers["X-sYnX-Runtime-Version"] = Updates.runtimeVersion;
+    }
+    config.headers["X-sYnX-Update-Id"] = Updates.updateId ?? "embedded";
+    if (Updates.isEmergencyLaunch) {
+      config.headers["X-sYnX-Emergency-Launch"] = "1";
+    }
+
     const token = await SecureStore.getItemAsync(MOBILE_ACCESS_TOKEN_KEY);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

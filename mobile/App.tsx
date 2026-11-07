@@ -9,20 +9,29 @@ import { BottomTabNavigator } from "./src/navigation/BottomTabNavigator";
 import { startWidgetSyncService } from "./src/services/widgetSync";
 import { startCalendarReconcileService } from "./src/services/calendarReconcile";
 import { registerWidgetBackgroundSync } from "./src/services/widgetBackgroundTask";
+import { startPeriodicUpdateService, useUpdatesBridge } from "./src/services/updates";
+
+function UpdatesBridge() {
+  useUpdatesBridge();
+  return null;
+}
 
 export default function App() {
   useEffect(() => {
     const unsubWidgets = startWidgetSyncService(queryClient);
     const unsubCalendar = startCalendarReconcileService(queryClient);
+    const unsubUpdates = startPeriodicUpdateService();
     registerWidgetBackgroundSync().catch(() => {});
     return () => {
       unsubWidgets();
       unsubCalendar();
+      unsubUpdates();
     };
   }, []);
 
   return (
     <SafeAreaProvider>
+      <UpdatesBridge />
       <PersistQueryClientProvider
         client={queryClient}
         persistOptions={{ persister: asyncStoragePersister }}
