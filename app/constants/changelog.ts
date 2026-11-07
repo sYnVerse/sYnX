@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v6.0.2";
+export const WEB_VERSION = "v6.0.3";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v6.0.3",
+    date: "2026-11-07",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Streaming deferred loader data: lists and tasks paint immediately while owner activity logs, cross-list delete queues, and provider profile avatars stream in via Suspense."
+      },
+      {
+        type: "IMPR",
+        text: "Instant sidebar list switching: switching lists in the sidebar now uses client-side routing with hover prefetching instead of full-page document reloads."
+      }
+    ]
+  },
   {
     version: "v6.0.2",
     date: "2026-11-06",

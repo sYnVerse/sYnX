@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { Await } from "react-router";
 import { ProfileAvatar } from "~/components/profile-avatar";
 import { WEB_VERSION } from "~/constants/changelog";
 import {
@@ -29,6 +31,7 @@ interface ProfileModalProps {
     initials: string;
   };
   settings?: SettingsData;
+  providerProfile?: Promise<{ avatarUrl: string | null; suggestedDisplayName: string | null } | null>;
   displayNameInput: string;
   setDisplayNameInput: (name: string) => void;
   email: string;
@@ -72,6 +75,7 @@ export function ProfileModal({
   requestCloseProfile,
   profileLabel,
   settings,
+  providerProfile,
   displayNameInput,
   setDisplayNameInput,
   email,
@@ -132,13 +136,39 @@ export function ProfileModal({
 
         {/* Profile Detail */}
         <div className="flex flex-col items-center text-center mb-6">
-          <ProfileAvatar
-            url={settings?.avatarUrl}
-            initials={profileLabel.initials}
-            className="w-16 h-16 rounded-full bg-gradient-to-tr from-themeAccentFrom to-themeAccentTo flex items-center justify-center text-white font-extrabold text-xl shadow-xl shadow-themeAccentFrom/10 mb-3 border border-white/10 relative"
-          >
-            <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full" />
-          </ProfileAvatar>
+          {providerProfile ? (
+            <Suspense
+              fallback={
+                <ProfileAvatar
+                  url={settings?.avatarUrl}
+                  initials={profileLabel.initials}
+                  className="w-16 h-16 rounded-full bg-gradient-to-tr from-themeAccentFrom to-themeAccentTo flex items-center justify-center text-white font-extrabold text-xl shadow-xl shadow-themeAccentFrom/10 mb-3 border border-white/10 relative"
+                >
+                  <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full" />
+                </ProfileAvatar>
+              }
+            >
+              <Await resolve={providerProfile}>
+                {(profile) => (
+                  <ProfileAvatar
+                    url={profile?.avatarUrl ?? settings?.avatarUrl}
+                    initials={profileLabel.initials}
+                    className="w-16 h-16 rounded-full bg-gradient-to-tr from-themeAccentFrom to-themeAccentTo flex items-center justify-center text-white font-extrabold text-xl shadow-xl shadow-themeAccentFrom/10 mb-3 border border-white/10 relative"
+                  >
+                    <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full" />
+                  </ProfileAvatar>
+                )}
+              </Await>
+            </Suspense>
+          ) : (
+            <ProfileAvatar
+              url={settings?.avatarUrl}
+              initials={profileLabel.initials}
+              className="w-16 h-16 rounded-full bg-gradient-to-tr from-themeAccentFrom to-themeAccentTo flex items-center justify-center text-white font-extrabold text-xl shadow-xl shadow-themeAccentFrom/10 mb-3 border border-white/10 relative"
+            >
+              <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full" />
+            </ProfileAvatar>
+          )}
           <h3 className="text-base font-bold text-slate-200 font-display">
             {displayNameInput.trim() || settings?.displayName || "sYnX user"}
           </h3>
