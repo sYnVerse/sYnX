@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useFetcher, useLoaderData, useNavigate } from "react-router";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Await, useFetcher, useLoaderData, useNavigate } from "react-router";
 import { useStoredValue } from "~/client-storage";
 import { GuestContext } from "~/guest-context";
 import { getProfileLabel } from "~/profile-label";
@@ -46,7 +46,9 @@ export default function TodoPage() {
     activeListId,
     stats,
     pendingDeleteRequests = [],
-    listActivity: loaderListActivity = [],
+    ownedPendingDeleteRequests,
+    providerProfile,
+    listActivity: loaderListActivity,
   } = useLoaderData<typeof listLoader>();
 
   const profileLabel = getProfileLabel({
@@ -163,25 +165,6 @@ export default function TodoPage() {
   const sharePopoverRef = useRef<HTMLDivElement>(null);
 
   const [showActivityModal, setShowActivityModal] = useState(false);
-  const seededActivity = (loaderListActivity as ListActivityEntry[]) || [];
-  const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>(seededActivity);
-  const [activityHasMore, setActivityHasMore] = useState(seededActivity.length >= 50);
-  const [syncedActivitySeed, setSyncedActivitySeed] = useState<ListActivityEntry[]>(seededActivity);
-  if (syncedActivitySeed !== seededActivity) {
-    setSyncedActivitySeed(seededActivity);
-    setActivityEntries(seededActivity);
-    setActivityHasMore(seededActivity.length >= 50);
-  }
-  const [syncedActivityData, setSyncedActivityData] = useState(activityFetcher.data);
-  if (activityFetcher.state === "idle" && activityFetcher.data !== syncedActivityData) {
-    setSyncedActivityData(activityFetcher.data);
-    const data = activityFetcher.data;
-    if (data?.success && Array.isArray(data.entries)) {
-      const seen = new Set(activityEntries.map((e) => e.id));
-      setActivityEntries([...activityEntries, ...data.entries.filter((e) => !seen.has(e.id))]);
-      setActivityHasMore(data.entries.length >= 50);
-    }
-  }
 
   // Apply the saved theme to the page once it is read from localStorage.
   useEffect(() => {
@@ -237,6 +220,7 @@ export default function TodoPage() {
     requestCloseProfile,
   } = useProfileSettings({
     settings,
+    providerProfile,
     hydrated,
     isProfileOpen,
     setIsProfileOpen,
@@ -297,14 +281,7 @@ export default function TodoPage() {
     (!isLoggedIn && !isSharedServerList) ||
     !activeListMeta;
 
-  const ownedPendingDeleteRequests = useMemo(
-    () =>
-      (pendingDeleteRequests as PendingDeleteRequest[]).filter((r) => {
-        const list = lists.find((l) => l.id === r.listId);
-        return list ? list.owner_id === userId : true;
-      }),
-    [pendingDeleteRequests, lists, userId]
-  );
+
   const activeListPendingDeletes = useMemo(
     () =>
       (pendingDeleteRequests as PendingDeleteRequest[]).filter(
@@ -446,8 +423,18 @@ export default function TodoPage() {
   const [showConfetti, setShowConfetti] = useState(false);
   const prevCompletedCount = useRef(completedCount);
   const prevTotalTodos = useRef(totalCount);
+  const prevActiveListId = useRef(effectiveActiveListId);
 
   useEffect(() => {
+    if (prevActiveListId.current !== effectiveActiveListId) {
+      prevActiveListId.current = effectiveActiveListId;
+      prevCompletedCount.current = completedCount;
+      prevTotalTodos.current = totalCount;
+      setIsEditingTitle(false);
+      setShowSharePopover(false);
+      return;
+    }
+
     if (
       totalCount > 0 &&
       completedCount === totalCount &&
@@ -460,7 +447,7 @@ export default function TodoPage() {
     }
     prevCompletedCount.current = completedCount;
     prevTotalTodos.current = totalCount;
-  }, [completedCount, totalCount]);
+  }, [completedCount, totalCount, effectiveActiveListId]);
 
   return (
     <GuestContext.Provider value={guestContextValue}>
@@ -518,6 +505,8 @@ export default function TodoPage() {
           activeListId={activeListId}
           userId={userId}
           pendingDeleteRequests={pendingDeleteRequests as PendingDeleteRequest[]}
+          ownedPendingDeleteRequests={ownedPendingDeleteRequests}
+          providerProfile={providerProfile}
           setListToDelete={setListToDelete}
           setListToRename={setListToRename}
           setRenameInput={setRenameInput}
@@ -531,67 +520,77 @@ export default function TodoPage() {
 
         {/* ── Main Area ─────────────────────────────────────── */}
         <main className="relative z-10 flex flex-col py-6 px-4 sm:px-5 md:px-6 lg:px-8 max-w-2xl mx-auto w-full min-w-0 md:max-w-none md:h-screen md:overflow-x-hidden md:overflow-y-auto">
-          {isLoggedIn && ownedPendingDeleteRequests.length > 0 && (
-            <section
-              className="mb-5 rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3"
-              aria-label="Pending delete requests"
-            >
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-amber-200">
-                  Delete requests
-                </h2>
-                <span className="text-[10px] font-semibold text-amber-300/80">
-                  {ownedPendingDeleteRequests.length} pending
-                </span>
-              </div>
-              <ul className="space-y-2">
-                {ownedPendingDeleteRequests.map((req) => {
-                  const summary = describeDeleteTarget(req.targetType, req.targetLabel);
-                  const onThisList = req.listId === activeListId;
+          {isLoggedIn && (
+            <Suspense fallback={null}>
+              <Await resolve={ownedPendingDeleteRequests}>
+                {(resolvedOwnedRequests: PendingDeleteRequest[] | undefined) => {
+                  const requests = resolvedOwnedRequests || [];
+                  if (requests.length === 0) return null;
                   return (
-                    <li
-                      key={req.id}
-                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl bg-black/20 border border-white/[0.04] px-3 py-2"
+                    <section
+                      className="mb-5 rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3"
+                      aria-label="Pending delete requests"
                     >
-                      <div className="min-w-0 text-xs text-slate-200">
-                        <span className="font-semibold">Delete {summary}</span>
-                        {!onThisList && (
-                          <span className="text-slate-400"> on &ldquo;{req.listName}&rdquo;</span>
-                        )}
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <h2 className="text-xs font-bold uppercase tracking-wider text-amber-200">
+                          Delete requests
+                        </h2>
+                        <span className="text-[10px] font-semibold text-amber-300/80">
+                          {requests.length} pending
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          disabled={deleteRequestFetcher.state !== "idle"}
-                          onClick={() =>
-                            deleteRequestFetcher.submit(
-                              { intent: "approveDeleteRequest", requestId: req.id },
-                              { method: "post" }
-                            )
-                          }
-                          className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-themeAccentFrom/90 hover:bg-themeAccentTo text-white transition-colors disabled:opacity-50"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          type="button"
-                          disabled={deleteRequestFetcher.state !== "idle"}
-                          onClick={() =>
-                            deleteRequestFetcher.submit(
-                              { intent: "declineDeleteRequest", requestId: req.id },
-                              { method: "post" }
-                            )
-                          }
-                          className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 transition-colors disabled:opacity-50"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </li>
+                      <ul className="space-y-2">
+                        {requests.map((req) => {
+                          const summary = describeDeleteTarget(req.targetType, req.targetLabel);
+                          const onThisList = req.listId === activeListId;
+                          return (
+                            <li
+                              key={req.id}
+                              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-xl bg-black/20 border border-white/[0.04] px-3 py-2"
+                            >
+                              <div className="min-w-0 text-xs text-slate-200">
+                                <span className="font-semibold">Delete {summary}</span>
+                                {!onThisList && (
+                                  <span className="text-slate-400"> on &ldquo;{req.listName}&rdquo;</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  disabled={deleteRequestFetcher.state !== "idle"}
+                                  onClick={() =>
+                                    deleteRequestFetcher.submit(
+                                      { intent: "approveDeleteRequest", requestId: req.id },
+                                      { method: "post" }
+                                    )
+                                  }
+                                  className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-themeAccentFrom/90 hover:bg-themeAccentTo text-white transition-colors disabled:opacity-50"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={deleteRequestFetcher.state !== "idle"}
+                                  onClick={() =>
+                                    deleteRequestFetcher.submit(
+                                      { intent: "declineDeleteRequest", requestId: req.id },
+                                      { method: "post" }
+                                    )
+                                  }
+                                  className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-slate-300 transition-colors disabled:opacity-50"
+                                >
+                                  Decline
+                                </button>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
                   );
-                })}
-              </ul>
-            </section>
+                }}
+              </Await>
+            </Suspense>
           )}
 
           {!isOwner && pendingListDelete && (
@@ -764,9 +763,6 @@ export default function TodoPage() {
             isOwner={isOwner}
             clearCompletedNeedsApproval={clearCompletedNeedsApproval}
             activeListShareMode={activeListShareMode}
-            loaderListActivity={loaderListActivity}
-            setActivityEntries={setActivityEntries}
-            setActivityHasMore={setActivityHasMore}
             setShowActivityModal={setShowActivityModal}
             showSharePopover={showSharePopover}
             setShowSharePopover={setShowSharePopover}
@@ -870,6 +866,7 @@ export default function TodoPage() {
           requestCloseProfile={requestCloseProfile}
           profileLabel={profileLabel}
           settings={settings}
+          providerProfile={providerProfile}
           displayNameInput={displayNameInput}
           setDisplayNameInput={setDisplayNameInput}
           email={email}
@@ -908,8 +905,7 @@ export default function TodoPage() {
         <ActivityLogModal
           showActivityModal={showActivityModal}
           setShowActivityModal={setShowActivityModal}
-          activityEntries={activityEntries}
-          activityHasMore={activityHasMore}
+          listActivity={loaderListActivity}
           activityFetcher={activityFetcher}
           activeListId={activeListId}
         />

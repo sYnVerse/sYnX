@@ -1,4 +1,4 @@
-import { redirect } from "react-router";
+import { data, redirect } from "react-router";
 import { getCloudflareContext } from "~/context.server";
 import { getAuthSettings, getOptionalUser } from "~/auth.server";
 import {
@@ -47,20 +47,44 @@ export const loader = async ({ request, params, context }: { request: Request; p
     } catch (e) {
       console.error("Failed to sync user profile:", e);
     }
-    // Provider photo / suggested name from sYnID (throttled, best-effort, off the
-    // response path so a slow or missing /userinfo never delays the page).
-    const providerSync = syncProviderProfile(db, {
-      userId,
-      email,
-      accessToken,
-      issuer: getAuthSettings(request, env).issuer,
-    });
-    // execCtx is already retrieved from getCloudflareContext
-    if (execCtx && typeof execCtx.waitUntil === "function") {
-      execCtx.waitUntil(providerSync);
-    } else {
-      await providerSync;
-    }
+  }
+
+  // Provider photo / suggested name from sYnID (throttled, best-effort, off the
+  // response path so a slow or missing /userinfo never delays the page).
+  const providerProfile: Promise<{ avatarUrl: string | null; suggestedDisplayName: string | null }> =
+    isLoggedIn && userId
+      ? (async () => {
+          try {
+            await syncProviderProfile(db, {
+              userId,
+              email,
+              accessToken,
+              issuer: getAuthSettings(request, env).issuer,
+            });
+            const row = await db
+              .prepare(
+                "SELECT display_name, avatar_url, suggested_display_name, display_name_suggestion_dismissed FROM user_settings WHERE user_id = ?"
+              )
+              .bind(userId)
+              .first<{
+                display_name?: string | null;
+                avatar_url?: string | null;
+                suggested_display_name?: string | null;
+                display_name_suggestion_dismissed?: number | null;
+              }>();
+            return providerProfileFields(row);
+          } catch (e) {
+            console.error("Failed to sync/load provider profile:", e);
+            return {
+              avatarUrl: null,
+              suggestedDisplayName: null,
+            };
+          }
+        })()
+      : Promise.resolve({ avatarUrl: null, suggestedDisplayName: null });
+
+  if (isLoggedIn && execCtx && typeof execCtx.waitUntil === "function") {
+    execCtx.waitUntil(providerProfile.catch(() => {}));
   }
 
   let lists: LoaderListRow[] = [];
@@ -173,7 +197,7 @@ export const loader = async ({ request, params, context }: { request: Request; p
   }
 
   // Pending delete requests for the active list (collaborators see markers;
-  // owners also get the full owned-lists queue below).
+  // owners also get the full owned-lists queue deferred below).
   let pendingDeleteRequests: PendingDeleteRequest[] = [];
   let pendingTaskIds = new Set<string>();
   try {
@@ -185,38 +209,40 @@ export const loader = async ({ request, params, context }: { request: Request; p
           .map((r) => r.targetId)
       );
     }
-    if (isLoggedIn) {
-      // Owners see every pending request across their lists in the review panel.
-      const ownedPending = await listPendingDeletesForOwner(db, userId);
-      const byId = new Map<string, PendingDeleteRequest>();
-      for (const r of [...ownedPending, ...pendingDeleteRequests]) {
-        byId.set(r.id, r);
-      }
-      pendingDeleteRequests = Array.from(byId.values()).sort(
-        (a, b) => a.createdAt - b.createdAt
-      );
-    }
   } catch (e) {
-    console.error("Failed to load pending delete requests:", e);
+    console.error("Failed to load active list pending deletes:", e);
   }
 
+  // Owners see every pending request across their lists in the review panel and sidebar badge.
+  // Deferred so the active list and task list paint immediately.
+  const ownedPendingDeleteRequests: Promise<PendingDeleteRequest[]> =
+    isLoggedIn && userId
+      ? listPendingDeletesForOwner(db, userId).catch((e) => {
+          console.error("Failed to load pending deletes for owner:", e);
+          return [];
+        })
+      : Promise.resolve([]);
+
   // Owner-only activity for the active shared list (private lists have no log).
-  let listActivity: ListActivityEntry[] = [];
-  try {
-    if (isLoggedIn && activeListId) {
-      const activeMeta = lists.find((l) => l.id === activeListId);
-      if (
-        activeMeta &&
-        activeMeta.owner_id === userId &&
-        (activeMeta.share_mode || "private") !== "private"
-      ) {
-        const activity = await listActivityForOwner(db, activeListId, userId, { limit: 50 });
-        if (activity.kind === "ok") listActivity = activity.entries;
+  // Deferred so secondary log lookups do not block the task list paint.
+  const listActivity: Promise<ListActivityEntry[]> = (async () => {
+    try {
+      if (isLoggedIn && activeListId) {
+        const activeMeta = lists.find((l) => l.id === activeListId);
+        if (
+          activeMeta &&
+          activeMeta.owner_id === userId &&
+          (activeMeta.share_mode || "private") !== "private"
+        ) {
+          const activity = await listActivityForOwner(db, activeListId, userId, { limit: 50 });
+          if (activity.kind === "ok") return activity.entries;
+        }
       }
+    } catch (e) {
+      console.error("Failed to load list activity:", e);
     }
-  } catch (e) {
-    console.error("Failed to load list activity:", e);
-  }
+    return [];
+  })();
 
   const listsWithTodos: GuestList[] = lists.map((list) => {
     const listRows = allTodos.filter((t) => t.list_id === list.id);
@@ -323,7 +349,9 @@ export const loader = async ({ request, params, context }: { request: Request; p
     activeListId: activeListId || userId,
     todos,
     pendingDeleteRequests,
+    ownedPendingDeleteRequests,
     listActivity,
+    providerProfile,
     stats: {
       totalLists,
       totalTasks,
@@ -332,7 +360,7 @@ export const loader = async ({ request, params, context }: { request: Request; p
   };
 
   if (isNewGuest && guestId) {
-    return Response.json(responsePayload, { headers });
+    return data(responsePayload, { headers });
   }
 
   return responsePayload;

@@ -17,6 +17,7 @@ interface SettingsData {
 
 interface UseProfileSettingsOptions {
   settings?: SettingsData;
+  providerProfile?: Promise<{ avatarUrl: string | null; suggestedDisplayName: string | null } | null>;
   hydrated: boolean;
   isProfileOpen: boolean;
   setIsProfileOpen: (open: boolean) => void;
@@ -38,6 +39,7 @@ export const getDisplayPhone = (phone?: string) => {
 
 export function useProfileSettings({
   settings,
+  providerProfile,
   hydrated,
   isProfileOpen,
   setIsProfileOpen,
@@ -64,9 +66,27 @@ export function useProfileSettings({
   const [displayNameInput, setDisplayNameInput] = useState(initialDisplayNameInput);
   const [homeTimeZoneInput, setHomeTimeZoneInput] = useState(initialHomeTimeZone);
 
+  const [deferredSuggestion, setDeferredSuggestion] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!providerProfile) return;
+    let cancelled = false;
+    providerProfile
+      .then((p) => {
+        if (!cancelled && p?.suggestedDisplayName) {
+          setDeferredSuggestion(p.suggestedDisplayName);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [providerProfile]);
+
   const [nameSuggestionHandled, setNameSuggestionHandled] = useState(false);
+  const activeSuggestion = deferredSuggestion ?? settings?.suggestedDisplayName ?? null;
   const pendingNameSuggestion =
-    !nameSuggestionHandled && !settings?.displayNameSet ? settings?.suggestedDisplayName || null : null;
+    !nameSuggestionHandled && !settings?.displayNameSet ? activeSuggestion : null;
 
   const acceptNameSuggestion = (name: string) => {
     suggestionFetcher.submit({ intent: "acceptSuggestedDisplayName" }, { method: "post" });
