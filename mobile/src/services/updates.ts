@@ -62,33 +62,37 @@ function updateState(patch: Partial<UpdateState>): void {
 /**
  * Synchronizes native Expo Updates state (e.g. startup downloads or rollback directives)
  * from the native state machine context into the JavaScript state singleton.
+ * Reconciles state in both directions (setting and clearing flags).
  */
 export function syncNativeUpdateContext(context?: any): void {
   const ctx = context ?? (Updates as any).latestContext;
   if (!ctx) return;
 
-  const isPending = Boolean(ctx.isUpdatePending || ctx.rollback || ctx.downloadedManifest);
-  const isAvailable = Boolean(ctx.isUpdateAvailable || ctx.latestManifest || ctx.rollback);
-  const isRollBack = Boolean(ctx.rollback);
+  const isPending = Boolean(ctx.isUpdatePending);
+  const isAvailable = Boolean(ctx.isUpdateAvailable);
+  // Rollback readiness is only valid when an update is pending AND is a rollback (not superseded by a normal manifest)
+  const isRollBack = isPending && Boolean(ctx.rollback && !ctx.downloadedManifest);
 
   const patch: Partial<UpdateState> = {};
-  if (isPending && !currentState.isUpdatePending) {
-    patch.isUpdatePending = true;
+
+  if (typeof ctx.isUpdatePending === "boolean") {
+    patch.isUpdatePending = isPending;
+    patch.isRollBackToEmbedded = isRollBack;
   }
-  if (isAvailable && !currentState.isUpdateAvailable) {
-    patch.isUpdateAvailable = true;
+  if (typeof ctx.isUpdateAvailable === "boolean") {
+    patch.isUpdateAvailable = isAvailable;
   }
-  if (isRollBack && !currentState.isRollBackToEmbedded) {
-    patch.isRollBackToEmbedded = true;
-  }
-  if (typeof ctx.isChecking === "boolean" && ctx.isChecking !== currentState.isChecking) {
+  if (typeof ctx.isChecking === "boolean") {
     patch.isChecking = ctx.isChecking;
   }
-  if (typeof ctx.isDownloading === "boolean" && ctx.isDownloading !== currentState.isDownloading) {
+  if (typeof ctx.isDownloading === "boolean") {
     patch.isDownloading = ctx.isDownloading;
   }
 
-  if (Object.keys(patch).length > 0) {
+  const hasChanges = Object.keys(patch).some(
+    (key) => (currentState as any)[key] !== (patch as any)[key]
+  );
+  if (hasChanges) {
     updateState(patch);
   }
 }
@@ -133,22 +137,37 @@ registerNativeUpdatesListener();
 
 /**
  * Bridges native update state from an object (e.g. from Updates.useUpdates())
- * into the sYnX update state singleton.
+ * into the sYnX update state singleton, reconciling both true and false transitions.
  */
 export function bridgeNativeUpdatesState(nativeState: any): void {
   if (!nativeState) return;
-  syncNativeUpdateContext({
-    isUpdatePending: nativeState.isUpdatePending,
-    isUpdateAvailable: nativeState.isUpdateAvailable,
-    isChecking: nativeState.isChecking,
-    isDownloading: nativeState.isDownloading,
-    downloadedManifest: nativeState.downloadedUpdate?.manifest,
-    rollback:
-      nativeState.downloadedUpdate?.type === "rollback" ||
-      nativeState.availableUpdate?.type === "rollback"
-        ? { commitTime: new Date().toISOString() }
-        : undefined,
-  });
+
+  const isPending = Boolean(nativeState.isUpdatePending);
+  const isAvailable = Boolean(nativeState.isUpdateAvailable);
+  const isRollBack = isPending && Boolean(
+    nativeState.downloadedUpdate?.type === "rollback" ||
+    (!nativeState.downloadedUpdate?.manifest && nativeState.availableUpdate?.type === "rollback")
+  );
+
+  const patch: Partial<UpdateState> = {
+    isUpdatePending: isPending,
+    isUpdateAvailable: isAvailable,
+    isRollBackToEmbedded: isRollBack,
+  };
+
+  if (typeof nativeState.isChecking === "boolean") {
+    patch.isChecking = nativeState.isChecking;
+  }
+  if (typeof nativeState.isDownloading === "boolean") {
+    patch.isDownloading = nativeState.isDownloading;
+  }
+
+  const hasChanges = Object.keys(patch).some(
+    (key) => (currentState as any)[key] !== (patch as any)[key]
+  );
+  if (hasChanges) {
+    updateState(patch);
+  }
 }
 
 /**
@@ -263,24 +282,28 @@ export async function checkForUpdate(options?: {
       isChecking: false,
       lastCheckedAt: now,
       isUpdateAvailable: shouldFetch,
-      isRollBackToEmbedded: isRollBack,
     });
 
     if (shouldFetch) {
       updateState({ isDownloading: true });
       const fetchResult = await Updates.fetchUpdateAsync();
-      const isPending = Boolean(fetchResult.isNew || (fetchResult as any).isRollBackToEmbedded);
       const isRollBackPending = Boolean((fetchResult as any).isRollBackToEmbedded);
+      const isPending = Boolean(fetchResult.isNew || isRollBackPending);
 
       updateState({
         isDownloading: false,
         isUpdatePending: isPending,
-        isRollBackToEmbedded: isRollBackPending || isRollBack,
+        isRollBackToEmbedded: isRollBackPending,
       });
-      return { hasUpdate: isPending, isRollBack: isRollBackPending || isRollBack };
+      return { hasUpdate: isPending, isRollBack: isRollBackPending };
     }
 
-    return { hasUpdate: false };
+    updateState({
+      isDownloading: false,
+      isUpdateAvailable: false,
+      isRollBackToEmbedded: false,
+    });
+    return { hasUpdate: false, isRollBack: false };
   } catch (err: any) {
     const message = err?.message || "Failed to check for updates.";
     console.warn("[updates] Update check/download failed:", message);

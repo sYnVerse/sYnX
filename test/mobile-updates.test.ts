@@ -181,6 +181,56 @@ describe("mobile updates service", () => {
       expect(state.isRollBackToEmbedded).toBe(true);
     });
 
+    it("keeps restart disabled while fetch is in progress", async () => {
+      mocks.updates.isEnabled = true;
+      mocks.updates.checkForUpdateAsync.mockResolvedValueOnce({
+        isAvailable: false,
+        isRollBackToEmbedded: true,
+      });
+
+      let finishFetch: (val: any) => void = () => {};
+      const fetchPromise = new Promise<{ isNew: boolean; isRollBackToEmbedded: boolean }>((resolve) => {
+        finishFetch = resolve;
+      });
+      mocks.updates.fetchUpdateAsync.mockReturnValueOnce(fetchPromise);
+
+      const checkPromise = checkForUpdate({ manual: true });
+      // Flush microtasks so checkForUpdateAsync resolves and fetchUpdateAsync is triggered
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // State while fetch is in-flight:
+      // Downloading is true, but restart readiness is NOT enabled
+      expect(getUpdateState().isDownloading).toBe(true);
+      expect(getUpdateState().isUpdatePending).toBe(false);
+      expect(getUpdateState().isRollBackToEmbedded).toBe(false);
+      expect(await reloadToApplyUpdate()).toBe(false);
+
+      finishFetch({ isNew: false, isRollBackToEmbedded: true });
+      await checkPromise;
+
+      expect(getUpdateState().isUpdatePending).toBe(true);
+      expect(getUpdateState().isRollBackToEmbedded).toBe(true);
+    });
+
+    it("does not enable restart when rollback fetch fails", async () => {
+      mocks.updates.isEnabled = true;
+      mocks.updates.checkForUpdateAsync.mockResolvedValueOnce({
+        isAvailable: false,
+        isRollBackToEmbedded: true,
+      });
+      mocks.updates.fetchUpdateAsync.mockRejectedValueOnce(new Error("Network timeout during fetch"));
+
+      const res = await checkForUpdate({ manual: true });
+      expect(res.hasUpdate).toBe(false);
+      expect(res.error).toMatch(/timeout/i);
+
+      const state = getUpdateState();
+      expect(state.isUpdatePending).toBe(false);
+      expect(state.isRollBackToEmbedded).toBe(false);
+      expect(await reloadToApplyUpdate()).toBe(false);
+    });
+
     it("throttles automatic checks within cooldown period", async () => {
       mocks.updates.isEnabled = true;
       mocks.updates.checkForUpdateAsync.mockResolvedValue({
@@ -215,6 +265,21 @@ describe("mobile updates service", () => {
 
       const state = getUpdateState();
       expect(state.isUpdatePending).toBe(true);
+      expect(state.isRollBackToEmbedded).toBe(false);
+    });
+
+    it("does not enable restart for check-only rollback without isUpdatePending: true", () => {
+      mocks.updates.latestContext = {
+        isUpdatePending: false,
+        isUpdateAvailable: true,
+        rollback: { commitTime: "2026-11-07T00:00:00.000Z" },
+      };
+      syncNativeUpdateContext();
+
+      const state = getUpdateState();
+      expect(state.isUpdatePending).toBe(false);
+      expect(state.isRollBackToEmbedded).toBe(false);
+      expect(state.isUpdateAvailable).toBe(true);
     });
 
     it("bridges native state change events emitted during background or startup downloads", () => {
@@ -237,9 +302,10 @@ describe("mobile updates service", () => {
       const state = getUpdateState();
       expect(state.isUpdatePending).toBe(true);
       expect(state.isUpdateAvailable).toBe(true);
+      expect(state.isRollBackToEmbedded).toBe(false);
     });
 
-    it("bridges native rollback directives into state singleton", () => {
+    it("bridges native rollback directives into state singleton when isUpdatePending is true", () => {
       resetUpdateStateForTesting();
 
       mocks.updatesStateListeners.forEach((listener) => {
@@ -256,18 +322,82 @@ describe("mobile updates service", () => {
       expect(state.isRollBackToEmbedded).toBe(true);
     });
 
-    it("bridges native useUpdates hook state into singleton store", () => {
-      bridgeNativeUpdatesState({
+    it("reconciles false transitions and clears pending/rollback state", () => {
+      // Step 1: Set pending rollback
+      syncNativeUpdateContext({
+        isUpdatePending: true,
+        rollback: { commitTime: "2026-11-07T00:00:00.000Z" },
+      });
+      expect(getUpdateState().isUpdatePending).toBe(true);
+      expect(getUpdateState().isRollBackToEmbedded).toBe(true);
+
+      // Step 2: Native state transitions to cleared/false
+      syncNativeUpdateContext({
+        isUpdatePending: false,
+        isUpdateAvailable: false,
+      });
+
+      const state = getUpdateState();
+      expect(state.isUpdatePending).toBe(false);
+      expect(state.isRollBackToEmbedded).toBe(false);
+      expect(state.isUpdateAvailable).toBe(false);
+    });
+
+    it("clears rollback identity when a normal downloaded update replaces it", () => {
+      // Step 1: Set pending rollback
+      syncNativeUpdateContext({
+        isUpdatePending: true,
+        rollback: { commitTime: "2026-11-07T00:00:00.000Z" },
+      });
+      expect(getUpdateState().isRollBackToEmbedded).toBe(true);
+
+      // Step 2: A normal update download completes with downloadedManifest
+      syncNativeUpdateContext({
         isUpdatePending: true,
         isUpdateAvailable: true,
-        isChecking: false,
-        isDownloading: false,
-        downloadedUpdate: { manifest: { id: "hook-downloaded-id" }, type: "new" },
+        downloadedManifest: { id: "new-normal-update-id" },
       });
 
       const state = getUpdateState();
       expect(state.isUpdatePending).toBe(true);
-      expect(state.isUpdateAvailable).toBe(true);
+      expect(state.isRollBackToEmbedded).toBe(false);
+    });
+
+    it("bridges hook state bidirectional reconciliation for normal and rollback updates", () => {
+      // Check-only rollback via hook does not enable restart
+      bridgeNativeUpdatesState({
+        isUpdatePending: false,
+        isUpdateAvailable: true,
+        availableUpdate: { type: "rollback" },
+      });
+      expect(getUpdateState().isUpdatePending).toBe(false);
+      expect(getUpdateState().isRollBackToEmbedded).toBe(false);
+
+      // Downloaded rollback enables rollback restart
+      bridgeNativeUpdatesState({
+        isUpdatePending: true,
+        isUpdateAvailable: true,
+        downloadedUpdate: { type: "rollback" },
+      });
+      expect(getUpdateState().isUpdatePending).toBe(true);
+      expect(getUpdateState().isRollBackToEmbedded).toBe(true);
+
+      // Subsequent normal update download replaces rollback label
+      bridgeNativeUpdatesState({
+        isUpdatePending: true,
+        isUpdateAvailable: true,
+        downloadedUpdate: { type: "new", manifest: { id: "hook-id" } },
+      });
+      expect(getUpdateState().isUpdatePending).toBe(true);
+      expect(getUpdateState().isRollBackToEmbedded).toBe(false);
+
+      // Cleared state clears all flags
+      bridgeNativeUpdatesState({
+        isUpdatePending: false,
+        isUpdateAvailable: false,
+      });
+      expect(getUpdateState().isUpdatePending).toBe(false);
+      expect(getUpdateState().isRollBackToEmbedded).toBe(false);
     });
   });
 
