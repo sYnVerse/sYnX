@@ -153,6 +153,7 @@ Push notifications need `mobile/google-services.json`, which is gitignored. In E
 * When the build finishes, `mobile/scripts/post-build-comment.js` comments on the merged pull request with a link to the build page, which has an Install button and a QR code. It needs the `SYNX_GITHUB_COMMENT_TOKEN` secret in the EAS `preview` environment.
 * To skip the build, put `[eas skip]` in the commit message (or in the PR title, for squash merges).
 * `mobile/eas.json` also has `development` and `production` (app bundle) profiles.
+* Over-The-Air (OTA) updates architecture, runtime compatibility rules, and rollout plan are documented in [`docs/mobile-ota-updates.md`](docs/mobile-ota-updates.md).
 
 ---
 
