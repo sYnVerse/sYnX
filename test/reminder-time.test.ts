@@ -58,6 +58,14 @@ describe("date & time picker helpers", () => {
     expect(formatReminderPillLabel(picked, "en-US")).toBe("Sun, Nov 8 · 8:00 AM");
   });
 
+  it("distinguishes reminders at the same time on different days (#111)", () => {
+    const day1 = new Date(2026, 10, 8, 9, 0, 0).getTime();
+    const day2 = new Date(2026, 10, 9, 9, 0, 0).getTime();
+    expect(formatReminderPillLabel(day1, "en-US")).toBe("Sun, Nov 8 · 9:00 AM");
+    expect(formatReminderPillLabel(day2, "en-US")).toBe("Mon, Nov 9 · 9:00 AM");
+    expect(formatReminderPillLabel(day1, "en-US")).not.toBe(formatReminderPillLabel(day2, "en-US"));
+  });
+
   it("previews the reminder with today/tomorrow, a near-term hint, and a past warning", () => {
     const at = (d: number, h: number, m: number) => new Date(2026, 9, d, h, m).getTime();
     expect(formatReminderPreview(undefined, now)).toBeNull();

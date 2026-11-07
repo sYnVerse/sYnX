@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { FetcherWithComponents } from "@remix-run/react";
+import type { FetcherWithComponents } from "react-router";
 import { ProfileAvatar } from "~/components/profile-avatar";
 import type { PendingDeleteRequest } from "../../../../shared";
 import type { GuestList } from "../guest-lists";

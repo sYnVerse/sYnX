@@ -1,3 +1,8 @@
+import { getCategoryEmoji, getCategoryTagEmoji, isPresetCategory } from "./categories";
+import { getShareModeLabel } from "./list-permissions";
+import { sortTasks, type TaskSortMode, type SortableTask } from "./task-sort";
+import { splitCompletedTasks } from "./task-sections";
+
 /** Mirrors types in index.ts — local to avoid circular imports. */
 type ShareMode = "private" | "public_read" | "public_edit";
 type PriorityLevel = "low" | "medium" | "high" | "none";
@@ -23,6 +28,19 @@ export interface SoftAskPolicyInput {
 }
 
 /**
+ * Whether the 14-day back-off period after tapping "Not now" has elapsed.
+ */
+export function isSoftAskBackoffElapsed(
+  declinedAt: number | null | undefined,
+  now: number = Date.now()
+): boolean {
+  if (declinedAt == null || Number.isNaN(declinedAt)) {
+    return true;
+  }
+  return now - declinedAt >= SOFT_ASK_REASK_MS;
+}
+
+/**
  * Pure soft-ask eligibility (no OS / storage). Callers supply permission + persistence.
  * Never show when granted or permanently blocked.
  */
@@ -35,12 +53,7 @@ export function evaluateSoftAskPolicy(input: SoftAskPolicyInput): boolean {
   }
   // undetermined or denied-but-can-still-ask (caller maps canAskAgain=false → blocked)
 
-  if (declinedAt == null || Number.isNaN(declinedAt)) {
-    return true;
-  }
-
-  const elapsed = now - declinedAt;
-  if (elapsed >= SOFT_ASK_REASK_MS) {
+  if (isSoftAskBackoffElapsed(declinedAt, now)) {
     return true;
   }
 
@@ -49,6 +62,25 @@ export function evaluateSoftAskPolicy(input: SoftAskPolicyInput): boolean {
   }
 
   return false;
+}
+
+export interface CalendarSoftAskPolicyInput {
+  syncEnabled: boolean;
+  permissionGranted: boolean;
+  /** Epoch ms when user tapped Not now; null if never declined */
+  declinedAt: number | null | undefined;
+  now?: number;
+}
+
+/**
+ * Pure soft-ask eligibility for re-enabling calendar access when calendar sync is on.
+ * Reuses the same 14-day "Not now" back-off policy as push notifications.
+ */
+export function evaluateCalendarSoftAskPolicy(input: CalendarSoftAskPolicyInput): boolean {
+  if (!input.syncEnabled || input.permissionGranted) {
+    return false;
+  }
+  return isSoftAskBackoffElapsed(input.declinedAt, input.now ?? Date.now());
 }
 
 /** Map expo permission fields → our status enum. */
@@ -171,7 +203,7 @@ export function buildCategorizedListName(
 ): string {
   const cleaned = title.trim();
   if (!cleaned) return cleaned;
-  if (categoryName === "Custom") return cleaned;
+  if (!categoryName || categoryName === "Custom" || categoryName === "None" || !emoji.trim()) return cleaned;
   return `${emoji} ${cleaned}`;
 }
 
@@ -213,9 +245,238 @@ export function getFabBottomOffset(insetsBottom: number, margin = 16): number {
 }
 
 /**
+ * Calculates bottom padding for tab-level screens (like Settings) so their scrollable
+ * content is not obscured by the floating tab bar or system navigation bar.
+ */
+export function getTabScreenBottomPadding(insetsBottom: number, extraClearance = 24): number {
+  return FLOATING_TAB_BAR_HEIGHT + Math.max(insetsBottom, 12) + extraClearance;
+}
+
+/**
  * Calculates list content padding bottom so scrollable content isn't obscured by the
  * floating tab bar or FAB.
  */
 export function getListBottomPadding(insetsBottom: number): number {
-  return FLOATING_TAB_BAR_HEIGHT + Math.max(insetsBottom, 12) + 76;
+  return getTabScreenBottomPadding(insetsBottom, 76);
+}
+
+/**
+ * Calculates bottom padding for bottom sheets (like TaskModal, TaskBreakdownModal,
+ * ListsScreen sheet, and TasksScreen activity sheet) so that action buttons at the
+ * bottom remain fully above the system navigation bar (Android 3-button/gesture or iOS home indicator)
+ * while preserving comfortable visual breathing room.
+ */
+export function getSheetBottomPadding(insetsBottom: number, basePadding = 24): number {
+  return Math.max(insetsBottom, 0) + basePadding;
+}
+
+export interface PushSettingsStateInput {
+  permission: PushPermissionStatus;
+  hasStoredToken: boolean;
+  userDisabled: boolean;
+}
+
+export interface PushSettingsStateOutput {
+  pushEnabled: boolean;
+  shouldAutoRegister: boolean;
+  shouldUnregisterStaleToken: boolean;
+  statusLabel: string;
+}
+
+export function derivePushSettingsState(input: PushSettingsStateInput): PushSettingsStateOutput {
+  const { permission, hasStoredToken, userDisabled } = input;
+
+  if (permission !== "granted") {
+    return {
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: hasStoredToken,
+      statusLabel:
+        permission === "blocked"
+          ? "Blocked in system settings"
+          : permission === "denied"
+          ? "Off"
+          : "Not set up",
+    };
+  }
+
+  if (userDisabled) {
+    return {
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "Off",
+    };
+  }
+
+  return {
+    pushEnabled: true,
+    shouldAutoRegister: !hasStoredToken,
+    shouldUnregisterStaleToken: false,
+    statusLabel: "On",
+  };
+}
+
+export interface CalendarSettingsStateInput {
+  syncEnabled: boolean;
+  permissionGranted: boolean;
+}
+
+export interface CalendarSettingsStateOutput {
+  isWarningVisible: boolean;
+  canSync: boolean;
+}
+
+export function deriveCalendarSettingsState(input: CalendarSettingsStateInput): CalendarSettingsStateOutput {
+  return {
+    isWarningVisible: input.syncEnabled && !input.permissionGranted,
+    canSync: input.syncEnabled && input.permissionGranted,
+  };
+}
+
+export interface ListRowTitleAndEmojiInput {
+  name: string;
+  category?: string | null;
+}
+
+export interface ListRowTitleAndEmojiResult {
+  emoji: string | null;
+  title: string;
+}
+
+/**
+ * Returns the leading category emoji (if categorized) and the title with any
+ * duplicate leading preset emoji stripped. Uncategorized lists get no emoji badge.
+ */
+export function formatListRowTitleAndEmoji(
+  input: ListRowTitleAndEmojiInput
+): ListRowTitleAndEmojiResult {
+  const category = input.category?.trim() || null;
+  const name = input.name.trim();
+
+  if (!category) {
+    return {
+      emoji: null,
+      title: name,
+    };
+  }
+
+  const emoji = getCategoryTagEmoji(category);
+  const presetEmoji = isPresetCategory(category) ? getCategoryEmoji(category) : "";
+  const title = stripLeadingCategoryEmoji(name, presetEmoji) || name;
+
+  return {
+    emoji,
+    title,
+  };
+}
+
+export interface ListRowMetaInput {
+  openTaskCount?: number | null;
+  category?: string | null;
+  shareMode?: ShareMode;
+  isOwner?: boolean;
+  ownerDisplayName?: string | null;
+}
+
+/**
+ * Formats the muted subtitle line for a list row:
+ * Owned: "<N> tasks · <Category> · <ShareMode>"
+ * Shared: "<N> tasks · Shared by <Name> · <Category> · <ShareMode>"
+ */
+export function formatListRowMeta(input: ListRowMetaInput): string {
+  const parts: string[] = [];
+
+  if (typeof input.openTaskCount === "number" && input.openTaskCount >= 0) {
+    parts.push(`${input.openTaskCount} ${input.openTaskCount === 1 ? "task" : "tasks"}`);
+  }
+
+  const category = input.category?.trim();
+  const shareMode = input.shareMode || "private";
+
+  if (input.isOwner === false) {
+    parts.push(listOwnershipLabel(false, input.ownerDisplayName));
+    if (category) {
+      parts.push(category);
+    }
+    parts.push(getShareModeLabel(shareMode));
+  } else {
+    if (category) {
+      parts.push(category);
+    }
+    parts.push(getShareModeLabel(shareMode));
+  }
+
+  return parts.join(" · ");
+}
+
+export interface PreviewTaskItem<T> {
+  task: T;
+  openSubtasks: T[];
+  completedSubtaskCount: number;
+}
+
+export interface ListPreviewTasksResult<T> {
+  openTasks: PreviewTaskItem<T>[];
+  completedMainCount: number;
+  totalMainCount: number;
+}
+
+/**
+ * Groups and filters tasks for the Lists screen inline preview (#131):
+ * - Hides completed main tasks and completed subtasks
+ * - Sorts tasks according to sortMode
+ * - Reports counts for hidden completed items and overall completion state
+ */
+export function buildListPreviewTasks<T extends {
+  id: string;
+  parentId?: string | null;
+  completed: boolean;
+  subtasks?: T[];
+} & Partial<SortableTask>>(
+  todos: readonly T[],
+  sortMode?: TaskSortMode
+): ListPreviewTasksResult<T> {
+  const parentMap: Record<string, T & { subtasks: T[] }> = {};
+  const topLevel: (T & { subtasks: T[] })[] = [];
+
+  todos.forEach((t) => {
+    if (!t.parentId) {
+      const item = { ...t, subtasks: [] };
+      parentMap[t.id] = item;
+      topLevel.push(item);
+    }
+  });
+
+  todos.forEach((st) => {
+    if (st.parentId && parentMap[st.parentId]) {
+      parentMap[st.parentId].subtasks.push(st as T);
+    }
+  });
+
+  type PreviewSortItem = SortableTask & { subtasks?: SortableTask[] };
+  const sortedTopLevel = sortMode
+    ? (sortTasks(
+        topLevel as unknown as PreviewSortItem[],
+        sortMode
+      ) as unknown as (T & { subtasks: T[] })[])
+    : topLevel;
+
+  const { active: openMain, completed: completedMain } = splitCompletedTasks(sortedTopLevel);
+
+  const openTasks: PreviewTaskItem<T>[] = openMain.map((parent) => {
+    const rawSubtasks = parent.subtasks || [];
+    const { active: openSubtasks, completed: doneSubtasks } = splitCompletedTasks(rawSubtasks);
+    return {
+      task: parent,
+      openSubtasks,
+      completedSubtaskCount: doneSubtasks.length,
+    };
+  });
+
+  return {
+    openTasks,
+    completedMainCount: completedMain.length,
+    totalMainCount: sortedTopLevel.length,
+  };
 }

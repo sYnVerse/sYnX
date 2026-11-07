@@ -2,7 +2,7 @@
   "expo": {
     "name": "sYnX",
     "slug": "synx",
-    "version": "3.5.0",
+    "version": "3.6.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -127,6 +127,14 @@
       ],
       "./plugins/withWidgetProgressRing"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/cf164c52-5a77-472a-9120-768ab5499a2d",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
     "extra": {
       "eas": {
         "projectId": "cf164c52-5a77-472a-9120-768ab5499a2d"

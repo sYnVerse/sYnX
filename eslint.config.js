@@ -12,6 +12,7 @@ import globals from "globals";
 export default tseslint.config(
   {
     ignores: [
+      ".react-router/**",
       "build/**",
       "public/build/**",
       ".wrangler/**",
@@ -82,7 +83,7 @@ export default tseslint.config(
     },
     rules: {
       // ./build/server only exists after `npm run build`.
-      "import/no-unresolved": ["error", { ignore: ["cloudflare:test", "^\\./build/server$"] }],
+      "import/no-unresolved": ["error", { ignore: ["cloudflare:test", "^virtual:react-router/server-build$"] }],
       // Successor of the old no-empty-interface rule (which was off): allow
       // `interface X extends Y {}` for module augmentation.
       "@typescript-eslint/no-empty-object-type": ["error", { allowInterfaces: "with-single-extends" }],

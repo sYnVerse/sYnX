@@ -1,5 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import type { FetcherWithComponents } from "@remix-run/react";
+import type { FetcherWithComponents } from "react-router";
 import type { GuestActionPayload } from "~/guest-context";
 import {
   DEFAULT_TASK_SORT_MODE,

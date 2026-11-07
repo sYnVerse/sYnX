@@ -1,10 +1,12 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
+import type { Route } from "./+types/login";
+import { redirect } from "react-router";
 import { getAuthClient, parseTestLoginRequest } from "~/auth.server";
 import { serializeAuthSessionCookie, serializePkceCookie } from "~/auth-cookies.server";
 import { syncUserProfileOnSignIn } from "~/user-profile.server";
+import { getCloudflareContext } from "~/context.server";
 
-export const loader = async ({ request, context }: LoaderFunctionArgs) => {
-  const env = context.cloudflare.env;
+export const loader = async ({ request, context }: Route.LoaderArgs) => {
+  const { env } = getCloudflareContext(context);
 
   const testLogin = parseTestLoginRequest(request, env);
   if (testLogin.allowed) {
@@ -50,7 +52,6 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
       return redirect(redirectTo, { headers });
     }
   }
-
   const client = getAuthClient(request, env);
   const callbackUrl = new URL(request.url).origin + "/callback";
 

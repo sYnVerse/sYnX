@@ -1,4 +1,5 @@
-import { LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
+import type { Route } from "./+types/callback";
+import { redirect } from "react-router";
 import { getAuthClient, getAuthSettings, verifyAccessToken } from "~/auth.server";
 import { syncProviderProfile } from "~/provider-profile.server";
 import {
@@ -7,8 +8,10 @@ import {
   serializeAuthRefreshCookie,
   serializeAuthSessionCookie,
 } from "~/auth-cookies.server";
+import { getCloudflareContext } from "~/context.server";
 
-export const loader = async ({ request, context }: LoaderFunctionArgs) => {
+export const loader = async ({ request, context }: Route.LoaderArgs) => {
+  const { env } = getCloudflareContext(context);
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -31,7 +34,7 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
     return reject();
   }
 
-  const client = getAuthClient(request, context.cloudflare.env);
+  const client = getAuthClient(request, env);
   const callbackUrl = url.origin + "/callback";
 
   try {
@@ -43,18 +46,18 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
 
     const { access, refresh } = exchanged.tokens;
     // Only store a session that sYnX itself will accept (valid and issued to sYnX).
-    const verified = await verifyAccessToken(request, context.cloudflare.env, access);
+    const verified = await verifyAccessToken(request, env, access);
     if (!verified) {
       console.error("Token exchange returned an access token sYnX does not accept");
       return reject();
     }
     // Pick up the provider photo / suggested name right after sign-in. Best-effort
     // and time-limited: a slow, failing or missing sYnID /userinfo never blocks sign-in.
-    await syncProviderProfile(context.cloudflare.env.DB, {
+    await syncProviderProfile(env.DB, {
       userId: verified.userId,
       email: verified.email,
       accessToken: access,
-      issuer: getAuthSettings(request, context.cloudflare.env).issuer,
+      issuer: getAuthSettings(request, env).issuer,
       force: true,
     });
     const headers = new Headers();
@@ -75,7 +78,7 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
 export default function Callback() {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
-      <p>Finalizing authentication flow...</p>
+      <p>Finalizing sign-in...</p>
     </div>
   );
 }

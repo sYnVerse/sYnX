@@ -1,16 +1,18 @@
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { ActionFunctionArgs } from "react-router";
 import { getOptionalUser } from "~/auth.server";
 import { TodoManager } from "~/to-do-manager";
 import { logListActivity } from "~/list-activity.server";
 import type { ListActionContext } from "./actions/context";
 import { getActiveListAccess, checkListAccessGate } from "./actions/access.server";
 import { ACCOUNT_INTENTS, LIST_INTENTS } from "./actions/index.server";
+import { getCloudflareContext } from "~/context.server";
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
-  const { userId, email, isLoggedIn } = await getOptionalUser(request, context.cloudflare.env);
-  const db = context.cloudflare.env.DB;
+  const { env, ctx: execCtx } = getCloudflareContext(context);
+  const { userId, email, isLoggedIn } = await getOptionalUser(request, env);
+  const db = env.DB;
   const activeListId = params.id as string;
-  const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+  const waitUntil = execCtx?.waitUntil?.bind(execCtx);
 
   const formData = await request.formData();
   const intent = formData.get("intent");
@@ -33,7 +35,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     const ctx: ListActionContext = {
       request,
       db,
-      env: context.cloudflare.env,
+      env,
       userId,
       email,
       isLoggedIn,
@@ -66,7 +68,7 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
   const ctx: ListActionContext = {
     request,
     db,
-    env: context.cloudflare.env,
+    env,
     userId,
     email,
     isLoggedIn,

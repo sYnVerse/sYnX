@@ -121,16 +121,20 @@ Pure JavaScript code, UI components, icons, and user-facing version strings do *
 ```
 
 #### `.fingerprintignore` Configuration
-Create `mobile/.fingerprintignore` to explicitly ignore user-facing version files and pure app code:
+Create `mobile/.fingerprintignore` to explicitly ignore user-facing version files and pure app code while retaining native configuration assets:
 ```gitignore
 # Pure JavaScript application code
 src/**
-assets/**
+
 # Versioning SSOT (changes daily, does not affect native runtime)
 src/shared/mobile-version.ts
+
 # Documentation and changelogs
 src/constants/changelog.ts
 ```
+
+> [!IMPORTANT]
+> Native configuration assets (`mobile/assets/icon.png`, `mobile/assets/adaptive-icon.png`, `mobile/assets/splash.png`, `mobile/assets/notification-icon.png`) are purposefully **not** ignored. They are compiled into native Android resources (`res/mipmap-*`, `res/drawable-*`) during prebuild. Retaining them in the fingerprint calculation guarantees that any image edits to native launcher or splash resources safely bump the native fingerprint and force a new native binary package.
 
 #### Special Case: Android Widgets (`expo-widgets`)
 - **Runtime Layout Changes**: Modifications inside `mobile/src/widgets/CurrentListWidget.tsx` using Compose UI (`Text`, `Row`, `Column`) are bundled in JavaScript and **can** be updated over the air.
@@ -148,7 +152,8 @@ To ensure team members and release scripts know when an OTA update is permitted 
 | `mobile/src/hooks/**`, `mobile/src/services/**` | Client sync, API queries, local logic | **OTA Update** |
 | `shared/**` (except native validation rules) | Shared types, formatting, sort utilities | **OTA Update** |
 | `shared/mobile-version.ts` | Daily SemVer bump (`MOBILE_APP_VERSION`) | **OTA Update** |
-| `mobile/assets/**` | PNG/JPEG icons, illustrations | **OTA Update** |
+| `mobile/assets/**` (`icon`, `splash`, `adaptive-icon`) | Native compiled app icons, adaptive icons, splash screens | **New Native Package** |
+| `mobile/src/assets/**` (if added) | Pure JS bundled UI illustrations and icons | **OTA Update** |
 | `mobile/package.json` (`dependencies`) | Upgrading or adding native dependencies | **New Native Package** |
 | `mobile/package.json` (`dependencies`) | Pure JS packages (e.g. `valibot`, `date-fns`) | **OTA Update** |
 | `mobile/app.json` (`android.permissions`, `plugins`) | Native permissions or config plugins | **New Native Package** |
@@ -220,15 +225,36 @@ flowchart TD
 
 ### Production Release Safeguards
 - **Never auto-publish to production on push**: Production OTA updates are never published automatically by CI.
-- **Manual Promotion**: An authorized maintainer promotes a verified preview update to production:
-  ```bash
-  eas update:republish --from-channel preview --to-channel production
-  ```
-- **Staged Rollout**:
-  ```bash
-  eas update:rollout --channel production --percent 20
-  ```
-  Once monitored and confirmed stable, increase to 50% and 100%.
+- **Set Rollout Limit at Publication Time**: Never publish to 100% of production users and then attempt to apply a rollout limit afterward. Exposure must be capped directly during the publish or promotion command:
+  - **Per-Update Direct Publication with Rollout**:
+    ```bash
+    eas update --channel production --message "Production release v3.6.0" --rollout-percentage 20
+    ```
+    *(Users not included in the 20% rollout continue receiving the prior stable update).*
+  - **Branch-Based Gradual Rollout (`eas channel:rollout`)**:
+    When rolling out a new update branch incrementally on the production channel:
+    ```bash
+    eas channel:rollout production --action create --branch preview --percent 20 --runtime-version <fingerprint>
+    ```
+- **Progressing and Finalizing the Rollout**:
+  - Increase rollout percentage:
+    ```bash
+    eas update:edit
+    # or for branch-based rollout:
+    eas channel:rollout production --action edit --percent 50
+    ```
+  - Finalize rollout (100%):
+    ```bash
+    eas update:edit # set to 100%
+    # or for branch-based rollout:
+    eas channel:rollout production --action end --outcome republish-and-revert
+    ```
+  - Revert / Cancel rollout:
+    ```bash
+    eas update:revert-update-rollout
+    # or for branch-based rollout:
+    eas channel:rollout production --action end --outcome revert
+    ```
 
 ---
 
@@ -282,7 +308,7 @@ sequenceDiagram
 - The runtime automatically reverts to the embedded binary bundle and flags `Updates.isEmergencyLaunch === true`.
 - When `isEmergencyLaunch` is true, the app logs a diagnostic warning and ignores the bad update on subsequent launches.
 
-### Server-Side Rollback
+### Server-Side Rollback & Rollback Directives
 If a regression is discovered after publishing to `production`:
 ```bash
 # Roll back to the embedded binary bundle
@@ -291,6 +317,8 @@ eas update:rollback --channel production
 # Or republish a known good previous update
 eas update:republish --from-update-id <good-update-id> --to-channel production
 ```
+- **Client Rollback Handling**: When `eas update:rollback` is executed, Expo servers respond to `checkForUpdateAsync()` with `isAvailable: false` and `isRollBackToEmbedded: true`. The client update service detects this directive, calls `fetchUpdateAsync()`, sets `isUpdatePending: true` and `isRollBackToEmbedded: true`, and surfaces "Restart to Apply Rollback" in Settings.
+- **Native Startup Download Bridging**: When an update is downloaded natively during startup (`checkAutomatically: "ON_LOAD"`), the client update service bridges Expo's native state machine via `Updates.addUpdatesStateChangeListener` and `Updates.latestContext`, immediately reflecting the pending update in Settings without requiring a redundant manual check.
 
 ---
 
@@ -392,4 +420,4 @@ flowchart LR
 - Execute the Validation Matrix on physical Android and iOS devices.
 
 ### Phase 5: First Live Production OTA Release
-- Verify live OTA rollout with staged percentage (`10%` → `100%`) using `eas update:rollout`.
+- Verify live OTA rollout with staged percentage (`10%` → `100%`) using `eas update --rollout-percentage <N>` or `eas channel:rollout` and `eas update:edit`.

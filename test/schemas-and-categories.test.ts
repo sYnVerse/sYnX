@@ -45,17 +45,32 @@ describe("API Schemas & Category Validation", () => {
   });
 
   describe("CreateListSchema & UpdateListSchema", () => {
-    it("allows preset categories and custom category tags", () => {
+    it("allows preset categories, custom category tags, and optional/null category (#139)", () => {
       const presetList = v.parse(CreateListSchema, { name: "Work Tasks", category: "Work" });
       expect(presetList.category).toBe("Work");
 
       const customList = v.parse(CreateListSchema, { name: "Secret Project", category: "🚀 Top Secret" });
       expect(customList.category).toBe("🚀 Top Secret");
+
+      const uncategorizedList = v.parse(CreateListSchema, { name: "No Tag List" });
+      expect(uncategorizedList.category).toBeUndefined();
+
+      const nullCategoryList = v.parse(CreateListSchema, { name: "Explicit Null", category: null });
+      expect(nullCategoryList.category).toBeNull();
     });
 
-    it("allows updating list category to custom text", () => {
+    it("allows updating list category to custom text, null, or empty string to clear (#139)", () => {
       const updated = v.parse(UpdateListSchema, { category: "🎨 Design Work" });
       expect(updated.category).toBe("🎨 Design Work");
+
+      const clearedNull = v.parse(UpdateListSchema, { category: null });
+      expect(clearedNull.category).toBeNull();
+
+      const clearedEmpty = v.parse(UpdateListSchema, { category: "" });
+      expect(clearedEmpty.category).toBe("");
+
+      const untouched = v.parse(UpdateListSchema, { name: "Renamed Only" });
+      expect(untouched.category).toBeUndefined();
     });
   });
 });

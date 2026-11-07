@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { FetcherWithComponents } from "@remix-run/react";
+import type { FetcherWithComponents } from "react-router";
 import type { Todo } from "~/to-do-manager";
 
 interface UseWebMcpToolsOptions {

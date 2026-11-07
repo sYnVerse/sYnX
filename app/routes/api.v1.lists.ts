@@ -1,14 +1,15 @@
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.lists";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
-import { CreateListSchema, DEFAULT_CATEGORY } from "../../shared";
+import { CreateListSchema } from "../../shared";
 import { parseListScope, serializeListRows, type ListRow } from "../api-helpers.server";
 import { listSharedWithMe } from "../shared-lists.server";
 import { ownerPayload, resolveDisplayName } from "../user-profile.server";
-import { categoryError, listNameError } from "../write-limits";
+import { categoryError, listNameError, normalizeOptionalCategory } from "../write-limits";
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context.cloudflare.env;
+export async function loader({  request, context  }: Route.LoaderArgs) {
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -46,12 +47,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   return Response.json({ success: true, lists, scope });
 }
 
-export async function action({ request, context }: ActionFunctionArgs) {
+export async function action({  request, context  }: Route.ActionArgs) {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const env = context.cloudflare.env;
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -64,7 +65,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     const parsed = v.parse(CreateListSchema, body);
     const id = crypto.randomUUID();
     const createdAt = Date.now();
-    const category = parsed.category || DEFAULT_CATEGORY;
+    const category = normalizeOptionalCategory(parsed.category);
     const limitError = listNameError(parsed.name) || categoryError(category);
     if (limitError) {
       return Response.json({ error: limitError }, { status: 400 });
@@ -97,6 +98,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       isOwner: true,
       canEdit: true,
       owner: ownerPayload(displayName),
+      openTaskCount: 0,
     };
 
     return Response.json({ success: true, list: newList }, { status: 201 });

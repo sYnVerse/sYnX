@@ -1,5 +1,4 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { DEFAULT_CATEGORY } from "../../../../shared";
 
 interface UseListDialogsOptions {
   showUnsavedPrompt: boolean;
@@ -27,11 +26,11 @@ export function useListDialogs({
   const [renameInput, setRenameInput] = useState("");
   const [isCreateListOpen, setIsCreateListOpen] = useState(false);
   const [newListInput, setNewListInput] = useState("");
-  const [newListCategory, setNewListCategory] = useState(DEFAULT_CATEGORY);
+  const [newListCategory, setNewListCategory] = useState("");
   const [customCategoryInput, setCustomCategoryInput] = useState("");
 
-  const [listToEditCategory, setListToEditCategory] = useState<{ id: string; name: string; category?: string } | null>(null);
-  const [editCategorySelection, setEditCategorySelection] = useState(DEFAULT_CATEGORY);
+  const [listToEditCategory, setListToEditCategory] = useState<{ id: string; name: string; category?: string | null } | null>(null);
+  const [editCategorySelection, setEditCategorySelection] = useState("");
   const [editCustomCategoryInput, setEditCustomCategoryInput] = useState("");
 
   const renameListInputRef = useRef<HTMLInputElement>(null);

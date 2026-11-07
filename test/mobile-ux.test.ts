@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
+import SettingsScreenSource from "../mobile/src/screens/SettingsScreen.tsx?raw";
+import TaskModalSource from "../mobile/src/components/TaskModal.tsx?raw";
+import TaskBreakdownModalSource from "../mobile/src/components/TaskBreakdownModal.tsx?raw";
+import ListsScreenSource from "../mobile/src/screens/ListsScreen.tsx?raw";
+import TasksScreenSource from "../mobile/src/screens/TasksScreen.tsx?raw";
+import TaskRowSource from "../mobile/src/components/TaskRow.tsx?raw";
+import CalendarAccessSoftAskSource from "../mobile/src/components/CalendarAccessSoftAsk.tsx?raw";
+import CalendarPickerModalSource from "../mobile/src/components/CalendarPickerModal.tsx?raw";
+import ChangelogModalSource from "../mobile/src/components/ChangelogModal.tsx?raw";
+import PhoneCarrierPickerModalSource from "../mobile/src/components/PhoneCarrierPickerModal.tsx?raw";
 import {
   SOFT_ASK_REASK_MS,
   evaluateSoftAskPolicy,
+  evaluateCalendarSoftAskPolicy,
   mapExpoPermissionToStatus,
   shouldWarnBeforeSharingPrivateList,
   listOwnershipLabel,
@@ -14,8 +25,13 @@ import {
   stripLeadingCategoryEmoji,
   buildCategorizedListName,
   contrastRatio,
+  FLOATING_TAB_BAR_HEIGHT,
   getFabBottomOffset,
   getListBottomPadding,
+  getSheetBottomPadding,
+  getTabScreenBottomPadding,
+  derivePushSettingsState,
+  deriveCalendarSettingsState,
 } from "../shared/mobile-ux";
 import { MOBILE_APP_VERSION, MOBILE_VERSION } from "../shared/mobile-version";
 
@@ -162,6 +178,8 @@ describe("date / priority / list name formatting", () => {
     expect(stripLeadingCategoryEmoji("🎓 French HW", "🎓")).toBe("French HW");
     expect(buildCategorizedListName("🎓", "Study", "French HW")).toBe("🎓 French HW");
     expect(buildCategorizedListName("✏️", "Custom", "Project X")).toBe("Project X");
+    expect(buildCategorizedListName("", "", "Uncategorized List")).toBe("Uncategorized List");
+    expect(buildCategorizedListName("🚫", "None", "No Category List")).toBe("No Category List");
   });
 });
 
@@ -170,7 +188,7 @@ describe("mobile version single source of truth", () => {
     expect(MOBILE_APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
     expect(MOBILE_VERSION).toBe(`v${MOBILE_APP_VERSION}`);
     // Current release for this PR
-    expect(MOBILE_APP_VERSION).toBe("3.5.0");
+    expect(MOBILE_APP_VERSION).toBe("3.6.0");
   });
 });
 
@@ -207,5 +225,327 @@ describe("floating action button and tab bar layout math", () => {
     expect(getListBottomPadding(0)).toBe(160);
     expect(getListBottomPadding(28)).toBe(176);
     expect(getListBottomPadding(34)).toBe(182);
+    expect(getListBottomPadding(48)).toBe(196);
+  });
+
+  it("calculates tab screen bottom padding to clear floating tab bar without FAB", () => {
+    // 0 insets: FLOATING_TAB_BAR_HEIGHT (72) + Math.max(0, 12) + extra (24) = 108
+    expect(getTabScreenBottomPadding(0)).toBe(108);
+    expect(getTabScreenBottomPadding(12)).toBe(108);
+    // iPhone with home indicator (34px)
+    expect(getTabScreenBottomPadding(34)).toBe(130);
+    // Android 3-button navigation (48px) — old fixed 110px padding covered bottom 10px of Log Out button
+    expect(getTabScreenBottomPadding(48)).toBe(144);
+    expect(getTabScreenBottomPadding(48)).toBeGreaterThan(FLOATING_TAB_BAR_HEIGHT + 48);
+
+    // Custom extra clearance
+    expect(getTabScreenBottomPadding(0, 16)).toBe(100);
+    expect(getTabScreenBottomPadding(48, 76)).toBe(getListBottomPadding(48));
+  });
+
+  it("ensures SettingsScreen uses dynamic safe area tab screen bottom padding instead of hardcoded 110", () => {
+    expect(SettingsScreenSource).toContain("useSafeAreaInsets");
+    expect(SettingsScreenSource).toContain("getTabScreenBottomPadding(insets.bottom)");
+    expect(SettingsScreenSource).not.toContain("paddingBottom: 110");
+  });
+
+  it("calculates bottom sheet padding to keep buttons above the system navigation bar", () => {
+    // 0 insets: preserves base padding (24)
+    expect(getSheetBottomPadding(0)).toBe(24);
+    // iPhone with home indicator (34px)
+    expect(getSheetBottomPadding(34)).toBe(58);
+    // Android 3-button navigation (48px)
+    expect(getSheetBottomPadding(48)).toBe(72);
+    // Clamps negative insets to 0
+    expect(getSheetBottomPadding(-10)).toBe(24);
+    // Custom base padding
+    expect(getSheetBottomPadding(48, 16)).toBe(64);
+  });
+
+  it("ensures all mobile bottom sheets wire getSheetBottomPadding for system nav clearance", () => {
+    expect(TaskModalSource).toContain("getSheetBottomPadding(insets.bottom");
+    expect(TaskBreakdownModalSource).toContain("getSheetBottomPadding(insets.bottom");
+    expect(ListsScreenSource).toContain("getSheetBottomPadding(insets.bottom");
+    expect(TasksScreenSource).toContain("getSheetBottomPadding(insets.bottom");
+  });
+
+  it("ensures centered modals use SafeAreaView from react-native-safe-area-context, not react-native", () => {
+    for (const [name, source] of [
+      ["CalendarPickerModal", CalendarPickerModalSource],
+      ["ChangelogModal", ChangelogModalSource],
+      ["PhoneCarrierPickerModal", PhoneCarrierPickerModalSource],
+    ]) {
+      expect(source, `${name} must import SafeAreaView from react-native-safe-area-context`).toContain(
+        'from "react-native-safe-area-context"'
+      );
+      expect(source, `${name} must not import SafeAreaView from react-native`).not.toMatch(
+        /import\s+[^}]*SafeAreaView[^}]*\s+from\s+["']react-native["']/
+      );
+    }
+  });
+});
+
+describe("derivePushSettingsState (#133)", () => {
+  it("keeps push enabled and active when granted and stored", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "granted",
+        hasStoredToken: true,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: true,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "On",
+    });
+  });
+
+  it("requests auto-registration when granted but token is missing", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "granted",
+        hasStoredToken: false,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: true,
+      shouldAutoRegister: true,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "On",
+    });
+  });
+
+  it("respects user opt-out and does NOT auto-register when user toggled push off", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "granted",
+        hasStoredToken: false,
+        userDisabled: true,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "Off",
+    });
+
+    expect(
+      derivePushSettingsState({
+        permission: "granted",
+        hasStoredToken: true,
+        userDisabled: true,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "Off",
+    });
+  });
+
+  it("detects permission revoked in system settings and flags stale token for unregistration", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "blocked",
+        hasStoredToken: true,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: true,
+      statusLabel: "Blocked in system settings",
+    });
+
+    expect(
+      derivePushSettingsState({
+        permission: "denied",
+        hasStoredToken: true,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: true,
+      statusLabel: "Off",
+    });
+  });
+
+  it("handles undetermined status cleanly", () => {
+    expect(
+      derivePushSettingsState({
+        permission: "undetermined",
+        hasStoredToken: false,
+        userDisabled: false,
+      })
+    ).toEqual({
+      pushEnabled: false,
+      shouldAutoRegister: false,
+      shouldUnregisterStaleToken: false,
+      statusLabel: "Not set up",
+    });
+  });
+});
+
+describe("deriveCalendarSettingsState (#133)", () => {
+  it("flags warning when sync is enabled but permission is revoked in OS settings", () => {
+    expect(
+      deriveCalendarSettingsState({
+        syncEnabled: true,
+        permissionGranted: false,
+      })
+    ).toEqual({
+      isWarningVisible: true,
+      canSync: false,
+    });
+  });
+
+  it("shows healthy sync state when sync is enabled and permission is granted", () => {
+    expect(
+      deriveCalendarSettingsState({
+        syncEnabled: true,
+        permissionGranted: true,
+      })
+    ).toEqual({
+      isWarningVisible: false,
+      canSync: true,
+    });
+  });
+
+  it("shows no warning when sync is turned off, regardless of permission", () => {
+    expect(
+      deriveCalendarSettingsState({
+        syncEnabled: false,
+        permissionGranted: false,
+      })
+    ).toEqual({
+      isWarningVisible: false,
+      canSync: false,
+    });
+
+    expect(
+      deriveCalendarSettingsState({
+        syncEnabled: false,
+        permissionGranted: true,
+      })
+    ).toEqual({
+      isWarningVisible: false,
+      canSync: false,
+    });
+  });
+});
+
+describe("SettingsScreen permission synchronization source guards (#133)", () => {
+  it("guards user push opt-out persistence and permission reconciliation", () => {
+    expect(SettingsScreenSource).toContain("setPushDisabledByUser(true)");
+    expect(SettingsScreenSource).toContain("setPushDisabledByUser(false)");
+    expect(SettingsScreenSource).toContain("isPushDisabledByUser()");
+    expect(SettingsScreenSource).toContain("derivePushSettingsState");
+    expect(SettingsScreenSource).toContain("deriveCalendarSettingsState");
+  });
+
+  it("re-checks push state in the foreground AppState listener", () => {
+    expect(SettingsScreenSource).toMatch(/AppState\.addEventListener\("change",[^}]*refreshPushState/);
+  });
+
+  it("renders a clear warning and action when calendar sync is on without permission", () => {
+    expect(SettingsScreenSource).toContain("Calendar access is off in system settings");
+    expect(SettingsScreenSource).toContain("Linking.openSettings()");
+    expect(SettingsScreenSource).toContain("handleToggleCalendarSync(false)");
+  });
+});
+
+describe("TaskRow reminder date alongside time (#111)", () => {
+  it("uses formatReminderPillLabel to display date and time on task cards", () => {
+    expect(TaskRowSource).toContain("formatReminderPillLabel");
+    expect(TaskRowSource).toContain("formatReminderPillLabel(item.reminderAt)");
+    expect(TaskRowSource).not.toMatch(/formatReminderTime\(item\.reminderAt\)/);
+  });
+
+  it("guards against rendering reminder badges for tasks without reminders", () => {
+    expect(TaskRowSource).toContain("item.reminderAt ? (");
+  });
+});
+
+describe("evaluateCalendarSoftAskPolicy (#134)", () => {
+  const now = 1_000_000_000_000;
+
+  it("never shows when sync is disabled or permission is already granted", () => {
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: false,
+        permissionGranted: false,
+        declinedAt: null,
+        now,
+      })
+    ).toBe(false);
+
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: true,
+        declinedAt: null,
+        now,
+      })
+    ).toBe(false);
+
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: false,
+        permissionGranted: true,
+        declinedAt: null,
+        now,
+      })
+    ).toBe(false);
+  });
+
+  it("shows when sync is on, permission is not granted, and never declined", () => {
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: false,
+        declinedAt: null,
+        now,
+      })
+    ).toBe(true);
+  });
+
+  it("hides after tapping Not now until 14-day back-off elapses", () => {
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: false,
+        declinedAt: now - 1000,
+        now,
+      })
+    ).toBe(false);
+
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: false,
+        declinedAt: now - SOFT_ASK_REASK_MS + 1,
+        now,
+      })
+    ).toBe(false);
+
+    expect(
+      evaluateCalendarSoftAskPolicy({
+        syncEnabled: true,
+        permissionGranted: false,
+        declinedAt: now - SOFT_ASK_REASK_MS,
+        now,
+      })
+    ).toBe(true);
+  });
+});
+
+describe("CalendarAccessSoftAsk component source guards (#134)", () => {
+  it("includes Turn on, Turn off calendar sync, and Not now actions", () => {
+    expect(CalendarAccessSoftAskSource).toContain("Turn on");
+    expect(CalendarAccessSoftAskSource).toContain("Turn off calendar sync");
+    expect(CalendarAccessSoftAskSource).toContain("Not now");
+    expect(CalendarAccessSoftAskSource).toContain("Calendar sync is turned on in sYnX");
   });
 });

@@ -1,4 +1,5 @@
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.devices";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import * as v from "valibot";
 import { RegisterDeviceTokenSchema } from "../../shared";
@@ -23,8 +24,8 @@ async function readPushTokenForDelete(request: Request): Promise<string | null> 
   return token;
 }
 
-export async function action({ request, context }: ActionFunctionArgs) {
-  const env = context.cloudflare.env;
+export async function action({  request, context  }: Route.ActionArgs) {
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
 
   if (request.method === "DELETE") {

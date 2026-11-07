@@ -107,6 +107,8 @@ jobs:
         run: npm run typecheck
       - name: Typecheck tests that import mobile code
         run: npm run typecheck:mobile-tests
+      - name: Build web
+        run: npm run build
 
   e2e:
     name: E2E
@@ -126,6 +128,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Apply D1 migrations locally
         run: npx wrangler d1 migrations apply synx-db --local
+      - name: Build web
+        run: npm run build
       - name: Run E2E tests
         run: npm run test:e2e
       - name: Upload test results

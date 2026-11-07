@@ -1,13 +1,14 @@
 import { Linking, Platform } from "react-native";
 import * as Calendar from "expo-calendar";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { TodoItem } from "../shared";
+import { evaluateCalendarSoftAskPolicy, type TodoItem } from "../shared";
 
 const CALENDAR_SYNC_ENABLED_KEY = "@synx_calendar_sync_enabled";
 const SYNX_CALENDAR_ID_KEY = "@synx_calendar_id";
 const EVENT_MAPPINGS_KEY = "@synx_calendar_event_mappings";
 const EVENT_STATE_KEY = "@synx_calendar_event_state";
 const COMPLETED_BEHAVIOR_KEY = "@synx_calendar_completed_behavior";
+export const CALENDAR_SOFT_ASK_DECLINED_AT_KEY = "@synx_calendar_soft_ask_declined_at";
 
 /** What happens to a task's calendar event when the task is done. */
 export type CompletedEventBehavior = "mark_done" | "delete";
@@ -40,16 +41,117 @@ export async function isCalendarSyncEnabled(): Promise<boolean> {
   }
 }
 
+const syncEnabledListeners = new Set<(enabled: boolean) => void>();
+
+function notifyCalendarSyncEnabledListeners(enabled: boolean): void {
+  syncEnabledListeners.forEach((fn) => {
+    try {
+      fn(enabled);
+    } catch (e) {
+      console.warn("Failed to notify calendar sync listener", e);
+    }
+  });
+}
+
+/** Subscribe to calendar sync setting changes. Returns unsubscribe. */
+export function subscribeCalendarSyncEnabled(fn: (enabled: boolean) => void): () => void {
+  syncEnabledListeners.add(fn);
+  return () => {
+    syncEnabledListeners.delete(fn);
+  };
+}
+
 /**
  * Enable or disable device calendar sync.
  */
 export async function setCalendarSyncEnabled(enabled: boolean): Promise<boolean> {
   try {
     await AsyncStorage.setItem(CALENDAR_SYNC_ENABLED_KEY, enabled ? "true" : "false");
+    await clearCalendarSoftAskDeclined();
+    notifyCalendarSyncEnabledListeners(enabled);
     return true;
   } catch (error) {
     console.error("Failed to save calendar sync setting:", error);
     return false;
+  }
+}
+
+export async function markCalendarSoftAskDeclined(now: number = Date.now()): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CALENDAR_SOFT_ASK_DECLINED_AT_KEY, String(now));
+  } catch (e) {
+    console.warn("Failed to mark calendar soft ask declined", e);
+  }
+}
+
+export async function clearCalendarSoftAskDeclined(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(CALENDAR_SOFT_ASK_DECLINED_AT_KEY);
+  } catch (e) {
+    console.warn("Failed to clear calendar soft ask declined", e);
+  }
+}
+
+export async function shouldShowCalendarSoftAsk(now: number = Date.now()): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+
+  const syncEnabled = await isCalendarSyncEnabled();
+  if (!syncEnabled) return false;
+
+  const permission = await checkCalendarPermissions();
+  if (permission.status === "unavailable") return false;
+
+  let declinedAt: number | null = null;
+  try {
+    const raw = await AsyncStorage.getItem(CALENDAR_SOFT_ASK_DECLINED_AT_KEY);
+    declinedAt = raw != null ? Number(raw) : null;
+  } catch {
+    declinedAt = null;
+  }
+
+  return evaluateCalendarSoftAskPolicy({
+    syncEnabled,
+    permissionGranted: permission.granted,
+    declinedAt,
+    now,
+  });
+}
+
+export async function turnOffCalendarSyncFromPrompt(): Promise<void> {
+  await setCalendarSyncEnabled(false);
+}
+
+export interface EnableCalendarAccessResult {
+  granted: boolean;
+  openedSettings: boolean;
+}
+
+export async function enableCalendarAccessFromPrompt(): Promise<EnableCalendarAccessResult> {
+  if (Platform.OS === "web") {
+    return { granted: false, openedSettings: false };
+  }
+
+  const existing = await checkCalendarPermissions();
+  if (existing.granted) {
+    await clearCalendarSoftAskDeclined();
+    return { granted: true, openedSettings: false };
+  }
+
+  if (existing.canAskAgain) {
+    const requested = await requestCalendarPermissions();
+    if (requested.granted) {
+      await clearCalendarSoftAskDeclined();
+      return { granted: true, openedSettings: false };
+    }
+    return { granted: false, openedSettings: false };
+  }
+
+  try {
+    await Linking.openSettings();
+    return { granted: false, openedSettings: true };
+  } catch (e) {
+    console.warn("Failed to open system settings for calendar permission", e);
+    return { granted: false, openedSettings: false };
   }
 }
 

@@ -1,46 +1,25 @@
+import { reactRouter } from "@react-router/dev/vite";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import { defineConfig, type PluginOption } from "vite";
-import {
-  vitePlugin as remix,
-  cloudflareDevProxyVitePlugin,
-} from "@remix-run/dev";
-import tsconfigPaths from "vite-tsconfig-paths";
-import { getLoadContext } from "./load-context";
 
-declare module "@remix-run/cloudflare" {
-  interface Future {
-    v3_singleFetch: true;
-  }
-}
-
-export default defineConfig(({ command }) => {
-  return {
-    plugins: [
-      command === "serve" &&
-        cloudflareDevProxyVitePlugin({
-          getLoadContext,
-          configPath: "./wrangler.jsonc",
-        }),
-      remix({
-        future: {
-          v3_fetcherPersist: true,
-          v3_relativeSplatPath: true,
-          v3_throwAbortReason: true,
-          v3_singleFetch: true,
-          v3_lazyRouteDiscovery: true,
-        },
-      }),
-      tsconfigPaths(),
-    ].filter(Boolean) as PluginOption[],
-    ssr: {
-      resolve: {
-        conditions: ["workerd", "worker", "browser"],
-      },
-    },
+export default defineConfig({
+  plugins: [
+    cloudflare({
+      viteEnvironment: { name: "ssr" },
+      configPath: "./wrangler.jsonc",
+    }),
+    reactRouter(),
+  ].filter(Boolean) as PluginOption[],
+  ssr: {
     resolve: {
-      mainFields: ["browser", "module", "main"],
+      conditions: ["workerd", "worker", "browser"],
     },
-    build: {
-      minify: true,
-    },
-  };
+  },
+  resolve: {
+    tsconfigPaths: true,
+    mainFields: ["browser", "module", "main"],
+  },
+  build: {
+    minify: true,
+  },
 });
