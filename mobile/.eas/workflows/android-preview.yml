@@ -36,6 +36,7 @@ jobs:
       BUILD_STATUS: ${{ after.build_android_preview.status }}
       APP_VERSION: ${{ after.build_android_preview.outputs.app_version }}
       APP_BUILD_VERSION: ${{ after.build_android_preview.outputs.app_build_version }}
+      RUNTIME_VERSION: ${{ after.build_android_preview.outputs.runtime_version }}
       COMMIT_SHA: ${{ github.sha }}
       WORKFLOW_URL: ${{ workflow.url }}
     steps:

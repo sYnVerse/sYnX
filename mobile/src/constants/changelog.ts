@@ -10,6 +10,14 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "NEW",
+        text: "Over-the-air (OTA) updates support via expo-updates, enabling seamless background delivery of compatible app improvements.",
+      },
+      {
+        type: "IMPR",
+        text: "Added release channel, runtime fingerprint, update ID diagnostics, and a manual Check for Updates and Restart button in Settings.",
+      },
+      {
         type: "IMPR",
         text: "Redesigned the Lists screen with compact single-line rows, a top-right Simple/Details view toggle, and a cleaner action sheet for pin, share, edit, and delete.",
       },

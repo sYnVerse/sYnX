@@ -9,15 +9,18 @@ import { BottomTabNavigator } from "./src/navigation/BottomTabNavigator";
 import { startWidgetSyncService } from "./src/services/widgetSync";
 import { startCalendarReconcileService } from "./src/services/calendarReconcile";
 import { registerWidgetBackgroundSync } from "./src/services/widgetBackgroundTask";
+import { startPeriodicUpdateService } from "./src/services/updates";
 
 export default function App() {
   useEffect(() => {
     const unsubWidgets = startWidgetSyncService(queryClient);
     const unsubCalendar = startCalendarReconcileService(queryClient);
+    const unsubUpdates = startPeriodicUpdateService();
     registerWidgetBackgroundSync().catch(() => {});
     return () => {
       unsubWidgets();
       unsubCalendar();
+      unsubUpdates();
     };
   }, []);
 

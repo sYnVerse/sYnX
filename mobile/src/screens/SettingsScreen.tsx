@@ -29,7 +29,18 @@ import {
   Globe,
   Info,
   ChevronRight,
+  RefreshCw,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react-native";
+import {
+  checkForUpdate,
+  getUpdateState,
+  reloadToApplyUpdate,
+  subscribeUpdateState,
+  formatShortId,
+  type UpdateState,
+} from "../services/updates";
 import { useAuth } from "../context/AuthContext";
 import { apiClient } from "../api/client";
 import {
@@ -163,6 +174,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [homeTimeZone, setHomeTimeZoneState] = useState<string | null | undefined>(getKnownHomeTimeZone());
   const [homeTimeZoneBusy, setHomeTimeZoneBusy] = useState(false);
   const deviceTimeZone = getLocalTimeZone();
+
+  const [updateState, setUpdateState] = useState<UpdateState>(getUpdateState());
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [reloadingUpdate, setReloadingUpdate] = useState(false);
+
+  useEffect(() => {
+    return subscribeUpdateState(setUpdateState);
+  }, []);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydrated = useRef(false);
@@ -382,6 +401,92 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     setDisplayName(s.displayName);
     onDirtyChange?.(false);
   }, [onDirtyChange]);
+
+  const handleCheckForUpdates = async () => {
+    if (checkingUpdate || updateState.isChecking || updateState.isDownloading) return;
+    triggerImpact();
+    setCheckingUpdate(true);
+    try {
+      const result = await checkForUpdate({ manual: true });
+      if (result.hasUpdate) {
+        showSuccess("Update downloaded! Restart to apply.");
+      } else if (result.error) {
+        showError(result.error);
+      } else {
+        showSuccess("sYnX is up to date.");
+      }
+    } catch (e: any) {
+      showError(getErrorMessage(e, "Check failed"));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const executeReload = async () => {
+    setReloadingUpdate(true);
+    try {
+      const ok = await reloadToApplyUpdate();
+      if (!ok) {
+        showError("Could not restart app.");
+      }
+    } catch (e: any) {
+      showError(getErrorMessage(e, "Restart failed"));
+    } finally {
+      setReloadingUpdate(false);
+    }
+  };
+
+  const handleApplyUpdate = () => {
+    triggerImpact();
+    const isDirty =
+      emailEnabled !== latestRemote.current.emailEnabled ||
+      smsEnabled !== latestRemote.current.smsEnabled ||
+      phoneNumber !== latestRemote.current.phoneNumber ||
+      phoneCarrier !== latestRemote.current.phoneCarrier ||
+      discordWebhookUrl !== latestRemote.current.discordWebhookUrl ||
+      displayName !== latestRemote.current.displayName;
+
+    if (isDirty) {
+      Alert.alert(
+        "Unsaved Settings",
+        "You have unsaved changes. Would you like to save or discard your changes before restarting?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Discard & Restart",
+            style: "destructive",
+            onPress: () => {
+              resetSettings();
+              void executeReload();
+            },
+          },
+          {
+            text: "Save & Restart",
+            onPress: async () => {
+              const saved = await persistRemoteSettings();
+              if (saved) {
+                void executeReload();
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      Alert.alert(
+        "Restart sYnX",
+        "The app will restart to apply the latest update.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Restart Now",
+            onPress: () => {
+              void executeReload();
+            },
+          },
+        ]
+      );
+    }
+  };
 
   useEffect(() => {
     if (onRegisterActions) {
@@ -1242,6 +1347,102 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           </View>
           <Text style={{ color: theme.accent, fontSize: typography.sm, fontWeight: "700" }}>View</Text>
         </TouchableOpacity>
+
+        <View style={[styles.aboutDivider, { backgroundColor: theme.cardBorder }]} />
+
+        {updateState.isEmergencyLaunch && (
+          <View
+            style={[
+              styles.emergencyBanner,
+              {
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                borderColor: "rgba(239, 68, 68, 0.35)",
+              },
+            ]}
+          >
+            <AlertTriangle size={16} color={theme.danger} />
+            <Text style={[styles.emergencyBannerText, { color: theme.danger }]}>
+              Safe Mode: Embedded build loaded after launch crash
+            </Text>
+          </View>
+        )}
+
+        <View style={[styles.diagContainer, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
+          <View style={styles.diagRow}>
+            <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Native Binary</Text>
+            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+              {updateState.nativeAppVersion || "3.6.0"}
+              {updateState.nativeBuildVersion ? ` (${updateState.nativeBuildVersion})` : ""}
+            </Text>
+          </View>
+          <View style={styles.diagRow}>
+            <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Release Channel</Text>
+            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+              {updateState.channel ?? "embedded"}
+            </Text>
+          </View>
+          <View style={styles.diagRow}>
+            <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Runtime Fingerprint</Text>
+            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+              {formatShortId(updateState.runtimeVersion, "embedded")}
+            </Text>
+          </View>
+          <View style={styles.diagRow}>
+            <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Active Update</Text>
+            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+              {updateState.isEmbeddedLaunch
+                ? "Embedded Bundle"
+                : `OTA: ${formatShortId(updateState.updateId, "Unknown")}`}
+            </Text>
+          </View>
+        </View>
+
+        {updateState.isUpdatePending ? (
+          <TouchableOpacity
+            style={[styles.updateActionBtn, { backgroundColor: theme.accent }]}
+            onPress={handleApplyUpdate}
+            disabled={reloadingUpdate}
+            accessibilityRole="button"
+            accessibilityLabel="Update ready. Restart sYnX to apply."
+          >
+            {reloadingUpdate ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <RotateCcw size={16} color="#FFFFFF" />
+            )}
+            <Text style={[styles.updateActionBtnText, { color: "#FFFFFF" }]}>
+              Restart to Apply Update
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[
+              styles.updateActionBtn,
+              {
+                backgroundColor: theme.inputBg,
+                borderColor: theme.inputBorder,
+                borderWidth: 1,
+              },
+            ]}
+            onPress={handleCheckForUpdates}
+            disabled={checkingUpdate || updateState.isChecking || updateState.isDownloading}
+            accessibilityRole="button"
+            accessibilityLabel="Check for updates"
+          >
+            {checkingUpdate || updateState.isChecking || updateState.isDownloading ? (
+              <ActivityIndicator size="small" color={theme.accent} />
+            ) : (
+              <RefreshCw size={15} color={theme.accent} />
+            )}
+            <Text style={[styles.updateActionBtnText, { color: theme.accent }]}>
+              {updateState.isDownloading
+                ? "Downloading update..."
+                : checkingUpdate || updateState.isChecking
+                ? "Checking for updates..."
+                : "Check for Updates"}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <PhoneCarrierPickerModal
@@ -1539,5 +1740,57 @@ const styles = StyleSheet.create({
     fontSize: typography.sm,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  aboutDivider: {
+    height: 1,
+    marginVertical: 12,
+  },
+  diagContainer: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 10,
+    gap: 6,
+    marginBottom: 10,
+  },
+  diagRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  diagLabel: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+  },
+  diagValue: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+  },
+  emergencyBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 8,
+    marginBottom: 10,
+  },
+  emergencyBannerText: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+    flex: 1,
+  },
+  updateActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  updateActionBtnText: {
+    fontSize: typography.sm,
+    fontWeight: "700",
   },
 });
