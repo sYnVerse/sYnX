@@ -9,7 +9,8 @@ export interface UpdateState {
   isChecking: boolean;
   isDownloading: boolean;
   isUpdateAvailable: boolean;
-  isUpdatePending: boolean; // Downloaded and waiting for restart
+  isUpdatePending: boolean; // Downloaded update or rollback directive waiting for restart
+  isRollBackToEmbedded: boolean; // Server-directed rollback to embedded bundle is ready/applied
   isEmergencyLaunch: boolean;
   isEmbeddedLaunch: boolean;
   lastCheckedAt: number | null;
@@ -27,6 +28,7 @@ let currentState: UpdateState = {
   isDownloading: false,
   isUpdateAvailable: false,
   isUpdatePending: false,
+  isRollBackToEmbedded: false,
   isEmergencyLaunch: Updates.isEmergencyLaunch ?? false,
   isEmbeddedLaunch: Updates.isEmbeddedLaunch ?? true,
   lastCheckedAt: null,
@@ -57,6 +59,78 @@ function updateState(patch: Partial<UpdateState>): void {
 }
 
 /**
+ * Synchronizes native Expo Updates state (e.g. startup downloads or rollback directives)
+ * from the native state machine context into the JavaScript state singleton.
+ */
+export function syncNativeUpdateContext(context?: any): void {
+  const ctx = context ?? (Updates as any).latestContext;
+  if (!ctx) return;
+
+  const isPending = Boolean(ctx.isUpdatePending || ctx.rollback || ctx.downloadedManifest);
+  const isAvailable = Boolean(ctx.isUpdateAvailable || ctx.latestManifest || ctx.rollback);
+  const isRollBack = Boolean(ctx.rollback);
+
+  const patch: Partial<UpdateState> = {};
+  if (isPending && !currentState.isUpdatePending) {
+    patch.isUpdatePending = true;
+  }
+  if (isAvailable && !currentState.isUpdateAvailable) {
+    patch.isUpdateAvailable = true;
+  }
+  if (isRollBack && !currentState.isRollBackToEmbedded) {
+    patch.isRollBackToEmbedded = true;
+  }
+  if (typeof ctx.isChecking === "boolean" && ctx.isChecking !== currentState.isChecking) {
+    patch.isChecking = ctx.isChecking;
+  }
+  if (typeof ctx.isDownloading === "boolean" && ctx.isDownloading !== currentState.isDownloading) {
+    patch.isDownloading = ctx.isDownloading;
+  }
+
+  if (Object.keys(patch).length > 0) {
+    updateState(patch);
+  }
+}
+
+let nativeSubscription: { remove: () => void } | null = null;
+
+/**
+ * Subscribes to Expo's native state change events to immediately catch
+ * startup-downloaded updates, background fetches, or rollback directives.
+ */
+export function registerNativeUpdatesListener(): () => void {
+  if (typeof (Updates as any).addUpdatesStateChangeListener !== "function") {
+    return () => {};
+  }
+  if (nativeSubscription) {
+    return () => {
+      nativeSubscription?.remove();
+      nativeSubscription = null;
+    };
+  }
+
+  try {
+    const sub = (Updates as any).addUpdatesStateChangeListener((event: any) => {
+      if (event?.context) {
+        syncNativeUpdateContext(event.context);
+      }
+    });
+    nativeSubscription = sub;
+    return () => {
+      sub.remove();
+      nativeSubscription = null;
+    };
+  } catch (e) {
+    console.warn("[updates] Failed to register native updates state listener:", e);
+    return () => {};
+  }
+}
+
+// Initial sync on module load
+syncNativeUpdateContext();
+registerNativeUpdatesListener();
+
+/**
  * Resets update state to default values for test isolation.
  */
 export function resetUpdateStateForTesting(): void {
@@ -66,6 +140,7 @@ export function resetUpdateStateForTesting(): void {
     isDownloading: false,
     isUpdateAvailable: false,
     isUpdatePending: false,
+    isRollBackToEmbedded: false,
     isEmergencyLaunch: Updates.isEmergencyLaunch ?? false,
     isEmbeddedLaunch: Updates.isEmbeddedLaunch ?? true,
     lastCheckedAt: null,
@@ -76,6 +151,7 @@ export function resetUpdateStateForTesting(): void {
     nativeAppVersion: Constants.nativeAppVersion ?? null,
     nativeBuildVersion: Constants.nativeBuildVersion ?? null,
   };
+  syncNativeUpdateContext();
 }
 
 /**
@@ -89,6 +165,7 @@ export function getUpdateState(): UpdateState {
  * Subscribes to updates state changes. Returns an unsubscribe function.
  */
 export function subscribeUpdateState(listener: StateListener): () => void {
+  syncNativeUpdateContext();
   listeners.add(listener);
   listener(currentState);
   return () => {
@@ -106,12 +183,12 @@ export function formatShortId(id: string | null | undefined, fallback = "None"):
 }
 
 /**
- * Checks for available updates and downloads any compatible update in the background.
+ * Checks for available updates and downloads any compatible update or rollback in the background.
  * Automatically throttled unless manual: true is specified.
  */
 export async function checkForUpdate(options?: {
   manual?: boolean;
-}): Promise<{ hasUpdate: boolean; error?: string }> {
+}): Promise<{ hasUpdate: boolean; isRollBack?: boolean; error?: string }> {
   if (Platform.OS === "web") {
     return { hasUpdate: false };
   }
@@ -125,32 +202,47 @@ export async function checkForUpdate(options?: {
   const now = Date.now();
   if (!options?.manual && currentState.lastCheckedAt) {
     if (now - currentState.lastCheckedAt < UPDATE_CHECK_COOLDOWN_MS) {
-      return { hasUpdate: currentState.isUpdatePending };
+      return {
+        hasUpdate: currentState.isUpdatePending,
+        isRollBack: currentState.isRollBackToEmbedded,
+      };
     }
   }
 
   if (currentState.isChecking || currentState.isDownloading) {
-    return { hasUpdate: currentState.isUpdatePending };
+    return {
+      hasUpdate: currentState.isUpdatePending,
+      isRollBack: currentState.isRollBackToEmbedded,
+    };
   }
 
   updateState({ isChecking: true, updateError: null });
 
   try {
     const checkResult = await Updates.checkForUpdateAsync();
+    const isAvailable = Boolean(checkResult.isAvailable);
+    const isRollBack = Boolean((checkResult as any).isRollBackToEmbedded);
+    const shouldFetch = isAvailable || isRollBack;
+
     updateState({
       isChecking: false,
       lastCheckedAt: now,
-      isUpdateAvailable: checkResult.isAvailable,
+      isUpdateAvailable: shouldFetch,
+      isRollBackToEmbedded: isRollBack,
     });
 
-    if (checkResult.isAvailable) {
+    if (shouldFetch) {
       updateState({ isDownloading: true });
       const fetchResult = await Updates.fetchUpdateAsync();
+      const isPending = Boolean(fetchResult.isNew || (fetchResult as any).isRollBackToEmbedded);
+      const isRollBackPending = Boolean((fetchResult as any).isRollBackToEmbedded);
+
       updateState({
         isDownloading: false,
-        isUpdatePending: fetchResult.isNew,
+        isUpdatePending: isPending,
+        isRollBackToEmbedded: isRollBackPending || isRollBack,
       });
-      return { hasUpdate: fetchResult.isNew };
+      return { hasUpdate: isPending, isRollBack: isRollBackPending || isRollBack };
     }
 
     return { hasUpdate: false };
@@ -167,7 +259,7 @@ export async function checkForUpdate(options?: {
 }
 
 /**
- * Reloads the app to apply a downloaded update.
+ * Reloads the app to apply a downloaded update or rollback to embedded.
  * Only call this after ensuring active user edits are saved or confirmed.
  */
 export async function reloadToApplyUpdate(): Promise<boolean> {
@@ -187,6 +279,7 @@ export async function reloadToApplyUpdate(): Promise<boolean> {
 
 /**
  * Initializes the background update checking service.
+ * - Bridges native Expo state change events
  * - Performs a throttled background check on startup (delayed by 3 seconds)
  * - Listens for AppState active transitions to perform throttled checks
  */
@@ -195,6 +288,10 @@ export function startPeriodicUpdateService(): () => void {
     return () => {};
   }
 
+  // Ensure native state listener is active and context is synced
+  syncNativeUpdateContext();
+  const unregisterNative = registerNativeUpdatesListener();
+
   // Delayed initial check after cold launch
   const initialTimer = setTimeout(() => {
     void checkForUpdate({ manual: false });
@@ -202,6 +299,7 @@ export function startPeriodicUpdateService(): () => void {
 
   const sub = AppState.addEventListener("change", (nextState) => {
     if (nextState === "active") {
+      syncNativeUpdateContext();
       void checkForUpdate({ manual: false });
     }
   });
@@ -209,5 +307,6 @@ export function startPeriodicUpdateService(): () => void {
   return () => {
     clearTimeout(initialTimer);
     sub.remove();
+    unregisterNative();
   };
 }

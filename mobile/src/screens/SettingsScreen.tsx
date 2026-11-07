@@ -409,7 +409,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     try {
       const result = await checkForUpdate({ manual: true });
       if (result.hasUpdate) {
-        showSuccess("Update downloaded! Restart to apply.");
+        showSuccess(
+          result.isRollBack
+            ? "Rollback downloaded! Restart to apply."
+            : "Update downloaded! Restart to apply."
+        );
       } else if (result.error) {
         showError(result.error);
       } else {
@@ -1399,11 +1403,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
 
         {updateState.isUpdatePending ? (
           <TouchableOpacity
-            style={[styles.updateActionBtn, { backgroundColor: theme.accent }]}
+            style={[
+              styles.updateActionBtn,
+              {
+                backgroundColor: updateState.isRollBackToEmbedded
+                  ? "#d97706"
+                  : theme.accent,
+              },
+            ]}
             onPress={handleApplyUpdate}
             disabled={reloadingUpdate}
             accessibilityRole="button"
-            accessibilityLabel="Update ready. Restart sYnX to apply."
+            accessibilityLabel={
+              updateState.isRollBackToEmbedded
+                ? "Rollback ready. Restart sYnX to apply."
+                : "Update ready. Restart sYnX to apply."
+            }
           >
             {reloadingUpdate ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
@@ -1411,7 +1426,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
               <RotateCcw size={16} color="#FFFFFF" />
             )}
             <Text style={[styles.updateActionBtnText, { color: "#FFFFFF" }]}>
-              Restart to Apply Update
+              {updateState.isRollBackToEmbedded
+                ? "Restart to Apply Rollback"
+                : "Restart to Apply Update"}
             </Text>
           </TouchableOpacity>
         ) : (

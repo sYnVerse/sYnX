@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const appStateListeners: ((s: string) => void)[] = [];
+  const updatesStateListeners: ((e: any) => void)[] = [];
+
   return {
     reactNative: {
       Platform: { OS: "android" },
@@ -19,9 +21,19 @@ const mocks = vi.hoisted(() => {
       runtimeVersion: "fingerprint-123456789",
       updateId: "98765432-abcd-ef01-2345-6789abcdef01",
       channel: "preview",
-      checkForUpdateAsync: vi.fn(async () => ({ isAvailable: false })),
-      fetchUpdateAsync: vi.fn(async () => ({ isNew: false })),
+      latestContext: null as any,
+      checkForUpdateAsync: vi.fn(async () => ({ isAvailable: false, isRollBackToEmbedded: false })),
+      fetchUpdateAsync: vi.fn(async () => ({ isNew: false, isRollBackToEmbedded: false })),
       reloadAsync: vi.fn(async () => {}),
+      addUpdatesStateChangeListener: vi.fn((cb: (e: any) => void) => {
+        updatesStateListeners.push(cb);
+        return {
+          remove: vi.fn(() => {
+            const idx = updatesStateListeners.indexOf(cb);
+            if (idx >= 0) updatesStateListeners.splice(idx, 1);
+          }),
+        };
+      }),
     },
     constants: {
       nativeAppVersion: "3.6.0",
@@ -29,6 +41,7 @@ const mocks = vi.hoisted(() => {
       expoConfig: { version: "3.6.0" },
     },
     appStateListeners,
+    updatesStateListeners,
   };
 });
 
@@ -46,6 +59,7 @@ import {
   checkForUpdate,
   reloadToApplyUpdate,
   resetUpdateStateForTesting,
+  syncNativeUpdateContext,
 } from "../mobile/src/services/updates";
 
 describe("mobile updates service", () => {
@@ -54,6 +68,7 @@ describe("mobile updates service", () => {
     mocks.updates.isEnabled = false;
     mocks.updates.isEmergencyLaunch = false;
     mocks.updates.isEmbeddedLaunch = true;
+    mocks.updates.latestContext = null;
     resetUpdateStateForTesting();
   });
 
@@ -83,6 +98,7 @@ describe("mobile updates service", () => {
       expect(state).toHaveProperty("isDownloading");
       expect(state).toHaveProperty("isUpdateAvailable");
       expect(state).toHaveProperty("isUpdatePending");
+      expect(state).toHaveProperty("isRollBackToEmbedded", false);
       expect(state).toHaveProperty("nativeAppVersion", "3.6.0");
       expect(state).toHaveProperty("nativeBuildVersion", "42");
     });
@@ -110,24 +126,53 @@ describe("mobile updates service", () => {
       mocks.updates.isEnabled = true;
       mocks.updates.checkForUpdateAsync.mockResolvedValueOnce({
         isAvailable: true,
+        isRollBackToEmbedded: false,
       });
       mocks.updates.fetchUpdateAsync.mockResolvedValueOnce({
         isNew: true,
+        isRollBackToEmbedded: false,
       });
 
       const res = await checkForUpdate({ manual: true });
       expect(res.hasUpdate).toBe(true);
+      expect(res.isRollBack).toBe(false);
       expect(mocks.updates.checkForUpdateAsync).toHaveBeenCalledTimes(1);
       expect(mocks.updates.fetchUpdateAsync).toHaveBeenCalledTimes(1);
 
       const state = getUpdateState();
       expect(state.isUpdatePending).toBe(true);
+      expect(state.isRollBackToEmbedded).toBe(false);
       expect(state.lastCheckedAt).not.toBeNull();
+    });
+
+    it("handles rollback directives with isAvailable: false and isRollBackToEmbedded: true", async () => {
+      mocks.updates.isEnabled = true;
+      mocks.updates.checkForUpdateAsync.mockResolvedValueOnce({
+        isAvailable: false,
+        isRollBackToEmbedded: true,
+      });
+      mocks.updates.fetchUpdateAsync.mockResolvedValueOnce({
+        isNew: false,
+        isRollBackToEmbedded: true,
+      });
+
+      const res = await checkForUpdate({ manual: true });
+      expect(res.hasUpdate).toBe(true);
+      expect(res.isRollBack).toBe(true);
+      expect(mocks.updates.checkForUpdateAsync).toHaveBeenCalledTimes(1);
+      expect(mocks.updates.fetchUpdateAsync).toHaveBeenCalledTimes(1);
+
+      const state = getUpdateState();
+      expect(state.isUpdatePending).toBe(true);
+      expect(state.isRollBackToEmbedded).toBe(true);
     });
 
     it("throttles automatic checks within cooldown period", async () => {
       mocks.updates.isEnabled = true;
-      mocks.updates.checkForUpdateAsync.mockResolvedValue({ isAvailable: false });
+      mocks.updates.checkForUpdateAsync.mockResolvedValue({
+        isAvailable: false,
+        isRollBackToEmbedded: false,
+      });
 
       // First check succeeds
       const first = await checkForUpdate({ manual: false });
@@ -146,12 +191,74 @@ describe("mobile updates service", () => {
     });
   });
 
+  describe("native state machine bridging", () => {
+    it("bridges startup-downloaded updates from native latestContext", () => {
+      mocks.updates.latestContext = {
+        isUpdatePending: true,
+        downloadedManifest: { id: "test-startup-update-id" },
+      };
+      syncNativeUpdateContext();
+
+      const state = getUpdateState();
+      expect(state.isUpdatePending).toBe(true);
+    });
+
+    it("bridges native state change events emitted during background or startup downloads", () => {
+      mocks.updates.latestContext = null;
+      resetUpdateStateForTesting();
+
+      expect(getUpdateState().isUpdatePending).toBe(false);
+
+      expect(mocks.updatesStateListeners.length).toBeGreaterThan(0);
+      mocks.updatesStateListeners.forEach((listener) => {
+        listener({
+          context: {
+            isUpdatePending: true,
+            isUpdateAvailable: true,
+            downloadedManifest: { id: "bg-downloaded-id" },
+          },
+        });
+      });
+
+      const state = getUpdateState();
+      expect(state.isUpdatePending).toBe(true);
+      expect(state.isUpdateAvailable).toBe(true);
+    });
+
+    it("bridges native rollback directives into state singleton", () => {
+      resetUpdateStateForTesting();
+
+      mocks.updatesStateListeners.forEach((listener) => {
+        listener({
+          context: {
+            isUpdatePending: true,
+            rollback: { commitTime: "2026-11-07T00:00:00.000Z" },
+          },
+        });
+      });
+
+      const state = getUpdateState();
+      expect(state.isUpdatePending).toBe(true);
+      expect(state.isRollBackToEmbedded).toBe(true);
+    });
+  });
+
   describe("reloadToApplyUpdate", () => {
     it("does not reload if updates are disabled or no update is pending", async () => {
       mocks.updates.isEnabled = false;
       const ok = await reloadToApplyUpdate();
       expect(ok).toBe(false);
       expect(mocks.updates.reloadAsync).not.toHaveBeenCalled();
+    });
+
+    it("triggers reloadAsync when an update is pending", async () => {
+      mocks.updates.isEnabled = true;
+      mocks.updates.latestContext = { isUpdatePending: true };
+      syncNativeUpdateContext();
+
+      const ok = await reloadToApplyUpdate();
+      expect(ok).toBe(true);
+      expect(mocks.updates.reloadAsync).toHaveBeenCalledTimes(1);
     });
   });
 });
