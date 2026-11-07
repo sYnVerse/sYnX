@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
 import * as Updates from "expo-updates";
 import Constants from "expo-constants";
@@ -129,6 +130,40 @@ export function registerNativeUpdatesListener(): () => void {
 // Initial sync on module load
 syncNativeUpdateContext();
 registerNativeUpdatesListener();
+
+/**
+ * Bridges native update state from an object (e.g. from Updates.useUpdates())
+ * into the sYnX update state singleton.
+ */
+export function bridgeNativeUpdatesState(nativeState: any): void {
+  if (!nativeState) return;
+  syncNativeUpdateContext({
+    isUpdatePending: nativeState.isUpdatePending,
+    isUpdateAvailable: nativeState.isUpdateAvailable,
+    isChecking: nativeState.isChecking,
+    isDownloading: nativeState.isDownloading,
+    downloadedManifest: nativeState.downloadedUpdate?.manifest,
+    rollback:
+      nativeState.downloadedUpdate?.type === "rollback" ||
+      nativeState.availableUpdate?.type === "rollback"
+        ? { commitTime: new Date().toISOString() }
+        : undefined,
+  });
+}
+
+/**
+ * React hook to bridge Expo's native Updates.useUpdates() hook
+ * into the sYnX update state singleton from a React component.
+ */
+export function useUpdatesBridge(): void {
+  const nativeState = typeof (Updates as any).useUpdates === "function" ? (Updates as any).useUpdates() : null;
+
+  useEffect(() => {
+    if (nativeState) {
+      bridgeNativeUpdatesState(nativeState);
+    }
+  }, [nativeState]);
+}
 
 /**
  * Resets update state to default values for test isolation.

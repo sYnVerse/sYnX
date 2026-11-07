@@ -1,6 +1,5 @@
 # Pure JavaScript application code
 src/**
-assets/**
 
 # Versioning SSOT (changes daily, does not affect native runtime)
 src/shared/mobile-version.ts

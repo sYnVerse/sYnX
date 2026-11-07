@@ -25,6 +25,12 @@ const mocks = vi.hoisted(() => {
       checkForUpdateAsync: vi.fn(async () => ({ isAvailable: false, isRollBackToEmbedded: false })),
       fetchUpdateAsync: vi.fn(async () => ({ isNew: false, isRollBackToEmbedded: false })),
       reloadAsync: vi.fn(async () => {}),
+      useUpdates: vi.fn(() => ({
+        isUpdatePending: false,
+        isUpdateAvailable: false,
+        isChecking: false,
+        isDownloading: false,
+      })),
       addUpdatesStateChangeListener: vi.fn((cb: (e: any) => void) => {
         updatesStateListeners.push(cb);
         return {
@@ -52,6 +58,7 @@ vi.mock("../mobile/node_modules/expo-updates", () => mocks.updates);
 vi.mock("expo-constants", () => ({ default: mocks.constants }));
 vi.mock("../mobile/node_modules/expo-constants", () => ({ default: mocks.constants }));
 
+import ignoreContent from "../mobile/.fingerprintignore?raw";
 import {
   formatShortId,
   getUpdateState,
@@ -60,6 +67,7 @@ import {
   reloadToApplyUpdate,
   resetUpdateStateForTesting,
   syncNativeUpdateContext,
+  bridgeNativeUpdatesState,
 } from "../mobile/src/services/updates";
 
 describe("mobile updates service", () => {
@@ -69,6 +77,12 @@ describe("mobile updates service", () => {
     mocks.updates.isEmergencyLaunch = false;
     mocks.updates.isEmbeddedLaunch = true;
     mocks.updates.latestContext = null;
+    mocks.updates.useUpdates.mockReturnValue({
+      isUpdatePending: false,
+      isUpdateAvailable: false,
+      isChecking: false,
+      isDownloading: false,
+    });
     resetUpdateStateForTesting();
   });
 
@@ -240,6 +254,27 @@ describe("mobile updates service", () => {
       const state = getUpdateState();
       expect(state.isUpdatePending).toBe(true);
       expect(state.isRollBackToEmbedded).toBe(true);
+    });
+
+    it("bridges native useUpdates hook state into singleton store", () => {
+      bridgeNativeUpdatesState({
+        isUpdatePending: true,
+        isUpdateAvailable: true,
+        isChecking: false,
+        isDownloading: false,
+        downloadedUpdate: { manifest: { id: "hook-downloaded-id" }, type: "new" },
+      });
+
+      const state = getUpdateState();
+      expect(state.isUpdatePending).toBe(true);
+      expect(state.isUpdateAvailable).toBe(true);
+    });
+  });
+
+  describe("fingerprintignore rules", () => {
+    it("does not ignore native configuration assets in mobile/.fingerprintignore", () => {
+      expect(ignoreContent).not.toMatch(/^assets\/\*\*/m);
+      expect(ignoreContent).toContain("src/**");
     });
   });
 

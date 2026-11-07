@@ -38,6 +38,7 @@ import {
   getUpdateState,
   reloadToApplyUpdate,
   subscribeUpdateState,
+  useUpdatesBridge,
   formatShortId,
   type UpdateState,
 } from "../services/updates";
@@ -175,6 +176,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [homeTimeZoneBusy, setHomeTimeZoneBusy] = useState(false);
   const deviceTimeZone = getLocalTimeZone();
 
+  useUpdatesBridge();
   const [updateState, setUpdateState] = useState<UpdateState>(getUpdateState());
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [reloadingUpdate, setReloadingUpdate] = useState(false);

@@ -121,16 +121,20 @@ Pure JavaScript code, UI components, icons, and user-facing version strings do *
 ```
 
 #### `.fingerprintignore` Configuration
-Create `mobile/.fingerprintignore` to explicitly ignore user-facing version files and pure app code:
+Create `mobile/.fingerprintignore` to explicitly ignore user-facing version files and pure app code while retaining native configuration assets:
 ```gitignore
 # Pure JavaScript application code
 src/**
-assets/**
+
 # Versioning SSOT (changes daily, does not affect native runtime)
 src/shared/mobile-version.ts
+
 # Documentation and changelogs
 src/constants/changelog.ts
 ```
+
+> [!IMPORTANT]
+> Native configuration assets (`mobile/assets/icon.png`, `mobile/assets/adaptive-icon.png`, `mobile/assets/splash.png`, `mobile/assets/notification-icon.png`) are purposefully **not** ignored. They are compiled into native Android resources (`res/mipmap-*`, `res/drawable-*`) during prebuild. Retaining them in the fingerprint calculation guarantees that any image edits to native launcher or splash resources safely bump the native fingerprint and force a new native binary package.
 
 #### Special Case: Android Widgets (`expo-widgets`)
 - **Runtime Layout Changes**: Modifications inside `mobile/src/widgets/CurrentListWidget.tsx` using Compose UI (`Text`, `Row`, `Column`) are bundled in JavaScript and **can** be updated over the air.
@@ -148,7 +152,8 @@ To ensure team members and release scripts know when an OTA update is permitted 
 | `mobile/src/hooks/**`, `mobile/src/services/**` | Client sync, API queries, local logic | **OTA Update** |
 | `shared/**` (except native validation rules) | Shared types, formatting, sort utilities | **OTA Update** |
 | `shared/mobile-version.ts` | Daily SemVer bump (`MOBILE_APP_VERSION`) | **OTA Update** |
-| `mobile/assets/**` | PNG/JPEG icons, illustrations | **OTA Update** |
+| `mobile/assets/**` (`icon`, `splash`, `adaptive-icon`) | Native compiled app icons, adaptive icons, splash screens | **New Native Package** |
+| `mobile/src/assets/**` (if added) | Pure JS bundled UI illustrations and icons | **OTA Update** |
 | `mobile/package.json` (`dependencies`) | Upgrading or adding native dependencies | **New Native Package** |
 | `mobile/package.json` (`dependencies`) | Pure JS packages (e.g. `valibot`, `date-fns`) | **OTA Update** |
 | `mobile/app.json` (`android.permissions`, `plugins`) | Native permissions or config plugins | **New Native Package** |
