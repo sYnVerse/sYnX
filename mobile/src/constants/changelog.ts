@@ -6,6 +6,71 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-07",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Over-the-air (OTA) updates support via expo-updates, enabling seamless background delivery of compatible app improvements.",
+      },
+      {
+        type: "IMPR",
+        text: "Added release channel, runtime fingerprint, update ID diagnostics, and a manual Check for Updates and Restart button in Settings.",
+      },
+      {
+        type: "IMPR",
+        text: "Redesigned the Lists screen with compact single-line rows, a top-right Simple/Details view toggle, and a cleaner action sheet for pin, share, edit, and delete.",
+      },
+      {
+        type: "IMPR",
+        text: "The Lists screen task preview now hides completed tasks and subtasks so you only see what's left to do, with counts for completed items.",
+      },
+      {
+        type: "FIX",
+        text: "The new list button is now in the top header and no longer overlaps action buttons or list cards while scrolling.",
+      },
+    ],
+  },
+  {
+    version: "v3.5.2",
+    date: "2026-11-06",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Lists can now have no category selected. New lists start with no category by default, and existing lists can clear their category back to None."
+      },
+      {
+        type: "IMPR",
+        text: "The Tasks screen now shows both the reminder date and time on task cards so you can distinguish reminders on different days at a glance."
+      },
+      {
+        type: "IMPR",
+        text: "When calendar sync is on but calendar access is turned off, a prompt lets you turn access back on, snooze with Not now, or turn off calendar sync."
+      },
+      {
+        type: "FIX",
+        text: "The New Task sheet, task breakdown, list sheet and activity log now keep their action buttons fully visible above the system navigation bar on Android and iOS."
+      },
+      {
+        type: "FIX",
+        text: "Turning push notifications off in Settings now remembers your choice and stays off, and Settings now detects when notifications or calendar access have been turned off in system settings."
+      }
+    ]
+  },
+  {
+    version: "v3.5.1",
+    date: "2026-11-05",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "The Settings screen now accounts for safe area insets above the floating tab bar, so the Log Out of sYnID button is fully accessible on phones with three-button navigation."
+      }
+    ]
+  },
+  {
+    version: "v3.5.0",
     date: "2026-11-02",
     title: "What's new?",
     changes: [

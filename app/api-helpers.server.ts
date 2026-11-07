@@ -1,4 +1,3 @@
-import { DEFAULT_CATEGORY } from "../shared";
 import { getDisplayNamesForUsers, ownerPayload } from "./user-profile.server";
 
 export type ListAccessDenial = "not_found" | "private";
@@ -50,9 +49,50 @@ export type SerializeListOptions = {
   viewerUserId: string;
   /** Pre-resolved owner display names keyed by owner_id */
   ownerNames?: Map<string, string>;
+  /** Pre-resolved open task counts keyed by list_id */
+  openTaskCounts?: Map<string, number>;
   /** Override canEdit (defaults from share mode + ownership) */
   canEdit?: boolean;
 };
+
+/**
+ * Batched query for open top-level task counts across a set of lists.
+ */
+export async function getOpenTaskCountsForLists(
+  db: D1Database,
+  listIds: string[]
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>();
+  const uniqueIds = Array.from(new Set(listIds)).filter(Boolean);
+  if (uniqueIds.length === 0) return counts;
+
+  for (const id of uniqueIds) {
+    counts.set(id, 0);
+  }
+
+  const chunkSize = 50;
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const { results } = await db
+      .prepare(
+        `SELECT list_id, COUNT(*) AS open_count
+         FROM todos
+         WHERE list_id IN (${placeholders})
+           AND parent_id IS NULL
+           AND completed = 0
+         GROUP BY list_id`
+      )
+      .bind(...chunk)
+      .all<{ list_id: string; open_count: number }>();
+
+    for (const r of results || []) {
+      counts.set(r.list_id, Number(r.open_count) || 0);
+    }
+  }
+
+  return counts;
+}
 
 /** Map a D1 lists row to the public API list shape (includes additive `owner`). */
 export async function serializeListRow(
@@ -76,6 +116,23 @@ export async function serializeListRow(
     displayName = names.get(row.owner_id);
   }
 
+  let openTaskCount: number;
+  if (options.openTaskCounts) {
+    openTaskCount = options.openTaskCounts.get(row.id) ?? 0;
+  } else {
+    try {
+      const rowCount = await db
+        .prepare(
+          "SELECT COUNT(*) AS c FROM todos WHERE list_id = ? AND parent_id IS NULL AND completed = 0"
+        )
+        .bind(row.id)
+        .first<{ c: number }>();
+      openTaskCount = Number(rowCount?.c) || 0;
+    } catch {
+      openTaskCount = 0;
+    }
+  }
+
   return {
     id: row.id,
     name: row.name,
@@ -83,10 +140,11 @@ export async function serializeListRow(
     createdAt: Number(row.created_at),
     expirationTtl: row.expiration_ttl != null ? Number(row.expiration_ttl) : null,
     shareMode,
-    category: row.category || DEFAULT_CATEGORY,
+    category: row.category ?? null,
     isOwner,
     canEdit,
     owner: ownerPayload(displayName),
+    openTaskCount,
   };
 }
 
@@ -96,8 +154,14 @@ export async function serializeListRows(
   viewerUserId: string
 ): Promise<Record<string, unknown>[]> {
   const ownerIds = rows.map((r) => r.owner_id);
-  const ownerNames = await getDisplayNamesForUsers(db, ownerIds);
+  const listIds = rows.map((r) => r.id);
+  const [ownerNames, openTaskCounts] = await Promise.all([
+    getDisplayNamesForUsers(db, ownerIds),
+    getOpenTaskCountsForLists(db, listIds),
+  ]);
   return Promise.all(
-    rows.map((row) => serializeListRow(db, row, { viewerUserId, ownerNames }))
+    rows.map((row) =>
+      serializeListRow(db, row, { viewerUserId, ownerNames, openTaskCounts })
+    )
   );
 }

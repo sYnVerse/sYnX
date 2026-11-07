@@ -6,8 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { X, Smartphone, Check } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
 import { NO_PHONE_CARRIER_LABEL, PHONE_CARRIERS, findPhoneCarrier } from "../shared";

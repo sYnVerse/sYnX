@@ -1,0 +1,8 @@
+# Pure JavaScript application code
+src/**
+
+# Versioning SSOT (changes daily, does not affect native runtime)
+src/shared/mobile-version.ts
+
+# Documentation and changelogs
+src/constants/changelog.ts

@@ -22,13 +22,11 @@ export const ListCardSkeleton: React.FC = () => {
   const baseColor = themeMode === "light" ? "rgba(0, 0, 0, 0.06)" : "rgba(255, 255, 255, 0.06)";
 
   return (
-    <View style={[styles.gridCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
-      <View style={[styles.badgeLine, { backgroundColor: baseColor }]} />
-      <View style={[styles.line, { width: "80%", height: 16, backgroundColor: baseColor }]} />
-      <View style={[styles.line, { width: "60%", height: 12, backgroundColor: baseColor }]} />
-      <View style={{ marginTop: 8, gap: 6 }}>
-        <View style={[styles.line, { width: "90%", height: 10, backgroundColor: baseColor }]} />
-        <View style={[styles.line, { width: "75%", height: 10, backgroundColor: baseColor }]} />
+    <View style={[styles.listCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
+      <View style={[styles.emojiPlaceholder, { backgroundColor: baseColor }]} />
+      <View style={{ flex: 1, gap: 6 }}>
+        <View style={[styles.line, { width: "65%", height: 16, backgroundColor: baseColor }]} />
+        <View style={[styles.line, { width: "45%", height: 12, backgroundColor: baseColor }]} />
       </View>
     </View>
   );
@@ -44,11 +42,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     gap: 12,
   },
-  gridCard: {
-    padding: 16,
-    borderRadius: 20,
+  listCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    gap: 8,
+    marginBottom: 8,
+    gap: 12,
+  },
+  emojiPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
   },
   checkbox: {
     width: 22,

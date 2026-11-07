@@ -1,4 +1,5 @@
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.todos";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import { TodoManager } from "../to-do-manager";
 import * as v from "valibot";
@@ -13,8 +14,8 @@ import {
 } from "../pending-deletes.server";
 import { TASK_LIMIT_ERROR, taskTextError } from "../write-limits";
 
-export async function loader({ request, context }: LoaderFunctionArgs) {
-  const env = context.cloudflare.env;
+export async function loader({  request, context  }: Route.LoaderArgs) {
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -55,12 +56,12 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   });
 }
 
-export async function action({ request, context }: ActionFunctionArgs) {
+export async function action({  request, context  }: Route.ActionArgs) {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const env = context.cloudflare.env;
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -106,7 +107,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       user.userId
     );
 
-    const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+    const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
     const logPromise = logListActivity(db, {
       listId: parsed.listId,
       taskId: todo.id,

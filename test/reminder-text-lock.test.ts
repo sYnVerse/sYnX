@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
 import { env } from "cloudflare:test";
 import { action as todoAction } from "../app/routes/api.v1.todos.$id";
 import { canEditReminderText } from "../app/reminder-ownership";
@@ -33,7 +32,7 @@ function putTodo(userId: string, todoId: string, body: Record<string, unknown>):
     }),
     params: { id: todoId },
     context: { cloudflare: { env } },
-  } as unknown as ActionFunctionArgs;
+  } as unknown as Parameters<typeof todoAction>[0];
   return todoAction(args);
 }
 

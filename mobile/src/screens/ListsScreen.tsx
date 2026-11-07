@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -21,9 +21,6 @@ import * as Haptics from "expo-haptics";
 import {
   FolderPlus,
   Trash2,
-  Tag,
-  CheckCircle2,
-  Circle,
   Pencil,
   Share2,
   Lock,
@@ -33,12 +30,19 @@ import {
   Pin,
   X,
   History,
+  List,
+  ListTree,
 } from "lucide-react-native";
 import {
   getPinnedWidgetConfig,
   setPinnedWidgetConfig,
   type PinnedWidgetConfig,
 } from "../services/widgetPreferences";
+import {
+  getListsViewMode,
+  setListsViewMode,
+  type ListsViewMode,
+} from "../services/listViewPreferences";
 import { syncPinnedList } from "../services/widgetSync";
 import { setListTaskSortOverride } from "../services/taskSortPreferences";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
@@ -48,35 +52,40 @@ import {
   TodoItem,
   ShareMode,
   describeListActivityAction,
-  getShareModeLabel,
   getSharedNameNotice,
   isMakingListPublic,
+  resolveTaskSortMode,
   TASK_SORT_OPTIONS,
   PRESET_CATEGORIES,
-  DEFAULT_CATEGORY,
+  type CategoryOption,
   type ListActivityEntry,
   type TaskSortOverride,
 } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
 import { ListCardSkeleton } from "../components/SkeletonLoader";
-import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
+import { ListRow } from "../components/ListRow";
+import {
+  typography,
+  spacing,
+  MIN_TOUCH_TARGET,
+  getTabScreenBottomPadding,
+  getSheetBottomPadding,
+} from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
-import { stripLeadingCategoryEmoji } from "../utils/format";
+import {
+  stripLeadingCategoryEmoji,
+  formatListRowMeta,
+  buildListPreviewTasks,
+} from "../utils/format";
 import {
   buildCategorizedListName,
   shouldWarnBeforeSharingPrivateList,
 } from "../shared/mobile-ux";
 
-function ShareModeIcon({ mode, color, size = 10 }: { mode: ShareMode; color: string; size?: number }) {
-  if (mode === "public_read") return <Eye size={size} color={color} />;
-  if (mode === "public_edit") return <Users size={size} color={color} />;
-  return <Lock size={size} color={color} />;
-}
-
 interface ListsScreenProps {
   activeListId: string;
-  onSelectList: (id: string) => void;
+  onSelectList: (id: string, options?: { stayOnListsTab?: boolean }) => void;
   /** Set when the Pinned List widget's switch button opened the app to choose its list. */
   pickPinnedListRequestId?: number | null;
   /** Called once the request is picked up, so a later visit to the tab doesn't reopen it. */
@@ -92,8 +101,10 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   const { theme, hapticsEnabled } = useTheme();
   const { showError, showSuccess } = useToast();
   const insets = useSafeAreaInsets();
-  const fabBottom = getFabBottomOffset(insets.bottom);
   const queryClient = useQueryClient();
+
+  const [viewMode, setViewMode] = useState<ListsViewMode>("simple");
+  const [actionSheetList, setActionSheetList] = useState<TodoList | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingList, setEditingList] = useState<TodoList | null>(null);
   const [sharingList, setSharingList] = useState<TodoList | null>(null);
@@ -106,6 +117,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
   useEffect(() => {
     getPinnedWidgetConfig().then(setPinnedConfig);
+    getListsViewMode().then(setViewMode);
   }, []);
 
   // Choosing the Pinned List widget's list (from the widget's switch button): tapping a
@@ -126,11 +138,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   }, [handledPickRequestId, onPickPinnedListHandled]);
 
   const [newListName, setNewListName] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState(PRESET_CATEGORIES[0]);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryOption | null>(null);
   const [customCategoryText, setCustomCategoryText] = useState("");
 
   const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState(PRESET_CATEGORIES[0]);
+  const [editCategory, setEditCategory] = useState<CategoryOption | null>(null);
   const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
   const [editSortOverride, setEditSortOverride] = useState<TaskSortOverride>("app_default");
   const taskSortPrefs = useTaskSortPreferences();
@@ -149,16 +161,16 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
     },
   });
 
-  const ownedLists = React.useMemo(
+  const ownedLists = useMemo(
     () => (lists || []).filter((l) => l.isOwner !== false),
     [lists]
   );
-  const sharedLists = React.useMemo(
+  const sharedLists = useMemo(
     () => (lists || []).filter((l) => l.isOwner === false),
     [lists]
   );
 
-  const listSections = React.useMemo(
+  const listSections = useMemo(
     () => [
       { title: "My lists", data: ownedLists, shared: false },
       { title: "Shared with me", data: sharedLists, shared: true },
@@ -176,6 +188,16 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
     enabled: !!activeListId,
   });
 
+  const activeListSortMode = resolveTaskSortMode(
+    taskSortPrefs.appDefault,
+    taskSortPrefs.overrides[activeListId]
+  );
+
+  const activeListPreview = useMemo(() => {
+    if (!activeListTodos) return null;
+    return buildListPreviewTasks(activeListTodos, activeListSortMode);
+  }, [activeListTodos, activeListSortMode]);
+
   useEffect(() => {
     refetch();
     if (activeListId) {
@@ -189,28 +211,6 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
       refetchPreview();
     }
   };
-
-  const mainTasks = React.useMemo(() => {
-    if (!activeListTodos) return [];
-    const parentMap: Record<string, TodoItem & { subtasks: TodoItem[] }> = {};
-    const topLevel: (TodoItem & { subtasks: TodoItem[] })[] = [];
-
-    activeListTodos.forEach((t) => {
-      if (!t.parentId) {
-        const item = { ...t, subtasks: [] };
-        parentMap[t.id] = item;
-        topLevel.push(item);
-      }
-    });
-
-    activeListTodos.forEach((st) => {
-      if (st.parentId && parentMap[st.parentId]) {
-        parentMap[st.parentId].subtasks.push(st);
-      }
-    });
-
-    return topLevel;
-  }, [activeListTodos]);
 
   const triggerImpactHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -240,7 +240,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   };
 
   const createListMutation = useMutation({
-    mutationFn: async ({ name, category }: { name: string; category: string }) => {
+    mutationFn: async ({ name, category }: { name: string; category?: string | null }) => {
       const res = await apiClient.post("/api/v1/lists", { name, category });
       return res.data.list as TodoList;
     },
@@ -257,7 +257,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   });
 
   const updateListMutation = useMutation({
-    mutationFn: async ({ id, name, category }: { id: string; name: string; category: string }) => {
+    mutationFn: async ({ id, name, category }: { id: string; name: string; category?: string | null }) => {
       await apiClient.put(`/api/v1/lists/${id}`, { name, category });
     },
     onSuccess: (_, variables) => {
@@ -265,7 +265,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
       queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
         if (!old) return [];
         return old.map((l) =>
-          l.id === variables.id ? { ...l, name: variables.name, category: variables.category } : l
+          l.id === variables.id ? { ...l, name: variables.name, category: variables.category ?? null } : l
         );
       });
       queryClient.invalidateQueries({ queryKey: ["lists"] });
@@ -359,21 +359,27 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
   const handleCreateList = () => {
     if (!newListName.trim() || createListMutation.isPending) return;
-    const categoryName =
-      selectedCategory.name === "Custom" ? customCategoryText.trim() || "Custom" : selectedCategory.name;
-    const fullName = buildCategorizedListName(
-      selectedCategory.emoji,
-      selectedCategory.name,
-      newListName
-    );
-    createListMutation.mutate({ name: fullName, category: categoryName });
+    const categoryName = selectedCategory
+      ? selectedCategory.name === "Custom"
+        ? customCategoryText.trim() || "Custom"
+        : selectedCategory.name
+      : null;
+    const fullName = selectedCategory
+      ? buildCategorizedListName(selectedCategory.emoji, selectedCategory.name, newListName)
+      : newListName.trim();
+    createListMutation.mutate({ name: fullName, category: categoryName ?? undefined });
   };
 
   const handleUpdateList = () => {
     if (!editingList || !editName.trim() || updateListMutation.isPending) return;
-    const categoryName =
-      editCategory.name === "Custom" ? editCustomCategoryText.trim() || "Custom" : editCategory.name;
-    const fullName = buildCategorizedListName(editCategory.emoji, editCategory.name, editName);
+    const categoryName = editCategory
+      ? editCategory.name === "Custom"
+        ? editCustomCategoryText.trim() || "Custom"
+        : editCategory.name
+      : null;
+    const fullName = editCategory
+      ? buildCategorizedListName(editCategory.emoji, editCategory.name, editName)
+      : editName.trim();
     // Task order is saved on this phone only, so it doesn't wait on the server.
     void setListTaskSortOverride(editingList.id, editSortOverride);
     updateListMutation.mutate({
@@ -403,10 +409,10 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   const openEditModal = (list: TodoList) => {
     triggerImpactHaptic();
     setEditingList(list);
-    const matchingCat = PRESET_CATEGORIES.find((c) => c.name === list.category);
-    const cat = matchingCat || PRESET_CATEGORIES.find((c) => c.name === "Custom") || PRESET_CATEGORIES[0];
-    setEditCategory(cat);
-    setEditCustomCategoryText(matchingCat ? "" : list.category || "");
+    const matchingCat = list.category ? PRESET_CATEGORIES.find((c) => c.name === list.category) : null;
+    const cat = matchingCat || (list.category ? PRESET_CATEGORIES.find((c) => c.name === "Custom") : null);
+    setEditCategory(cat ?? null);
+    setEditCustomCategoryText(matchingCat || !list.category ? "" : list.category);
     setEditName(stripLeadingCategoryEmoji(list.name, matchingCat?.emoji || ""));
     setEditSortOverride(taskSortPrefs.overrides[list.id] ?? "app_default");
   };
@@ -540,13 +546,22 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   };
 
   const sheetOverlay = (children: React.ReactNode, onClose: () => void) => (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.sheetOverlay}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
         <TouchableOpacity style={styles.sheetDismiss} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.sheetContent, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+        <View
+          style={[
+            styles.sheetContent,
+            {
+              backgroundColor: theme.surface,
+              borderColor: theme.cardBorder,
+              paddingBottom: getSheetBottomPadding(insets.bottom, spacing.lg),
+            },
+          ]}
+        >
           {children}
         </View>
       </KeyboardAvoidingView>
@@ -556,12 +571,67 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
-          Lists
-        </Text>
-        <Text style={[styles.headerSubtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-          Your lists and lists shared with you
-        </Text>
+        <View style={styles.headerTextGroup}>
+          <Text style={[styles.headerTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
+            Lists
+          </Text>
+          <Text style={[styles.headerSubtitle, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+            Your lists and lists shared with you
+          </Text>
+        </View>
+
+        <View style={styles.headerControls}>
+          <TouchableOpacity
+            style={[
+              styles.viewModeToggle,
+              {
+                backgroundColor: theme.inputBg,
+                borderColor: theme.inputBorder,
+              },
+            ]}
+            onPress={() => {
+              triggerImpactHaptic();
+              const nextMode: ListsViewMode = viewMode === "simple" ? "details" : "simple";
+              setViewMode(nextMode);
+              void setListsViewMode(nextMode);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              viewMode === "details"
+                ? "Switch to simple list view"
+                : "Switch to details view with task preview"
+            }
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {viewMode === "details" ? (
+              <ListTree size={16} color={theme.accent} />
+            ) : (
+              <List size={16} color={theme.textSecondary} />
+            )}
+            <Text
+              style={[
+                styles.viewModeText,
+                { color: viewMode === "details" ? theme.accent : theme.textSecondary },
+              ]}
+            >
+              {viewMode === "details" ? "Details" : "Simple"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.createListHeaderBtn, { backgroundColor: theme.accent }]}
+            onPress={() => {
+              triggerImpactHaptic();
+              setModalVisible(true);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Create list"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <FolderPlus size={16} color="#FFFFFF" />
+            <Text style={styles.createListHeaderText}>New</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {pickingPinnedList ? (
@@ -585,7 +655,9 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
       ) : null}
 
       {isLoading ? (
-        <View style={{ gap: 12 }}>
+        <View style={{ gap: 8 }}>
+          <ListCardSkeleton />
+          <ListCardSkeleton />
           <ListCardSkeleton />
           <ListCardSkeleton />
           <ListCardSkeleton />
@@ -609,7 +681,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
         <SectionList
           sections={listSections}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: getListBottomPadding(insets.bottom) }}
+          contentContainerStyle={{ paddingBottom: getTabScreenBottomPadding(insets.bottom) }}
           stickySectionHeadersEnabled={false}
           refreshControl={
             <RefreshControl
@@ -633,272 +705,239 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
           )}
           renderItem={({ item, section }) => {
             const isActive = item.id === activeListId;
-            const categoryTag = item.category || DEFAULT_CATEGORY;
-            const shareMode = item.shareMode || "private";
+            const isPinned = pinnedConfig?.listId === item.id;
             const isShared = section.shared;
             const ownerName = item.owner?.displayName;
-            const isPinned = pinnedConfig?.listId === item.id;
+            const effectiveItem =
+              isActive && activeListPreview
+                ? { ...item, openTaskCount: activeListPreview.openTasks.length }
+                : item;
 
             return (
-              <TouchableOpacity
-                activeOpacity={0.85}
-                style={[
-                  styles.listRow,
-                  {
-                    backgroundColor: theme.cardBg,
-                    borderColor: isActive ? theme.accent : theme.cardBorder,
-                    borderWidth: isActive ? 2 : 1,
-                  },
-                ]}
-                onPress={() => {
+              <ListRow
+                item={effectiveItem}
+                isActive={isActive}
+                isPinned={isPinned}
+                isShared={isShared}
+                ownerName={ownerName}
+                viewMode={viewMode}
+                pickingPinnedList={pickingPinnedList}
+                previewData={isActive ? activeListPreview : null}
+                onPress={(item) => {
                   if (pickingPinnedList) {
                     void pickPinnedList(item);
                     return;
                   }
                   triggerImpactHaptic();
+                  if (viewMode === "details" && item.id !== activeListId) {
+                    onSelectList(item.id, { stayOnListsTab: true });
+                    return;
+                  }
                   onSelectList(item.id);
                 }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: pickingPinnedList ? isPinned : isActive }}
-                accessibilityLabel={
-                  pickingPinnedList ? `Show ${item.name} on the widget` : `List ${item.name}`
-                }
-              >
-                <View style={styles.listRowHeader}>
-                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                    <Text style={[styles.listTitle, { color: theme.textPrimary }]} maxFontSizeMultiplier={1.35}>
-                      {item.name}
-                    </Text>
-
-                    {isShared && ownerName ? (
-                      <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
-                        <Text style={[styles.categoryPillText, { color: theme.accent }]}>
-                          {ownerName}
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
-                        <Tag size={10} color={theme.accent} />
-                        <Text style={[styles.categoryPillText, { color: theme.accent }]}>{categoryTag}</Text>
-                      </View>
-                    )}
-
-                    <View style={[styles.categoryPill, { backgroundColor: theme.inputBg }]}>
-                      <ShareModeIcon mode={shareMode} color={theme.textSecondary} />
-                      <Text style={[styles.categoryPillText, { color: theme.textSecondary }]}>
-                        {getShareModeLabel(shareMode)}
-                      </Text>
-                    </View>
-
-                    {isActive && (
-                      <View style={[styles.activeBadge, { backgroundColor: theme.accent }]}>
-                        <Text style={styles.activeBadgeText}>ACTIVE</Text>
-                      </View>
-                    )}
-
-                    {isPinned && (
-                      <View style={[styles.categoryPill, { backgroundColor: theme.accentLight }]}>
-                        <Pin size={10} color={theme.accent} fill={theme.accent} />
-                        <Text style={[styles.categoryPillText, { color: theme.accent }]}>PINNED</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-                    <TouchableOpacity
-                      style={styles.actionIconBtn}
-                      onPress={async () => {
-                        triggerImpactHaptic();
-                        if (isPinned) {
-                          await setPinnedWidgetConfig(null);
-                          setPinnedConfig(null);
-                          await syncPinnedList(null);
-                          showSuccess("Unpinned from widget");
-                        } else {
-                          await pinListToWidget(item, "list");
-                          showSuccess(`Pinned "${item.name}" to widget`);
-                        }
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={isPinned ? `Unpin ${item.name} from widget` : `Pin ${item.name} to widget`}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Pin
-                        size={16}
-                        color={isPinned ? theme.accent : theme.textMuted}
-                        fill={isPinned ? theme.accent : "none"}
-                      />
-                    </TouchableOpacity>
-                    {isShared ? (
-                      <>
-                        {item.shareMode === "public_edit" && (
-                          <TouchableOpacity
-                            style={styles.actionIconBtn}
-                            onPress={() => handleDeleteList(item)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Request delete for ${item.name}`}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Trash2 size={16} color={theme.danger} />
-                          </TouchableOpacity>
-                        )}
-                        <TouchableOpacity
-                          style={styles.actionIconBtn}
-                          onPress={() => {
-                            triggerImpactHaptic();
-                            Alert.alert(
-                              "Remove from Shared with me",
-                              `Stop showing "${item.name}" in Shared with me? You can open the link again later.`,
-                              [
-                                { text: "Cancel", style: "cancel" },
-                                {
-                                  text: "Remove",
-                                  style: "destructive",
-                                  onPress: () => removeSharedMutation.mutate(item.id),
-                                },
-                              ]
-                            );
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Remove ${item.name} from Shared with me`}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <X size={16} color={theme.textMuted} />
-                        </TouchableOpacity>
-                      </>
-                    ) : (
-                      <>
-                        {(item.shareMode || "private") !== "private" ? (
-                          <TouchableOpacity
-                            style={styles.actionIconBtn}
-                            onPress={() => openActivity(item)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Activity for ${item.name}`}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <History size={16} color={theme.accent} />
-                          </TouchableOpacity>
-                        ) : null}
-                        <TouchableOpacity
-                          style={styles.actionIconBtn}
-                          onPress={() => {
-                            triggerImpactHaptic();
-                            setSharingList(item);
-                          }}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Share ${item.name}`}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Share2 size={16} color={theme.accent} />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={styles.actionIconBtn}
-                          onPress={() => openEditModal(item)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Edit ${item.name}`}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Pencil size={16} color={theme.textMuted} />
-                        </TouchableOpacity>
-
-                        {ownedLists.length > 1 && (
-                          <TouchableOpacity
-                            style={styles.actionIconBtn}
-                            onPress={() => handleDeleteList(item)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Delete ${item.name}`}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            <Trash2 size={16} color={theme.danger} />
-                          </TouchableOpacity>
-                        )}
-                      </>
-                    )}
-                  </View>
-                </View>
-
-                {isActive && (
-                  <View style={[styles.previewSection, { borderTopColor: theme.cardBorder }]}>
-                    <Text style={[styles.previewSectionTitle, { color: theme.textMuted }]}>
-                      TASKS IN THIS LIST ({mainTasks.length})
-                    </Text>
-
-                    {mainTasks.length > 0 ? (
-                      mainTasks.map((t) => (
-                        <View key={t.id} style={{ marginBottom: 4 }}>
-                          <View style={styles.todoPreviewItem}>
-                            {t.completed ? (
-                              <CheckCircle2 size={16} color={theme.accent} />
-                            ) : (
-                              <Circle size={16} color={theme.textMuted} />
-                            )}
-                            <Text
-                              style={[
-                                styles.todoPreviewText,
-                                { color: theme.textPrimary },
-                                t.completed && [styles.completedText, { color: theme.textMuted }],
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {t.text}
-                            </Text>
-                            {t.durationMinutes ? (
-                              <Text style={[styles.durationBadge, { color: theme.textMuted }]}>
-                                {t.durationMinutes}m
-                              </Text>
-                            ) : null}
-                          </View>
-
-                          {t.subtasks &&
-                            t.subtasks.map((st) => (
-                              <View
-                                key={st.id}
-                                style={[styles.todoPreviewItem, { paddingLeft: 28, marginTop: 2 }]}
-                              >
-                                {st.completed ? (
-                                  <CheckCircle2 size={13} color={theme.accent} />
-                                ) : (
-                                  <Circle size={13} color={theme.textMuted} />
-                                )}
-                                <Text
-                                  style={[
-                                    styles.todoPreviewText,
-                                    { color: theme.textMuted, fontSize: typography.xs },
-                                    st.completed && styles.completedText,
-                                  ]}
-                                  numberOfLines={1}
-                                >
-                                  {st.text}
-                                </Text>
-                              </View>
-                            ))}
-                        </View>
-                      ))
-                    ) : (
-                      <Text style={[styles.emptyPreviewText, { color: theme.textMuted }]}>
-                        No tasks in this list yet. Tap to add tasks!
-                      </Text>
-                    )}
-                  </View>
-                )}
-              </TouchableOpacity>
+                onOpenActions={(target) => {
+                  triggerImpactHaptic();
+                  setActionSheetList(target);
+                }}
+              />
             );
           }}
         />
       )}
 
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: theme.accent, bottom: fabBottom }]}
-        onPress={() => {
-          triggerImpactHaptic();
-          setModalVisible(true);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="Create list"
-      >
-        <FolderPlus size={24} color="#FFFFFF" />
-      </TouchableOpacity>
+      {/* List Action Sheet */}
+      {!!actionSheetList &&
+        sheetOverlay(
+          <>
+            <Text style={[styles.modalTitle, { color: theme.textPrimary, marginBottom: 2 }]} numberOfLines={1}>
+              {actionSheetList.name}
+            </Text>
+            <Text style={[styles.sheetMetaSubtitle, { color: theme.textMuted, marginBottom: 16 }]} numberOfLines={1}>
+              {formatListRowMeta({
+                openTaskCount:
+                  actionSheetList.id === activeListId && activeListPreview
+                    ? activeListPreview.openTasks.length
+                    : actionSheetList.openTaskCount,
+                category: actionSheetList.category,
+                shareMode: actionSheetList.shareMode,
+                isOwner: actionSheetList.isOwner,
+                ownerDisplayName: actionSheetList.owner?.displayName,
+              })}
+            </Text>
+
+            <View style={styles.sheetActionsList}>
+              {/* Pin / unpin to widget */}
+              <TouchableOpacity
+                style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                onPress={async () => {
+                  const target = actionSheetList;
+                  setActionSheetList(null);
+                  triggerImpactHaptic();
+                  const isPinned = pinnedConfig?.listId === target.id;
+                  if (isPinned) {
+                    await setPinnedWidgetConfig(null);
+                    setPinnedConfig(null);
+                    await syncPinnedList(null);
+                    showSuccess("Unpinned from widget");
+                  } else {
+                    await pinListToWidget(target, "list");
+                    showSuccess(`Pinned "${target.name}" to widget`);
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  pinnedConfig?.listId === actionSheetList.id
+                    ? `Unpin ${actionSheetList.name} from widget`
+                    : `Pin ${actionSheetList.name} to widget`
+                }
+              >
+                <Pin
+                  size={18}
+                  color={pinnedConfig?.listId === actionSheetList.id ? theme.accent : theme.textPrimary}
+                  fill={pinnedConfig?.listId === actionSheetList.id ? theme.accent : "none"}
+                />
+                <Text
+                  style={[
+                    styles.sheetActionItemText,
+                    { color: pinnedConfig?.listId === actionSheetList.id ? theme.accent : theme.textPrimary },
+                  ]}
+                >
+                  {pinnedConfig?.listId === actionSheetList.id ? "Unpin from widget" : "Pin to widget"}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Owned list actions */}
+              {actionSheetList.isOwner !== false ? (
+                <>
+                  <TouchableOpacity
+                    style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                    onPress={() => {
+                      const target = actionSheetList;
+                      setActionSheetList(null);
+                      triggerImpactHaptic();
+                      setSharingList(target);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Share ${actionSheetList.name}`}
+                  >
+                    <Share2 size={18} color={theme.accent} />
+                    <Text style={[styles.sheetActionItemText, { color: theme.textPrimary }]}>Share list access</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                    onPress={() => {
+                      const target = actionSheetList;
+                      setActionSheetList(null);
+                      openEditModal(target);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit ${actionSheetList.name}`}
+                  >
+                    <Pencil size={18} color={theme.textPrimary} />
+                    <Text style={[styles.sheetActionItemText, { color: theme.textPrimary }]}>Edit list details</Text>
+                  </TouchableOpacity>
+
+                  {(actionSheetList.shareMode || "private") !== "private" && (
+                    <TouchableOpacity
+                      style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                      onPress={() => {
+                        const target = actionSheetList;
+                        setActionSheetList(null);
+                        openActivity(target);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Activity for ${actionSheetList.name}`}
+                    >
+                      <History size={18} color={theme.accent} />
+                      <Text style={[styles.sheetActionItemText, { color: theme.textPrimary }]}>View shared activity</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {ownedLists.length > 1 && (
+                    <TouchableOpacity
+                      style={[
+                        styles.sheetActionItem,
+                        { backgroundColor: theme.inputBg, borderColor: theme.danger + "44" },
+                      ]}
+                      onPress={() => {
+                        const target = actionSheetList;
+                        setActionSheetList(null);
+                        handleDeleteList(target);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete ${actionSheetList.name}`}
+                    >
+                      <Trash2 size={18} color={theme.danger} />
+                      <Text style={[styles.sheetActionItemText, { color: theme.danger }]}>Delete list</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              ) : (
+                /* Shared with me actions */
+                <>
+                  {actionSheetList.shareMode === "public_edit" && (
+                    <TouchableOpacity
+                      style={[
+                        styles.sheetActionItem,
+                        { backgroundColor: theme.inputBg, borderColor: theme.danger + "44" },
+                      ]}
+                      onPress={() => {
+                        const target = actionSheetList;
+                        setActionSheetList(null);
+                        handleDeleteList(target);
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Request delete for ${actionSheetList.name}`}
+                    >
+                      <Trash2 size={18} color={theme.danger} />
+                      <Text style={[styles.sheetActionItemText, { color: theme.danger }]}>Request list deletion</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  <TouchableOpacity
+                    style={[
+                      styles.sheetActionItem,
+                      { backgroundColor: theme.inputBg, borderColor: theme.danger + "44" },
+                    ]}
+                    onPress={() => {
+                      const target = actionSheetList;
+                      setActionSheetList(null);
+                      triggerImpactHaptic();
+                      Alert.alert(
+                        "Remove from Shared with me",
+                        `Stop showing "${target.name}" in Shared with me? You can open the link again later.`,
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Remove",
+                            style: "destructive",
+                            onPress: () => removeSharedMutation.mutate(target.id),
+                          },
+                        ]
+                      );
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${actionSheetList.name} from Shared with me`}
+                  >
+                    <X size={18} color={theme.danger} />
+                    <Text style={[styles.sheetActionItemText, { color: theme.danger }]}>
+                      Remove from Shared with me
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.cancelBtn, { marginTop: 12, alignSelf: "center" }]}
+              onPress={() => setActionSheetList(null)}
+            >
+              <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Close</Text>
+            </TouchableOpacity>
+          </>,
+          () => setActionSheetList(null)
+        )}
 
       {/* Create sheet */}
       {modalVisible &&
@@ -908,28 +947,55 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Select List Category Tag</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+              <TouchableOpacity
+                accessibilityRole="radio"
+                accessibilityState={{ selected: selectedCategory === null }}
+                style={[
+                  styles.catBtn,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  selectedCategory === null && {
+                    backgroundColor: theme.accentLight,
+                    borderColor: theme.accent,
+                    borderWidth: 2,
+                  },
+                ]}
+                onPress={() => setSelectedCategory(null)}
+              >
+                <Text style={styles.catEmoji}>🚫</Text>
+                <Text
+                  style={[
+                    styles.catName,
+                    { color: theme.textPrimary },
+                    selectedCategory === null && { color: theme.accent, fontWeight: "700" },
+                  ]}
+                >
+                  None
+                </Text>
+              </TouchableOpacity>
               {PRESET_CATEGORIES.map((cat) => (
                 <TouchableOpacity
                   key={cat.name}
                   accessibilityRole="radio"
-                  accessibilityState={{ selected: selectedCategory.name === cat.name }}
+                  accessibilityState={{ selected: selectedCategory?.name === cat.name }}
                   style={[
                     styles.catBtn,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                    selectedCategory.name === cat.name && {
+                    selectedCategory?.name === cat.name && {
                       backgroundColor: theme.accentLight,
                       borderColor: theme.accent,
                       borderWidth: 2,
                     },
                   ]}
-                  onPress={() => setSelectedCategory(cat)}
+                  onPress={() =>
+                    setSelectedCategory((prev) => (prev?.name === cat.name ? null : cat))
+                  }
                 >
                   <Text style={styles.catEmoji}>{cat.emoji}</Text>
                   <Text
                     style={[
                       styles.catName,
                       { color: theme.textPrimary },
-                      selectedCategory.name === cat.name && { color: theme.accent, fontWeight: "700" },
+                      selectedCategory?.name === cat.name && { color: theme.accent, fontWeight: "700" },
                     ]}
                   >
                     {cat.name}
@@ -938,7 +1004,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
               ))}
             </ScrollView>
 
-            {selectedCategory.name === "Custom" && (
+            {selectedCategory?.name === "Custom" && (
               <View style={{ marginTop: 4 }}>
                 <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
                 <TextInput
@@ -1006,28 +1072,55 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Category Tag</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+              <TouchableOpacity
+                accessibilityRole="radio"
+                accessibilityState={{ selected: editCategory === null }}
+                style={[
+                  styles.catBtn,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  editCategory === null && {
+                    backgroundColor: theme.accentLight,
+                    borderColor: theme.accent,
+                    borderWidth: 2,
+                  },
+                ]}
+                onPress={() => setEditCategory(null)}
+              >
+                <Text style={styles.catEmoji}>🚫</Text>
+                <Text
+                  style={[
+                    styles.catName,
+                    { color: theme.textPrimary },
+                    editCategory === null && { color: theme.accent, fontWeight: "700" },
+                  ]}
+                >
+                  None
+                </Text>
+              </TouchableOpacity>
               {PRESET_CATEGORIES.map((cat) => (
                 <TouchableOpacity
                   key={cat.name}
                   accessibilityRole="radio"
-                  accessibilityState={{ selected: editCategory.name === cat.name }}
+                  accessibilityState={{ selected: editCategory?.name === cat.name }}
                   style={[
                     styles.catBtn,
                     { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                    editCategory.name === cat.name && {
+                    editCategory?.name === cat.name && {
                       backgroundColor: theme.accentLight,
                       borderColor: theme.accent,
                       borderWidth: 2,
                     },
                   ]}
-                  onPress={() => setEditCategory(cat)}
+                  onPress={() =>
+                    setEditCategory((prev) => (prev?.name === cat.name ? null : cat))
+                  }
                 >
                   <Text style={styles.catEmoji}>{cat.emoji}</Text>
                   <Text
                     style={[
                       styles.catName,
                       { color: theme.textPrimary },
-                      editCategory.name === cat.name && { color: theme.accent, fontWeight: "700" },
+                      editCategory?.name === cat.name && { color: theme.accent, fontWeight: "700" },
                     ]}
                   >
                     {cat.name}
@@ -1036,7 +1129,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
               ))}
             </ScrollView>
 
-            {editCategory.name === "Custom" && (
+            {editCategory?.name === "Custom" && (
               <View style={{ marginTop: 4 }}>
                 <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
                 <TextInput
@@ -1364,7 +1457,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
   },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginBottom: spacing.md,
+  },
+  headerTextGroup: {
+    flex: 1,
+    paddingRight: spacing.sm,
   },
   headerTitle: {
     fontSize: typography.xxl - 2,
@@ -1373,6 +1473,39 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: typography.sm,
     marginTop: 2,
+  },
+  headerControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
+  viewModeToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: MIN_TOUCH_TARGET - 6,
+  },
+  viewModeText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+  },
+  createListHeaderBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 12,
+    minHeight: MIN_TOUCH_TARGET - 6,
+  },
+  createListHeaderText: {
+    color: "#FFFFFF",
+    fontSize: typography.xs,
+    fontWeight: "700",
   },
   pickBanner: {
     flexDirection: "row",
@@ -1434,102 +1567,27 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "700",
   },
-  listRow: {
-    width: "100%",
-    padding: spacing.md,
-    borderRadius: 20,
-    marginBottom: 12,
-    elevation: 3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-  },
-  listRowHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  listTitle: {
-    fontSize: typography.lg,
-    fontWeight: "700",
-  },
-  categoryPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    gap: 4,
-  },
-  categoryPillText: {
+  sheetMetaSubtitle: {
     fontSize: typography.xs,
-    fontWeight: "700",
-  },
-  activeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  activeBadgeText: {
-    color: "#FFFFFF",
-    fontSize: typography.xs,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-  actionIconBtn: {
-    width: MIN_TOUCH_TARGET,
-    height: MIN_TOUCH_TARGET,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  previewSection: {
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    gap: 8,
-  },
-  previewSectionTitle: {
-    fontSize: typography.xs,
-    fontWeight: "700",
-    letterSpacing: 0.8,
-    marginBottom: 4,
-  },
-  todoPreviewItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 4,
-  },
-  todoPreviewText: {
-    flex: 1,
-    fontSize: typography.sm,
     fontWeight: "500",
   },
-  completedText: {
-    textDecorationLine: "line-through",
+  sheetActionsList: {
+    gap: 8,
+    marginVertical: 4,
   },
-  durationBadge: {
-    fontSize: typography.xs,
-    fontWeight: "600",
-  },
-  emptyPreviewText: {
-    fontSize: typography.sm,
-    fontStyle: "italic",
-    paddingVertical: 4,
-  },
-  fab: {
-    position: "absolute",
-    right: 20,
-    bottom: getFabBottomOffset(0),
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  sheetActionItem: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    elevation: 8,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 12,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  sheetActionItemText: {
+    fontSize: typography.sm,
+    fontWeight: "600",
   },
   sheetOverlay: {
     flex: 1,

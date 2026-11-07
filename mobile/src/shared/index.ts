@@ -1,5 +1,4 @@
 import * as v from "valibot";
-import { DEFAULT_CATEGORY } from "./categories";
 
 // Share mode enum definition
 export type ShareMode = "private" | "public_read" | "public_edit";
@@ -151,11 +150,13 @@ export interface TodoList {
   createdAt: number;
   expirationTtl?: number | null;
   shareMode: ShareMode;
-  category?: string;
+  category?: string | null;
   isOwner?: boolean;
   canEdit?: boolean;
   /** Additive: present on newer API responses */
   owner?: ListOwner;
+  /** Additive: count of open top-level tasks in this list */
+  openTaskCount?: number;
 }
 
 // User settings data structure
@@ -204,14 +205,14 @@ export type SetTodoCompletedInput = v.InferOutput<typeof SetTodoCompletedSchema>
 
 export const CreateListSchema = v.object({
   name: v.pipe(v.string(), v.minLength(1, "List name cannot be empty")),
-  category: v.optional(v.string(), DEFAULT_CATEGORY),
+  category: v.optional(v.nullable(v.string())),
 });
 
 export type CreateListInput = v.InferOutput<typeof CreateListSchema>;
 
 export const UpdateListSchema = v.object({
   name: v.optional(v.pipe(v.string(), v.minLength(1))),
-  category: v.optional(v.string()),
+  category: v.optional(v.nullable(v.string())),
 });
 
 export type UpdateListInput = v.InferOutput<typeof UpdateListSchema>;

@@ -41,7 +41,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
-import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
+import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding, getSheetBottomPadding } from "../theme/theme";
 import { listOwnershipLabel } from "../utils/format";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
 import { useTaskMutations } from "../hooks/useTaskMutations";
@@ -686,6 +686,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         visible={showActivity}
         animationType="slide"
         transparent
+        statusBarTranslucent
         onRequestClose={closeActivity}
       >
         <View style={styles.activityOverlay}>
@@ -698,7 +699,11 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
           <View
             style={[
               styles.activitySheet,
-              { backgroundColor: theme.surface, borderColor: theme.cardBorder },
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.cardBorder,
+                paddingBottom: getSheetBottomPadding(insets.bottom, spacing.lg),
+              },
             ]}
           >
             <Text style={[styles.activityTitle, { color: theme.textPrimary }]}>Activity</Text>

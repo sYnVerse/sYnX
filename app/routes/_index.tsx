@@ -1,9 +1,12 @@
-import { type LoaderFunctionArgs, redirect } from "@remix-run/cloudflare";
+import type { Route } from "./+types/_index";
+import { redirect } from "react-router";
 import { getOptionalUser } from "~/auth.server";
+import { getCloudflareContext } from "~/context.server";
 
-export const loader = async ({ request, context }: LoaderFunctionArgs) => {
-  const { userId, isLoggedIn, guestId, isNewGuest } = await getOptionalUser(request, context.cloudflare.env);
-  const db = context.cloudflare.env.DB;
+export const loader = async ({ request, context }: Route.LoaderArgs) => {
+  const { env } = getCloudflareContext(context);
+  const { userId, isLoggedIn, guestId, isNewGuest } = await getOptionalUser(request, env);
+  const db = env.DB;
 
   const headers = new Headers();
   if (isNewGuest && guestId) {
@@ -17,7 +20,6 @@ export const loader = async ({ request, context }: LoaderFunctionArgs) => {
     }
   }
 
-  // Redirect to guestId/userId page
   return redirect(`/${userId}`, { headers });
 };
 

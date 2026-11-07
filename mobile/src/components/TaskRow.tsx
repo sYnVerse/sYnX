@@ -4,7 +4,7 @@ import { Check, Trash2, Clock, ListTree, Repeat, Pencil, Bell, Flag } from "luci
 import type { PriorityLevel, TodoItem } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
-import { formatReminderTime, priorityColor, priorityLabel } from "../utils/format";
+import { formatReminderPillLabel, priorityColor, priorityLabel } from "../utils/format";
 
 export interface TaskRowProps {
   item: TodoItem;
@@ -109,7 +109,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
             <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
               <Bell size={11} color={theme.accent} />
               <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
-                {formatReminderTime(item.reminderAt)}
+                {formatReminderPillLabel(item.reminderAt)}
               </Text>
             </View>
           ) : null}

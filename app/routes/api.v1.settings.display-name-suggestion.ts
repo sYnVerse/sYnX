@@ -1,4 +1,5 @@
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.settings.display-name-suggestion";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import {
   acceptSuggestedDisplayName,
@@ -14,12 +15,12 @@ import { resolveDisplayName } from "../user-profile.server";
  * only when none is set yet. Both answers stop the suggestion from being offered
  * again. Responds with { success, displayName, displayNameSet }.
  */
-export async function action({ request, context }: ActionFunctionArgs) {
+export async function action({  request, context  }: Route.ActionArgs) {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const env = context.cloudflare.env;
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
   if (!user) {

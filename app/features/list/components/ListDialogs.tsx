@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { FetcherWithComponents } from "@remix-run/react";
+import type { FetcherWithComponents } from "react-router";
 import type { GuestActionPayload } from "~/guest-context";
 import { MAX_CATEGORY_LENGTH, MAX_LIST_NAME_LENGTH } from "~/write-limits";
 import { PRESET_CATEGORIES } from "../../../../shared";
@@ -36,14 +36,14 @@ interface ListDialogsProps {
   newListInput: string;
   setNewListInput: (val: string) => void;
   newListCategory: string;
-  setNewListCategory: (val: string) => void;
+  setNewListCategory: (val: string | ((curr: string) => string)) => void;
   customCategoryInput: string;
   setCustomCategoryInput: (val: string) => void;
 
-  listToEditCategory: { id: string; name: string; category?: string } | null;
-  setListToEditCategory: (val: { id: string; name: string; category?: string } | null) => void;
+  listToEditCategory: { id: string; name: string; category?: string | null } | null;
+  setListToEditCategory: (val: { id: string; name: string; category?: string | null } | null) => void;
   editCategorySelection: string;
-  setEditCategorySelection: (val: string) => void;
+  setEditCategorySelection: (val: string | ((curr: string) => string)) => void;
   editCustomCategoryInput: string;
   setEditCustomCategoryInput: (val: string) => void;
   editCategoryInputRef: RefObject<HTMLInputElement | null>;
@@ -280,11 +280,22 @@ export function ListDialogs({
 
             <span className="block text-xs font-semibold text-slate-400 mb-1.5">Select Category Tag</span>
             <div className="flex flex-wrap gap-1.5 mb-4">
+              <button
+                type="button"
+                onClick={() => setNewListCategory("")}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-medium cursor-pointer transition-all ${
+                  !newListCategory
+                    ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-bold shadow-sm"
+                    : "bg-white/[0.02] border-white/[0.06] text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                🚫 None
+              </button>
               {PRESET_CATEGORIES.map(({ name, emoji }) => (
                 <button
                   key={name}
                   type="button"
-                  onClick={() => setNewListCategory(name)}
+                  onClick={() => setNewListCategory((curr) => curr === name ? "" : name)}
                   className={`text-xs px-3 py-1.5 rounded-lg border font-medium cursor-pointer transition-all ${
                     newListCategory === name
                       ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-bold shadow-sm"
@@ -327,7 +338,7 @@ export function ListDialogs({
                 type="button"
                 onClick={() => {
                   if (newListInput.trim()) {
-                    const finalCategory = newListCategory === "Custom" ? (customCategoryInput.trim() || "Custom") : newListCategory;
+                    const finalCategory = newListCategory === "Custom" ? (customCategoryInput.trim() || "Custom") : (newListCategory || "");
                     if (!isLoggedIn) {
                       const newId = crypto.randomUUID();
                       handleGuestAction("createList", { id: newId, name: newListInput.trim(), category: finalCategory });
@@ -367,11 +378,22 @@ export function ListDialogs({
             <p className="text-xs text-slate-400 mb-4">Set or update the category tag for &quot;{listToEditCategory.name}&quot;</p>
 
             <div className="flex flex-wrap gap-1.5 mb-4">
+              <button
+                type="button"
+                onClick={() => setEditCategorySelection("")}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-medium cursor-pointer transition-all ${
+                  !editCategorySelection
+                    ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-bold shadow-sm"
+                    : "bg-white/[0.02] border-white/[0.06] text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                🚫 None
+              </button>
               {PRESET_CATEGORIES.map(({ name, emoji }) => (
                 <button
                   key={name}
                   type="button"
-                  onClick={() => setEditCategorySelection(name)}
+                  onClick={() => setEditCategorySelection((curr) => curr === name ? "" : name)}
                   className={`text-xs px-3 py-1.5 rounded-lg border font-medium cursor-pointer transition-all ${
                     editCategorySelection === name
                       ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-bold shadow-sm"
@@ -410,7 +432,7 @@ export function ListDialogs({
               <button
                 type="button"
                 onClick={() => {
-                  const finalCategory = editCategorySelection === "Custom" ? (editCustomCategoryInput.trim() || "Custom") : editCategorySelection;
+                  const finalCategory = editCategorySelection === "Custom" ? (editCustomCategoryInput.trim() || "Custom") : (editCategorySelection || "");
                   if (!isLoggedIn) {
                     handleGuestAction("updateListCategory", { id: listToEditCategory.id, category: finalCategory });
                   } else {

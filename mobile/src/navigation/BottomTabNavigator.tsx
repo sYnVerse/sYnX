@@ -234,11 +234,13 @@ const MainAppContent: React.FC = () => {
     if (token) resolveActiveList();
   }, [token, resolveActiveList]);
 
-  const selectOwnedOrOtherList = (id: string) => {
+  const selectOwnedOrOtherList = (id: string, options?: { stayOnListsTab?: boolean }) => {
     // Explicit user selection clears deep-link priority.
     setPendingDeepLinkListId(null);
     setActiveListId(id);
-    handleTabSwitch("tasks");
+    if (!options?.stayOnListsTab) {
+      handleTabSwitch("tasks");
+    }
   };
 
   const goToMyLists = useCallback(async () => {

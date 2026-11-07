@@ -1,4 +1,5 @@
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.todos.clear-completed";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import { getListAccess } from "../api-helpers.server";
 import {
@@ -7,12 +8,12 @@ import {
 } from "../list-activity.server";
 import { requestOrPerformDelete } from "../pending-deletes.server";
 
-export async function action({ request, context }: ActionFunctionArgs) {
+export async function action({  request, context  }: Route.ActionArgs) {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const env = context.cloudflare.env;
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -31,7 +32,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     return Response.json({ error: "Edit permission denied for list" }, { status: 403 });
   }
 
-  const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+  const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
   const result = await requestOrPerformDelete(db, {
     listId,
     userId: user.userId,

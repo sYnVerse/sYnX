@@ -12,8 +12,17 @@ const REPO = process.env.GITHUB_REPOSITORY || "sYnVerse/sYnX";
 const EXPO_BUILDS = "https://expo.dev/accounts/chris-tran/projects/synx/builds";
 
 const token = process.env.SYNX_GITHUB_COMMENT_TOKEN;
-const { BUILD_ID, BUILD_STATUS, APP_VERSION, APP_BUILD_VERSION, COMMIT_SHA, WORKFLOW_URL } =
-  process.env;
+const {
+  BUILD_ID,
+  BUILD_STATUS,
+  APP_VERSION,
+  APP_BUILD_VERSION,
+  COMMIT_SHA,
+  WORKFLOW_URL,
+  UPDATE_ID,
+  UPDATE_CHANNEL,
+  RUNTIME_VERSION,
+} = process.env;
 
 async function gh(path, init = {}) {
   const res = await fetch(`https://api.github.com/repos/${REPO}${path}`, {
@@ -31,6 +40,20 @@ async function gh(path, init = {}) {
 }
 
 function body() {
+  if (UPDATE_ID) {
+    const lines = [
+      `### 🚀 Over-The-Air (OTA) preview update published`,
+      "",
+      `- **Channel**: \`${UPDATE_CHANNEL || "preview"}\``,
+      RUNTIME_VERSION ? `- **Runtime Version**: \`${RUNTIME_VERSION}\`` : null,
+      `- **Update ID**: \`${UPDATE_ID}\``,
+      "",
+      "Installed preview devices will download this update silently in the background and activate it on next cold launch.",
+    ];
+    lines.push("", `Commit \`${(COMMIT_SHA || "").slice(0, 7)}\``);
+    return lines.filter((l) => l !== null).join("\n");
+  }
+
   const ok = BUILD_STATUS === "success" && BUILD_ID;
   const buildUrl = BUILD_ID ? `${EXPO_BUILDS}/${BUILD_ID}` : null;
   const version = APP_VERSION ? `v${APP_VERSION}${APP_BUILD_VERSION ? ` (${APP_BUILD_VERSION})` : ""}` : "";
@@ -48,6 +71,9 @@ function body() {
         buildUrl ? `[Build logs](${buildUrl})` : null,
         WORKFLOW_URL ? `[Workflow run](${WORKFLOW_URL})` : null,
       ];
+  if (RUNTIME_VERSION) {
+    lines.push("", `- Native Runtime Fingerprint: \`${RUNTIME_VERSION}\``);
+  }
   lines.push("", `Commit \`${(COMMIT_SHA || "").slice(0, 7)}\``);
   return lines.filter((l) => l !== null).join("\n");
 }

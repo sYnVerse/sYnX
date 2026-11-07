@@ -1,4 +1,5 @@
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.settings.time-zone";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import { setUserTimeZone } from "../user-profile.server";
 
@@ -10,12 +11,12 @@ import { setUserTimeZone } from "../user-profile.server";
  * call only fills in a missing value (first run) and never replaces one.
  * Responds with the stored home zone. Only this field is touched.
  */
-export async function action({ request, context }: ActionFunctionArgs) {
+export async function action({  request, context  }: Route.ActionArgs) {
   if (request.method !== "PUT") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const env = context.cloudflare.env;
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
   if (!user) {

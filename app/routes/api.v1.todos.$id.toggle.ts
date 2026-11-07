@@ -1,16 +1,17 @@
-import type { ActionFunctionArgs } from "@remix-run/cloudflare";
+import type { Route } from "./+types/api.v1.todos.$id.toggle";
+import { getCloudflareContext } from "~/context.server";
 import { verifyBearerToken } from "../auth.server";
 import { TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
 import { logListActivity } from "../list-activity.server";
 import { getUserTimeZone } from "../user-profile.server";
 
-export async function action({ request, params, context }: ActionFunctionArgs) {
+export async function action({  request, params, context  }: Route.ActionArgs) {
   if (request.method !== "POST") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }
 
-  const env = context.cloudflare.env;
+  const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
   const user = await verifyBearerToken(request, env);
 
@@ -41,7 +42,7 @@ export async function action({ request, params, context }: ActionFunctionArgs) {
   const timeZone = await getUserTimeZone(db, todoRow.reminder_user_id || user.userId);
   const updatedTodo = await manager.toggle(todoId, { timeZone });
 
-  const waitUntil = context.cloudflare.ctx?.waitUntil?.bind(context.cloudflare.ctx);
+  const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
   const logPromise = logListActivity(db, {
     listId: todoRow.list_id,
     taskId: todoId,

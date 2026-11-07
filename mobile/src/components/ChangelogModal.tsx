@@ -6,8 +6,8 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { X, Sparkles } from "lucide-react-native";
 import { useTheme } from "../context/ThemeContext";
 import { MOBILE_VERSION, MOBILE_CHANGELOG } from "../constants/changelog";

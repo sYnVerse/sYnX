@@ -29,12 +29,26 @@ import {
   Globe,
   Info,
   ChevronRight,
+  RefreshCw,
+  RotateCcw,
+  AlertTriangle,
 } from "lucide-react-native";
+import {
+  checkForUpdate,
+  getUpdateState,
+  reloadToApplyUpdate,
+  subscribeUpdateState,
+  useUpdatesBridge,
+  formatShortId,
+  type UpdateState,
+} from "../services/updates";
 import { useAuth } from "../context/AuthContext";
 import { apiClient } from "../api/client";
 import {
   getPushPermissionStatus,
   hasStoredPushToken,
+  isPushDisabledByUser,
+  setPushDisabledByUser,
   openAppSystemSettings,
   registerPushTokenIfPermitted,
   requestAndRegisterPush,
@@ -54,6 +68,8 @@ import {
   getLocalTimeZone,
   NO_PHONE_CARRIER_LABEL,
   TASK_SORT_OPTIONS,
+  derivePushSettingsState,
+  deriveCalendarSettingsState,
 } from "../shared";
 import {
   getKnownHomeTimeZone,
@@ -70,11 +86,19 @@ import { CalendarPickerModal } from "../components/CalendarPickerModal";
 import { PhoneCarrierPickerModal } from "../components/PhoneCarrierPickerModal";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
-import { typography, spacing, MIN_TOUCH_TARGET, type ThemeMode } from "../theme/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  typography,
+  spacing,
+  MIN_TOUCH_TARGET,
+  getTabScreenBottomPadding,
+  type ThemeMode,
+} from "../theme/theme";
 import { getErrorMessage } from "../utils/feedback";
 import {
   isCalendarSyncEnabled,
   setCalendarSyncEnabled,
+  subscribeCalendarSyncEnabled,
   checkCalendarPermissions,
   requestCalendarPermissions,
   getOrCreateSynxCalendar,
@@ -114,6 +138,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const { theme, themeMode, setThemeMode, hapticsEnabled, setHapticsEnabled } = useTheme();
   const { appDefault: taskSortMode } = useTaskSortPreferences();
   const { showError, showSuccess } = useToast();
+  const insets = useSafeAreaInsets();
 
   const [emailEnabled, setEmailEnabled] = useState(false);
   const [smsEnabled, setSmsEnabled] = useState(false);
@@ -138,6 +163,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [pushBusy, setPushBusy] = useState(false);
   const [calendarSync, setCalendarSync] = useState(false);
   const [calendarPermission, setCalendarPermission] = useState<string>("Not Granted");
+  const [calendarPermissionGranted, setCalendarPermissionGranted] = useState(true);
   const queryClient = useQueryClient();
   const [targetCalendar, setTargetCalendar] = useState<AvailableCalendar | null>(null);
   const [completedBehavior, setCompletedBehaviorState] = useState<CompletedEventBehavior>(
@@ -149,6 +175,15 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const [homeTimeZone, setHomeTimeZoneState] = useState<string | null | undefined>(getKnownHomeTimeZone());
   const [homeTimeZoneBusy, setHomeTimeZoneBusy] = useState(false);
   const deviceTimeZone = getLocalTimeZone();
+
+  useUpdatesBridge();
+  const [updateState, setUpdateState] = useState<UpdateState>(getUpdateState());
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [reloadingUpdate, setReloadingUpdate] = useState(false);
+
+  useEffect(() => {
+    return subscribeUpdateState(setUpdateState);
+  }, []);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hydrated = useRef(false);
@@ -171,12 +206,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     const status = await getPushPermissionStatus();
     setPushStatus(status);
     const stored = await hasStoredPushToken();
-    setPushEnabled(status === "granted" && stored);
-    if (status === "granted" && !stored) {
-      // Permission on but token missing — refresh silently
+    const userDisabled = await isPushDisabledByUser();
+    const derived = derivePushSettingsState({
+      permission: status,
+      hasStoredToken: stored,
+      userDisabled,
+    });
+
+    if (derived.shouldUnregisterStaleToken) {
+      await unregisterPushToken();
+    }
+    if (derived.shouldAutoRegister) {
       const token = await registerPushTokenIfPermitted();
       setPushEnabled(Boolean(token));
+      return;
     }
+    setPushEnabled(derived.pushEnabled);
   }, []);
 
   // Tells the parent the form is clean without making the load below depend on
@@ -232,6 +277,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
         setCompletedBehaviorState(await getCompletedEventBehavior());
         const permission = await checkCalendarPermissions();
         setCalendarPermission(describeCalendarPermission(permission));
+        setCalendarPermissionGranted(permission.granted);
         if (syncEnabled && permission.granted) {
           const target = await getTargetCalendar();
           setTargetCalendar(target);
@@ -358,6 +404,96 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     onDirtyChange?.(false);
   }, [onDirtyChange]);
 
+  const handleCheckForUpdates = async () => {
+    if (checkingUpdate || updateState.isChecking || updateState.isDownloading) return;
+    triggerImpact();
+    setCheckingUpdate(true);
+    try {
+      const result = await checkForUpdate({ manual: true });
+      if (result.hasUpdate) {
+        showSuccess(
+          result.isRollBack
+            ? "Rollback downloaded! Restart to apply."
+            : "Update downloaded! Restart to apply."
+        );
+      } else if (result.error) {
+        showError(result.error);
+      } else {
+        showSuccess("sYnX is up to date.");
+      }
+    } catch (e: any) {
+      showError(getErrorMessage(e, "Check failed"));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
+
+  const executeReload = async () => {
+    setReloadingUpdate(true);
+    try {
+      const ok = await reloadToApplyUpdate();
+      if (!ok) {
+        showError("Could not restart app.");
+      }
+    } catch (e: any) {
+      showError(getErrorMessage(e, "Restart failed"));
+    } finally {
+      setReloadingUpdate(false);
+    }
+  };
+
+  const handleApplyUpdate = () => {
+    triggerImpact();
+    const isDirty =
+      emailEnabled !== latestRemote.current.emailEnabled ||
+      smsEnabled !== latestRemote.current.smsEnabled ||
+      phoneNumber !== latestRemote.current.phoneNumber ||
+      phoneCarrier !== latestRemote.current.phoneCarrier ||
+      discordWebhookUrl !== latestRemote.current.discordWebhookUrl ||
+      displayName !== latestRemote.current.displayName;
+
+    if (isDirty) {
+      Alert.alert(
+        "Unsaved Settings",
+        "You have unsaved changes. Would you like to save or discard your changes before restarting?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Discard & Restart",
+            style: "destructive",
+            onPress: () => {
+              resetSettings();
+              void executeReload();
+            },
+          },
+          {
+            text: "Save & Restart",
+            onPress: async () => {
+              const saved = await persistRemoteSettings();
+              if (saved) {
+                void executeReload();
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      Alert.alert(
+        "Restart sYnX",
+        "The app will restart to apply the latest update.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Restart Now",
+            onPress: () => {
+              void executeReload();
+            },
+          },
+        ]
+      );
+    }
+  };
+
   useEffect(() => {
     if (onRegisterActions) {
       onRegisterActions({ save: persistRemoteSettings, reset: resetSettings });
@@ -372,6 +508,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     setPushBusy(true);
     try {
       if (val) {
+        await setPushDisabledByUser(false);
         if (pushStatus === "blocked") {
           Alert.alert(
             "Notifications blocked",
@@ -394,6 +531,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           }
         }
       } else {
+        await setPushDisabledByUser(true);
         await unregisterPushToken();
         setPushEnabled(false);
         // Keep OS permission as-is; we just stop registering the token
@@ -426,6 +564,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
 
   const enableCalendarSync = useCallback(async () => {
     setCalendarPermission("Granted");
+    setCalendarPermissionGranted(true);
     await setCalendarSyncEnabled(true);
     setCalendarSync(true);
     const target = await getTargetCalendar();
@@ -507,14 +646,24 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   // automatically once they come back with access granted.
   const pendingCalendarEnable = useRef(false);
 
+  useEffect(() => {
+    return subscribeCalendarSyncEnabled((enabled) => {
+      setCalendarSync(enabled);
+    });
+  }, []);
+
   // Re-check calendar access when the app returns to the foreground (e.g. after the user
   // changes it in system settings) so the toggle and label stay accurate.
   useEffect(() => {
     const subscription = AppState.addEventListener("change", async (state) => {
       if (state !== "active") return;
+      void refreshPushState();
       try {
+        const syncEnabled = await isCalendarSyncEnabled();
+        setCalendarSync(syncEnabled);
         const permission = await checkCalendarPermissions();
         setCalendarPermission(describeCalendarPermission(permission));
+        setCalendarPermissionGranted(permission.granted);
         if (permission.granted && pendingCalendarEnable.current) {
           pendingCalendarEnable.current = false;
           await enableCalendarSync();
@@ -526,7 +675,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
       }
     });
     return () => subscription.remove();
-  }, [enableCalendarSync]);
+  }, [enableCalendarSync, refreshPushState]);
 
   const handleSelectCompletedBehavior = async (behavior: CompletedEventBehavior) => {
     if (behavior === completedBehavior) return;
@@ -601,16 +750,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     { mode: "light", label: "Light Pastel", preview: "#FAF7F2", previewBorder: true },
   ];
 
-  const pushStatusLabel =
-    pushStatus === "granted"
-      ? pushEnabled
-        ? "On"
-        : "Allowed — tap to register"
-      : pushStatus === "blocked"
-      ? "Blocked in system settings"
-      : pushStatus === "denied"
-      ? "Off"
-      : "Not set up";
+  const pushStatusLabel = derivePushSettingsState({
+    permission: pushStatus,
+    hasStoredToken: pushEnabled,
+    userDisabled: !pushEnabled && pushStatus === "granted",
+  }).statusLabel;
+
+  const { isWarningVisible: calendarWarningVisible } = deriveCalendarSettingsState({
+    syncEnabled: calendarSync,
+    permissionGranted: calendarPermissionGranted,
+  });
 
   const nameForInitials = displayName.trim();
   const accountInitials = (
@@ -627,7 +776,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.bg }]}
-      contentContainerStyle={{ paddingBottom: 110 }}
+      contentContainerStyle={{ paddingBottom: getTabScreenBottomPadding(insets.bottom) }}
     >
       {/* Account */}
       <View style={styles.sectionHeader}>
@@ -864,6 +1013,38 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             accessibilityLabel="Sync tasks to device calendar"
           />
         </View>
+        {calendarWarningVisible && (
+          <View style={[styles.calendarWarningCard, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
+            <View style={styles.guidanceHeader}>
+              <Info size={16} color={theme.accent} />
+              <Text style={[styles.guidanceTitle, { color: theme.textPrimary }]}>
+                Calendar access is off in system settings
+              </Text>
+            </View>
+            <Text style={[styles.hint, { color: theme.textMuted, marginBottom: 12 }]}>
+              Tasks cannot sync to your calendar while permission is off.
+            </Text>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              <TouchableOpacity
+                style={[styles.linkBtn, { flex: 1, borderColor: theme.inputBorder, backgroundColor: theme.cardBg }]}
+                onPress={() => Linking.openSettings()}
+                accessibilityRole="button"
+                accessibilityLabel="Open system settings"
+              >
+                <ExternalLink size={14} color={theme.accent} />
+                <Text style={[styles.linkBtnText, { color: theme.accent }]}>Open settings</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.linkBtn, { flex: 1, borderColor: theme.inputBorder, backgroundColor: theme.cardBg }]}
+                onPress={() => handleToggleCalendarSync(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Turn sync off"
+              >
+                <Text style={[styles.linkBtnText, { color: theme.textMuted }]}>Turn sync off</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
         {calendarSync ? (
           <>
             <TouchableOpacity
@@ -1172,6 +1353,115 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           </View>
           <Text style={{ color: theme.accent, fontSize: typography.sm, fontWeight: "700" }}>View</Text>
         </TouchableOpacity>
+
+        <View style={[styles.aboutDivider, { backgroundColor: theme.cardBorder }]} />
+
+        {updateState.isEmergencyLaunch && (
+          <View
+            style={[
+              styles.emergencyBanner,
+              {
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                borderColor: "rgba(239, 68, 68, 0.35)",
+              },
+            ]}
+          >
+            <AlertTriangle size={16} color={theme.danger} />
+            <Text style={[styles.emergencyBannerText, { color: theme.danger }]}>
+              Safe Mode: Embedded build loaded after launch crash
+            </Text>
+          </View>
+        )}
+
+        <View style={[styles.diagContainer, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
+          <View style={styles.diagRow}>
+            <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Native Binary</Text>
+            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+              {updateState.nativeAppVersion || "3.6.0"}
+              {updateState.nativeBuildVersion ? ` (${updateState.nativeBuildVersion})` : ""}
+            </Text>
+          </View>
+          <View style={styles.diagRow}>
+            <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Release Channel</Text>
+            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+              {updateState.channel ?? "embedded"}
+            </Text>
+          </View>
+          <View style={styles.diagRow}>
+            <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Runtime Fingerprint</Text>
+            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+              {formatShortId(updateState.runtimeVersion, "embedded")}
+            </Text>
+          </View>
+          <View style={styles.diagRow}>
+            <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Active Update</Text>
+            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+              {updateState.isEmbeddedLaunch
+                ? "Embedded Bundle"
+                : `OTA: ${formatShortId(updateState.updateId, "Unknown")}`}
+            </Text>
+          </View>
+        </View>
+
+        {updateState.isUpdatePending ? (
+          <TouchableOpacity
+            style={[
+              styles.updateActionBtn,
+              {
+                backgroundColor: updateState.isRollBackToEmbedded
+                  ? "#d97706"
+                  : theme.accent,
+              },
+            ]}
+            onPress={handleApplyUpdate}
+            disabled={reloadingUpdate}
+            accessibilityRole="button"
+            accessibilityLabel={
+              updateState.isRollBackToEmbedded
+                ? "Rollback ready. Restart sYnX to apply."
+                : "Update ready. Restart sYnX to apply."
+            }
+          >
+            {reloadingUpdate ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <RotateCcw size={16} color="#FFFFFF" />
+            )}
+            <Text style={[styles.updateActionBtnText, { color: "#FFFFFF" }]}>
+              {updateState.isRollBackToEmbedded
+                ? "Restart to Apply Rollback"
+                : "Restart to Apply Update"}
+            </Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[
+              styles.updateActionBtn,
+              {
+                backgroundColor: theme.inputBg,
+                borderColor: theme.inputBorder,
+                borderWidth: 1,
+              },
+            ]}
+            onPress={handleCheckForUpdates}
+            disabled={checkingUpdate || updateState.isChecking || updateState.isDownloading}
+            accessibilityRole="button"
+            accessibilityLabel="Check for updates"
+          >
+            {checkingUpdate || updateState.isChecking || updateState.isDownloading ? (
+              <ActivityIndicator size="small" color={theme.accent} />
+            ) : (
+              <RefreshCw size={15} color={theme.accent} />
+            )}
+            <Text style={[styles.updateActionBtnText, { color: theme.accent }]}>
+              {updateState.isDownloading
+                ? "Downloading update..."
+                : checkingUpdate || updateState.isChecking
+                ? "Checking for updates..."
+                : "Check for Updates"}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <PhoneCarrierPickerModal
@@ -1425,6 +1715,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
+  calendarWarningCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
   guidanceHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -1463,5 +1759,57 @@ const styles = StyleSheet.create({
     fontSize: typography.sm,
     fontWeight: "700",
     color: "#FFFFFF",
+  },
+  aboutDivider: {
+    height: 1,
+    marginVertical: 12,
+  },
+  diagContainer: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 10,
+    gap: 6,
+    marginBottom: 10,
+  },
+  diagRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  diagLabel: {
+    fontSize: typography.xs,
+    fontWeight: "500",
+  },
+  diagValue: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+  },
+  emergencyBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 8,
+    marginBottom: 10,
+  },
+  emergencyBannerText: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+    flex: 1,
+  },
+  updateActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  updateActionBtnText: {
+    fontSize: typography.sm,
+    fontWeight: "700",
   },
 });

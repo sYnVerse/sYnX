@@ -11,6 +11,7 @@ const { storage, platform, linking, asyncStorageModule, reactNativeModule } = vi
   const linking = {
     openURL: vi.fn(async () => true),
     canOpenURL: vi.fn(async () => true),
+    openSettings: vi.fn(async () => true),
   };
   return {
     storage,
@@ -146,6 +147,13 @@ import {
   getListIdsWithSyncedEvents,
   buildCompletedEventTitle,
   stripCompletedLine,
+  shouldShowCalendarSoftAsk,
+  markCalendarSoftAskDeclined,
+  clearCalendarSoftAskDeclined,
+  turnOffCalendarSyncFromPrompt,
+  enableCalendarAccessFromPrompt,
+  subscribeCalendarSyncEnabled,
+  CALENDAR_SOFT_ASK_DECLINED_AT_KEY,
 } from "../mobile/src/services/calendar";
 
 const MAPPINGS_KEY = "@synx_calendar_event_mappings";
@@ -692,5 +700,100 @@ describe("switching the target calendar", () => {
     expect(moved.title).toBe("Write report");
     expect(moved.notes).toBe("sYnX Task · Work | Priority: 🔴 HIGH");
     expect(cal.state.events.size).toBe(1);
+  });
+});
+
+describe("calendar soft ask prompt (#134)", () => {
+  const SOFT_ASK_REASK_MS = 14 * 24 * 60 * 60 * 1000;
+  const now = 1_000_000_000_000;
+
+  beforeEach(() => {
+    storage.clear();
+    linking.openSettings.mockClear();
+  });
+
+  it("does not show when calendar sync is turned off in sYnX", async () => {
+    cal.state.permission = { status: "denied", granted: false, canAskAgain: true, expires: "never" };
+    await setCalendarSyncEnabled(false);
+    expect(await shouldShowCalendarSoftAsk(now)).toBe(false);
+  });
+
+  it("does not show when calendar permission is already granted", async () => {
+    grant();
+    await setCalendarSyncEnabled(true);
+    expect(await shouldShowCalendarSoftAsk(now)).toBe(false);
+  });
+
+  it("shows when calendar sync is on and permission is denied", async () => {
+    cal.state.permission = { status: "denied", granted: false, canAskAgain: true, expires: "never" };
+    await setCalendarSyncEnabled(true);
+    expect(await shouldShowCalendarSoftAsk(now)).toBe(true);
+  });
+
+  it("markCalendarSoftAskDeclined records timestamp and respects 14-day back-off", async () => {
+    cal.state.permission = { status: "denied", granted: false, canAskAgain: true, expires: "never" };
+    await setCalendarSyncEnabled(true);
+    expect(await shouldShowCalendarSoftAsk(now)).toBe(true);
+
+    await markCalendarSoftAskDeclined(now);
+    expect(storage.get(CALENDAR_SOFT_ASK_DECLINED_AT_KEY)).toBe(String(now));
+    expect(await shouldShowCalendarSoftAsk(now + 1000)).toBe(false);
+    expect(await shouldShowCalendarSoftAsk(now + SOFT_ASK_REASK_MS - 1000)).toBe(false);
+    expect(await shouldShowCalendarSoftAsk(now + SOFT_ASK_REASK_MS)).toBe(true);
+  });
+
+  it("clearCalendarSoftAskDeclined clears the declined timestamp", async () => {
+    await markCalendarSoftAskDeclined(now);
+    expect(storage.get(CALENDAR_SOFT_ASK_DECLINED_AT_KEY)).toBe(String(now));
+    await clearCalendarSoftAskDeclined();
+    expect(storage.get(CALENDAR_SOFT_ASK_DECLINED_AT_KEY)).toBeUndefined();
+  });
+
+  it("turnOffCalendarSyncFromPrompt turns off sync and clears declined state", async () => {
+    cal.state.permission = { status: "denied", granted: false, canAskAgain: true, expires: "never" };
+    await setCalendarSyncEnabled(true);
+    await markCalendarSoftAskDeclined(now);
+
+    await turnOffCalendarSyncFromPrompt();
+    expect(storage.get("@synx_calendar_sync_enabled")).toBe("false");
+    expect(storage.get(CALENDAR_SOFT_ASK_DECLINED_AT_KEY)).toBeUndefined();
+    expect(await shouldShowCalendarSoftAsk(now)).toBe(false);
+  });
+
+  it("enableCalendarAccessFromPrompt requests permission when canAskAgain is true", async () => {
+    cal.state.permission = { status: "denied", granted: false, canAskAgain: true, expires: "never" };
+    cal.state.requestResult = { status: "granted", granted: true, canAskAgain: true, expires: "never" };
+    await setCalendarSyncEnabled(true);
+    await markCalendarSoftAskDeclined(now);
+
+    const result = await enableCalendarAccessFromPrompt();
+    expect(result).toEqual({ granted: true, openedSettings: false });
+    expect(cal.module.requestCalendarPermissions).toHaveBeenCalledTimes(1);
+    expect(storage.get(CALENDAR_SOFT_ASK_DECLINED_AT_KEY)).toBeUndefined();
+  });
+
+  it("enableCalendarAccessFromPrompt opens system settings when canAskAgain is false", async () => {
+    cal.state.permission = { status: "denied", granted: false, canAskAgain: false, expires: "never" };
+    await setCalendarSyncEnabled(true);
+
+    const result = await enableCalendarAccessFromPrompt();
+    expect(result).toEqual({ granted: false, openedSettings: true });
+    expect(cal.module.requestCalendarPermissions).not.toHaveBeenCalled();
+    expect(linking.openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("subscribeCalendarSyncEnabled notifies subscribers on sync state change", async () => {
+    const fn = vi.fn();
+    const unsub = subscribeCalendarSyncEnabled(fn);
+
+    await setCalendarSyncEnabled(true);
+    expect(fn).toHaveBeenCalledWith(true);
+
+    await setCalendarSyncEnabled(false);
+    expect(fn).toHaveBeenCalledWith(false);
+
+    unsub();
+    await setCalendarSyncEnabled(true);
+    expect(fn).toHaveBeenCalledTimes(2);
   });
 });
