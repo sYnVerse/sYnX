@@ -1,5 +1,5 @@
-import type { Dispatch, SetStateAction } from "react";
-import type { FetcherWithComponents } from "react-router";
+import { Suspense, type Dispatch, type SetStateAction } from "react";
+import { Await, Link, type FetcherWithComponents } from "react-router";
 import { ProfileAvatar } from "~/components/profile-avatar";
 import type { PendingDeleteRequest } from "../../../../shared";
 import type { GuestList } from "../guest-lists";
@@ -12,6 +12,8 @@ interface SidebarProps {
   activeListId: string | undefined;
   userId: string;
   pendingDeleteRequests: PendingDeleteRequest[];
+  ownedPendingDeleteRequests?: Promise<PendingDeleteRequest[]>;
+  providerProfile?: Promise<{ avatarUrl: string | null; suggestedDisplayName: string | null } | null>;
   setListToDelete: (list: { id: string; name: string } | null) => void;
   setListToRename: (list: { id: string; name: string } | null) => void;
   setRenameInput: (name: string) => void;
@@ -38,6 +40,8 @@ export function Sidebar({
   activeListId,
   userId,
   pendingDeleteRequests,
+  ownedPendingDeleteRequests,
+  providerProfile,
   setListToDelete,
   setListToRename,
   setRenameInput,
@@ -60,6 +64,7 @@ export function Sidebar({
     const listPendingDelete = (pendingDeleteRequests as PendingDeleteRequest[]).some(
       (r) => r.listId === list.id && r.targetType === "list"
     );
+    const shouldPrefetch = !isActive && (isLoggedIn || Boolean(opts.shared));
     return (
       <div
         key={list.id}
@@ -69,8 +74,9 @@ export function Sidebar({
             : "bg-transparent border-transparent text-slate-400 hover:text-slate-200 hover:bg-themeCardHover"
           }`}
       >
-        <a
-          href={`/${list.id}`}
+        <Link
+          to={`/${list.id}`}
+          prefetch={shouldPrefetch ? "intent" : "none"}
           onClick={() => setIsSidebarOpen(false)}
           className="flex items-center gap-2.5 flex-1 min-w-0"
         >
@@ -87,16 +93,35 @@ export function Sidebar({
               {list.category}
             </span>
           ) : null}
-        </a>
+        </Link>
 
         <div className="flex items-center gap-1.5">
-          {!opts.shared && pendingForList > 0 && (
-            <span
-              className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300"
-              title={`${pendingForList} delete request${pendingForList === 1 ? "" : "s"} waiting`}
-            >
-              {pendingForList}
-            </span>
+          {!opts.shared && (
+            ownedPendingDeleteRequests ? (
+              <Suspense fallback={null}>
+                <Await resolve={ownedPendingDeleteRequests}>
+                  {(resolvedPending) => {
+                    const count = (resolvedPending || []).filter((r) => r.listId === list.id).length;
+                    if (count <= 0) return null;
+                    return (
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300"
+                        title={`${count} delete request${count === 1 ? "" : "s"} waiting`}
+                      >
+                        {count}
+                      </span>
+                    );
+                  }}
+                </Await>
+              </Suspense>
+            ) : pendingForList > 0 ? (
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300"
+                title={`${pendingForList} delete request${pendingForList === 1 ? "" : "s"} waiting`}
+              >
+                {pendingForList}
+              </span>
+            ) : null
           )}
           {remainingCount > 0 && (
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-themeAccentBg text-themeAccentText" : "bg-white/5 text-slate-400"}`}>
@@ -253,11 +278,33 @@ export function Sidebar({
           {isLoggedIn ? (
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <ProfileAvatar
-                  url={settings?.avatarUrl}
-                  initials={profileLabel.initials}
-                  className="w-8 h-8 rounded-full bg-themeAccentBg border border-themeAccentRing/30 flex items-center justify-center text-themeAccentText font-bold text-xs flex-shrink-0 shadow-inner select-none"
-                />
+                {providerProfile ? (
+                  <Suspense
+                    fallback={
+                      <ProfileAvatar
+                        url={settings?.avatarUrl}
+                        initials={profileLabel.initials}
+                        className="w-8 h-8 rounded-full bg-themeAccentBg border border-themeAccentRing/30 flex items-center justify-center text-themeAccentText font-bold text-xs flex-shrink-0 shadow-inner select-none"
+                      />
+                    }
+                  >
+                    <Await resolve={providerProfile}>
+                      {(profile) => (
+                        <ProfileAvatar
+                          url={profile?.avatarUrl ?? settings?.avatarUrl}
+                          initials={profileLabel.initials}
+                          className="w-8 h-8 rounded-full bg-themeAccentBg border border-themeAccentRing/30 flex items-center justify-center text-themeAccentText font-bold text-xs flex-shrink-0 shadow-inner select-none"
+                        />
+                      )}
+                    </Await>
+                  </Suspense>
+                ) : (
+                  <ProfileAvatar
+                    url={settings?.avatarUrl}
+                    initials={profileLabel.initials}
+                    className="w-8 h-8 rounded-full bg-themeAccentBg border border-themeAccentRing/30 flex items-center justify-center text-themeAccentText font-bold text-xs flex-shrink-0 shadow-inner select-none"
+                  />
+                )}
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-slate-350 truncate">{profileLabel.primary}</p>
                   <p className="text-[9px] text-slate-500 font-medium truncate">{profileLabel.secondary}</p>

@@ -1,12 +1,12 @@
-import type { FetcherWithComponents } from "react-router";
+import { Suspense, useState } from "react";
+import { Await, type FetcherWithComponents } from "react-router";
 import { describeListActivityAction, type ListActivityEntry } from "../../../../shared";
 import { formatActivityWhen } from "../format";
 
 interface ActivityLogModalProps {
   showActivityModal: boolean;
   setShowActivityModal: (show: boolean) => void;
-  activityEntries: ListActivityEntry[];
-  activityHasMore: boolean;
+  listActivity: Promise<ListActivityEntry[]> | ListActivityEntry[];
   activityFetcher: FetcherWithComponents<unknown>;
   activeListId?: string;
 }
@@ -14,8 +14,7 @@ interface ActivityLogModalProps {
 export function ActivityLogModal({
   showActivityModal,
   setShowActivityModal,
-  activityEntries,
-  activityHasMore,
+  listActivity,
   activityFetcher,
   activeListId,
 }: ActivityLogModalProps) {
@@ -51,65 +50,17 @@ export function ActivityLogModal({
           </button>
         </div>
 
-        <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-3 custom-scrollbar mb-4">
-          {activityEntries.length === 0 ? (
-            <p className="text-xs text-slate-500 py-6 text-center">
-              No activity yet on this shared list.
-            </p>
-          ) : (
-            activityEntries.map((entry) => (
-              <div
-                key={entry.id}
-                className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-1"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-slate-200">
-                      {describeListActivityAction(entry.action)}
-                    </p>
-                    <p className="text-[11px] text-slate-400 truncate">
-                      {entry.actorLabel}
-                      {entry.actorType !== "owner" ? (
-                        <span className="text-slate-500"> · {entry.actorType}</span>
-                      ) : null}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-[10px] text-slate-500">
-                    {formatActivityWhen(entry.createdAt)}
-                  </span>
-                </div>
-                {entry.summary ? (
-                  <p className="text-[11px] text-slate-400 leading-snug">{entry.summary}</p>
-                ) : null}
-                {entry.clientIp ? (
-                  <p className="text-[10px] text-slate-500 font-mono">IP {entry.clientIp}</p>
-                ) : null}
-              </div>
-            ))
-          )}
-        </div>
-
-        {activityHasMore && activityEntries.length > 0 && (
-          <button
-            type="button"
-            disabled={activityFetcher.state !== "idle"}
-            onClick={() => {
-              const oldest = activityEntries[activityEntries.length - 1]?.createdAt;
-              if (oldest == null) return;
-              activityFetcher.submit(
-                {
-                  intent: "listActivity",
-                  listId: activeListId || "",
-                  before: String(oldest),
-                },
-                { method: "post" }
-              );
-            }}
-            className="w-full text-center text-xs font-semibold text-slate-200 bg-white/[0.06] hover:bg-white/[0.1] rounded-xl py-2.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mb-2"
-          >
-            {activityFetcher.state !== "idle" ? "Loading…" : "Load more"}
-          </button>
-        )}
+        <Suspense fallback={<ActivityLogLoadingSkeleton />}>
+          <Await resolve={listActivity}>
+            {(initialEntries) => (
+              <ActivityLogContent
+                initialEntries={initialEntries || []}
+                activityFetcher={activityFetcher}
+                activeListId={activeListId}
+              />
+            )}
+          </Await>
+        </Suspense>
 
         <button
           type="button"
@@ -120,5 +71,120 @@ export function ActivityLogModal({
         </button>
       </div>
     </div>
+  );
+}
+
+function ActivityLogLoadingSkeleton() {
+  return (
+    <div
+      className="max-h-[60vh] overflow-y-auto pr-1 space-y-3 custom-scrollbar mb-4 animate-pulse"
+      role="status"
+      aria-label="Loading activity"
+    >
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="h-3.5 bg-white/10 rounded w-28" />
+            <div className="h-2.5 bg-white/5 rounded w-16" />
+          </div>
+          <div className="h-2.5 bg-white/5 rounded w-44" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ActivityLogContent({
+  initialEntries,
+  activityFetcher,
+  activeListId,
+}: {
+  initialEntries: ListActivityEntry[];
+  activityFetcher: FetcherWithComponents<unknown>;
+  activeListId?: string;
+}) {
+  const [entries, setEntries] = useState<ListActivityEntry[]>(initialEntries);
+  const [hasMore, setHasMore] = useState(initialEntries.length >= 50);
+
+  const [syncedInitial, setSyncedInitial] = useState(initialEntries);
+  if (syncedInitial !== initialEntries) {
+    setSyncedInitial(initialEntries);
+    setEntries(initialEntries);
+    setHasMore(initialEntries.length >= 50);
+  }
+
+  const [syncedFetcherData, setSyncedFetcherData] = useState(activityFetcher.data);
+  if (activityFetcher.state === "idle" && activityFetcher.data !== syncedFetcherData) {
+    setSyncedFetcherData(activityFetcher.data);
+    const data = activityFetcher.data as { success?: boolean; entries?: ListActivityEntry[] } | undefined;
+    if (data?.success && Array.isArray(data.entries)) {
+      const seen = new Set(entries.map((e) => e.id));
+      setEntries([...entries, ...data.entries.filter((e) => !seen.has(e.id))]);
+      setHasMore(data.entries.length >= 50);
+    }
+  }
+
+  return (
+    <>
+      <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-3 custom-scrollbar mb-4">
+        {entries.length === 0 ? (
+          <p className="text-xs text-slate-500 py-6 text-center">
+            No activity yet on this shared list.
+          </p>
+        ) : (
+          entries.map((entry) => (
+            <div
+              key={entry.id}
+              className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 space-y-1"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-200">
+                    {describeListActivityAction(entry.action)}
+                  </p>
+                  <p className="text-[11px] text-slate-400 truncate">
+                    {entry.actorLabel}
+                    {entry.actorType !== "owner" ? (
+                      <span className="text-slate-500"> · {entry.actorType}</span>
+                    ) : null}
+                  </p>
+                </div>
+                <span className="shrink-0 text-[10px] text-slate-500">
+                  {formatActivityWhen(entry.createdAt)}
+                </span>
+              </div>
+              {entry.summary ? (
+                <p className="text-[11px] text-slate-400 leading-snug">{entry.summary}</p>
+              ) : null}
+              {entry.clientIp ? (
+                <p className="text-[10px] text-slate-500 font-mono">IP {entry.clientIp}</p>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
+
+      {hasMore && entries.length > 0 && (
+        <button
+          type="button"
+          disabled={activityFetcher.state !== "idle"}
+          onClick={() => {
+            const oldest = entries[entries.length - 1]?.createdAt;
+            if (oldest == null) return;
+            activityFetcher.submit(
+              {
+                intent: "listActivity",
+                listId: activeListId || "",
+                before: String(oldest),
+              },
+              { method: "post" }
+            );
+          }}
+          className="w-full text-center text-xs font-semibold text-slate-200 bg-white/[0.06] hover:bg-white/[0.1] rounded-xl py-2.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mb-2"
+        >
+          {activityFetcher.state !== "idle" ? "Loading…" : "Load more"}
+        </button>
+      )}
+    </>
   );
 }

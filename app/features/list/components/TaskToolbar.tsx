@@ -46,9 +46,9 @@ interface TaskToolbarProps {
   isOwner: boolean;
   clearCompletedNeedsApproval: boolean;
   activeListShareMode: "private" | "public_read" | "public_edit";
-  loaderListActivity: unknown[];
-  setActivityEntries: (entries: ListActivityEntry[]) => void;
-  setActivityHasMore: (hasMore: boolean) => void;
+  loaderListActivity?: unknown;
+  setActivityEntries?: (entries: ListActivityEntry[]) => void;
+  setActivityHasMore?: (hasMore: boolean) => void;
   setShowActivityModal: (show: boolean) => void;
   showSharePopover: boolean;
   setShowSharePopover: Dispatch<SetStateAction<boolean>>;
@@ -224,10 +224,10 @@ export function TaskToolbar({
             <button
               type="button"
               onClick={() => {
-                setActivityEntries((loaderListActivity as ListActivityEntry[]) || []);
-                setActivityHasMore(
-                  ((loaderListActivity as ListActivityEntry[]) || []).length >= 50
-                );
+                if (setActivityEntries && Array.isArray(loaderListActivity)) {
+                  setActivityEntries(loaderListActivity as ListActivityEntry[]);
+                  setActivityHasMore?.(loaderListActivity.length >= 50);
+                }
                 setShowActivityModal(true);
               }}
               className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-themeAccentText font-semibold transition-colors duration-200 cursor-pointer bg-transparent"
