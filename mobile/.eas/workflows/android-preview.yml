@@ -48,7 +48,7 @@ jobs:
 
   publish_android_preview:
     name: Publish OTA preview update
-    needs: [get_android_build]
+    needs: [fingerprint, get_android_build]
     if: ${{ needs.get_android_build.outputs.build_id }}
     type: update
     environment: preview
@@ -57,7 +57,7 @@ jobs:
       channel: preview
     hooks:
       after_checkout:
-        - run: node scripts/sync-shared.js && node scripts/sync-version.js
+        - run: node scripts/sync-shared.js && node scripts/sync-version.js && node scripts/decode-google-services.js
 
   comment_on_github:
     name: Post build or update link to GitHub
@@ -73,6 +73,7 @@ jobs:
       MATCHED_RUNTIME_VERSION: ${{ after.get_android_build.outputs.runtime_version }}
       FINGERPRINT_HASH: ${{ after.fingerprint.outputs.android_fingerprint_hash }}
       UPDATE_ID: ${{ after.publish_android_preview.outputs.first_update_group_id }}
+      UPDATES_JSON: ${{ after.publish_android_preview.outputs.updates_json }}
       UPDATE_STATUS: ${{ after.publish_android_preview.status }}
       UPDATE_CHANNEL: preview
       COMMIT_SHA: ${{ github.sha }}

@@ -28,6 +28,22 @@ async function gh(path, init = {}, env = process.env) {
   return res.json();
 }
 
+function parseUpdateRuntimeVersion(updatesJson) {
+  if (!updatesJson) return null;
+  try {
+    const parsed = typeof updatesJson === "string" ? JSON.parse(updatesJson) : updatesJson;
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed[0].runtimeVersion || null;
+    }
+    if (parsed && typeof parsed === "object" && parsed.runtimeVersion) {
+      return parsed.runtimeVersion;
+    }
+  } catch (_) {
+    return null;
+  }
+  return null;
+}
+
 function body(env = process.env) {
   const expoBuilds = EXPO_BUILDS;
   const {
@@ -38,6 +54,7 @@ function body(env = process.env) {
     COMMIT_SHA,
     WORKFLOW_URL,
     UPDATE_ID,
+    UPDATES_JSON,
     UPDATE_STATUS,
     UPDATE_CHANNEL,
     RUNTIME_VERSION,
@@ -46,11 +63,32 @@ function body(env = process.env) {
     MATCHED_BUILD_ID,
   } = env;
 
-  const runtimeVersion = RUNTIME_VERSION || MATCHED_RUNTIME_VERSION || FINGERPRINT_HASH;
+  const publishedRuntime = parseUpdateRuntimeVersion(UPDATES_JSON);
+  const expectedRuntime = MATCHED_RUNTIME_VERSION || FINGERPRINT_HASH || RUNTIME_VERSION;
+  const runtimeVersion = publishedRuntime || expectedRuntime;
   const commitShort = (COMMIT_SHA || "").slice(0, 7);
 
   // 1. Successful OTA update published
   if (UPDATE_ID) {
+    const isMismatch = Boolean(publishedRuntime && expectedRuntime && publishedRuntime !== expectedRuntime);
+    if (isMismatch) {
+      const lines = [
+        `### ⚠️ Over-The-Air (OTA) runtime version mismatch`,
+        "",
+        `- **Channel**: \`${UPDATE_CHANNEL || "preview"}\``,
+        `- **Published Runtime**: \`${publishedRuntime}\``,
+        `- **Expected Runtime (Preview APK)**: \`${expectedRuntime}\``,
+        `- **Update Group ID**: \`${UPDATE_ID}\``,
+        MATCHED_BUILD_ID ? `- **Base Preview Build**: [${MATCHED_BUILD_ID.slice(0, 8)}](${expoBuilds}/${MATCHED_BUILD_ID})` : null,
+        "",
+        "⚠️ **Warning**: The published update targets a runtime version that does not match the native preview APK. Installed preview devices will not download this update.",
+      ];
+      if (commitShort) {
+        lines.push("", `Commit \`${commitShort}\``);
+      }
+      return lines.filter((l) => l !== null).join("\n");
+    }
+
     const lines = [
       `### 🚀 Over-The-Air (OTA) preview update published`,
       "",
@@ -136,13 +174,23 @@ async function main(env = process.env) {
     const c = await gh(`/commits/${commitSha}/comments`, { method: "POST", body: JSON.stringify({ body: commentBody }) }, env);
     console.log(`Commented on commit: ${c.html_url}`);
   }
+
+  const publishedRuntime = parseUpdateRuntimeVersion(env.UPDATES_JSON);
+  const expectedRuntime = env.MATCHED_RUNTIME_VERSION || env.FINGERPRINT_HASH || env.RUNTIME_VERSION;
+  if (env.UPDATE_ID && publishedRuntime && expectedRuntime && publishedRuntime !== expectedRuntime) {
+    throw new Error(
+      `OTA update runtime mismatch: published=${publishedRuntime}, expected=${expectedRuntime}`
+    );
+  }
 }
 
 if (require.main === module) {
   main().catch((err) => {
-    // A failed comment shouldn't mark the build workflow as failed.
     console.error(err);
+    if (err.message && err.message.includes("OTA update runtime mismatch")) {
+      process.exit(1);
+    }
   });
 }
 
-module.exports = { body, main, gh };
+module.exports = { body, main, gh, parseUpdateRuntimeVersion };
