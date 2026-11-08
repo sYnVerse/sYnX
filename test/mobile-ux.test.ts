@@ -257,6 +257,11 @@ describe("floating action button and tab bar layout math", () => {
     expect(SettingsScreenSource).not.toContain("paddingBottom: 110");
   });
 
+  it("ensures SettingsScreen uses dynamic MOBILE_APP_VERSION fallback for native binary version instead of hardcoded 3.6.0", () => {
+    expect(SettingsScreenSource).toContain("updateState.nativeAppVersion || MOBILE_APP_VERSION");
+    expect(SettingsScreenSource).not.toContain('updateState.nativeAppVersion || "3.6.0"');
+  });
+
   it("calculates bottom sheet padding to keep buttons above the system navigation bar", () => {
     // 0 insets: preserves base padding (24)
     expect(getSheetBottomPadding(0)).toBe(24);

@@ -41,10 +41,14 @@ const mocks = vi.hoisted(() => {
         };
       }),
     },
+    application: {
+      nativeApplicationVersion: "3.7.0" as string | null,
+      nativeBuildVersion: "42" as string | null,
+    },
     constants: {
-      nativeAppVersion: "3.6.0",
+      nativeAppVersion: "3.7.0",
       nativeBuildVersion: "42",
-      expoConfig: { version: "3.6.0" },
+      expoConfig: { version: "3.7.0", android: { versionCode: 42 } },
     },
     appStateListeners,
     updatesStateListeners,
@@ -53,6 +57,8 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("react-native", () => mocks.reactNative);
 vi.mock("../mobile/node_modules/react-native", () => mocks.reactNative);
+vi.mock("expo-application", () => mocks.application);
+vi.mock("../mobile/node_modules/expo-application", () => mocks.application);
 vi.mock("expo-updates", () => mocks.updates);
 vi.mock("../mobile/node_modules/expo-updates", () => mocks.updates);
 vi.mock("expo-constants", () => ({ default: mocks.constants }));
@@ -113,8 +119,26 @@ describe("mobile updates service", () => {
       expect(state).toHaveProperty("isUpdateAvailable");
       expect(state).toHaveProperty("isUpdatePending");
       expect(state).toHaveProperty("isRollBackToEmbedded", false);
-      expect(state).toHaveProperty("nativeAppVersion", "3.6.0");
+      expect(state).toHaveProperty("nativeAppVersion", "3.7.0");
       expect(state).toHaveProperty("nativeBuildVersion", "42");
+    });
+
+    it("falls back to expoConfig version when Application version is unavailable", () => {
+      mocks.application.nativeApplicationVersion = null;
+      mocks.application.nativeBuildVersion = null;
+      mocks.constants.nativeAppVersion = undefined as any;
+      mocks.constants.nativeBuildVersion = undefined as any;
+      mocks.constants.expoConfig = { version: "3.7.0", android: { versionCode: 42 } };
+
+      resetUpdateStateForTesting();
+      const state = getUpdateState();
+      expect(state.nativeAppVersion).toBe("3.7.0");
+      expect(state.nativeBuildVersion).toBe("42");
+
+      // Restore defaults for subsequent tests
+      mocks.application.nativeApplicationVersion = "3.7.0";
+      mocks.application.nativeBuildVersion = "42";
+      resetUpdateStateForTesting();
     });
 
     it("notifies subscribers immediately and cleans up on unsubscribe", () => {
