@@ -6,3 +6,6 @@ src/shared/mobile-version.ts
 
 # Documentation and changelogs
 src/constants/changelog.ts
+
+# EAS workflows and CI configuration
+.eas/**
