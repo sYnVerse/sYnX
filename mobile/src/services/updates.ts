@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { AppState, Platform } from "react-native";
 import * as Updates from "expo-updates";
+import * as Application from "expo-application";
 import Constants from "expo-constants";
 
 export const UPDATE_CHECK_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -23,6 +24,26 @@ export interface UpdateState {
   nativeBuildVersion: string | null;
 }
 
+function resolveNativeAppVersion(): string | null {
+  return (
+    Application.nativeApplicationVersion ??
+    (Constants as any)?.nativeAppVersion ??
+    Constants.expoConfig?.version ??
+    null
+  );
+}
+
+function resolveNativeBuildVersion(): string | null {
+  return (
+    Application.nativeBuildVersion ??
+    (Constants as any)?.nativeBuildVersion ??
+    (Constants.expoConfig?.android?.versionCode
+      ? String(Constants.expoConfig.android.versionCode)
+      : null) ??
+    (Constants.expoConfig?.ios?.buildNumber ?? null)
+  );
+}
+
 let currentState: UpdateState = {
   isEnabled: Updates.isEnabled ?? false,
   isChecking: false,
@@ -37,8 +58,8 @@ let currentState: UpdateState = {
   runtimeVersion: Updates.runtimeVersion ?? null,
   updateId: Updates.updateId ?? null,
   channel: Updates.channel ?? null,
-  nativeAppVersion: Constants.nativeAppVersion ?? null,
-  nativeBuildVersion: Constants.nativeBuildVersion ?? null,
+  nativeAppVersion: resolveNativeAppVersion(),
+  nativeBuildVersion: resolveNativeBuildVersion(),
 };
 
 type StateListener = (state: UpdateState) => void;
@@ -202,8 +223,8 @@ export function resetUpdateStateForTesting(): void {
     runtimeVersion: Updates.runtimeVersion ?? null,
     updateId: Updates.updateId ?? null,
     channel: Updates.channel ?? null,
-    nativeAppVersion: Constants.nativeAppVersion ?? null,
-    nativeBuildVersion: Constants.nativeBuildVersion ?? null,
+    nativeAppVersion: resolveNativeAppVersion(),
+    nativeBuildVersion: resolveNativeBuildVersion(),
   };
   syncNativeUpdateContext();
 }

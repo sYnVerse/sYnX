@@ -85,7 +85,7 @@ import {
 import { CalendarPickerModal } from "../components/CalendarPickerModal";
 import { PhoneCarrierPickerModal } from "../components/PhoneCarrierPickerModal";
 import { ChangelogModal } from "../components/ChangelogModal";
-import { MOBILE_VERSION } from "../constants/changelog";
+import { MOBILE_APP_VERSION, MOBILE_VERSION } from "../constants/changelog";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   typography,
@@ -1377,7 +1377,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           <View style={styles.diagRow}>
             <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Native Binary</Text>
             <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
-              {updateState.nativeAppVersion || "3.6.0"}
+              {updateState.nativeAppVersion || MOBILE_APP_VERSION}
               {updateState.nativeBuildVersion ? ` (${updateState.nativeBuildVersion})` : ""}
             </Text>
           </View>

@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import * as SecureStore from "expo-secure-store";
 import * as Updates from "expo-updates";
+import * as Application from "expo-application";
 import Constants from "expo-constants";
 import { MOBILE_APP_VERSION } from "../shared/mobile-version";
 import {
@@ -80,9 +81,20 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use(
   async (config) => {
     config.headers["X-sYnX-Client-Version"] = MOBILE_APP_VERSION;
-    if (Constants.nativeAppVersion) {
-      config.headers["X-sYnX-Binary-Version"] = `${Constants.nativeAppVersion}${
-        Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ""
+    const binaryVersion =
+      Application.nativeApplicationVersion ??
+      (Constants as any)?.nativeAppVersion ??
+      Constants.expoConfig?.version;
+    const buildVersion =
+      Application.nativeBuildVersion ??
+      (Constants as any)?.nativeBuildVersion ??
+      (Constants.expoConfig?.android?.versionCode
+        ? String(Constants.expoConfig.android.versionCode)
+        : null) ??
+      (Constants.expoConfig?.ios?.buildNumber ?? null);
+    if (binaryVersion) {
+      config.headers["X-sYnX-Binary-Version"] = `${binaryVersion}${
+        buildVersion ? ` (${buildVersion})` : ""
       }`;
     }
     if (Updates.runtimeVersion) {
