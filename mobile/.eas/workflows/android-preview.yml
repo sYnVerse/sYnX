@@ -64,20 +64,20 @@ jobs:
     after: [fingerprint, get_android_build, build_android_preview, publish_android_preview]
     environment: preview
     env:
-      BUILD_ID: ${{ after.build_android_preview.outputs.build_id }}
-      BUILD_STATUS: ${{ after.build_android_preview.status }}
-      APP_VERSION: ${{ after.build_android_preview.outputs.app_version || after.get_android_build.outputs.app_version }}
-      APP_BUILD_VERSION: ${{ after.build_android_preview.outputs.app_build_version || after.get_android_build.outputs.app_build_version }}
-      RUNTIME_VERSION: ${{ after.build_android_preview.outputs.runtime_version }}
-      MATCHED_BUILD_ID: ${{ after.get_android_build.outputs.build_id }}
-      MATCHED_RUNTIME_VERSION: ${{ after.get_android_build.outputs.runtime_version }}
-      FINGERPRINT_HASH: ${{ after.fingerprint.outputs.android_fingerprint_hash }}
-      UPDATE_ID: ${{ after.publish_android_preview.outputs.first_update_group_id }}
-      UPDATES_JSON: ${{ after.publish_android_preview.outputs.updates_json }}
-      UPDATE_STATUS: ${{ after.publish_android_preview.status }}
+      BUILD_ID: ${{ after.build_android_preview.outputs.build_id || '' }}
+      BUILD_STATUS: ${{ after.build_android_preview.status || '' }}
+      APP_VERSION: ${{ after.build_android_preview.outputs.app_version || after.get_android_build.outputs.app_version || '' }}
+      APP_BUILD_VERSION: ${{ after.build_android_preview.outputs.app_build_version || after.get_android_build.outputs.app_build_version || '' }}
+      RUNTIME_VERSION: ${{ after.build_android_preview.outputs.runtime_version || '' }}
+      MATCHED_BUILD_ID: ${{ after.get_android_build.outputs.build_id || '' }}
+      MATCHED_RUNTIME_VERSION: ${{ after.get_android_build.outputs.runtime_version || '' }}
+      FINGERPRINT_HASH: ${{ after.fingerprint.outputs.android_fingerprint_hash || '' }}
+      UPDATE_ID: ${{ after.publish_android_preview.outputs.first_update_group_id || '' }}
+      UPDATES_JSON: ${{ after.publish_android_preview.outputs.updates_json || '' }}
+      UPDATE_STATUS: ${{ after.publish_android_preview.status || '' }}
       UPDATE_CHANNEL: preview
-      COMMIT_SHA: ${{ github.sha }}
-      WORKFLOW_URL: ${{ workflow.url }}
+      COMMIT_SHA: ${{ github.sha || '' }}
+      WORKFLOW_URL: ${{ workflow.url || '' }}
     steps:
       - uses: eas/checkout
       - name: Comment on the merged pull request
