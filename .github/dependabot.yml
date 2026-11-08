@@ -4,24 +4,31 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "chore(web-deps)"
+    labels:
+      - "dependencies"
+      - "web"
     allow:
       - dependency-type: "production"
     groups:
-      production-dependencies:
+      web-dependencies:
         patterns:
           - "*"
-    ignore:
-      # Remix 2 pins turbo-stream 2.x; v3 changes the single-fetch stream format and breaks page data
-      - dependency-name: "turbo-stream"
-        update-types: ["version-update:semver-major"]
+
   - package-ecosystem: "npm"
     directory: "/mobile"
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "chore(mobile-deps)"
+    labels:
+      - "dependencies"
+      - "mobile"
     allow:
       - dependency-type: "production"
     groups:
-      production-dependencies:
+      mobile-dependencies:
         patterns:
           - "*"
     ignore:
