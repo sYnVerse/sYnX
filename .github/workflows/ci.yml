@@ -47,9 +47,13 @@ jobs:
           filters: |
             web:
               - 'app/**'
+              - 'e2e/**'
               - 'shared/**'
               - 'test/**'
               - '!test/mobile-*.ts'
+              - '!test/android-*.ts'
+              - '!test/widget-*.ts'
+              - '!test/post-build-comment.test.ts'
               - '!test/tsconfig.mobile.json'
               - 'migrations/**'
               - 'public/**'
@@ -61,6 +65,7 @@ jobs:
               - 'package-lock.json'
               - '.npmrc'
               - '.nvmrc'
+              - 'playwright.config.ts'
               - 'tsconfig*.json'
               - 'vite.config.ts'
               - 'vitest.config.ts'
@@ -90,6 +95,9 @@ jobs:
               - 'mobile/**'
               - 'shared/**'
               - 'test/mobile-*.ts'
+              - 'test/android-*.ts'
+              - 'test/widget-*.ts'
+              - 'test/post-build-comment.test.ts'
               - 'test/tsconfig.mobile.json'
               - '.github/workflows/ci.yml'
 
