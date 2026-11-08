@@ -1,31 +1,20 @@
 /**
- * EAS Workflow step: after a preview build on main, comment on the pull request
- * that produced the commit with a link to the build page, where the APK can be
- * installed or downloaded. Falls back to a commit comment when the commit has
- * no pull request (a direct push to main).
+ * EAS Workflow step: after an Android preview workflow run on main, comment on
+ * the pull request that produced the commit (or the commit itself on direct push)
+ * with details on whether an Over-The-Air (OTA) update was published or a fresh
+ * Android preview APK was compiled.
  *
  * Needs SYNX_GITHUB_COMMENT_TOKEN as a secret EAS environment variable: a
  * fine-grained GitHub token for this repo with Pull requests and Contents
  * read/write. Skips (without failing the workflow) when it isn't set.
  */
-const REPO = process.env.GITHUB_REPOSITORY || "sYnVerse/sYnX";
+const DEFAULT_REPO = "sYnVerse/sYnX";
 const EXPO_BUILDS = "https://expo.dev/accounts/chris-tran/projects/synx/builds";
 
-const token = process.env.SYNX_GITHUB_COMMENT_TOKEN;
-const {
-  BUILD_ID,
-  BUILD_STATUS,
-  APP_VERSION,
-  APP_BUILD_VERSION,
-  COMMIT_SHA,
-  WORKFLOW_URL,
-  UPDATE_ID,
-  UPDATE_CHANNEL,
-  RUNTIME_VERSION,
-} = process.env;
-
-async function gh(path, init = {}) {
-  const res = await fetch(`https://api.github.com/repos/${REPO}${path}`, {
+async function gh(path, init = {}, env = process.env) {
+  const repo = env.GITHUB_REPOSITORY || DEFAULT_REPO;
+  const token = env.SYNX_GITHUB_COMMENT_TOKEN;
+  const res = await fetch(`https://api.github.com/repos/${repo}${path}`, {
     ...init,
     headers: {
       Accept: "application/vnd.github+json",
@@ -39,31 +28,76 @@ async function gh(path, init = {}) {
   return res.json();
 }
 
-function body() {
+function body(env = process.env) {
+  const expoBuilds = EXPO_BUILDS;
+  const {
+    BUILD_ID,
+    BUILD_STATUS,
+    APP_VERSION,
+    APP_BUILD_VERSION,
+    COMMIT_SHA,
+    WORKFLOW_URL,
+    UPDATE_ID,
+    UPDATE_STATUS,
+    UPDATE_CHANNEL,
+    RUNTIME_VERSION,
+    FINGERPRINT_HASH,
+    MATCHED_RUNTIME_VERSION,
+    MATCHED_BUILD_ID,
+  } = env;
+
+  const runtimeVersion = RUNTIME_VERSION || MATCHED_RUNTIME_VERSION || FINGERPRINT_HASH;
+  const commitShort = (COMMIT_SHA || "").slice(0, 7);
+
+  // 1. Successful OTA update published
   if (UPDATE_ID) {
     const lines = [
       `### 🚀 Over-The-Air (OTA) preview update published`,
       "",
       `- **Channel**: \`${UPDATE_CHANNEL || "preview"}\``,
-      RUNTIME_VERSION ? `- **Runtime Version**: \`${RUNTIME_VERSION}\`` : null,
-      `- **Update ID**: \`${UPDATE_ID}\``,
+      runtimeVersion ? `- **Runtime Version**: \`${runtimeVersion}\`` : null,
+      `- **Update Group ID**: \`${UPDATE_ID}\``,
+      MATCHED_BUILD_ID ? `- **Base Preview Build**: [${MATCHED_BUILD_ID.slice(0, 8)}](${expoBuilds}/${MATCHED_BUILD_ID})` : null,
       "",
-      "Installed preview devices will download this update silently in the background and activate it on next cold launch.",
+      "Devices running the preview build will automatically receive this update on next app launch, or you can check immediately via **Settings > About & Release Notes > Check for updates**.",
     ];
-    lines.push("", `Commit \`${(COMMIT_SHA || "").slice(0, 7)}\``);
+    if (commitShort) {
+      lines.push("", `Commit \`${commitShort}\``);
+    }
     return lines.filter((l) => l !== null).join("\n");
   }
 
+  // 2. Failed OTA update
+  if (UPDATE_STATUS === "failure") {
+    const lines = [
+      `### ❌ Over-The-Air (OTA) preview update failed`,
+      "",
+      WORKFLOW_URL ? `[Workflow run](${WORKFLOW_URL})` : null,
+      runtimeVersion ? `- **Runtime Version**: \`${runtimeVersion}\`` : null,
+    ];
+    if (commitShort) {
+      lines.push("", `Commit \`${commitShort}\``);
+    }
+    return lines.filter((l) => l !== null).join("\n");
+  }
+
+  // 3. Android APK build succeeded or failed
   const ok = BUILD_STATUS === "success" && BUILD_ID;
-  const buildUrl = BUILD_ID ? `${EXPO_BUILDS}/${BUILD_ID}` : null;
+  const buildUrl = BUILD_ID ? `${expoBuilds}/${BUILD_ID}` : null;
+  const qrUrl = buildUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(buildUrl)}`
+    : null;
   const version = APP_VERSION ? `v${APP_VERSION}${APP_BUILD_VERSION ? ` (${APP_BUILD_VERSION})` : ""}` : "";
+
   const lines = ok
     ? [
         `### 📱 Android preview build ready ${version}`.trim(),
         "",
-        `**[Open the build to install or download the APK](${buildUrl})**`,
+        `**[Open build page to install or download the APK](${buildUrl})**`,
         "",
-        "Open the link on your phone and tap Install, or scan the QR code on that page.",
+        `![Scan to install APK](${qrUrl})`,
+        "",
+        "Scan the QR code above or open the link on your Android device to install the APK.",
       ]
     : [
         `### ❌ Android preview build ${BUILD_STATUS || "failed"}`,
@@ -71,34 +105,44 @@ function body() {
         buildUrl ? `[Build logs](${buildUrl})` : null,
         WORKFLOW_URL ? `[Workflow run](${WORKFLOW_URL})` : null,
       ];
-  if (RUNTIME_VERSION) {
-    lines.push("", `- Native Runtime Fingerprint: \`${RUNTIME_VERSION}\``);
+
+  if (runtimeVersion) {
+    lines.push("", `- Native Runtime Fingerprint: \`${runtimeVersion}\``);
   }
-  lines.push("", `Commit \`${(COMMIT_SHA || "").slice(0, 7)}\``);
+  if (commitShort) {
+    lines.push("", `Commit \`${commitShort}\``);
+  }
   return lines.filter((l) => l !== null).join("\n");
 }
 
-async function main() {
+async function main(env = process.env) {
+  const token = env.SYNX_GITHUB_COMMENT_TOKEN;
+  const commitSha = env.COMMIT_SHA;
   if (!token) {
     console.warn("SYNX_GITHUB_COMMENT_TOKEN not set; skipping GitHub comment.");
     return;
   }
-  if (!COMMIT_SHA) {
+  if (!commitSha) {
     console.warn("No commit SHA (manual run?); skipping GitHub comment.");
     return;
   }
-  const pulls = await gh(`/commits/${COMMIT_SHA}/pulls`);
+  const pulls = await gh(`/commits/${commitSha}/pulls`, {}, env);
   const pr = pulls.find((p) => p.merged_at) || pulls[0];
+  const commentBody = body(env);
   if (pr) {
-    const c = await gh(`/issues/${pr.number}/comments`, { method: "POST", body: JSON.stringify({ body: body() }) });
+    const c = await gh(`/issues/${pr.number}/comments`, { method: "POST", body: JSON.stringify({ body: commentBody }) }, env);
     console.log(`Commented on pull request: ${c.html_url}`);
   } else {
-    const c = await gh(`/commits/${COMMIT_SHA}/comments`, { method: "POST", body: JSON.stringify({ body: body() }) });
+    const c = await gh(`/commits/${commitSha}/comments`, { method: "POST", body: JSON.stringify({ body: commentBody }) }, env);
     console.log(`Commented on commit: ${c.html_url}`);
   }
 }
 
-main().catch((err) => {
-  // A failed comment shouldn't mark the build workflow as failed.
-  console.error(err);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    // A failed comment shouldn't mark the build workflow as failed.
+    console.error(err);
+  });
+}
+
+module.exports = { body, main, gh };

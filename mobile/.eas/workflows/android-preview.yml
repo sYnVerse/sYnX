@@ -1,11 +1,10 @@
 name: Android preview build
 
-# Builds an installable Android preview APK whenever a commit that touches the
-# mobile app lands on main, then comments on the merged pull request with a
-# link to the build page (Install button and QR code). Pull requests never
-# trigger a build, to save EAS build credits.
-# Root shared/ is included because the build's pre-install hook copies it into
-# the app (scripts/sync-shared.js).
+# Evaluates the native runtime fingerprint on push to main (mobile/** or shared/**).
+# If a matching Android preview APK exists for that fingerprint, publishes an
+# Over-The-Air (OTA) EAS Update to the preview channel (consuming no build credits).
+# If native dependencies or configurations changed, builds a new preview APK.
+# Comments on the merged pull request with either the update details or APK link & QR code.
 on:
   push:
     branches: ['main']
@@ -19,24 +18,63 @@ concurrency:
   group: ${{ workflow.filename }}-${{ github.ref }}
 
 jobs:
+  fingerprint:
+    name: Fingerprint native runtime
+    type: fingerprint
+    environment: preview
+    hooks:
+      after_checkout:
+        - run: node scripts/sync-shared.js && node scripts/sync-version.js && node scripts/decode-google-services.js
+
+  get_android_build:
+    name: Check for matching Android build
+    needs: [fingerprint]
+    type: get-build
+    params:
+      platform: android
+      profile: preview
+      fingerprint_hash: ${{ needs.fingerprint.outputs.android_fingerprint_hash }}
+      wait_for_in_progress: true
+
   build_android_preview:
     name: Build Android preview APK
+    needs: [get_android_build]
+    if: ${{ !needs.get_android_build.outputs.build_id }}
     type: build
     environment: preview
     params:
       platform: android
       profile: preview
 
+  publish_android_preview:
+    name: Publish OTA preview update
+    needs: [get_android_build]
+    if: ${{ needs.get_android_build.outputs.build_id }}
+    type: update
+    environment: preview
+    params:
+      platform: android
+      channel: preview
+    hooks:
+      after_checkout:
+        - run: node scripts/sync-shared.js && node scripts/sync-version.js
+
   comment_on_github:
-    name: Post build link to GitHub
-    after: [build_android_preview]
+    name: Post build or update link to GitHub
+    after: [fingerprint, get_android_build, build_android_preview, publish_android_preview]
     environment: preview
     env:
       BUILD_ID: ${{ after.build_android_preview.outputs.build_id }}
       BUILD_STATUS: ${{ after.build_android_preview.status }}
-      APP_VERSION: ${{ after.build_android_preview.outputs.app_version }}
-      APP_BUILD_VERSION: ${{ after.build_android_preview.outputs.app_build_version }}
+      APP_VERSION: ${{ after.build_android_preview.outputs.app_version || after.get_android_build.outputs.app_version }}
+      APP_BUILD_VERSION: ${{ after.build_android_preview.outputs.app_build_version || after.get_android_build.outputs.app_build_version }}
       RUNTIME_VERSION: ${{ after.build_android_preview.outputs.runtime_version }}
+      MATCHED_BUILD_ID: ${{ after.get_android_build.outputs.build_id }}
+      MATCHED_RUNTIME_VERSION: ${{ after.get_android_build.outputs.runtime_version }}
+      FINGERPRINT_HASH: ${{ after.fingerprint.outputs.android_fingerprint_hash }}
+      UPDATE_ID: ${{ after.publish_android_preview.outputs.first_update_group_id }}
+      UPDATE_STATUS: ${{ after.publish_android_preview.status }}
+      UPDATE_CHANNEL: preview
       COMMIT_SHA: ${{ github.sha }}
       WORKFLOW_URL: ${{ workflow.url }}
     steps:
