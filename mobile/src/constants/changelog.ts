@@ -1,7 +1,7 @@
 import type { ReleaseNote } from "../shared/changelog";
-import { MOBILE_VERSION } from "./version";
+import { MOBILE_APP_VERSION, MOBILE_VERSION } from "./version";
 
-export { MOBILE_VERSION };
+export { MOBILE_APP_VERSION, MOBILE_VERSION };
 
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
