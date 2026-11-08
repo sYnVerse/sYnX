@@ -6,6 +6,29 @@ export { MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-08",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Redesigned task cards with a colored left priority stripe, card body tap to edit, a quick '+' subtask button, and deletion moved inside task details.",
+      },
+      {
+        type: "NEW",
+        text: "Dedicated subtask editing modal with pencil action, multiline text wrapping for long titles, and compact read-only duration badges.",
+      },
+      {
+        type: "IMPR",
+        text: "New subtask durations now default to blank/unset instead of pre-filling 5 minutes, and parent totals only count tasks with explicit durations.",
+      },
+      {
+        type: "IMPR",
+        text: "Cleaned up the Tasks screen header with icon-only search, list options, and switch buttons, while hiding default 'Yours' and 'Private' labels.",
+      },
+    ],
+  },
+  {
+    version: "v3.6.0",
     date: "2026-11-07",
     title: "What's new?",
     changes: [

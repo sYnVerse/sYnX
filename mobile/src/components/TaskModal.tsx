@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import { DateTimePicker } from "@expo/ui/community/datetime-picker";
-import { CalendarClock } from "lucide-react-native";
+import { CalendarClock, Trash2 } from "lucide-react-native";
 import {
   PriorityLevel,
   RecurrencePattern,
@@ -45,6 +45,7 @@ interface TaskModalProps {
     recurrence: RecurrencePattern;
     durationMinutes?: number | null;
   }) => void | Promise<void>;
+  onDelete?: () => void | Promise<void>;
   initialText?: string;
   initialPriority?: PriorityLevel;
   initialReminderAt?: number;
@@ -57,6 +58,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   visible,
   onClose,
   onSave,
+  onDelete,
   initialText = "",
   initialPriority = "none",
   initialReminderAt,
@@ -508,6 +510,26 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               )}
             </TouchableOpacity>
           </View>
+
+          {isEditing && onDelete ? (
+            <TouchableOpacity
+              style={[
+                styles.deleteButton,
+                { borderColor: theme.danger + "44", backgroundColor: theme.danger + "11" },
+              ]}
+              onPress={async () => {
+                triggerHaptic();
+                onClose();
+                await onDelete();
+              }}
+              disabled={saving}
+              accessibilityRole="button"
+              accessibilityLabel="Delete task"
+            >
+              <Trash2 size={16} color={theme.danger} />
+              <Text style={[styles.deleteButtonText, { color: theme.danger }]}>Delete Task</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -612,5 +634,20 @@ const styles = StyleSheet.create({
   saveText: {
     color: "#ffffff",
     fontWeight: "700",
+  },
+  deleteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: MIN_TOUCH_TARGET,
+  },
+  deleteButtonText: {
+    fontSize: typography.sm,
+    fontWeight: "600",
   },
 });
