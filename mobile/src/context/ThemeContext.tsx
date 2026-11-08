@@ -30,24 +30,17 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const hookScheme = useColorScheme();
-  const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(
-    () => hookScheme ?? Appearance.getColorScheme()
+  const [appearanceScheme, setAppearanceScheme] = useState<ColorSchemeName | null | undefined>(
+    () => Appearance.getColorScheme()
   );
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [hapticsEnabled, setHapticsEnabledState] = useState<boolean>(true);
-
-  // Sync state whenever the React Native hook produces a new non-null scheme
-  useEffect(() => {
-    if (hookScheme) {
-      setSystemScheme(hookScheme);
-    }
-  }, [hookScheme]);
 
   // Re-check system appearance on foreground resume (#176) and appearance broadcasts
   useEffect(() => {
     const appearanceSub = Appearance.addChangeListener(({ colorScheme }) => {
       if (colorScheme) {
-        setSystemScheme(colorScheme);
+        setAppearanceScheme(colorScheme);
       }
     });
 
@@ -56,13 +49,13 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       if (nextState === "active") {
         const current = Appearance.getColorScheme();
         if (current) {
-          setSystemScheme(current);
+          setAppearanceScheme(current);
         }
         // Delayed check to catch any asynchronous Android configuration updates after onResume
         timeoutId = setTimeout(() => {
           const delayed = Appearance.getColorScheme();
           if (delayed) {
-            setSystemScheme(delayed);
+            setAppearanceScheme(delayed);
           }
         }, 150);
       }
@@ -111,8 +104,8 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const resolvedMode = useMemo(
-    () => resolveThemeMode(themeMode, systemScheme ?? Appearance.getColorScheme()),
-    [themeMode, systemScheme]
+    () => resolveThemeMode(themeMode, appearanceScheme ?? hookScheme ?? Appearance.getColorScheme()),
+    [themeMode, appearanceScheme, hookScheme]
   );
 
   const theme = resolvedMode === "light" ? lightTheme : darkTheme;

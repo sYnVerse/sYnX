@@ -10,7 +10,6 @@ import {
   ScrollView,
   Platform,
   Alert,
-  Share,
   RefreshControl,
   KeyboardAvoidingView,
   ActivityIndicator,
@@ -23,10 +22,6 @@ import {
   Trash2,
   Pencil,
   Share2,
-  Lock,
-  Eye,
-  Users,
-  Copy,
   Pin,
   X,
   History,
@@ -44,22 +39,16 @@ import {
   type ListsViewMode,
 } from "../services/listViewPreferences";
 import { syncPinnedList } from "../services/widgetSync";
-import { setListTaskSortOverride } from "../services/taskSortPreferences";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { apiClient } from "../api/client";
 import {
   TodoList,
   TodoItem,
-  ShareMode,
   describeListActivityAction,
-  getSharedNameNotice,
-  isMakingListPublic,
   resolveTaskSortMode,
-  TASK_SORT_OPTIONS,
   PRESET_CATEGORIES,
   type CategoryOption,
   type ListActivityEntry,
-  type TaskSortOverride,
 } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
@@ -76,13 +65,11 @@ import {
 } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import {
-  stripLeadingCategoryEmoji,
   formatListRowMeta,
   buildListPreviewTasks,
 } from "../utils/format";
 import {
   buildCategorizedListName,
-  shouldWarnBeforeSharingPrivateList,
 } from "../shared/mobile-ux";
 
 interface ListsScreenProps {
@@ -326,6 +313,23 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   const openEditModal = (list: TodoList) => {
     triggerImpactHaptic();
     setEditingList(list);
+  };
+
+  const handleDeleteList = (list: TodoList) => {
+    triggerImpactHaptic();
+    const isListOwner = list.isOwner !== false;
+    const title = isListOwner ? "Delete List" : "Request list deletion?";
+    const message = isListOwner
+      ? `Are you sure you want to delete "${list.name}" and all its tasks?`
+      : `Ask the owner to delete "${list.name}"? They'll need to approve before the list is removed.`;
+    Alert.alert(title, message, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: isListOwner ? "Delete" : "Send request",
+        style: "destructive",
+        onPress: () => deleteListMutation.mutate(list.id),
+      },
+    ]);
   };
 
   const openActivity = (list: TodoList) => {

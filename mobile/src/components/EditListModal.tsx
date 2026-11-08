@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   Modal,
   View,
@@ -38,33 +38,32 @@ export interface EditListModalProps {
   onSuccess?: (updatedList: TodoList) => void;
 }
 
-export const EditListModal: React.FC<EditListModalProps> = ({
-  visible,
-  list,
-  onClose,
-  onSuccess,
-}) => {
+interface EditListContentProps {
+  list: TodoList;
+  onClose: () => void;
+  onSuccess?: (updatedList: TodoList) => void;
+}
+
+const EditListContent: React.FC<EditListContentProps> = ({ list, onClose, onSuccess }) => {
   const { theme, hapticsEnabled } = useTheme();
   const { showError, showSuccess } = useToast();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const taskSortPrefs = useTaskSortPreferences();
 
-  const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState<CategoryOption | null>(null);
-  const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
-  const [editSortOverride, setEditSortOverride] = useState<TaskSortOverride>("app_default");
+  const matchingCat = list.category ? PRESET_CATEGORIES.find((c) => c.name === list.category) : null;
+  const initialCategory = matchingCat || (list.category ? PRESET_CATEGORIES.find((c) => c.name === "Custom") : null);
 
-  useEffect(() => {
-    if (visible && list) {
-      const matchingCat = list.category ? PRESET_CATEGORIES.find((c) => c.name === list.category) : null;
-      const cat = matchingCat || (list.category ? PRESET_CATEGORIES.find((c) => c.name === "Custom") : null);
-      setEditCategory(cat ?? null);
-      setEditCustomCategoryText(matchingCat || !list.category ? "" : list.category);
-      setEditName(stripLeadingCategoryEmoji(list.name, matchingCat?.emoji || ""));
-      setEditSortOverride(taskSortPrefs.overrides[list.id] ?? "app_default");
-    }
-  }, [visible, list, taskSortPrefs.overrides]);
+  const [editName, setEditName] = useState(() =>
+    stripLeadingCategoryEmoji(list.name, matchingCat?.emoji || "")
+  );
+  const [editCategory, setEditCategory] = useState<CategoryOption | null>(initialCategory ?? null);
+  const [editCustomCategoryText, setEditCustomCategoryText] = useState(
+    matchingCat || !list.category ? "" : list.category
+  );
+  const [editSortOverride, setEditSortOverride] = useState<TaskSortOverride>(
+    () => taskSortPrefs.overrides[list.id] ?? "app_default"
+  );
 
   const appSortLabel =
     TASK_SORT_OPTIONS.find((o) => o.value === taskSortPrefs.appDefault)?.label ?? "Reminder Time";
@@ -98,9 +97,7 @@ export const EditListModal: React.FC<EditListModalProps> = ({
       queryClient.invalidateQueries({ queryKey: ["lists"] });
       queryClient.invalidateQueries({ queryKey: ["list_meta", variables.id] });
       showSuccess("List updated");
-      if (list) {
-        onSuccess?.(updatedList ?? { ...list, name: variables.name, category: variables.category ?? null });
-      }
+      onSuccess?.(updatedList ?? { ...list, name: variables.name, category: variables.category ?? null });
       onClose();
     },
     onError: (e) => {
@@ -110,7 +107,7 @@ export const EditListModal: React.FC<EditListModalProps> = ({
   });
 
   const handleUpdateList = () => {
-    if (!list || !editName.trim() || updateListMutation.isPending) return;
+    if (!editName.trim() || updateListMutation.isPending) return;
     const categoryName = editCategory
       ? editCategory.name === "Custom"
         ? editCustomCategoryText.trim() || "Custom"
@@ -128,178 +125,194 @@ export const EditListModal: React.FC<EditListModalProps> = ({
     });
   };
 
-  if (!visible || !list) return null;
-
   return (
-    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.sheetOverlay}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+    <KeyboardAvoidingView
+      style={styles.sheetOverlay}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <TouchableOpacity style={styles.sheetDismiss} activeOpacity={1} onPress={onClose} />
+      <View
+        style={[
+          styles.sheetContent,
+          {
+            backgroundColor: theme.surface,
+            borderColor: theme.cardBorder,
+            paddingBottom: getSheetBottomPadding(insets.bottom, spacing.lg),
+          },
+        ]}
       >
-        <TouchableOpacity style={styles.sheetDismiss} activeOpacity={1} onPress={onClose} />
-        <View
-          style={[
-            styles.sheetContent,
-            {
-              backgroundColor: theme.surface,
-              borderColor: theme.cardBorder,
-              paddingBottom: getSheetBottomPadding(insets.bottom, spacing.lg),
-            },
-          ]}
-        >
-          <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Edit List Details</Text>
+        <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Edit List Details</Text>
 
-          <Text style={[styles.label, { color: theme.textMuted }]}>Category Tag</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
-            <TouchableOpacity
-              accessibilityRole="radio"
-              accessibilityState={{ selected: editCategory === null }}
+        <Text style={[styles.label, { color: theme.textMuted }]}>Category Tag</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+          <TouchableOpacity
+            accessibilityRole="radio"
+            accessibilityState={{ selected: editCategory === null }}
+            style={[
+              styles.catBtn,
+              { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+              editCategory === null && {
+                backgroundColor: theme.accent + "22",
+                borderColor: theme.accent,
+              },
+            ]}
+            onPress={() => {
+              triggerImpactHaptic();
+              setEditCategory(null);
+            }}
+          >
+            <Text
               style={[
-                styles.catBtn,
-                { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                editCategory === null && {
-                  backgroundColor: theme.accentLight,
-                  borderColor: theme.accent,
-                  borderWidth: 2,
-                },
+                styles.catName,
+                { color: editCategory === null ? theme.accent : theme.textMuted },
               ]}
-              onPress={() => setEditCategory(null)}
             >
-              <Text style={styles.catEmoji}>🚫</Text>
-              <Text
-                style={[
-                  styles.catName,
-                  { color: theme.textPrimary },
-                  editCategory === null && { color: theme.accent, fontWeight: "700" },
-                ]}
-              >
-                None
-              </Text>
-            </TouchableOpacity>
-            {PRESET_CATEGORIES.map((cat) => (
+              None
+            </Text>
+          </TouchableOpacity>
+          {PRESET_CATEGORIES.map((cat) => {
+            const isSel = editCategory?.name === cat.name;
+            return (
               <TouchableOpacity
                 key={cat.name}
                 accessibilityRole="radio"
-                accessibilityState={{ selected: editCategory?.name === cat.name }}
+                accessibilityState={{ selected: isSel }}
                 style={[
                   styles.catBtn,
                   { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                  editCategory?.name === cat.name && {
-                    backgroundColor: theme.accentLight,
+                  isSel && {
+                    backgroundColor: theme.accent + "22",
                     borderColor: theme.accent,
-                    borderWidth: 2,
                   },
                 ]}
-                onPress={() =>
-                  setEditCategory((prev) => (prev?.name === cat.name ? null : cat))
-                }
+                onPress={() => {
+                  triggerImpactHaptic();
+                  setEditCategory(cat);
+                }}
               >
-                <Text style={styles.catEmoji}>{cat.emoji}</Text>
+                {cat.emoji ? <Text style={styles.catEmoji}>{cat.emoji}</Text> : null}
                 <Text
                   style={[
                     styles.catName,
-                    { color: theme.textPrimary },
-                    editCategory?.name === cat.name && { color: theme.accent, fontWeight: "700" },
+                    { color: isSel ? theme.accent : theme.textSecondary },
                   ]}
                 >
                   {cat.name}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            );
+          })}
+        </ScrollView>
 
-          {editCategory?.name === "Custom" && (
-            <View style={{ marginTop: 4 }}>
-              <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
-              <TextInput
-                style={[
-                  styles.input,
-                  { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                ]}
-                placeholder="e.g. Project X, Home Chores..."
-                placeholderTextColor={theme.inputPlaceholder}
-                value={editCustomCategoryText}
-                onChangeText={setEditCustomCategoryText}
-              />
-            </View>
-          )}
-
-          <Text style={[styles.label, { color: theme.textMuted }]}>List Title</Text>
+        {editCategory?.name === "Custom" && (
           <TextInput
             style={[
               styles.input,
-              { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+              {
+                backgroundColor: theme.inputBg,
+                borderColor: theme.inputBorder,
+                color: theme.textPrimary,
+              },
             ]}
-            value={editName}
-            onChangeText={setEditName}
-            autoFocus
+            placeholder="Category name (e.g., Finance, Gym)"
+            placeholderTextColor={theme.textMuted}
+            value={editCustomCategoryText}
+            onChangeText={setEditCustomCategoryText}
+            maxLength={30}
+            returnKeyType="next"
           />
+        )}
 
-          <Text style={[styles.label, { color: theme.textMuted }]}>Task Order</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.catRow}
-            accessibilityRole="radiogroup"
-            accessibilityLabel="Task order for this list"
-          >
-            {listSortOptions.map((opt) => {
-              const selected = editSortOverride === opt.value;
-              return (
-                <TouchableOpacity
-                  key={opt.value}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={`Task order: ${opt.label}`}
+        <Text style={[styles.label, { color: theme.textMuted }]}>List Name</Text>
+        <TextInput
+          style={[
+            styles.input,
+            {
+              backgroundColor: theme.inputBg,
+              borderColor: theme.inputBorder,
+              color: theme.textPrimary,
+            },
+          ]}
+          value={editName}
+          onChangeText={setEditName}
+          placeholder="List Name"
+          placeholderTextColor={theme.textMuted}
+          autoFocus
+          onSubmitEditing={handleUpdateList}
+          returnKeyType="done"
+        />
+
+        <Text style={[styles.label, { color: theme.textMuted }]}>Sort Tasks By (This List)</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
+          {listSortOptions.map((opt) => {
+            const isSel = editSortOverride === opt.value;
+            return (
+              <TouchableOpacity
+                key={opt.value}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: isSel }}
+                style={[
+                  styles.catBtn,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  isSel && {
+                    backgroundColor: theme.accent + "22",
+                    borderColor: theme.accent,
+                  },
+                ]}
+                onPress={() => {
+                  triggerImpactHaptic();
+                  setEditSortOverride(opt.value);
+                }}
+              >
+                <Text
                   style={[
-                    styles.catBtn,
-                    { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                    selected && {
-                      backgroundColor: theme.accentLight,
-                      borderColor: theme.accent,
-                      borderWidth: 2,
-                    },
+                    styles.catName,
+                    { color: isSel ? theme.accent : theme.textSecondary },
                   ]}
-                  onPress={() => setEditSortOverride(opt.value)}
                 >
-                  <Text
-                    style={[
-                      styles.catName,
-                      { color: theme.textPrimary },
-                      selected && { color: theme.accent, fontWeight: "700" },
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
 
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.createBtn,
-                {
-                  backgroundColor: theme.accent,
-                  opacity: !editName.trim() || updateListMutation.isPending ? 0.5 : 1,
-                },
-              ]}
-              onPress={handleUpdateList}
-              disabled={!editName.trim() || updateListMutation.isPending}
-            >
-              {updateListMutation.isPending ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <Text style={styles.createBtnText}>Save Changes</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+        <View style={styles.modalActions}>
+          <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
+            <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.createBtn,
+              { backgroundColor: theme.accent },
+              (!editName.trim() || updateListMutation.isPending) && { opacity: 0.5 },
+            ]}
+            onPress={handleUpdateList}
+            disabled={!editName.trim() || updateListMutation.isPending}
+          >
+            {updateListMutation.isPending ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <Text style={styles.createBtnText}>Save</Text>
+            )}
+          </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </View>
+    </KeyboardAvoidingView>
+  );
+};
+
+export const EditListModal: React.FC<EditListModalProps> = ({
+  visible,
+  list,
+  onClose,
+  onSuccess,
+}) => {
+  if (!visible || !list) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
+      <EditListContent key={list.id} list={list} onClose={onClose} onSuccess={onSuccess} />
     </Modal>
   );
 };
