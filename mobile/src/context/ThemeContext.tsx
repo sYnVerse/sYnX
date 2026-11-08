@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from "react";
-import { Appearance, ColorSchemeName, useColorScheme } from "react-native";
+import { AppState, Appearance, ColorSchemeName, useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import { ThemeMode, ThemeColors, darkTheme, lightTheme } from "../theme/theme";
+import { resolveThemeMode } from "../shared";
 
 interface ThemeContextType {
   /** Stored preference: dark | light | system */
@@ -27,17 +28,52 @@ const ThemeContext = createContext<ThemeContextType>({
   setHapticsEnabled: () => {},
 });
 
-function resolveMode(preference: ThemeMode, system: ColorSchemeName | null | undefined): "dark" | "light" {
-  if (preference === "system") {
-    return system === "light" ? "light" : "dark";
-  }
-  return preference;
-}
-
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const systemScheme = useColorScheme();
+  const hookScheme = useColorScheme();
+  const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(
+    () => hookScheme ?? Appearance.getColorScheme()
+  );
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [hapticsEnabled, setHapticsEnabledState] = useState<boolean>(true);
+
+  // Sync state whenever the React Native hook produces a new non-null scheme
+  useEffect(() => {
+    if (hookScheme) {
+      setSystemScheme(hookScheme);
+    }
+  }, [hookScheme]);
+
+  // Re-check system appearance on foreground resume (#176) and appearance broadcasts
+  useEffect(() => {
+    const appearanceSub = Appearance.addChangeListener(({ colorScheme }) => {
+      if (colorScheme) {
+        setSystemScheme(colorScheme);
+      }
+    });
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const appStateSub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        const current = Appearance.getColorScheme();
+        if (current) {
+          setSystemScheme(current);
+        }
+        // Delayed check to catch any asynchronous Android configuration updates after onResume
+        timeoutId = setTimeout(() => {
+          const delayed = Appearance.getColorScheme();
+          if (delayed) {
+            setSystemScheme(delayed);
+          }
+        }, 150);
+      }
+    });
+
+    return () => {
+      appearanceSub.remove();
+      appStateSub.remove();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -75,7 +111,7 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const resolvedMode = useMemo(
-    () => resolveMode(themeMode, systemScheme ?? Appearance.getColorScheme()),
+    () => resolveThemeMode(themeMode, systemScheme ?? Appearance.getColorScheme()),
     [themeMode, systemScheme]
   );
 

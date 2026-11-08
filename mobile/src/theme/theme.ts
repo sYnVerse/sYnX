@@ -4,6 +4,7 @@ export interface ThemeColors {
   bg: string;
   surface: string;
   cardBg: string;
+  cardActiveBg: string;
   cardBorder: string;
   textPrimary: string;
   textSecondary: string;
@@ -52,7 +53,8 @@ export const MIN_TOUCH_TARGET = 44;
 export const darkTheme: ThemeColors = {
   bg: "#0F172A",
   surface: "#1E293B",
-  cardBg: "rgba(30, 41, 59, 0.85)",
+  cardBg: "#1E293B",
+  cardActiveBg: "#1E2540",
   cardBorder: "rgba(255, 255, 255, 0.08)",
   textPrimary: "#F8FAFC",
   textSecondary: "#CBD5E1",
@@ -77,6 +79,7 @@ export const lightTheme: ThemeColors = {
   bg: "#FAF7F2",
   surface: "#FFFFFF",
   cardBg: "#FFFFFF",
+  cardActiveBg: "#F5F3FF",
   cardBorder: "rgba(0, 0, 0, 0.06)",
   textPrimary: "#1E293B",
   textSecondary: "#475569",

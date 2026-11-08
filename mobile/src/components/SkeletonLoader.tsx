@@ -3,8 +3,8 @@ import { View, StyleSheet } from "react-native";
 import { useTheme } from "../context/ThemeContext";
 
 export const TaskCardSkeleton: React.FC = () => {
-  const { theme, themeMode } = useTheme();
-  const baseColor = themeMode === "light" ? "#E2E8F0" : "rgba(255, 255, 255, 0.05)";
+  const { theme, resolvedMode } = useTheme();
+  const baseColor = resolvedMode === "light" ? "#E2E8F0" : "rgba(255, 255, 255, 0.05)";
 
   return (
     <View style={[styles.card, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>
@@ -18,8 +18,8 @@ export const TaskCardSkeleton: React.FC = () => {
 };
 
 export const ListCardSkeleton: React.FC = () => {
-  const { theme, themeMode } = useTheme();
-  const baseColor = themeMode === "light" ? "rgba(0, 0, 0, 0.06)" : "rgba(255, 255, 255, 0.06)";
+  const { theme, resolvedMode } = useTheme();
+  const baseColor = resolvedMode === "light" ? "rgba(0, 0, 0, 0.06)" : "rgba(255, 255, 255, 0.06)";
 
   return (
     <View style={[styles.listCard, { backgroundColor: theme.cardBg, borderColor: theme.cardBorder }]}>

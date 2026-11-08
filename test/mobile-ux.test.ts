@@ -7,6 +7,11 @@ import TasksScreenSource from "../mobile/src/screens/TasksScreen.tsx?raw";
 import TaskRowSource from "../mobile/src/components/TaskRow.tsx?raw";
 import SubtaskEditModalSource from "../mobile/src/components/SubtaskEditModal.tsx?raw";
 import ListOptionsModalSource from "../mobile/src/components/ListOptionsModal.tsx?raw";
+import EditListModalSource from "../mobile/src/components/EditListModal.tsx?raw";
+import ShareListModalSource from "../mobile/src/components/ShareListModal.tsx?raw";
+import ListRowSource from "../mobile/src/components/ListRow.tsx?raw";
+import ThemeContextSource from "../mobile/src/context/ThemeContext.tsx?raw";
+import SkeletonLoaderSource from "../mobile/src/components/SkeletonLoader.tsx?raw";
 import CalendarAccessSoftAskSource from "../mobile/src/components/CalendarAccessSoftAsk.tsx?raw";
 import CalendarPickerModalSource from "../mobile/src/components/CalendarPickerModal.tsx?raw";
 import ChangelogModalSource from "../mobile/src/components/ChangelogModal.tsx?raw";
@@ -34,6 +39,7 @@ import {
   getTabScreenBottomPadding,
   derivePushSettingsState,
   deriveCalendarSettingsState,
+  resolveThemeMode,
 } from "../shared/mobile-ux";
 import { MOBILE_APP_VERSION, MOBILE_VERSION } from "../shared/mobile-version";
 
@@ -190,7 +196,7 @@ describe("mobile version single source of truth", () => {
     expect(MOBILE_APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
     expect(MOBILE_VERSION).toBe(`v${MOBILE_APP_VERSION}`);
     // Current release for this PR
-    expect(MOBILE_APP_VERSION).toBe("3.7.0");
+    expect(MOBILE_APP_VERSION).toBe("3.7.1");
   });
 });
 
@@ -671,6 +677,67 @@ describe("Task and Subtask Redesign (#158, #156, #157)", () => {
       expect(ListOptionsModalSource).toContain("Edit list details");
       expect(ListOptionsModalSource).toContain("Delete list");
     });
+  });
+});
+
+describe("Theme Mode Resolution and Background Refresh (#176)", () => {
+  it("resolves mode according to user preference and system scheme", () => {
+    expect(resolveThemeMode("light", "dark")).toBe("light");
+    expect(resolveThemeMode("dark", "light")).toBe("dark");
+    expect(resolveThemeMode("system", "light")).toBe("light");
+    expect(resolveThemeMode("system", "dark")).toBe("dark");
+    expect(resolveThemeMode("system", null)).toBe("dark");
+    expect(resolveThemeMode("system", undefined)).toBe("dark");
+  });
+
+  it("ThemeContext subscribes to Appearance and AppState foreground transitions", () => {
+    expect(ThemeContextSource).toContain("Appearance.addChangeListener");
+    expect(ThemeContextSource).toContain('AppState.addEventListener("change"');
+    expect(ThemeContextSource).toContain('nextState === "active"');
+    expect(ThemeContextSource).toContain("resolveThemeMode");
+  });
+
+  it("SkeletonLoader checks resolvedMode instead of themeMode", () => {
+    expect(SkeletonLoaderSource).toContain("resolvedMode === \"light\"");
+    expect(SkeletonLoaderSource).not.toContain("themeMode === \"light\"");
+  });
+});
+
+describe("List Card Single Border and Solid Surface (#180)", () => {
+  it("ListRow renders clean single border with solid card surface and no elevation", () => {
+    expect(ListRowSource).toContain("backgroundColor: isActive ? theme.cardActiveBg : theme.cardBg");
+    expect(ListRowSource).not.toContain("elevation");
+    expect(ListRowSource).not.toContain("shadowOffset");
+    expect(ListRowSource).not.toContain("shadowOpacity");
+    expect(ListRowSource).not.toContain("${theme.accent}0D");
+  });
+});
+
+describe("TasksScreen List Options Direct Actions and Extracted Modals (#182)", () => {
+  it("TasksScreen opens EditListModal and ShareListModal in place instead of navigating to Lists tab", () => {
+    expect(TasksScreenSource).toContain("EditListModal");
+    expect(TasksScreenSource).toContain("ShareListModal");
+    expect(TasksScreenSource).toContain("setShowEditListModal(true)");
+    expect(TasksScreenSource).toContain("setShowShareListModal(true)");
+    expect(TasksScreenSource).not.toContain("onShareAccess={onSwitchLists}");
+    expect(TasksScreenSource).not.toContain("onEditDetails={onSwitchLists}");
+  });
+
+  it("ListOptionsModal defers action callbacks after modal dismiss", () => {
+    expect(ListOptionsModalSource).toContain("closeThen");
+    expect(ListOptionsModalSource).toContain("closeThen(onShareAccess)");
+    expect(ListOptionsModalSource).toContain("closeThen(onEditDetails)");
+    expect(ListOptionsModalSource).toContain("closeThen(onDeleteList)");
+  });
+
+  it("TasksScreen onDeleteList handles collaborative pending approval and unpinning", () => {
+    expect(TasksScreenSource).toContain("pendingApproval");
+    expect(TasksScreenSource).toContain("setPinnedWidgetConfig(null)");
+  });
+
+  it("EditListModal and ShareListModal are standalone reusable components", () => {
+    expect(EditListModalSource).toContain("export const EditListModal");
+    expect(ShareListModalSource).toContain("export const ShareListModal");
   });
 });
 

@@ -65,6 +65,8 @@ import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
 import { ListCardSkeleton } from "../components/SkeletonLoader";
 import { ListRow } from "../components/ListRow";
+import { EditListModal } from "../components/EditListModal";
+import { ShareListModal } from "../components/ShareListModal";
 import {
   typography,
   spacing,
@@ -141,17 +143,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
   const [selectedCategory, setSelectedCategory] = useState<CategoryOption | null>(null);
   const [customCategoryText, setCustomCategoryText] = useState("");
 
-  const [editName, setEditName] = useState("");
-  const [editCategory, setEditCategory] = useState<CategoryOption | null>(null);
-  const [editCustomCategoryText, setEditCustomCategoryText] = useState("");
-  const [editSortOverride, setEditSortOverride] = useState<TaskSortOverride>("app_default");
   const taskSortPrefs = useTaskSortPreferences();
-  const appSortLabel =
-    TASK_SORT_OPTIONS.find((o) => o.value === taskSortPrefs.appDefault)?.label ?? "Reminder Time";
-  const listSortOptions: { value: TaskSortOverride; label: string }[] = [
-    { value: "app_default", label: `App default (${appSortLabel})` },
-    ...TASK_SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
-  ];
 
   const { data: lists, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ["lists", "all"],
@@ -256,45 +248,6 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
     onError: (e) => onMutationError(e, "Couldn't create list"),
   });
 
-  const updateListMutation = useMutation({
-    mutationFn: async ({ id, name, category }: { id: string; name: string; category?: string | null }) => {
-      await apiClient.put(`/api/v1/lists/${id}`, { name, category });
-    },
-    onSuccess: (_, variables) => {
-      triggerImpactHaptic();
-      queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
-        if (!old) return [];
-        return old.map((l) =>
-          l.id === variables.id ? { ...l, name: variables.name, category: variables.category ?? null } : l
-        );
-      });
-      queryClient.invalidateQueries({ queryKey: ["lists"] });
-      queryClient.invalidateQueries({ queryKey: ["list_meta", variables.id] });
-      setEditingList(null);
-    },
-    onError: (e) => onMutationError(e, "Couldn't update list"),
-  });
-
-  const shareModeMutation = useMutation({
-    mutationFn: async ({ id, shareMode }: { id: string; shareMode: ShareMode }) => {
-      const res = await apiClient.put(`/api/v1/lists/${id}/share-mode`, { shareMode });
-      return res.data.list as TodoList;
-    },
-    onSuccess: (updatedList) => {
-      triggerImpactHaptic();
-      queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
-        if (!old) return [];
-        return old.map((l) => (l.id === updatedList.id ? updatedList : l));
-      });
-      queryClient.invalidateQueries({ queryKey: ["lists"] });
-      queryClient.invalidateQueries({ queryKey: ["list_meta", updatedList.id] });
-      if (sharingList && sharingList.id === updatedList.id) {
-        setSharingList(updatedList);
-      }
-    },
-    onError: (e) => onMutationError(e, "Couldn't update sharing"),
-  });
-
   const deleteListMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiClient.delete(`/api/v1/lists/${id}`);
@@ -370,142 +323,9 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
     createListMutation.mutate({ name: fullName, category: categoryName ?? undefined });
   };
 
-  const handleUpdateList = () => {
-    if (!editingList || !editName.trim() || updateListMutation.isPending) return;
-    const categoryName = editCategory
-      ? editCategory.name === "Custom"
-        ? editCustomCategoryText.trim() || "Custom"
-        : editCategory.name
-      : null;
-    const fullName = editCategory
-      ? buildCategorizedListName(editCategory.emoji, editCategory.name, editName)
-      : editName.trim();
-    // Task order is saved on this phone only, so it doesn't wait on the server.
-    void setListTaskSortOverride(editingList.id, editSortOverride);
-    updateListMutation.mutate({
-      id: editingList.id,
-      name: fullName,
-      category: categoryName,
-    });
-  };
-
-  const handleDeleteList = (list: TodoList) => {
-    triggerImpactHaptic();
-    const isListOwner = list.isOwner !== false;
-    const title = isListOwner ? "Delete List" : "Request list deletion?";
-    const message = isListOwner
-      ? `Are you sure you want to delete "${list.name}" and all its tasks?`
-      : `Ask the owner to delete "${list.name}"? They'll need to approve before the list is removed.`;
-    Alert.alert(title, message, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: isListOwner ? "Delete" : "Send request",
-        style: "destructive",
-        onPress: () => deleteListMutation.mutate(list.id),
-      },
-    ]);
-  };
-
   const openEditModal = (list: TodoList) => {
     triggerImpactHaptic();
     setEditingList(list);
-    const matchingCat = list.category ? PRESET_CATEGORIES.find((c) => c.name === list.category) : null;
-    const cat = matchingCat || (list.category ? PRESET_CATEGORIES.find((c) => c.name === "Custom") : null);
-    setEditCategory(cat ?? null);
-    setEditCustomCategoryText(matchingCat || !list.category ? "" : list.category);
-    setEditName(stripLeadingCategoryEmoji(list.name, matchingCat?.emoji || ""));
-    setEditSortOverride(taskSortPrefs.overrides[list.id] ?? "app_default");
-  };
-
-  const listLink = (list: TodoList) => `https://synx.christran.io/${list.id}`;
-
-  const handleShareLink = async (list: TodoList) => {
-    if (shouldWarnBeforeSharingPrivateList(list.shareMode || "private")) {
-      Alert.alert(
-        "List is private",
-        `Others can't open this link while the list is Private. Change sharing to View-Only or Collaborative first? ${getSharedNameNotice("private")}`,
-        [
-          { text: "Keep Private", style: "cancel" },
-          {
-            text: "Make View-Only",
-            onPress: () => {
-              shareModeMutation.mutate(
-                { id: list.id, shareMode: "public_read" },
-                {
-                  onSuccess: (updated) => {
-                    Share.share({
-                      message: `Check out my list "${updated.name}" on sYnX: ${listLink(updated)}`,
-                      url: listLink(updated),
-                    }).catch(() => {});
-                  },
-                }
-              );
-            },
-          },
-          {
-            text: "Make Collaborative",
-            onPress: () => {
-              shareModeMutation.mutate(
-                { id: list.id, shareMode: "public_edit" },
-                {
-                  onSuccess: (updated) => {
-                    Share.share({
-                      message: `Check out my list "${updated.name}" on sYnX: ${listLink(updated)}`,
-                      url: listLink(updated),
-                    }).catch(() => {});
-                  },
-                }
-              );
-            },
-          },
-        ]
-      );
-      return;
-    }
-    try {
-      await Share.share({
-        message: `Check out my list "${list.name}" on sYnX: ${listLink(list)}`,
-        url: listLink(list),
-      });
-    } catch (e) {
-      console.error("Failed to share link", e);
-    }
-  };
-
-  const handleCopyLink = async (list: TodoList) => {
-    const link = listLink(list);
-    if (shouldWarnBeforeSharingPrivateList(list.shareMode || "private")) {
-      Alert.alert(
-        "List is private",
-        `Copied links won't work for others while this list is Private. Change sharing so others can open it? ${getSharedNameNotice("private")}`,
-        [
-          { text: "Copy anyway", onPress: () => copyText(link) },
-          {
-            text: "Make View-Only",
-            onPress: () => {
-              shareModeMutation.mutate(
-                { id: list.id, shareMode: "public_read" },
-                { onSuccess: () => copyText(link) }
-              );
-            },
-          },
-          { text: "Cancel", style: "cancel" },
-        ]
-      );
-      return;
-    }
-    await copyText(link);
-  };
-
-  const copyText = async (text: string) => {
-    try {
-      // Prefer Share sheet with the link (works without extra clipboard dependency)
-      await Share.share({ message: text, url: text });
-      showSuccess("Link ready — choose Copy in the share sheet");
-    } catch {
-      // Fallback: show selectable alert
-      Alert.alert("List link", text);
-    }
   };
 
   const openActivity = (list: TodoList) => {
@@ -1065,287 +885,18 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
         )}
 
       {/* Edit sheet */}
-      {!!editingList &&
-        sheetOverlay(
-          <>
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Edit List Details</Text>
-
-            <Text style={[styles.label, { color: theme.textMuted }]}>Category Tag</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catRow}>
-              <TouchableOpacity
-                accessibilityRole="radio"
-                accessibilityState={{ selected: editCategory === null }}
-                style={[
-                  styles.catBtn,
-                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                  editCategory === null && {
-                    backgroundColor: theme.accentLight,
-                    borderColor: theme.accent,
-                    borderWidth: 2,
-                  },
-                ]}
-                onPress={() => setEditCategory(null)}
-              >
-                <Text style={styles.catEmoji}>🚫</Text>
-                <Text
-                  style={[
-                    styles.catName,
-                    { color: theme.textPrimary },
-                    editCategory === null && { color: theme.accent, fontWeight: "700" },
-                  ]}
-                >
-                  None
-                </Text>
-              </TouchableOpacity>
-              {PRESET_CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat.name}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: editCategory?.name === cat.name }}
-                  style={[
-                    styles.catBtn,
-                    { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                    editCategory?.name === cat.name && {
-                      backgroundColor: theme.accentLight,
-                      borderColor: theme.accent,
-                      borderWidth: 2,
-                    },
-                  ]}
-                  onPress={() =>
-                    setEditCategory((prev) => (prev?.name === cat.name ? null : cat))
-                  }
-                >
-                  <Text style={styles.catEmoji}>{cat.emoji}</Text>
-                  <Text
-                    style={[
-                      styles.catName,
-                      { color: theme.textPrimary },
-                      editCategory?.name === cat.name && { color: theme.accent, fontWeight: "700" },
-                    ]}
-                  >
-                    {cat.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {editCategory?.name === "Custom" && (
-              <View style={{ marginTop: 4 }}>
-                <Text style={[styles.label, { color: theme.textMuted }]}>Custom Category Name</Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                  ]}
-                  placeholder="e.g. Project X, Home Chores..."
-                  placeholderTextColor={theme.inputPlaceholder}
-                  value={editCustomCategoryText}
-                  onChangeText={setEditCustomCategoryText}
-                />
-              </View>
-            )}
-
-            <Text style={[styles.label, { color: theme.textMuted }]}>List Title</Text>
-            <TextInput
-              style={[
-                styles.input,
-                { color: theme.textPrimary, backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-              ]}
-              value={editName}
-              onChangeText={setEditName}
-              autoFocus
-            />
-
-            <Text style={[styles.label, { color: theme.textMuted }]}>Task Order</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.catRow}
-              accessibilityRole="radiogroup"
-              accessibilityLabel="Task order for this list"
-            >
-              {listSortOptions.map((opt) => {
-                const selected = editSortOverride === opt.value;
-                return (
-                  <TouchableOpacity
-                    key={opt.value}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected }}
-                    accessibilityLabel={`Task order: ${opt.label}`}
-                    style={[
-                      styles.catBtn,
-                      { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-                      selected && {
-                        backgroundColor: theme.accentLight,
-                        borderColor: theme.accent,
-                        borderWidth: 2,
-                      },
-                    ]}
-                    onPress={() => setEditSortOverride(opt.value)}
-                  >
-                    <Text
-                      style={[
-                        styles.catName,
-                        { color: theme.textPrimary },
-                        selected && { color: theme.accent, fontWeight: "700" },
-                      ]}
-                    >
-                      {opt.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditingList(null)}>
-                <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.createBtn,
-                  {
-                    backgroundColor: theme.accent,
-                    opacity: !editName.trim() || updateListMutation.isPending ? 0.5 : 1,
-                  },
-                ]}
-                onPress={handleUpdateList}
-                disabled={!editName.trim() || updateListMutation.isPending}
-              >
-                {updateListMutation.isPending ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <Text style={styles.createBtnText}>Save Changes</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </>,
-          () => setEditingList(null)
-        )}
+      <EditListModal
+        visible={!!editingList}
+        list={editingList}
+        onClose={() => setEditingList(null)}
+      />
 
       {/* Share sheet */}
-      {!!sharingList &&
-        sheetOverlay(
-          <>
-            <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Share List Access</Text>
-            <Text style={[styles.label, { color: theme.textMuted }]}>{sharingList?.name}</Text>
-
-            {sharingList?.shareMode === "private" ? (
-              <View
-                style={[styles.warnBox, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
-              >
-                <Text style={[styles.warnText, { color: theme.accent }]}>
-                  This list is Private — others can&apos;t open a shared link until you change access below.
-                </Text>
-                <Text style={[styles.hintText, { color: theme.textSecondary }]}>
-                  {getSharedNameNotice("private")}
-                </Text>
-              </View>
-            ) : null}
-
-            <Text style={[styles.label, { color: theme.textMuted, marginTop: 12 }]}>Access Permission</Text>
-            <View style={{ gap: 8, marginVertical: 8 }}>
-              {[
-                { mode: "private" as ShareMode, label: "Private", desc: "Only you can view and edit", Icon: Lock },
-                {
-                  mode: "public_read" as ShareMode,
-                  label: "View-Only",
-                  desc: "Anyone with link can view, no edits",
-                  Icon: Eye,
-                },
-                {
-                  mode: "public_edit" as ShareMode,
-                  label: "Collaborative",
-                  desc: "Anyone with link can view and edit",
-                  Icon: Users,
-                },
-              ].map(({ mode, label, desc, Icon }) => {
-                const isSelected = sharingList?.shareMode === mode;
-                return (
-                  <TouchableOpacity
-                    key={mode}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: isSelected }}
-                    style={[
-                      styles.catBtn,
-                      {
-                        backgroundColor: theme.inputBg,
-                        borderColor: theme.inputBorder,
-                        width: "100%",
-                        justifyContent: "flex-start",
-                        minHeight: MIN_TOUCH_TARGET,
-                      },
-                      isSelected && {
-                        backgroundColor: theme.accentLight,
-                        borderColor: theme.accent,
-                        borderWidth: 2,
-                      },
-                    ]}
-                    onPress={() => {
-                      if (sharingList) {
-                        const makingPublic = isMakingListPublic(sharingList.shareMode || "private", mode);
-                        shareModeMutation.mutate(
-                          { id: sharingList.id, shareMode: mode },
-                          makingPublic ? { onSuccess: () => showSuccess(getSharedNameNotice(mode)) } : undefined
-                        );
-                      }
-                    }}
-                    disabled={shareModeMutation.isPending}
-                  >
-                    <Icon size={16} color={isSelected ? theme.accent : theme.textMuted} />
-                    <View style={{ flex: 1, marginLeft: 8 }}>
-                      <Text
-                        style={[
-                          { fontSize: typography.sm, fontWeight: "700", color: theme.textPrimary },
-                          isSelected && { color: theme.accent },
-                        ]}
-                      >
-                        {label}
-                      </Text>
-                      <Text style={{ fontSize: typography.xs, color: theme.textMuted }}>{desc}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            {sharingList && sharingList.shareMode && sharingList.shareMode !== "private" ? (
-              <Text style={[styles.hintText, { color: theme.textMuted, marginTop: 0 }]}>
-                {getSharedNameNotice(sharingList.shareMode)}
-              </Text>
-            ) : null}
-
-            <TouchableOpacity
-              style={[styles.createBtn, { backgroundColor: theme.accent, marginTop: 8 }]}
-              onPress={() => {
-                if (sharingList) handleShareLink(sharingList);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Share link"
-            >
-              <Text style={styles.createBtnText}>Share Link via App / System</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.copyBtn,
-                { borderColor: theme.inputBorder, backgroundColor: theme.inputBg, marginTop: 8 },
-              ]}
-              onPress={() => {
-                if (sharingList) handleCopyLink(sharingList);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Copy link"
-            >
-              <Copy size={16} color={theme.accent} />
-              <Text style={[styles.copyBtnText, { color: theme.accent }]}>Copy Link</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.cancelBtn, { marginTop: 8, alignSelf: "center" }]} onPress={() => setSharingList(null)}>
-              <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Close</Text>
-            </TouchableOpacity>
-          </>,
-          () => setSharingList(null)
-        )}
+      <ShareListModal
+        visible={!!sharingList}
+        list={sharingList}
+        onClose={() => setSharingList(null)}
+      />
 
       {/* Owner activity sheet */}
       {!!activityList &&

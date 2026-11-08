@@ -65,13 +65,9 @@ export const ListRow: React.FC<ListRowProps> = ({
       style={[
         styles.card,
         {
-          backgroundColor: theme.cardBg,
+          backgroundColor: isActive ? theme.cardActiveBg : theme.cardBg,
           borderColor: isActive ? theme.accent : theme.cardBorder,
           borderWidth: isActive ? 1.5 : 1,
-          shadowColor: theme.shadowColor,
-        },
-        isActive && {
-          backgroundColor: theme.accentLight ? `${theme.accent}0D` : theme.cardBg,
         },
       ]}
       onPress={() => onPress(item)}
@@ -228,10 +224,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     marginBottom: 8,
-    elevation: 2,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
   },
   rowMain: {
     flexDirection: "row",

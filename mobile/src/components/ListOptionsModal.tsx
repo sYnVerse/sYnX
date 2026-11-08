@@ -47,6 +47,15 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
   const isOwner = list.isOwner !== false;
   const isPrivate = (list.shareMode || "private") === "private";
 
+  const closeThen = (action?: () => void) => {
+    onClose();
+    if (action) {
+      setTimeout(() => {
+        action();
+      }, 120);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -106,10 +115,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                   styles.actionItem,
                   { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
                 ]}
-                onPress={() => {
-                  onClose();
-                  onTogglePin();
-                }}
+                onPress={() => closeThen(onTogglePin)}
                 accessibilityRole="button"
                 accessibilityLabel={
                   isPinned ? `Unpin ${list.name} from widget` : `Pin ${list.name} to widget`
@@ -139,10 +145,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                       styles.actionItem,
                       { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
                     ]}
-                    onPress={() => {
-                      onClose();
-                      onShareAccess();
-                    }}
+                    onPress={() => closeThen(onShareAccess)}
                     accessibilityRole="button"
                     accessibilityLabel={`Share ${list.name}`}
                   >
@@ -159,10 +162,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                       styles.actionItem,
                       { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
                     ]}
-                    onPress={() => {
-                      onClose();
-                      onEditDetails();
-                    }}
+                    onPress={() => closeThen(onEditDetails)}
                     accessibilityRole="button"
                     accessibilityLabel={`Edit ${list.name}`}
                   >
@@ -179,10 +179,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                       styles.actionItem,
                       { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
                     ]}
-                    onPress={() => {
-                      onClose();
-                      onViewActivity();
-                    }}
+                    onPress={() => closeThen(onViewActivity)}
                     accessibilityRole="button"
                     accessibilityLabel={`Activity for ${list.name}`}
                   >
@@ -199,10 +196,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                       styles.actionItem,
                       { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
                     ]}
-                    onPress={() => {
-                      onClose();
-                      onDeleteList();
-                    }}
+                    onPress={() => closeThen(onDeleteList)}
                     accessibilityRole="button"
                     accessibilityLabel={`Delete ${list.name}`}
                   >
@@ -221,10 +215,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                       styles.actionItem,
                       { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
                     ]}
-                    onPress={() => {
-                      onClose();
-                      onDeleteList();
-                    }}
+                    onPress={() => closeThen(onDeleteList)}
                     accessibilityRole="button"
                     accessibilityLabel={`Leave ${list.name}`}
                   >
