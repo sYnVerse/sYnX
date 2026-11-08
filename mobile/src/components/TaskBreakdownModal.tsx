@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Modal,
   View,
@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { X, Plus, Minus, Clock, Check } from "lucide-react-native";
+import { X, Plus, Minus, Clock, Check, Pencil } from "lucide-react-native";
 import { TodoItem, sortTasks, splitCompletedTasks, type TaskSortMode } from "../shared";
 import { apiClient } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
@@ -21,9 +21,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useToast } from "../context/ToastContext";
 import { typography, spacing, MIN_TOUCH_TARGET, getSheetBottomPadding } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
-import { parseSubtaskDurationMinutes } from "../shared/mobile-ux";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
 import { CompletedSectionHeader } from "./CompletedSectionHeader";
+import { SubtaskEditModal } from "./SubtaskEditModal";
 
 interface TaskBreakdownModalProps {
   visible: boolean;
@@ -32,20 +32,6 @@ interface TaskBreakdownModalProps {
   /** The list's sort, so subtasks are ordered the same way as the list. */
   sortMode: TaskSortMode;
   onClose: () => void;
-}
-
-/** Local edits that haven't been overwritten by the server, keyed by subtask id. */
-interface SubtaskEdit {
-  text?: string;
-  durationText?: string;
-}
-
-/** A subtask as shown in the list: server data with any local edits on top. */
-interface SubtaskDraft {
-  id: string;
-  text: string;
-  completed: boolean;
-  durationText: string;
 }
 
 export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
@@ -60,9 +46,8 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [newSubtaskText, setNewSubtaskText] = useState("");
-  const [newSubtaskDuration, setNewSubtaskDuration] = useState("5");
-  const [edits, setEdits] = useState<Record<string, SubtaskEdit>>({});
-  const durationTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const [editingSubtask, setEditingSubtask] = useState<TodoItem | null>(null);
+
   // The Completed section starts collapsed each time the sheet opens; it isn't remembered.
   const [completedOpen, setCompletedOpen] = useState(false);
   const [wasVisible, setWasVisible] = useState(visible);
@@ -83,28 +68,6 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
     }
     return sortTasks(task.subtasks || [], sortMode);
   }, [task, listTodos, sortMode]);
-
-  // Server subtasks with local edits on top, so in-progress edits aren't stomped.
-  const draftList = useMemo<SubtaskDraft[]>(
-    () =>
-      subtasks.map((st) => ({
-        id: st.id,
-        text: edits[st.id]?.text ?? st.text,
-        completed: st.completed,
-        durationText:
-          edits[st.id]?.durationText ??
-          (st.durationMinutes != null ? String(st.durationMinutes) : ""),
-      })),
-    [subtasks, edits]
-  );
-
-  useEffect(() => {
-    // The timers object is mutated in place, never replaced, so this is the live map.
-    const timers = durationTimers.current;
-    return () => {
-      Object.values(timers).forEach(clearTimeout);
-    };
-  }, []);
 
   const triggerHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -133,7 +96,6 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
         queryClient.invalidateQueries({ queryKey: ["todos", task.listId] });
       }
       setNewSubtaskText("");
-      setNewSubtaskDuration("5");
     },
     onError: (e) => onErr(e, "Couldn't add subtask"),
   });
@@ -187,54 +149,31 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
     onError: (e) => onErr(e, "Couldn't save subtask"),
   });
 
-  const saveDuration = (id: string, durationText: string) => {
-    const parsed = parseSubtaskDurationMinutes(durationText);
-    if (parsed === undefined) return;
-    updateSubtaskMutation.mutate({ id, durationMinutes: parsed });
-  };
-
-  const scheduleDurationSave = (id: string, durationText: string) => {
-    if (durationTimers.current[id]) clearTimeout(durationTimers.current[id]);
-    durationTimers.current[id] = setTimeout(() => {
-      saveDuration(id, durationText);
-    }, 450);
-  };
-
-  const saveText = (id: string, text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const server = subtasks.find((s) => s.id === id);
-    if (server && server.text === trimmed) return;
-    updateSubtaskMutation.mutate({ id, text: trimmed });
-  };
-
   const overallDurationMinutes = useMemo(() => {
-    return draftList.reduce((sum, st) => {
-      const n = parseInt(st.durationText.replace(/\D/g, ""), 10);
-      return sum + (isNaN(n) ? 0 : n);
+    return subtasks.reduce((sum, st) => {
+      const mins = st.durationMinutes;
+      return sum + (typeof mins === "number" && !isNaN(mins) && mins > 0 ? mins : 0);
     }, 0);
-  }, [draftList]);
+  }, [subtasks]);
 
   const handleAddSubtask = () => {
     if (!newSubtaskText.trim() || !canEdit) return;
-    const cleaned = newSubtaskDuration.trim();
-    const mins = cleaned ? parseInt(cleaned.replace(/\D/g, ""), 10) : NaN;
     addSubtaskMutation.mutate({
       text: newSubtaskText.trim(),
-      durationMinutes: isNaN(mins) ? null : mins,
+      durationMinutes: null,
     });
   };
 
   if (!task) return null;
 
-  const completedCount = draftList.filter((st) => st.completed).length;
+  const completedCount = subtasks.filter((st) => st.completed).length;
   const progressPercent =
-    draftList.length > 0 ? Math.round((completedCount / draftList.length) * 100) : 0;
+    subtasks.length > 0 ? Math.round((completedCount / subtasks.length) * 100) : 0;
 
   // Completed subtasks go in a collapsible section at the bottom, in the list's sort like the rest.
-  const { active: activeDrafts, completed: completedDrafts } = splitCompletedTasks(draftList);
+  const { active: activeDrafts, completed: completedDrafts } = splitCompletedTasks(subtasks);
 
-  const renderSubtaskRow = (st: SubtaskDraft) => (
+  const renderSubtaskRow = (st: TodoItem) => (
     <View
       key={st.id}
       style={[
@@ -271,69 +210,58 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
         </View>
       </TouchableOpacity>
 
-      <TextInput
-        editable={canEdit}
-        style={[
-          styles.subtaskTextInput,
-          {
-            color: theme.textPrimary,
-            backgroundColor: "transparent",
-          },
-          st.completed && { color: theme.textMuted, textDecorationLine: "line-through" },
-        ]}
-        value={st.text}
-        onChangeText={(val) =>
-          setEdits((prev) => ({
-            ...prev,
-            [st.id]: { ...prev[st.id], text: val },
-          }))
-        }
-        onBlur={() => saveText(st.id, st.text)}
-        accessibilityLabel="Subtask text"
-      />
-
-      <View style={styles.minsInputWrapper}>
-        <TextInput
-          editable={canEdit}
+      <View style={styles.subtaskContent}>
+        <Text
           style={[
-            styles.minsInput,
-            { color: theme.textSecondary, backgroundColor: theme.inputBg },
+            styles.subtaskText,
+            { color: theme.textPrimary },
+            st.completed && { color: theme.textMuted, textDecorationLine: "line-through" },
           ]}
-          keyboardType="number-pad"
-          value={st.durationText}
-          placeholder="—"
-          placeholderTextColor={theme.inputPlaceholder}
-          onChangeText={(val) => {
-            const next = val.replace(/[^\d]/g, "");
-            setEdits((prev) => ({
-              ...prev,
-              [st.id]: { ...prev[st.id], durationText: next },
-            }));
-            if (canEdit) scheduleDurationSave(st.id, next);
-          }}
-          onBlur={() => {
-            if (canEdit) saveDuration(st.id, st.durationText);
-          }}
-          accessibilityLabel="Subtask duration minutes"
-        />
-        <Text style={[styles.minsLabel, { color: theme.textMuted }]}>min.</Text>
+          maxFontSizeMultiplier={1.4}
+        >
+          {st.text}
+        </Text>
+        {st.durationMinutes != null && st.durationMinutes > 0 ? (
+          <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
+            <Clock size={10} color={theme.accent} />
+            <Text style={[styles.durationBadgeText, { color: theme.accent }]}>
+              {st.durationMinutes}m
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {canEdit && (
-        <TouchableOpacity
-          style={styles.removeBtn}
-          onPress={() => removeSubtaskMutation.mutate(st.id)}
-          accessibilityRole="button"
-          accessibilityLabel="Remove subtask"
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Minus size={16} color={theme.danger} />
-        </TouchableOpacity>
+        <View style={styles.subtaskActions}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => {
+              triggerHaptic();
+              setEditingSubtask(st);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit subtask ${st.text}`}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Pencil size={15} color={theme.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => {
+              triggerHaptic();
+              removeSubtaskMutation.mutate(st.id);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove subtask ${st.text}`}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Minus size={15} color={theme.danger} />
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
-
-  // Note: drag-to-reorder skipped — TodoItem/API has no sort/position field without backend changes.
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
@@ -384,7 +312,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
           </View>
 
           <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>
-            SUBTASKS ({completedCount}/{draftList.length})
+            SUBTASKS ({completedCount}/{subtasks.length})
           </Text>
 
           <ScrollView
@@ -393,7 +321,7 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
           >
-            {draftList.length === 0 ? (
+            {subtasks.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Text style={[styles.emptyText, { color: theme.textMuted }]}>
                   No subtasks added yet. Break down this task below!
@@ -421,27 +349,29 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
           {canEdit && (
             <View style={[styles.addInputRow, { borderColor: theme.inputBorder }]}>
               <TextInput
-                style={[styles.textInputFlex, { color: theme.textPrimary, backgroundColor: theme.inputBg }]}
+                style={[
+                  styles.textInputFlex,
+                  {
+                    color: theme.textPrimary,
+                    backgroundColor: theme.inputBg,
+                    borderColor: theme.inputBorder,
+                  },
+                ]}
                 placeholder="New subtask step..."
                 placeholderTextColor={theme.inputPlaceholder}
                 value={newSubtaskText}
                 onChangeText={setNewSubtaskText}
                 accessibilityLabel="New subtask text"
+                onSubmitEditing={handleAddSubtask}
+                returnKeyType="done"
               />
-              <TextInput
-                style={[styles.minsInputAdd, { color: theme.textPrimary, backgroundColor: theme.inputBg }]}
-                keyboardType="number-pad"
-                placeholder="5"
-                placeholderTextColor={theme.inputPlaceholder}
-                value={newSubtaskDuration}
-                onChangeText={setNewSubtaskDuration}
-                accessibilityLabel="New subtask duration"
-              />
-              <Text style={[styles.minsLabel, { color: theme.textMuted }]}>m</Text>
               <TouchableOpacity
                 style={[
                   styles.addBtn,
-                  { backgroundColor: theme.accent, opacity: addSubtaskMutation.isPending ? 0.7 : 1 },
+                  {
+                    backgroundColor: theme.accent,
+                    opacity: addSubtaskMutation.isPending || !newSubtaskText.trim() ? 0.7 : 1,
+                  },
                 ]}
                 onPress={handleAddSubtask}
                 disabled={addSubtaskMutation.isPending || !newSubtaskText.trim()}
@@ -467,6 +397,15 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <SubtaskEditModal
+        visible={!!editingSubtask}
+        subtask={editingSubtask}
+        onClose={() => setEditingSubtask(null)}
+        onSave={async ({ id, text, durationMinutes }) => {
+          await updateSubtaskMutation.mutateAsync({ id, text, durationMinutes });
+        }}
+      />
     </Modal>
   );
 };
@@ -550,12 +489,12 @@ const styles = StyleSheet.create({
   subtaskRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 10,
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: 8,
-    gap: 8,
+    gap: 10,
   },
   checkboxHit: {
     width: MIN_TOUCH_TARGET - 8,
@@ -571,37 +510,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  subtaskTextInput: {
+  subtaskContent: {
     flex: 1,
-    fontSize: typography.sm,
-    fontWeight: "500",
-    paddingVertical: 8,
-    minHeight: MIN_TOUCH_TARGET - 8,
-  },
-  minsInputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
+    justifyContent: "center",
     gap: 4,
   },
-  minsInput: {
-    width: 44,
-    minHeight: 36,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderRadius: 8,
-    textAlign: "center",
+  subtaskText: {
+    fontSize: typography.sm,
+    fontWeight: "500",
+    lineHeight: 20,
+  },
+  durationBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  durationBadgeText: {
     fontSize: typography.xs,
     fontWeight: "600",
   },
-  minsLabel: {
-    fontSize: typography.xs,
+  subtaskActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
   },
-  removeBtn: {
+  actionBtn: {
     width: MIN_TOUCH_TARGET - 8,
     height: MIN_TOUCH_TARGET - 8,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 6,
   },
   addInputRow: {
     flexDirection: "row",
@@ -613,25 +554,17 @@ const styles = StyleSheet.create({
   },
   textInputFlex: {
     flex: 1,
-    borderRadius: 10,
-    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: typography.sm,
-    minHeight: MIN_TOUCH_TARGET,
-  },
-  minsInputAdd: {
-    width: 48,
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    fontSize: typography.sm,
-    textAlign: "center",
     minHeight: MIN_TOUCH_TARGET,
   },
   addBtn: {
     width: MIN_TOUCH_TARGET,
     height: MIN_TOUCH_TARGET,
-    borderRadius: 10,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },

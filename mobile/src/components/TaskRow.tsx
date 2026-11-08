@@ -1,10 +1,10 @@
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { Check, Trash2, Clock, ListTree, Repeat, Pencil, Bell, Flag } from "lucide-react-native";
+import { Check, Clock, ListTree, Repeat, Bell, Plus } from "lucide-react-native";
 import type { PriorityLevel, TodoItem } from "../shared";
 import { useTheme } from "../context/ThemeContext";
-import { typography, spacing, MIN_TOUCH_TARGET } from "../theme/theme";
-import { formatReminderPillLabel, priorityColor, priorityLabel } from "../utils/format";
+import { typography, MIN_TOUCH_TARGET } from "../theme/theme";
+import { formatReminderPillLabel, priorityColor } from "../utils/format";
 
 export interface TaskRowProps {
   item: TodoItem;
@@ -12,27 +12,25 @@ export interface TaskRowProps {
   isOwner: boolean;
   /** True while a complete/undo request for this task is in flight. */
   isPending: boolean;
-  onPress: (item: TodoItem) => void;
   onToggleCompleted: (item: TodoItem) => void;
   onEdit: (item: TodoItem) => void;
-  onDelete: (item: TodoItem) => void;
+  onOpenSubtasks: (item: TodoItem) => void;
 }
 
-/** One top-level task card in a list: checkbox, text, badges, and edit/delete actions. */
+/** One top-level task card in a list: checkbox, text, badges, priority edge stripe, and '+' subtask action. */
 export const TaskRow: React.FC<TaskRowProps> = ({
   item,
   canEdit,
-  isOwner,
   isPending,
-  onPress,
   onToggleCompleted,
   onEdit,
-  onDelete,
+  onOpenSubtasks,
 }) => {
   const { theme } = useTheme();
   const subtaskCount = item.subtasks?.length || 0;
   const completedSubtasks = item.subtasks?.filter((s) => s.completed).length || 0;
   const prio = (item.priority || "none") as PriorityLevel;
+  const hasPriorityStripe = prio !== "none";
 
   return (
     <TouchableOpacity
@@ -43,11 +41,13 @@ export const TaskRow: React.FC<TaskRowProps> = ({
           backgroundColor: theme.cardBg,
           borderColor: theme.cardBorder,
           shadowColor: theme.shadowColor,
+          borderLeftWidth: hasPriorityStripe ? 4 : 1,
+          borderLeftColor: hasPriorityStripe ? priorityColor(prio, theme) : theme.cardBorder,
         },
       ]}
-      onPress={() => onPress(item)}
+      onPress={() => onEdit(item)}
       accessibilityRole="button"
-      accessibilityLabel={`Task ${item.text}`}
+      accessibilityLabel={`Edit task ${item.text}`}
     >
       <TouchableOpacity
         disabled={!canEdit || isPending}
@@ -78,7 +78,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
         </View>
       </TouchableOpacity>
 
-      <View style={{ flex: 1 }}>
+      <View style={styles.cardContent}>
         <Text
           style={[
             styles.todoText,
@@ -91,20 +91,6 @@ export const TaskRow: React.FC<TaskRowProps> = ({
         </Text>
 
         <View style={styles.badgeRow}>
-          {prio !== "none" && (
-            <View
-              style={[
-                styles.pillBadge,
-                { backgroundColor: priorityColor(prio, theme) + "22" },
-              ]}
-            >
-              <Flag size={11} color={priorityColor(prio, theme)} />
-              <Text style={[styles.pillBadgeText, { color: priorityColor(prio, theme) }]}>
-                {priorityLabel(prio)}
-              </Text>
-            </View>
-          )}
-
           {item.reminderAt ? (
             <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
               <Bell size={11} color={theme.accent} />
@@ -118,7 +104,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
             <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
               <Clock size={11} color={theme.accent} />
               <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
-                {item.durationMinutes} min
+                {item.durationMinutes}m
               </Text>
             </View>
           ) : null}
@@ -141,44 +127,32 @@ export const TaskRow: React.FC<TaskRowProps> = ({
           )}
 
           {subtaskCount > 0 && (
-            <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
+            <TouchableOpacity
+              style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}
+              onPress={() => onOpenSubtasks(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`Manage ${completedSubtasks} of ${subtaskCount} subtasks for ${item.text}`}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
               <ListTree size={11} color={theme.accent} />
               <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
                 {completedSubtasks}/{subtaskCount} subtasks
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
         </View>
       </View>
 
       {canEdit && (
-        <>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => onEdit(item)}
-            accessibilityRole="button"
-            accessibilityLabel={`Edit ${item.text}`}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Pencil size={16} color={theme.textMuted} />
-          </TouchableOpacity>
-
-          {!item.pendingDelete && (
-            <TouchableOpacity
-              style={styles.actionBtn}
-              onPress={() => onDelete(item)}
-              accessibilityRole="button"
-              accessibilityLabel={
-                isOwner || item.canDeleteDirectly
-                  ? `Delete ${item.text}`
-                  : `Request delete for ${item.text}`
-              }
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Trash2 size={16} color={theme.danger} />
-            </TouchableOpacity>
-          )}
-        </>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => onOpenSubtasks(item)}
+          accessibilityRole="button"
+          accessibilityLabel={`Add or manage subtasks for ${item.text}`}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Plus size={18} color={theme.textMuted} />
+        </TouchableOpacity>
       )}
     </TouchableOpacity>
   );
@@ -188,21 +162,24 @@ const styles = StyleSheet.create({
   todoCard: {
     flexDirection: "row",
     alignItems: "center",
-    padding: spacing.md,
-    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 12,
+    marginBottom: 8,
     gap: 10,
-    elevation: 3,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
+    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
   },
   checkboxHit: {
     width: MIN_TOUCH_TARGET,
     height: MIN_TOUCH_TARGET,
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "flex-start",
+    marginTop: -2,
   },
   checkbox: {
     width: 22,
@@ -210,6 +187,10 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     borderWidth: 2,
     alignItems: "center",
+    justifyContent: "center",
+  },
+  cardContent: {
+    flex: 1,
     justifyContent: "center",
   },
   todoText: {
@@ -223,14 +204,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginTop: 6,
+    marginTop: 4,
   },
   pillBadge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 7,
     gap: 4,
   },
   pillBadgeText: {

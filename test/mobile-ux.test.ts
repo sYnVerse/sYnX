@@ -5,6 +5,8 @@ import TaskBreakdownModalSource from "../mobile/src/components/TaskBreakdownModa
 import ListsScreenSource from "../mobile/src/screens/ListsScreen.tsx?raw";
 import TasksScreenSource from "../mobile/src/screens/TasksScreen.tsx?raw";
 import TaskRowSource from "../mobile/src/components/TaskRow.tsx?raw";
+import SubtaskEditModalSource from "../mobile/src/components/SubtaskEditModal.tsx?raw";
+import ListOptionsModalSource from "../mobile/src/components/ListOptionsModal.tsx?raw";
 import CalendarAccessSoftAskSource from "../mobile/src/components/CalendarAccessSoftAsk.tsx?raw";
 import CalendarPickerModalSource from "../mobile/src/components/CalendarPickerModal.tsx?raw";
 import ChangelogModalSource from "../mobile/src/components/ChangelogModal.tsx?raw";
@@ -549,3 +551,126 @@ describe("CalendarAccessSoftAsk component source guards (#134)", () => {
     expect(CalendarAccessSoftAskSource).toContain("Calendar sync is turned on in sYnX");
   });
 });
+
+describe("Task and Subtask Redesign (#158, #156, #157)", () => {
+  describe("TaskRow (#158)", () => {
+    it("renders a 4px colored priority edge stripe instead of a pill badge", () => {
+      expect(TaskRowSource).toContain("borderLeftWidth: hasPriorityStripe ? 4 : 1");
+      expect(TaskRowSource).toContain("hasPriorityStripe ? priorityColor(prio, theme) : theme.cardBorder");
+      // Flag pill badge has been removed from badge row
+      expect(TaskRowSource).not.toMatch(/priorityLabel\(prio\)/);
+    });
+
+    it("triggers onEdit when card body is tapped", () => {
+      expect(TaskRowSource).toContain("onPress={() => onEdit(item)}");
+      expect(TaskRowSource).toContain('accessibilityLabel={`Edit task ${item.text}`}');
+    });
+
+    it("removes pencil and trash buttons from the task card, replacing with '+' subtask action", () => {
+      expect(TaskRowSource).not.toContain("<Pencil");
+      expect(TaskRowSource).not.toContain("<Trash2");
+      expect(TaskRowSource).toContain("<Plus");
+      expect(TaskRowSource).toContain("onOpenSubtasks(item)");
+      expect(TaskRowSource).toContain('accessibilityLabel={`Add or manage subtasks for ${item.text}`}');
+    });
+
+    it("renders interactive subtask count chip when subtasks exist", () => {
+      expect(TaskRowSource).toContain("subtaskCount > 0 &&");
+      expect(TaskRowSource).toContain("completedSubtasks}/{subtaskCount} subtasks");
+      expect(TaskRowSource).toContain("onOpenSubtasks(item)");
+    });
+  });
+
+  describe("TaskModal Delete Action (#158)", () => {
+    it("renders destructive Delete Task button with Trash2 icon when editing", () => {
+      expect(TaskModalSource).toContain("isEditing && onDelete");
+      expect(TaskModalSource).toContain("<Trash2");
+      expect(TaskModalSource).toContain("Delete Task");
+      expect(TaskModalSource).toContain('accessibilityLabel="Delete task"');
+    });
+  });
+
+  describe("TaskBreakdownModal (#156, #157)", () => {
+    it("wraps subtask titles multiline without single-line ellipsis truncation", () => {
+      expect(TaskBreakdownModalSource).toContain("subtaskContent");
+      expect(TaskBreakdownModalSource).toContain("subtaskText");
+      expect(TaskBreakdownModalSource).not.toMatch(/numberOfLines=\{1\}/);
+    });
+
+    it("replaces inline duration text inputs with pencil edit action", () => {
+      // Inline minsInput removed from subtask rows
+      expect(TaskBreakdownModalSource).not.toContain("minsInputWrapper");
+      expect(TaskBreakdownModalSource).not.toContain("minsInputAdd");
+      // Pencil icon button present for editing subtasks
+      expect(TaskBreakdownModalSource).toContain("<Pencil");
+      expect(TaskBreakdownModalSource).toContain("setEditingSubtask(st)");
+      expect(TaskBreakdownModalSource).toContain("SubtaskEditModal");
+    });
+
+    it("renders compact read-only duration badge only when duration is set", () => {
+      expect(TaskBreakdownModalSource).toContain("st.durationMinutes != null && st.durationMinutes > 0 ? (");
+      expect(TaskBreakdownModalSource).toContain("{st.durationMinutes}m");
+    });
+
+    it("defaults new subtask duration to null without hardcoded 5", () => {
+      expect(TaskBreakdownModalSource).toContain("durationMinutes: null");
+      expect(TaskBreakdownModalSource).not.toContain('useState("5")');
+      expect(TaskBreakdownModalSource).not.toContain('placeholder="5"');
+    });
+
+    it("accurately sums positive durations and ignores null durations in parent total", () => {
+      expect(TaskBreakdownModalSource).toContain(
+        "return sum + (typeof mins === \"number\" && !isNaN(mins) && mins > 0 ? mins : 0);"
+      );
+    });
+  });
+
+  describe("SubtaskEditModal (#157)", () => {
+    it("renders title input, optional duration input, cancel and save buttons", () => {
+      expect(SubtaskEditModalSource).toContain("Edit Subtask");
+      expect(SubtaskEditModalSource).toContain("Subtask title");
+      expect(SubtaskEditModalSource).toContain("Duration (minutes, optional)");
+      expect(SubtaskEditModalSource).toContain("Cancel");
+      expect(SubtaskEditModalSource).toContain("Save");
+      expect(SubtaskEditModalSource).toContain("parseSubtaskDurationMinutes(durationText)");
+    });
+  });
+
+  describe("TasksScreen Header & Default Values (#158)", () => {
+    it("renders header pencil icon opening ListOptionsModal", () => {
+      expect(TasksScreenSource).toContain("ListOptionsModal");
+      expect(TasksScreenSource).toContain("setShowListOptionsModal(true)");
+      expect(TasksScreenSource).toContain('accessibilityLabel={`List options for ${listMeta.name}`}');
+    });
+
+    it("renders icon-only switch button without 'Switch' text", () => {
+      expect(TasksScreenSource).toContain("<FolderKanban");
+      expect(TasksScreenSource).not.toContain('<Text style={[styles.switchListText');
+      expect(TasksScreenSource).not.toContain(">Switch<");
+    });
+
+    it("hides 'Yours' ownership subtitle when user is the list owner", () => {
+      expect(TasksScreenSource).toContain("!isOwner && ownershipLabel ? (");
+    });
+
+    it("hides ListPermissionBanner when shareMode is private", () => {
+      expect(TasksScreenSource).toContain('listMeta && shareMode !== "private" ? (');
+    });
+
+    it("renders expandable search bar on demand via search icon", () => {
+      expect(TasksScreenSource).toContain("searchVisible ? (");
+      expect(TasksScreenSource).toContain("setSearchVisible");
+    });
+  });
+
+  describe("ListOptionsModal (#158)", () => {
+    it("renders Pin to widget, Share, Edit details, and Delete list", () => {
+      expect(ListOptionsModalSource).toContain("Pin to widget");
+      expect(ListOptionsModalSource).toContain("Unpin from widget");
+      expect(ListOptionsModalSource).toContain("Share list access");
+      expect(ListOptionsModalSource).toContain("Edit list details");
+      expect(ListOptionsModalSource).toContain("Delete list");
+    });
+  });
+});
+

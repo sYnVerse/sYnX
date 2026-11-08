@@ -16,7 +16,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { Search, RefreshCw, Plus, FolderKanban, History } from "lucide-react-native";
+import { Search, Plus, FolderKanban, Pencil, X } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import {
   TodoItem,
@@ -36,6 +36,7 @@ import { TaskBreakdownModal } from "../components/TaskBreakdownModal";
 import { TaskCardSkeleton } from "../components/SkeletonLoader";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
 import { ListAccessErrorState, type ListAccessErrorKind } from "../components/ListAccessErrorState";
+import { ListOptionsModal } from "../components/ListOptionsModal";
 import { useTheme } from "../context/ThemeContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
@@ -46,7 +47,9 @@ import { listOwnershipLabel } from "../utils/format";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
 import { useTaskMutations } from "../hooks/useTaskMutations";
 import { syncActiveList, syncPinnedList } from "../services/widgetSync";
-import { getPinnedWidgetConfig } from "../services/widgetPreferences";
+import { getPinnedWidgetConfig, setPinnedWidgetConfig, type PinnedWidgetConfig } from "../services/widgetPreferences";
+import { useToast } from "../context/ToastContext";
+import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 
 export interface TasksScreenProps {
   listId: string;
@@ -98,14 +101,22 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   onSwitchLists,
 }) => {
   const { theme, hapticsEnabled } = useTheme();
+  const { showToast, showError } = useToast();
   const insets = useSafeAreaInsets();
   const fabBottom = getFabBottomOffset(insets.bottom);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [searchVisible, setSearchVisible] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<TodoItem | null>(null);
   const [selectedTaskForBreakdown, setSelectedTaskForBreakdown] = useState<TodoItem | null>(null);
+  const [showListOptionsModal, setShowListOptionsModal] = useState(false);
+  const [pinnedConfig, setPinnedConfig] = useState<PinnedWidgetConfig | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
+
+  React.useEffect(() => {
+    getPinnedWidgetConfig().then(setPinnedConfig).catch(() => {});
+  }, [listId]);
   // The Completed section starts collapsed and isn't remembered; opening another list collapses it.
   const [completedOpenListId, setCompletedOpenListId] = useState<string | null>(null);
   const completedOpen = completedOpenListId === listId;
@@ -394,40 +405,6 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
-      <View style={styles.searchRow}>
-        <View
-          style={[
-            styles.searchInputWrapper,
-            {
-              backgroundColor: theme.inputBg,
-              borderColor: theme.inputBorder,
-            },
-          ]}
-        >
-          <Search size={18} color={theme.inputPlaceholder} />
-          <TextInput
-            style={[styles.searchInput, { color: theme.textPrimary }]}
-            placeholder="Search tasks..."
-            placeholderTextColor={theme.inputPlaceholder}
-            value={search}
-            onChangeText={setSearch}
-            accessibilityLabel="Search tasks"
-          />
-        </View>
-        <TouchableOpacity
-          style={[styles.iconBtn, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
-          onPress={() => {
-            triggerImpactHaptic();
-            refetchListMeta();
-            refetch();
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Refresh tasks"
-        >
-          <RefreshCw size={18} color={theme.textSecondary} />
-        </TouchableOpacity>
-      </View>
-
       {/* List context header */}
       <View style={styles.listHeader}>
         <View style={{ flex: 1 }}>
@@ -438,27 +415,52 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
           >
             {listMeta?.name || "List"}
           </Text>
-          <Text style={[styles.ownershipText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
-            {ownershipLabel}
-          </Text>
+          {!isOwner && ownershipLabel ? (
+            <Text style={[styles.ownershipText, { color: theme.textMuted }]} maxFontSizeMultiplier={1.3}>
+              {ownershipLabel}
+            </Text>
+          ) : null}
         </View>
         <View style={styles.listHeaderActions}>
-          {canViewActivity ? (
+          <TouchableOpacity
+            style={[
+              styles.headerIconBtn,
+              {
+                backgroundColor: searchVisible ? theme.accentLight : theme.inputBg,
+                borderColor: searchVisible ? theme.accent : theme.inputBorder,
+              },
+            ]}
+            onPress={() => {
+              triggerImpactHaptic();
+              setSearchVisible((prev) => {
+                if (prev) setSearch("");
+                return !prev;
+              });
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Search tasks"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Search size={18} color={searchVisible ? theme.accent : theme.textSecondary} />
+          </TouchableOpacity>
+
+          {listMeta ? (
             <TouchableOpacity
-              style={[styles.switchListBtn, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
-              onPress={openActivity}
+              style={[styles.headerIconBtn, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+              onPress={() => {
+                triggerImpactHaptic();
+                setShowListOptionsModal(true);
+              }}
               accessibilityRole="button"
-              accessibilityLabel="View activity"
+              accessibilityLabel={`List options for ${listMeta.name}`}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <History size={16} color={theme.accent} />
-              <Text style={[styles.switchListText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
-                Activity
-              </Text>
+              <Pencil size={18} color={theme.textSecondary} />
             </TouchableOpacity>
           ) : null}
+
           <TouchableOpacity
-            style={[styles.switchListBtn, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
+            style={[styles.headerIconBtn, { backgroundColor: theme.accentLight, borderColor: theme.accent }]}
             onPress={() => {
               triggerImpactHaptic();
               onSwitchLists?.();
@@ -467,15 +469,38 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             accessibilityLabel="Switch lists"
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <FolderKanban size={16} color={theme.accent} />
-            <Text style={[styles.switchListText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
-              Switch
-            </Text>
+            <FolderKanban size={18} color={theme.accent} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {listMeta ? (
+      {/* Expandable Search Input Row */}
+      {searchVisible ? (
+        <View style={[styles.searchRow, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
+          <Search size={18} color={theme.inputPlaceholder} />
+          <TextInput
+            style={[styles.searchInput, { color: theme.textPrimary }]}
+            placeholder="Search tasks..."
+            placeholderTextColor={theme.inputPlaceholder}
+            value={search}
+            onChangeText={setSearch}
+            autoFocus
+            accessibilityLabel="Search tasks"
+          />
+          {search.length > 0 ? (
+            <TouchableOpacity
+              onPress={() => setSearch("")}
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <X size={16} color={theme.textMuted} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+
+      {listMeta && shareMode !== "private" ? (
         <ListPermissionBanner
           shareMode={shareMode}
           isOwner={isOwner}
@@ -622,10 +647,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 canEdit={canEdit}
                 isOwner={isOwner}
                 isPending={isPendingId(row.task.id)}
-                onPress={setSelectedTaskForBreakdown}
                 onToggleCompleted={(task) => setCompleted(task)}
                 onEdit={setEditingTask}
-                onDelete={handleDeleteTask}
+                onOpenSubtasks={setSelectedTaskForBreakdown}
               />
             )
           }
@@ -670,6 +694,11 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             await updateMutation.mutateAsync({ id: editingTask.id, payload: updated });
           }
         }}
+        onDelete={async () => {
+          if (editingTask) {
+            handleDeleteTask(editingTask);
+          }
+        }}
       />
 
       <TaskBreakdownModal
@@ -678,6 +707,61 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         canEdit={canEdit}
         sortMode={taskSortMode}
         onClose={() => setSelectedTaskForBreakdown(null)}
+      />
+
+      <ListOptionsModal
+        visible={showListOptionsModal}
+        list={listMeta ?? null}
+        taskCount={structuredTodos.length}
+        isPinned={pinnedConfig?.listId === listId}
+        onClose={() => setShowListOptionsModal(false)}
+        onTogglePin={async () => {
+          if (!listMeta) return;
+          triggerImpactHaptic();
+          const isPinned = pinnedConfig?.listId === listMeta.id;
+          if (isPinned) {
+            await setPinnedWidgetConfig(null);
+            setPinnedConfig(null);
+            await syncPinnedList(null);
+            showToast("Unpinned from widget", "info");
+          } else {
+            const newConfig: PinnedWidgetConfig = { mode: "list", listId: listMeta.id };
+            await setPinnedWidgetConfig(newConfig);
+            setPinnedConfig(newConfig);
+            await syncPinnedList(listMeta.id, listMeta, rawTodos, queryClient);
+            showToast(`Pinned "${listMeta.name}" to widget`, "success");
+          }
+        }}
+        onShareAccess={onSwitchLists}
+        onEditDetails={onSwitchLists}
+        onViewActivity={canViewActivity ? openActivity : undefined}
+        onDeleteList={() => {
+          if (!listMeta) return;
+          triggerImpactHaptic();
+          const isListOwner = listMeta.isOwner !== false;
+          const title = isListOwner ? "Delete List" : "Request list deletion?";
+          const message = isListOwner
+            ? `Are you sure you want to delete "${listMeta.name}" and all its tasks?`
+            : `Ask the owner to delete "${listMeta.name}"? They'll need to approve before the list is removed.`;
+          Alert.alert(title, message, [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: isListOwner ? "Delete" : "Send request",
+              style: "destructive",
+              onPress: async () => {
+                try {
+                  await apiClient.delete(`/api/v1/lists/${listId}`);
+                  queryClient.invalidateQueries({ queryKey: ["lists"] });
+                  showToast("List deleted", "info");
+                  onGoToMyLists?.() ?? onSwitchLists?.();
+                } catch (e) {
+                  triggerErrorHaptic(hapticsEnabled);
+                  showError(getErrorMessage(e, "Couldn't delete list"));
+                }
+              },
+            },
+          ]);
+        }}
       />
 
       <ChangelogModal visible={showChangelog} onClose={handleDismissChangelog} />
@@ -818,8 +902,20 @@ const styles = StyleSheet.create({
   searchRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    height: 46,
+    gap: 8,
     marginBottom: 10,
+  },
+  headerIconBtn: {
+    width: MIN_TOUCH_TARGET,
+    height: MIN_TOUCH_TARGET,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   listHeader: {
     flexDirection: "row",
