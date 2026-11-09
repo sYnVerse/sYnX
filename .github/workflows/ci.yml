@@ -43,18 +43,12 @@ jobs:
       - uses: dorny/paths-filter@v4
         id: filter
         with:
-          predicate-quantifier: 'some-with-excludes'
           filters: |
             web:
               - 'app/**'
               - 'e2e/**'
               - 'shared/**'
               - 'test/**'
-              - '!test/mobile-*.ts'
-              - '!test/android-*.ts'
-              - '!test/widget-*.ts'
-              - '!test/post-build-comment.test.ts'
-              - '!test/tsconfig.mobile.json'
               - 'migrations/**'
               - 'public/**'
               - 'scripts/**'
