@@ -1,5 +1,9 @@
 import { TodoItem, TodoList } from "./index";
-import { formatReminderTime, listOwnershipLabel, stripLeadingCategoryEmoji } from "./mobile-ux";
+import {
+  formatWidgetReminderLabel,
+  listOwnershipLabel,
+  stripLeadingCategoryEmoji,
+} from "./mobile-ux";
 import { applySetCompletedLocal } from "./todo-completed";
 import { DEFAULT_TASK_SORT_MODE, sortTasks, type TaskSortMode } from "./task-sort";
 import { countTaskProgress } from "./task-progress";
@@ -60,6 +64,10 @@ export interface BuildSnapshotOptions {
    * Defaults to the app default, Reminder Time.
    */
   sortMode?: TaskSortMode;
+  /**
+   * Optional locale for formatting dates and times (e.g. "en-US").
+   */
+  locale?: string;
 }
 
 /**
@@ -123,7 +131,9 @@ export function buildListWidgetSnapshot(
     const doneSub = subtasks.filter((s) => s.completed).length;
     const subtaskProgress = subtasks.length > 0 ? `${doneSub}/${subtasks.length}` : undefined;
     const isOverdue = Boolean(t.reminderAt && t.reminderAt < now);
-    const reminderLabel = t.reminderAt ? formatReminderTime(t.reminderAt) : undefined;
+    const reminderLabel = t.reminderAt
+      ? formatWidgetReminderLabel(t.reminderAt, now, options?.locale)
+      : undefined;
 
     return {
       id: t.id,
@@ -186,7 +196,9 @@ export function buildUpNextWidgetSnapshot(
         priority: t.priority || "none",
         recurrence: t.recurrence || "none",
         reminderAt: t.reminderAt,
-        reminderLabel: t.reminderAt ? formatReminderTime(t.reminderAt) : undefined,
+        reminderLabel: t.reminderAt
+          ? formatWidgetReminderLabel(t.reminderAt, now, options?.locale)
+          : undefined,
         isOverdue,
       };
     });
@@ -296,7 +308,9 @@ export function reconcileWidgetPendingOps(ops: WidgetPendingOp[]): WidgetPending
  */
 export function applyWidgetTaskCompletion(
   tasks: WidgetTaskItem[],
-  todoId: string
+  todoId: string,
+  now?: number,
+  locale?: string
 ): { updatedTasks: WidgetTaskItem[]; completedTask: WidgetTaskItem | null } {
   let found: WidgetTaskItem | null = null;
   const nextTasks: WidgetTaskItem[] = [];
@@ -313,7 +327,9 @@ export function applyWidgetTaskCompletion(
       nextTasks.push({
         ...t,
         reminderAt: res.todo.reminderAt,
-        reminderLabel: res.todo.reminderAt ? formatReminderTime(res.todo.reminderAt) : undefined,
+        reminderLabel: res.todo.reminderAt
+          ? formatWidgetReminderLabel(res.todo.reminderAt, now, locale)
+          : undefined,
       });
     } else {
       nextTasks.push(t);

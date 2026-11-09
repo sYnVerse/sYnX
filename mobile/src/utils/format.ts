@@ -1,6 +1,7 @@
 export {
   formatFriendlyDate,
   formatReminderTime,
+  formatWidgetReminderLabel,
   formatRescheduledToast,
   priorityLabel,
   priorityColor,

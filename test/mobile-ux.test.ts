@@ -27,6 +27,7 @@ import {
   getErrorMessage,
   formatFriendlyDate,
   formatReminderTime,
+  formatWidgetReminderLabel,
   priorityLabel,
   priorityColor,
   stripLeadingCategoryEmoji,
@@ -165,6 +166,41 @@ describe("date / priority / list name formatting", () => {
   it("formats reminder time", () => {
     const ts = new Date(2026, 9, 22, 9, 0, 0).getTime();
     expect(formatReminderTime(ts, "en-US")).toMatch(/9:00/);
+  });
+
+  describe("formatWidgetReminderLabel", () => {
+    const fixedNow = new Date(2026, 9, 26, 14, 10).getTime(); // Mon Oct 26, 2026, 2:10 PM
+
+    it("returns empty string for missing or invalid timestamps", () => {
+      expect(formatWidgetReminderLabel(undefined as any)).toBe("");
+      expect(formatWidgetReminderLabel(null as any)).toBe("");
+      expect(formatWidgetReminderLabel(NaN)).toBe("");
+    });
+
+    it("formats reminders due today with Today and time", () => {
+      const todayAt = new Date(2026, 9, 26, 16, 30).getTime();
+      expect(formatWidgetReminderLabel(todayAt, fixedNow, "en-US")).toBe("Today, 4:30 PM");
+    });
+
+    it("formats reminders due tomorrow with Tomorrow and time", () => {
+      const tomorrowAt = new Date(2026, 9, 27, 9, 0).getTime();
+      expect(formatWidgetReminderLabel(tomorrowAt, fixedNow, "en-US")).toBe("Tomorrow, 9:00 AM");
+    });
+
+    it("formats overdue reminders from yesterday with Yesterday and time", () => {
+      const yesterdayAt = new Date(2026, 9, 25, 18, 15).getTime();
+      expect(formatWidgetReminderLabel(yesterdayAt, fixedNow, "en-US")).toBe("Yesterday, 6:15 PM");
+    });
+
+    it("formats dates beyond tomorrow within the same year compactly as Month Day, Time", () => {
+      const nextWeek = new Date(2026, 10, 5, 11, 45).getTime();
+      expect(formatWidgetReminderLabel(nextWeek, fixedNow, "en-US")).toBe("Nov 5, 11:45 AM");
+    });
+
+    it("formats dates in a different year with the year included", () => {
+      const nextYear = new Date(2027, 9, 26, 10, 0).getTime();
+      expect(formatWidgetReminderLabel(nextYear, fixedNow, "en-US")).toBe("Oct 26, 2027, 10:00 AM");
+    });
   });
 
   it("maps priority labels and colors", () => {
