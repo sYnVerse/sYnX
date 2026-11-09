@@ -71,6 +71,7 @@
     "start": "wrangler dev",
     "test": "vitest",
     "test:e2e": "npm run build && playwright test -c e2e/playwright.config.ts",
+    "test:mobile": "vitest run test/mobile- test/android- test/widget- test/post-build-comment test/changelog-order test/category-tag-emoji test/phone-carriers test/task-progress",
     "typecheck": "react-router typegen && tsc",
     "typecheck:mobile-tests": "tsc -p test/tsconfig.mobile.json"
   },
