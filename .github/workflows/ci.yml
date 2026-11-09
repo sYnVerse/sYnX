@@ -1,6 +1,6 @@
 name: CI
 
-# Lint, tests and typechecks on every pull request and on pushes to main.
+# Lint, tests and typechecks on every pull request.
 # Runs on GitHub Actions only; it never starts an EAS build.
 #
 # Three jobs run in parallel, each only when its files change:
@@ -14,8 +14,6 @@ name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
@@ -38,8 +36,7 @@ jobs:
       mobile: ${{ steps.filter.outputs.mobile }}
     steps:
       - uses: actions/checkout@v7
-      # On pull requests this compares against the base branch; on pushes to
-      # main it compares against the previous commit.
+      # On pull requests this compares against the base branch.
       - uses: dorny/paths-filter@v4
         id: filter
         with:
