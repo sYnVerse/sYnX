@@ -6,6 +6,25 @@ export { MOBILE_APP_VERSION, MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-09",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Resolved system theme not updating during automatic sunset/sunrise transitions while running or returning from background.",
+      },
+      {
+        type: "FIX",
+        text: "Eliminated double/nested border artifact ('box within a box') around list cards on the Lists screen with solid card surfaces.",
+      },
+      {
+        type: "FIX",
+        text: "Fixed Tasks screen list options menu so Share list access, Edit list details, and Delete list open their respective dialogs directly on the active list.",
+      },
+    ],
+  },
+  {
+    version: "v3.7.0",
     date: "2026-11-08",
     title: "What's new?",
     changes: [

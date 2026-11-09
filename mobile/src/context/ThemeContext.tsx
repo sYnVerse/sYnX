@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo } from "react";
-import { Appearance, ColorSchemeName, useColorScheme } from "react-native";
+import { AppState, Appearance, ColorSchemeName, useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { StatusBar } from "expo-status-bar";
 import { ThemeMode, ThemeColors, darkTheme, lightTheme } from "../theme/theme";
+import { resolveThemeMode } from "../shared";
 
 interface ThemeContextType {
   /** Stored preference: dark | light | system */
@@ -27,17 +28,45 @@ const ThemeContext = createContext<ThemeContextType>({
   setHapticsEnabled: () => {},
 });
 
-function resolveMode(preference: ThemeMode, system: ColorSchemeName | null | undefined): "dark" | "light" {
-  if (preference === "system") {
-    return system === "light" ? "light" : "dark";
-  }
-  return preference;
-}
-
 export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const systemScheme = useColorScheme();
+  const hookScheme = useColorScheme();
+  const [appearanceScheme, setAppearanceScheme] = useState<ColorSchemeName | null | undefined>(
+    () => Appearance.getColorScheme()
+  );
   const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
   const [hapticsEnabled, setHapticsEnabledState] = useState<boolean>(true);
+
+  // Re-check system appearance on foreground resume (#176) and appearance broadcasts
+  useEffect(() => {
+    const appearanceSub = Appearance.addChangeListener(({ colorScheme }) => {
+      if (colorScheme) {
+        setAppearanceScheme(colorScheme);
+      }
+    });
+
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const appStateSub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        const current = Appearance.getColorScheme();
+        if (current) {
+          setAppearanceScheme(current);
+        }
+        // Delayed check to catch any asynchronous Android configuration updates after onResume
+        timeoutId = setTimeout(() => {
+          const delayed = Appearance.getColorScheme();
+          if (delayed) {
+            setAppearanceScheme(delayed);
+          }
+        }, 150);
+      }
+    });
+
+    return () => {
+      appearanceSub.remove();
+      appStateSub.remove();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -75,8 +104,8 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   };
 
   const resolvedMode = useMemo(
-    () => resolveMode(themeMode, systemScheme ?? Appearance.getColorScheme()),
-    [themeMode, systemScheme]
+    () => resolveThemeMode(themeMode, appearanceScheme ?? hookScheme ?? Appearance.getColorScheme()),
+    [themeMode, appearanceScheme, hookScheme]
   );
 
   const theme = resolvedMode === "light" ? lightTheme : darkTheme;

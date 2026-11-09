@@ -224,6 +224,20 @@ export function relativeLuminance(hex: string): number {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
+/**
+ * Resolves the effective light or dark theme mode given the user's preference
+ * ('dark' | 'light' | 'system') and the current OS color scheme (#176).
+ */
+export function resolveThemeMode(
+  preference: "dark" | "light" | "system",
+  systemScheme: "dark" | "light" | null | undefined
+): "dark" | "light" {
+  if (preference === "system") {
+    return systemScheme === "light" ? "light" : "dark";
+  }
+  return preference;
+}
+
 /** WCAG contrast ratio between two hex colors (lighter/darker ordered). */
 export function contrastRatio(fgHex: string, bgHex: string): number {
   const L1 = relativeLuminance(fgHex);

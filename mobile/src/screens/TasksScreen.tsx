@@ -37,6 +37,8 @@ import { TaskCardSkeleton } from "../components/SkeletonLoader";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
 import { ListAccessErrorState, type ListAccessErrorKind } from "../components/ListAccessErrorState";
 import { ListOptionsModal } from "../components/ListOptionsModal";
+import { EditListModal } from "../components/EditListModal";
+import { ShareListModal } from "../components/ShareListModal";
 import { useTheme } from "../context/ThemeContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
@@ -111,6 +113,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const [editingTask, setEditingTask] = useState<TodoItem | null>(null);
   const [selectedTaskForBreakdown, setSelectedTaskForBreakdown] = useState<TodoItem | null>(null);
   const [showListOptionsModal, setShowListOptionsModal] = useState(false);
+  const [showEditListModal, setShowEditListModal] = useState(false);
+  const [showShareListModal, setShowShareListModal] = useState(false);
   const [pinnedConfig, setPinnedConfig] = useState<PinnedWidgetConfig | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
 
@@ -732,8 +736,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             showToast(`Pinned "${listMeta.name}" to widget`, "success");
           }
         }}
-        onShareAccess={onSwitchLists}
-        onEditDetails={onSwitchLists}
+        onShareAccess={() => setShowShareListModal(true)}
+        onEditDetails={() => setShowEditListModal(true)}
         onViewActivity={canViewActivity ? openActivity : undefined}
         onDeleteList={() => {
           if (!listMeta) return;
@@ -750,8 +754,25 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
               style: "destructive",
               onPress: async () => {
                 try {
-                  await apiClient.delete(`/api/v1/lists/${listId}`);
+                  const res = await apiClient.delete(`/api/v1/lists/${listId}`);
+                  if (res.data?.pendingApproval) {
+                    showToast(
+                      res.data?.message || "Delete request sent. The list owner must approve it.",
+                      "success"
+                    );
+                    queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
+                    return;
+                  }
+                  if (pinnedConfig?.listId === listId) {
+                    await setPinnedWidgetConfig(null);
+                    setPinnedConfig(null);
+                    await syncPinnedList(null);
+                  }
+                  queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) =>
+                    old ? old.filter((l) => l.id !== listId) : []
+                  );
                   queryClient.invalidateQueries({ queryKey: ["lists"] });
+                  queryClient.invalidateQueries({ queryKey: ["todos", listId] });
                   showToast("List deleted", "info");
                   onGoToMyLists?.() ?? onSwitchLists?.();
                 } catch (e) {
@@ -762,6 +783,18 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             },
           ]);
         }}
+      />
+
+      <EditListModal
+        visible={showEditListModal}
+        list={listMeta ?? null}
+        onClose={() => setShowEditListModal(false)}
+      />
+
+      <ShareListModal
+        visible={showShareListModal}
+        list={listMeta ?? null}
+        onClose={() => setShowShareListModal(false)}
       />
 
       <ChangelogModal visible={showChangelog} onClose={handleDismissChangelog} />
