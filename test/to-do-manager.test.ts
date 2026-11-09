@@ -32,6 +32,7 @@ describe("TodoManager", () => {
 
     it("returns todos sorted by createdAt desc", async () => {
       const todo1 = await manager.create("First");
+      await new Promise((r) => setTimeout(r, 10));
       const todo2 = await manager.create("Second");
 
       const todos = await manager.list();
