@@ -162,6 +162,49 @@ export function formatReminderTime(reminderAt: number, locale?: string): string 
   });
 }
 
+/**
+ * Compact reminder label for mobile widgets showing both due date and time,
+ * e.g. "Today, 11:34 AM", "Tomorrow, 11:34 AM", "Yesterday, 11:34 AM", or "Nov 10, 11:34 AM".
+ */
+export function formatWidgetReminderLabel(
+  reminderAt: number,
+  now: number = Date.now(),
+  locale?: string
+): string {
+  if (reminderAt == null || !Number.isFinite(reminderAt)) {
+    return "";
+  }
+  const remDate = new Date(reminderAt);
+  const nowDate = new Date(now);
+  if (Number.isNaN(remDate.getTime()) || Number.isNaN(nowDate.getTime())) {
+    return "";
+  }
+
+  const timePart = formatReminderTime(reminderAt, locale);
+
+  const utcRem = Date.UTC(remDate.getFullYear(), remDate.getMonth(), remDate.getDate());
+  const utcNow = Date.UTC(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+  const dayDiff = Math.round((utcRem - utcNow) / (24 * 60 * 60 * 1000));
+
+  let dayPart: string;
+  if (dayDiff === 0) {
+    dayPart = "Today";
+  } else if (dayDiff === 1) {
+    dayPart = "Tomorrow";
+  } else if (dayDiff === -1) {
+    dayPart = "Yesterday";
+  } else {
+    const sameYear = remDate.getFullYear() === nowDate.getFullYear();
+    dayPart = remDate.toLocaleDateString(locale, {
+      month: "short",
+      day: "numeric",
+      ...(sameYear ? {} : { year: "numeric" }),
+    });
+  }
+
+  return `${dayPart}, ${timePart}`;
+}
+
 /** User-facing toast when a recurring task is marked done and advanced. */
 export function formatRescheduledToast(reminderAt: number, locale?: string): string {
   return `Rescheduled for ${formatFriendlyDate(reminderAt, locale)}`;

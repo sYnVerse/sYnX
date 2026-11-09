@@ -107,8 +107,10 @@ describe("Widget Snapshot & Replay Pure Functions", () => {
       expect(snap.tasks[0].id).toBe("task-2");
       expect(snap.tasks[0].priority).toBe("high");
       expect(snap.tasks[0].isOverdue).toBe(false);
+      expect(snap.tasks[0].reminderLabel).toMatch(/^Today, \d{1,2}:\d{2}/);
 
       expect(snap.tasks[1].id).toBe("task-1");
+      expect(snap.tasks[1].reminderLabel).toBeUndefined();
       expect(snap.tasks[1].subtaskProgress).toBe("1/2");
     });
 
@@ -126,15 +128,117 @@ describe("Widget Snapshot & Replay Pure Functions", () => {
       };
       const snap = buildListWidgetSnapshot(mockList, [overdueTask], { now });
       expect(snap.tasks[0].isOverdue).toBe(true);
+      expect(snap.tasks[0].reminderLabel).toMatch(/^Today, \d{1,2}:\d{2}/);
+    });
+
+    it("formats reminderLabel with date and time across relative and calendar days", () => {
+      const baseDate = new Date(now);
+      const makeDate = (dOffset: number, hour: number, min: number, yearOffset: number = 0) =>
+        new Date(
+          baseDate.getFullYear() + yearOffset,
+          baseDate.getMonth(),
+          baseDate.getDate() + dOffset,
+          hour,
+          min
+        ).getTime();
+
+      const items: TodoItem[] = [
+        {
+          id: "t-today",
+          listId: "list-1",
+          text: "Today task",
+          completed: false,
+          priority: "none",
+          recurrence: "none",
+          reminderAt: makeDate(0, 14, 30),
+          reminderSent: false,
+          createdAt: 100,
+        },
+        {
+          id: "t-tomorrow",
+          listId: "list-1",
+          text: "Tomorrow task",
+          completed: false,
+          priority: "none",
+          recurrence: "none",
+          reminderAt: makeDate(1, 9, 0),
+          reminderSent: false,
+          createdAt: 200,
+        },
+        {
+          id: "t-yesterday",
+          listId: "list-1",
+          text: "Yesterday task",
+          completed: false,
+          priority: "none",
+          recurrence: "none",
+          reminderAt: makeDate(-1, 16, 0),
+          reminderSent: true,
+          createdAt: 300,
+        },
+        {
+          id: "t-future",
+          listId: "list-1",
+          text: "Future task",
+          completed: false,
+          priority: "none",
+          recurrence: "none",
+          reminderAt: makeDate(5, 11, 15),
+          reminderSent: false,
+          createdAt: 400,
+        },
+        {
+          id: "t-overdue-calendar",
+          listId: "list-1",
+          text: "Past calendar task",
+          completed: false,
+          priority: "none",
+          recurrence: "none",
+          reminderAt: makeDate(-4, 10, 0),
+          reminderSent: true,
+          createdAt: 500,
+        },
+        {
+          id: "t-next-year",
+          listId: "list-1",
+          text: "Next year task",
+          completed: false,
+          priority: "none",
+          recurrence: "none",
+          reminderAt: makeDate(0, 12, 0, 1),
+          reminderSent: false,
+          createdAt: 600,
+        },
+      ];
+
+      const snap = buildListWidgetSnapshot(mockList, items, { now, locale: "en-US", sortMode: "created" });
+      const byId = Object.fromEntries(snap.tasks.map((t) => [t.id, t]));
+
+      expect(byId["t-today"].reminderLabel).toMatch(/^Today, \d{1,2}:\d{2}\s?(AM|PM)?$/i);
+      expect(byId["t-tomorrow"].reminderLabel).toMatch(/^Tomorrow, \d{1,2}:\d{2}\s?(AM|PM)?$/i);
+      expect(byId["t-yesterday"].reminderLabel).toMatch(/^Yesterday, \d{1,2}:\d{2}\s?(AM|PM)?$/i);
+      expect(byId["t-yesterday"].isOverdue).toBe(true);
+
+      // Future task 5 days out: Nov <day>, <time>
+      expect(byId["t-future"].reminderLabel).toMatch(/^[A-Z][a-z]{2}\s\d{1,2},\s\d{1,2}:\d{2}\s?(AM|PM)?$/i);
+      expect(byId["t-future"].isOverdue).toBe(false);
+
+      // Past calendar task 4 days ago: Nov <day>, <time>
+      expect(byId["t-overdue-calendar"].reminderLabel).toMatch(/^[A-Z][a-z]{2}\s\d{1,2},\s\d{1,2}:\d{2}\s?(AM|PM)?$/i);
+      expect(byId["t-overdue-calendar"].isOverdue).toBe(true);
+
+      // Next year task: includes year
+      expect(byId["t-next-year"].reminderLabel).toContain(String(baseDate.getFullYear() + 1));
     });
   });
 
   describe("buildUpNextWidgetSnapshot", () => {
-    it("filters only tasks with reminders sorted chronologically", () => {
+    it("filters only tasks with reminders sorted chronologically and formats reminderLabel with date and time", () => {
       const snap = buildUpNextWidgetSnapshot(mockList, mockTodos, { now });
       expect(snap.categoryEmoji).toBe("⏰");
       expect(snap.tasks).toHaveLength(1);
       expect(snap.tasks[0].id).toBe("task-2");
+      expect(snap.tasks[0].reminderLabel).toMatch(/^Today, \d{1,2}:\d{2}/);
     });
   });
 
@@ -187,7 +291,7 @@ describe("Widget Snapshot & Replay Pure Functions", () => {
       expect(result.updatedTasks[0].id).toBe("t2");
     });
 
-    it("reschedules recurring task and keeps in widget tasks with advanced reminder", () => {
+    it("reschedules recurring task and keeps in widget tasks with advanced reminder and updated reminderLabel", () => {
       const tasks: WidgetTaskItem[] = [
         {
           id: "t-daily",
@@ -196,12 +300,14 @@ describe("Widget Snapshot & Replay Pure Functions", () => {
           priority: "high",
           recurrence: "daily",
           reminderAt: now,
+          reminderLabel: "Today, 2:13 PM",
         },
       ];
-      const result = applyWidgetTaskCompletion(tasks, "t-daily");
+      const result = applyWidgetTaskCompletion(tasks, "t-daily", now, "en-US");
       expect(result.completedTask?.id).toBe("t-daily");
       expect(result.updatedTasks).toHaveLength(1);
       expect(result.updatedTasks[0].reminderAt).toBe(now + 86400000);
+      expect(result.updatedTasks[0].reminderLabel).toMatch(/^Tomorrow, \d{1,2}:\d{2}\s?(AM|PM)?$/i);
     });
   });
 });

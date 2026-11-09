@@ -1,5 +1,7 @@
 import { formatFriendlyDate, formatReminderTime } from "./mobile-ux";
 
+export { formatWidgetReminderLabel } from "./mobile-ux";
+
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 
