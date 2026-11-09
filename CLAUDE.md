@@ -11,7 +11,7 @@ Rules:
 
 ## Checks (CI runs these)
 
-GitHub Actions (`.github/workflows/ci.yml`) runs these on every pull request and push to main, so run them before finishing a change:
+GitHub Actions (`.github/workflows/ci.yml`) runs these on every pull request, so run them before finishing a change:
 
 - `npm run lint`
 - `npm test -- --run --maxWorkers=2`

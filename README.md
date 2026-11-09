@@ -194,7 +194,7 @@ Tests live in [`test/`](test/) (Vitest) and [`e2e/`](e2e/) (Playwright).
 - **Unit and Integration Tests** (`test/`) run inside the Workers runtime with `@cloudflare/vitest-pool-workers`. Each test file gets its own isolated D1 database, built directly from `migrations/`. They cover the web server routes, `shared/`, and parts of the mobile app.
 - **End-to-End Tests** (`e2e/`) run in real Chromium via Playwright against a local `wrangler dev` Worker instance backed by a local D1 database. They test the full user-facing application: guest workflows, synthetic test authentication, multi-user list sharing, and permissions.
 
-[GitHub Actions](.github/workflows/ci.yml) runs three parallel CI jobs on every pull request and every push to `main` (branch protection gates merge on all checks passing):
+[GitHub Actions](.github/workflows/ci.yml) runs three parallel CI jobs on every pull request (branch protection gates merge on all checks passing):
 
 ```bash
 # Web Job
