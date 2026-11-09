@@ -11,6 +11,11 @@
     "mobile-calendar-reconcile.test.ts",
     "mobile-sign-out-cleanup.test.ts",
     "mobile-updates.test.ts",
+    "android-app-links.test.ts",
+    "widget-pinned-toggle.test.ts",
+    "widget-progress-ring.test.ts",
+    "widget-snapshot.test.ts",
+    "widget-switch-list.test.ts",
     // Types for the `?raw` imports.
     "../node_modules/vite/client.d.ts"
   ]
