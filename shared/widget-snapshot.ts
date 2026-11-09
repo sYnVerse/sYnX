@@ -9,8 +9,6 @@ import { DEFAULT_TASK_SORT_MODE, sortTasks, type TaskSortMode } from "./task-sor
 import { countTaskProgress } from "./task-progress";
 import { getCategoryEmoji } from "./categories";
 
-export { formatWidgetReminderLabel } from "./mobile-ux";
-
 export interface WidgetTaskItem {
   id: string;
   text: string;
