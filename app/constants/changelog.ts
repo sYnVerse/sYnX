@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.6.3";
+export const WEB_VERSION = "v5.6.4";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.6.4",
+    date: "2026-11-09",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Signing in to sYnX web in mobile browsers now completes the sign-in directly in the browser and restores the active list, rather than triggering Android App Links to open the installed mobile app."
+      }
+    ]
+  },
   {
     version: "v5.6.3",
     date: "2026-11-07",

@@ -5,6 +5,7 @@ import {
   AUTH_SESSION_COOKIE,
   buildAuthClearCookieHeaders,
   parseRefreshCookie,
+  parseSafeRedirectTo,
   serializeAuthRefreshCookie,
   serializeAuthSessionCookie,
 } from "./auth-cookies.server";
@@ -24,6 +25,7 @@ export {
   getPkceCookieAttributes,
   parsePkceCookie,
   parseRefreshCookie,
+  parseSafeRedirectTo,
   serializeAuthRefreshCookie,
   serializeAuthSessionCookie,
   serializePkceCookie,
@@ -178,13 +180,7 @@ export function parseTestLoginRequest(
     url.searchParams.get("suggestedName")
   )?.trim();
   const redirectToRaw = url.searchParams.get("redirectTo")?.trim();
-  const redirectTo =
-    redirectToRaw &&
-    redirectToRaw.startsWith("/") &&
-    !redirectToRaw.startsWith("//") &&
-    !redirectToRaw.includes("\\")
-      ? redirectToRaw
-      : "/";
+  const redirectTo = parseSafeRedirectTo(redirectToRaw) || "/";
 
   const token = mintLocalTestToken({ userId, email });
 
