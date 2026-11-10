@@ -10,7 +10,7 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     changes: [
       {
         type: "FIX",
-        text: "Signing in to sYnX web in mobile browsers now completes the sign-in directly in the browser and restores the active list, rather than triggering Android App Links to open the installed mobile app."
+        text: "Signing in to sYnX web in mobile browsers now reliably finishes in the browser and returns to your active list without getting stuck at the sign-in finalizing screen or launching the mobile app."
       }
     ]
   },

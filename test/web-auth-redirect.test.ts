@@ -94,6 +94,15 @@ describe("renderLandingResponse", () => {
     expect(text).toContain('window.location.replace("/target-list")');
     expect(text).toContain('content="0;url=/target-list"');
     expect(text).toContain("Finalizing sign-in...");
+    expect(text).toContain('id="fallback-link"');
+    expect(text).toContain("<noscript>");
+  });
+
+  it("verifies callback route module is a resource route without default UI export", async () => {
+    const callbackModule = await import("../app/routes/callback");
+    // In React Router v7, routes without a default component export are resource routes.
+    // This ensures React Router directly sends the loader's Response instead of rendering a shell.
+    expect((callbackModule as any).default).toBeUndefined();
   });
 
   it("escapes destination in HTML markup", () => {

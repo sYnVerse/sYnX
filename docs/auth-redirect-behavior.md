@@ -43,12 +43,14 @@ sYnX supports two distinct authentication entry points, each with independent se
 ### 1. Browser-Bound Web Sign-In
 - A sign-in initiated from sYnX web in any browser (desktop or mobile) must **always** finish in the same browser tab.
 - When `GET /callback` receives a browser navigation request (`Accept: text/html`):
+  - The route is implemented as a **Resource Route** (no default React component export), which in React Router v7 instructs the runtime to deliver the loader's `Response` directly to the client HTTP stream without wrapping it in an SSR React component shell.
   - Server completes the token exchange and attaches `synx_auth_session` and `synx_refresh_session` cookies.
   - Clears the short-lived PKCE cookie.
   - Directly resolves the user's primary list (or creates an initial list if new), avoiding redirect loops.
   - Returns an **HTTP 200 OK HTML landing response** rather than an HTTP 302 redirect.
   - The HTML document commits the session in Chrome and runs an immediate client-side `window.location.replace(destination)`.
   - Same-origin JavaScript navigation within Chrome does **not** trigger Android App Links, ensuring the user stays in their active web session.
+  - If JavaScript is delayed or disabled, a fallback link and `<noscript><meta http-equiv="refresh" ...></noscript>` ensure users are never stranded.
 
 ### 2. Destination Preservation (`redirectTo`)
 - When starting sign-in from `/login`:
