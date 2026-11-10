@@ -15,7 +15,37 @@ export const PKCE_MAX_AGE_SECONDS = 300; // 5 minutes
 export type OAuthPkceChallenge = {
   state: string;
   verifier: string;
+  redirectTo?: string;
 };
+
+/**
+ * Validates a redirect path to ensure it is a safe, relative application path:
+ * - Must start with `/`
+ * - Must NOT start with `//` (protocol-relative open redirect)
+ * - Must NOT include `\` (backslash navigation exploit)
+ * - Must NOT target auth callback/login/logout endpoints directly
+ */
+export function parseSafeRedirectTo(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (
+    trimmed.startsWith("/") &&
+    !trimmed.startsWith("//") &&
+    !trimmed.includes("\\")
+  ) {
+    const pathname = trimmed.split("?")[0].toLowerCase();
+    if (
+      pathname === "/login" ||
+      pathname === "/logout" ||
+      pathname === "/callback" ||
+      pathname === "/mobile/callback"
+    ) {
+      return undefined;
+    }
+    return trimmed;
+  }
+  return undefined;
+}
 
 export function getCookieDomain(requestUrl: string): string {
   const url = new URL(requestUrl);
@@ -52,11 +82,14 @@ export function serializePkceCookie(
   challenge: OAuthPkceChallenge,
   maxAge: number = PKCE_MAX_AGE_SECONDS,
 ): string {
-  const payload = JSON.stringify({
+  const payload: { state: string; verifier: string; redirectTo?: string } = {
     state: challenge.state,
     verifier: challenge.verifier,
-  });
-  return `${PKCE_COOKIE_NAME}=${encodeURIComponent(payload)}; ${getPkceCookieAttributes(requestUrl, maxAge)}`;
+  };
+  if (challenge.redirectTo) {
+    payload.redirectTo = challenge.redirectTo;
+  }
+  return `${PKCE_COOKIE_NAME}=${encodeURIComponent(JSON.stringify(payload))}; ${getPkceCookieAttributes(requestUrl, maxAge)}`;
 }
 
 export function clearPkceCookie(requestUrl: string): string {
@@ -117,6 +150,7 @@ export function parsePkceCookie(request: Request): OAuthPkceChallenge | null {
     const parsed = JSON.parse(decodeURIComponent(match[1])) as {
       state?: unknown;
       verifier?: unknown;
+      redirectTo?: unknown;
     };
     if (
       typeof parsed.state !== "string" ||
@@ -126,7 +160,17 @@ export function parsePkceCookie(request: Request): OAuthPkceChallenge | null {
     ) {
       return null;
     }
-    return { state: parsed.state, verifier: parsed.verifier };
+    const challenge: OAuthPkceChallenge = {
+      state: parsed.state,
+      verifier: parsed.verifier,
+    };
+    const safeRedirect = parseSafeRedirectTo(
+      typeof parsed.redirectTo === "string" ? parsed.redirectTo : undefined,
+    );
+    if (safeRedirect) {
+      challenge.redirectTo = safeRedirect;
+    }
+    return challenge;
   } catch {
     return null;
   }

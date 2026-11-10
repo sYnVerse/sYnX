@@ -1,6 +1,6 @@
 import type { Route } from "./+types/login";
 import { redirect } from "react-router";
-import { getAuthClient, parseTestLoginRequest } from "~/auth.server";
+import { getAuthClient, parseSafeRedirectTo, parseTestLoginRequest } from "~/auth.server";
 import { serializeAuthSessionCookie, serializePkceCookie } from "~/auth-cookies.server";
 import { syncUserProfileOnSignIn } from "~/user-profile.server";
 import { getCloudflareContext } from "~/context.server";
@@ -65,11 +65,29 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
     return redirect("/");
   }
 
+  const urlObj = new URL(request.url);
+  let redirectTo = parseSafeRedirectTo(urlObj.searchParams.get("redirectTo"));
+  if (!redirectTo) {
+    const referer = request.headers.get("Referer");
+    if (referer) {
+      try {
+        const refUrl = new URL(referer);
+        if (refUrl.origin === urlObj.origin) {
+          const path = refUrl.pathname + refUrl.search;
+          redirectTo = parseSafeRedirectTo(path);
+        }
+      } catch {
+        // ignore malformed referer
+      }
+    }
+  }
+
   return redirect(url, {
     headers: {
       "Set-Cookie": serializePkceCookie(request.url, {
         state: challenge.state,
         verifier: challenge.verifier,
+        redirectTo,
       }),
     },
   });

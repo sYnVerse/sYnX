@@ -74,7 +74,11 @@ export function CreateTaskForm({
         </div>
         {!isLoggedIn && isSharedServerList && (
           <a
-            href="/login"
+            href={
+              activeListMeta?.id && !activeListMeta.id.startsWith("guest_")
+                ? `/login?redirectTo=/${encodeURIComponent(activeListMeta.id)}`
+                : "/login"
+            }
             className="text-xs font-semibold text-indigo-300 hover:text-white underline ml-2 shrink-0"
           >
             Sign in
