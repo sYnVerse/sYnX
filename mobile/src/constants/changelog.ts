@@ -6,6 +6,21 @@ export { MOBILE_APP_VERSION, MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-10",
+    title: "What's new?",
+    changes: [
+      {
+        type: "IMPR",
+        text: "Updated shared list link format to /list/<id> so shared links open consistently across web and mobile platforms.",
+      },
+      {
+        type: "FIX",
+        text: "Aligned Android App Links to use /list/* (matching iOS), preventing web sign-in redirects in mobile browsers from inadvertently launching the native app.",
+      },
+    ],
+  },
+  {
+    version: "v3.7.1",
     date: "2026-11-09",
     title: "What's new?",
     changes: [

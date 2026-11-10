@@ -43,6 +43,27 @@ test.describe("Signed-in Auth & Profile Suite", () => {
     expect(apiRes.status()).toBe(401);
   });
 
+  test("sign-in never performs a document navigation to a /<uuid> list URL (#196)", async ({ page }) => {
+    const documentRequests: string[] = [];
+    page.on("request", (req) => {
+      if (req.isNavigationRequest()) {
+        documentRequests.push(req.url());
+      }
+    });
+
+    const user = createTestUser("navtest");
+    await signInAs(page, user);
+
+    // Verify user signed in successfully and sidebar rendered
+    await expect(page.locator("aside").getByText(user.displayName!)).toBeVisible();
+
+    // Verify that NO document navigation was made directly to /<uuid>
+    // Document navigations should only be to /login and / (or /?redirectTo=...)
+    const uuidPathRegex = /https?:\/\/[^/]+\/[0-9a-fA-F-]{36}(?:[?#]|$)/;
+    const directUuidDocumentNavs = documentRequests.filter((url) => uuidPathRegex.test(url));
+    expect(directUuidDocumentNavs).toEqual([]);
+  });
+
   test("migrates guest lists and tasks to the signed-in account and clears localStorage", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);

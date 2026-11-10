@@ -1,28 +1,182 @@
 import type { Route } from "./+types/_index";
-import { redirect } from "react-router";
-import { getOptionalUser } from "~/auth.server";
+import { useEffect } from "react";
+import { useLoaderData, useNavigate } from "react-router";
+import { getOptionalUser, parseSafeRedirectTo } from "~/auth.server";
 import { getCloudflareContext } from "~/context.server";
+import { loader as listLoader } from "~/features/list/loader.server";
+import { action as listAction } from "~/features/list/action.server";
+import TodoPage from "~/features/list/TodoPage";
+
+function extractListIdFromRedirectTo(redirectTo: string | undefined): string | undefined {
+  if (!redirectTo) return undefined;
+  if (redirectTo.startsWith("/list/")) {
+    const candidate = redirectTo.slice("/list/".length).split(/[?#]/)[0];
+    return candidate || undefined;
+  }
+  if (redirectTo.startsWith("/")) {
+    const candidate = redirectTo.slice(1).split(/[?#]/)[0];
+    if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(candidate)) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function extractListIdFromLocation(location: string | null | undefined): string | undefined {
+  if (!location) return undefined;
+  let path = location;
+  try {
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+      path = new URL(path).pathname;
+    }
+  } catch {
+    // Ignore invalid location URLs
+  }
+  if (path.startsWith("/list/")) {
+    return path.slice("/list/".length).split(/[?#]/)[0] || undefined;
+  }
+  if (path.startsWith("/")) {
+    const candidate = path.slice(1).split(/[?#]/)[0];
+    return candidate || undefined;
+  }
+  return undefined;
+}
+
+async function getPrimaryListId(db: D1Database | undefined, userId: string): Promise<string | undefined> {
+  if (!db) return undefined;
+  try {
+    const firstList = await db
+      .prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1")
+      .bind(userId)
+      .first<{ id: string }>();
+    if (firstList?.id) {
+      return firstList.id;
+    }
+    const defaultListId = crypto.randomUUID();
+    await db
+      .prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, ?)")
+      .bind(defaultListId, "My Tasks", userId, Date.now(), null)
+      .run();
+    return defaultListId;
+  } catch (e) {
+    console.error("Failed to resolve primary list in _index:", e);
+    return undefined;
+  }
+}
+
+async function resolveActiveListIdForIndex(request: Request, context: unknown): Promise<string> {
+  const { env } = getCloudflareContext(context);
+  const { userId, isLoggedIn } = await getOptionalUser(request, env);
+
+  // 1. Check redirectTo query param
+  const url = new URL(request.url);
+  const safeRedirectTo = parseSafeRedirectTo(url.searchParams.get("redirectTo"));
+  const requestedListId = extractListIdFromRedirectTo(safeRedirectTo);
+  if (requestedListId) return requestedListId;
+
+  // 2. Check primary list in DB if logged in
+  if (isLoggedIn && env.DB) {
+    const primary = await getPrimaryListId(env.DB, userId);
+    if (primary) return primary;
+  }
+
+  // 3. Fallback to userId
+  return userId;
+}
 
 export const loader = async ({ request, context }: Route.LoaderArgs) => {
   const { env } = getCloudflareContext(context);
-  const { userId, isLoggedIn, guestId, isNewGuest } = await getOptionalUser(request, env);
+  const { userId, isLoggedIn } = await getOptionalUser(request, env);
   const db = env.DB;
 
-  const headers = new Headers();
-  if (isNewGuest && guestId) {
-    headers.append("Set-Cookie", `guest_session=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+  const url = new URL(request.url);
+  const safeRedirectTo = parseSafeRedirectTo(url.searchParams.get("redirectTo"));
+  const requestedListId = extractListIdFromRedirectTo(safeRedirectTo);
+
+  let primaryListId: string | undefined;
+  if (isLoggedIn && db) {
+    primaryListId = await getPrimaryListId(db, userId);
   }
 
-  if (isLoggedIn) {
-    const firstList = await db.prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1").bind(userId).first<{ id: string }>();
-    if (firstList) {
-      return redirect(`/${firstList.id}`, { headers });
+  let currentId = requestedListId || primaryListId || userId;
+  let attempts = 0;
+  let result: unknown;
+
+  while (attempts < 3) {
+    attempts++;
+    result = await listLoader({ request, params: { id: currentId }, context });
+
+    if (result instanceof Response && result.status >= 300 && result.status < 400) {
+      const location = result.headers.get("Location");
+      const nextId = extractListIdFromLocation(location);
+      if (nextId && nextId !== currentId) {
+        currentId = nextId;
+        continue;
+      }
+      if (primaryListId && primaryListId !== currentId) {
+        currentId = primaryListId;
+        continue;
+      }
+      break;
+    } else {
+      return result;
     }
   }
 
-  return redirect(`/${userId}`, { headers });
+  // Never return a 3xx from _index. If still redirecting, return safe 200 list data.
+  if (result instanceof Response && result.status >= 300 && result.status < 400) {
+    return {
+      userId,
+      email: null,
+      isLoggedIn,
+      settings: {
+        emailEnabled: false,
+        smsEnabled: false,
+        phoneNumber: "",
+        phoneCarrier: "",
+        discordWebhookUrl: "",
+        displayName: "You",
+        displayNameSet: false,
+        timeZone: null,
+        avatarUrl: null,
+        suggestedDisplayName: null,
+      },
+      lists: [],
+      activeListId: currentId || userId,
+      todos: [],
+      pendingDeleteRequests: [],
+      ownedPendingDeleteRequests: Promise.resolve([]),
+      listActivity: Promise.resolve([]),
+      providerProfile: Promise.resolve({ avatarUrl: null, suggestedDisplayName: null }),
+      stats: { totalLists: 0, totalTasks: 0, completedTasks: 0 },
+    };
+  }
+
+  return result;
+};
+
+export const action = async (args: Route.ActionArgs) => {
+  const resolvedId = await resolveActiveListIdForIndex(args.request, args.context);
+  return listAction({
+    ...args,
+    params: {
+      ...args.params,
+      id: resolvedId,
+    },
+  });
 };
 
 export default function Index() {
-  return null;
+  const navigate = useNavigate();
+  const loaderData = useLoaderData<typeof listLoader>();
+  const activeListId = loaderData?.activeListId;
+
+  useEffect(() => {
+    if (activeListId) {
+      // Softly sync client-side route without triggering a document navigation
+      navigate(`/${activeListId}`, { replace: true });
+    }
+  }, [navigate, activeListId]);
+
+  return <TodoPage />;
 }
