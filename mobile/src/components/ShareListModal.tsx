@@ -51,7 +51,7 @@ export const ShareListModal: React.FC<ShareListModalProps> = ({
     }
   };
 
-  const listLink = (target: TodoList) => `https://synx.christran.io/${target.id}`;
+  const listLink = (target: TodoList) => `https://synx.christran.io/list/${target.id}`;
 
   const copyText = async (text: string) => {
     try {

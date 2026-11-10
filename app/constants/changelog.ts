@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.6.4";
+export const WEB_VERSION = "v5.6.5";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.6.5",
+    date: "2026-11-10",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Added /list/:id web route support and aligned shared list links across web and mobile platforms."
+      },
+      {
+        type: "FIX",
+        text: "Web sign-in on mobile browsers now stays in the browser by completing authentication directly on the root path without issuing external redirects to list UUIDs that trigger Android App Links (#196)."
+      }
+    ]
+  },
   {
     version: "v5.6.4",
     date: "2026-11-09",

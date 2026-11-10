@@ -306,7 +306,7 @@ export function TaskToolbar({
                   type="button"
                   disabled={activeListShareMode === "private" && !isOwner}
                   onClick={() => {
-                    const url = window.location.href;
+                    const url = activeListId ? `${window.location.origin}/list/${activeListId}` : window.location.href;
                     navigator.clipboard.writeText(url).then(() => {
                       showToast("✓ Link copied to clipboard!");
                     });

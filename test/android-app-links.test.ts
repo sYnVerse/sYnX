@@ -30,7 +30,7 @@ type IntentData = { scheme?: string; host?: string; pathPrefix?: string; pathPat
 const viewFilter = appJson.expo.android.intentFilters.find((f) => f.action === "VIEW");
 const appLinkData = (viewFilter?.data ?? []) as IntentData[];
 
-function opensApp(path: string): boolean {
+export function opensApp(path: string): boolean {
   return appLinkData.some((d) => {
     if (d.scheme !== "https" || d.host !== "synx.christran.io") return false;
     if (d.pathPrefix) return path.startsWith(d.pathPrefix);
@@ -53,17 +53,22 @@ describe("Android App Links for shared list URLs", () => {
     }
   });
 
-  it("opens the app for plain list links and the existing paths", () => {
-    expect(opensApp(`/${LIST_ID}`)).toBe(true);
-    expect(opensApp(`/${LIST_ID.toUpperCase()}`)).toBe(true);
-    expect(opensApp(`/${crypto.randomUUID()}`)).toBe(true);
+  it("opens the app strictly for /list/* and /mobile/callback (matching iOS)", () => {
+    // Aligned with iOS Universal Links: only explicit /list/* and /mobile/callback open the native app
     expect(opensApp(`/list/${LIST_ID}`)).toBe(true);
+    expect(opensApp(`/list/${LIST_ID.toUpperCase()}`)).toBe(true);
+    expect(opensApp(`/list/${crypto.randomUUID()}`)).toBe(true);
     expect(opensApp("/mobile/callback")).toBe(true);
   });
 
-  it("leaves the website's other pages in the browser", () => {
+  it("leaves plain root UUIDs and the website's other pages in the browser (#196)", () => {
+    // Crucial for #196: plain root /<uuid> must NOT open the app so web browsing and
+    // OAuth redirects remain in the browser without application handoff.
     for (const path of [
       "/",
+      `/${LIST_ID}`,
+      `/${LIST_ID.toUpperCase()}`,
+      `/${crypto.randomUUID()}`,
       "/login",
       "/logout",
       "/callback",
@@ -82,7 +87,18 @@ describe("Android App Links for shared list URLs", () => {
     }
   });
 
-  it("the app's link parser opens the list for those URLs", () => {
+  it("the app's link parser opens the list for both /list/<id> and legacy root /<id> URLs", () => {
+    // Standard /list/<id> URLs
+    expect(parseDeepLinkUrl(`https://synx.christran.io/list/${LIST_ID}`)).toEqual({
+      listId: LIST_ID,
+      action: null,
+    });
+    expect(parseDeepLinkUrl(`https://synx.christran.io/list/${LIST_ID}?action=newTask`)).toEqual({
+      listId: LIST_ID,
+      action: "newTask",
+    });
+
+    // Backward compatibility: existing links shared as /<id> or custom scheme still parse
     expect(parseDeepLinkUrl(`https://synx.christran.io/${LIST_ID}`)).toEqual({
       listId: LIST_ID,
       action: null,
@@ -91,6 +107,9 @@ describe("Android App Links for shared list URLs", () => {
       listId: LIST_ID,
       action: "newTask",
     });
-    expect(parseDeepLinkUrl(`https://synx.christran.io/list/${LIST_ID}`).listId).toBe(LIST_ID);
+    expect(parseDeepLinkUrl(`synx://list/${LIST_ID}`)).toEqual({
+      listId: LIST_ID,
+      action: null,
+    });
   });
 });
