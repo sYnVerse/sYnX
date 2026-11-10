@@ -6,8 +6,21 @@ import {
   PKCE_COOKIE_NAME,
 } from "../app/auth-cookies.server";
 import { loader as callbackLoader } from "../app/routes/callback";
-import { loader as indexLoader } from "../app/routes/_index";
+import { loader as indexLoader, action as indexAction } from "../app/routes/_index";
 import { opensApp } from "./android-app-links.test";
+
+async function unwrapLoaderData(res: unknown) {
+  if (res instanceof Response) {
+    if (res.status >= 300 && res.status < 400) {
+      throw new Error(`Loader returned redirect ${res.status} to ${res.headers.get("Location")}`);
+    }
+    return await res.json();
+  }
+  if (res && typeof res === "object" && "data" in res) {
+    return (res as { data: any }).data;
+  }
+  return res as Record<string, any>;
+}
 
 describe("parseSafeRedirectTo", () => {
   it("allows safe relative paths", () => {
@@ -281,17 +294,55 @@ describe("app/routes/_index loader behavior (#196)", () => {
       expect(res.status).not.toBe(302);
       expect(res.headers.get("Location")).toBeNull();
     }
+    const data = await unwrapLoaderData(res);
+    expect(data).toBeDefined();
+    expect(data.isLoggedIn).toBe(true);
+    expect(data.activeListId).toBe(firstListId);
+    expect(data.lists).toHaveLength(1);
+    expect(data.lists[0].id).toBe(firstListId);
   });
 
   it("contract test: _index never redirects to a path claimed by Android App Links", async () => {
     const firstListId = "3f2b8c1e-9a4d-4f6b-8e2a-1c5d7e9f0a3b";
     const mockDb = {
-      prepare: vi.fn().mockReturnValue({
-        bind: vi.fn().mockReturnValue({
-          first: vi.fn().mockResolvedValue({ id: firstListId }),
-          all: vi.fn().mockResolvedValue({ results: [] }),
-          run: vi.fn().mockResolvedValue({ success: true }),
-        }),
+      prepare: vi.fn((sql: string) => {
+        if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+          return {
+            bind: vi.fn().mockReturnValue({
+              first: vi.fn().mockResolvedValue({ id: firstListId }),
+            }),
+          };
+        }
+        if (sql.includes("SELECT * FROM lists WHERE owner_id = ?")) {
+          return {
+            bind: vi.fn().mockReturnValue({
+              all: vi.fn().mockResolvedValue({
+                results: [
+                  {
+                    id: firstListId,
+                    name: "My Tasks",
+                    owner_id: "user-1",
+                    created_at: 1000,
+                  },
+                ],
+              }),
+            }),
+          };
+        }
+        if (sql.includes("SELECT * FROM todos WHERE list_id = ?")) {
+          return {
+            bind: vi.fn().mockReturnValue({
+              all: vi.fn().mockResolvedValue({ results: [] }),
+            }),
+          };
+        }
+        return {
+          bind: vi.fn().mockReturnValue({
+            first: vi.fn().mockResolvedValue({ id: firstListId, owner_id: "user-1", share_mode: "private" }),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            run: vi.fn().mockResolvedValue({ success: true }),
+          }),
+        };
       }),
     };
 
@@ -319,6 +370,9 @@ describe("app/routes/_index loader behavior (#196)", () => {
       const pathname = new URL(loc, "http://localhost").pathname;
       expect(opensApp(pathname)).toBe(false);
     }
+    const data = await unwrapLoaderData(res);
+    expect(data).toBeDefined();
+    expect(data.activeListId).toBe(firstListId);
   });
 
   it("handles guest users on / by generating guest session and returning list data", async () => {
@@ -355,5 +409,161 @@ describe("app/routes/_index loader behavior (#196)", () => {
       expect(res.status).not.toBe(302);
       expect(res.headers.get("Location")).toBeNull();
     }
+    const data = await unwrapLoaderData(res);
+    expect(data).toBeDefined();
+    expect(data.isLoggedIn).toBe(false);
+    expect(data.activeListId).toBeDefined();
+    expect(Array.isArray(data.lists)).toBe(true);
+  });
+
+  it("renders list data when primary list query fails and preferredId falls back to userId", async () => {
+    const listId = "3f2b8c1e-9a4d-4f6b-8e2a-1c5d7e9f0a3b";
+    const mockDb = {
+      prepare: vi.fn((sql: string) => {
+        if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+          // Simulate query failure in _index loader
+          throw new Error("D1 query failure in _index");
+        }
+        if (sql.includes("SELECT * FROM lists WHERE owner_id = ?")) {
+          return {
+            bind: vi.fn().mockReturnValue({
+              all: vi.fn().mockResolvedValue({
+                results: [
+                  {
+                    id: listId,
+                    name: "My Tasks",
+                    owner_id: "user-1",
+                    created_at: 1000,
+                  },
+                ],
+              }),
+            }),
+          };
+        }
+        if (sql.includes("SELECT * FROM lists WHERE id = ?")) {
+          return {
+            bind: vi.fn().mockReturnValue({
+              first: vi.fn().mockResolvedValue({
+                id: listId,
+                name: "My Tasks",
+                owner_id: "user-1",
+                share_mode: "private",
+              }),
+            }),
+          };
+        }
+        if (sql.includes("SELECT * FROM todos WHERE list_id = ?")) {
+          return {
+            bind: vi.fn().mockReturnValue({
+              all: vi.fn().mockResolvedValue({ results: [] }),
+            }),
+          };
+        }
+        return {
+          bind: vi.fn().mockReturnValue({
+            first: vi.fn().mockResolvedValue(null),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            run: vi.fn().mockResolvedValue({ success: true }),
+          }),
+        };
+      }),
+    };
+
+    const req = new Request("http://localhost/", {
+      headers: {
+        Accept: "text/html,application/xhtml+xml",
+        Cookie: "synx_auth_session=e2e_test_session:user-1:user@example.com",
+      },
+    });
+
+    const res = await indexLoader({
+      request: req,
+      context: {
+        cloudflare: {
+          env: {
+            DB: mockDb,
+            ALLOW_DEV_TEST_AUTH: "true",
+          },
+        },
+      },
+      params: {},
+    } as any);
+
+    if (res instanceof Response) {
+      expect(res.status).not.toBe(302);
+      expect(res.headers.get("Location")).toBeNull();
+    }
+    const data = await unwrapLoaderData(res);
+    expect(data).toBeDefined();
+    expect(data.isLoggedIn).toBe(true);
+    expect(data.activeListId).toBe(listId);
+    expect(data.lists[0].id).toBe(listId);
+  });
+
+  it("supplies resolved list id to listAction when mutating tasks on /", async () => {
+    const listId = "3f2b8c1e-9a4d-4f6b-8e2a-1c5d7e9f0a3b";
+    let insertedTodo: any = null;
+    const mockDb = {
+      prepare: vi.fn((sql: string) => {
+        return {
+          bind: vi.fn((...args: any[]) => {
+            if (sql.includes("INSERT INTO todos")) {
+              insertedTodo = { id: args[0], list_id: args[1], text: args[2] };
+            }
+            return {
+              first: vi.fn().mockImplementation(() => {
+                if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+                  return Promise.resolve({ id: listId });
+                }
+                if (sql.includes("FROM lists WHERE id = ?")) {
+                  return Promise.resolve({
+                    id: listId,
+                    name: "My Tasks",
+                    owner_id: "user-1",
+                    share_mode: "private",
+                  });
+                }
+                if (sql.includes("COUNT(*)")) {
+                  return Promise.resolve({ n: 0 });
+                }
+                return Promise.resolve(null);
+              }),
+              all: vi.fn().mockResolvedValue({ results: [] }),
+              run: vi.fn().mockResolvedValue({ success: true }),
+            };
+          }),
+        };
+      }),
+    };
+
+    const formData = new FormData();
+    formData.append("intent", "create");
+    formData.append("text", "Test Task on Root");
+
+    const req = new Request("http://localhost/", {
+      method: "POST",
+      headers: {
+        Cookie: "synx_auth_session=e2e_test_session:user-1:user@example.com",
+      },
+      body: formData,
+    });
+
+    const res = await indexAction({
+      request: req,
+      context: {
+        cloudflare: {
+          env: {
+            DB: mockDb,
+            ALLOW_DEV_TEST_AUTH: "true",
+          },
+        },
+      },
+      params: {},
+    } as any);
+
+    expect(res).toBeDefined();
+    expect(insertedTodo).not.toBeNull();
+    expect(insertedTodo.list_id).toBe(listId);
+    expect(insertedTodo.text).toBe("Test Task on Root");
   });
 });

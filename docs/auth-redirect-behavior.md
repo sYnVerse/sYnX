@@ -44,7 +44,7 @@ sYnX supports two distinct authentication entry points, each with independent se
   - Because `/` is not claimed by the mobile app, Chrome leaves the navigation in the browser tab.
 
 ### 2. Direct List Rendering on `/` (`_index.tsx`)
-- The web root route ([`app/routes/_index.tsx`](file:///c:/Users/chris/Documents/GitHub/to-do-list/app/routes/_index.tsx)) resolves the user's primary list (or the list specified in `redirectTo`) and renders [`TodoPage`](file:///c:/Users/chris/Documents/GitHub/to-do-list/app/features/list/TodoPage.tsx) directly, without issuing an HTTP 302 redirect to `/<uuid>`.
+- The web root route ([`app/routes/_index.tsx`](../app/routes/_index.tsx)) resolves the user's primary list (or the list specified in `redirectTo`) and renders [`TodoPage`](../app/features/list/TodoPage.tsx) directly, without issuing an HTTP 302 redirect to `/<uuid>`.
 - Client-side routing softly updates the URL using React Router's `navigate(`/${activeListId}`, { replace: true })` inside `useEffect`, keeping React Router's internal routing state in sync without triggering a document navigation.
 - For signed-out guest users, `/` renders the guest list experience directly with guest session cookies, preserving full offline/local storage capabilities.
 
@@ -57,6 +57,6 @@ sYnX supports two distinct authentication entry points, each with independent se
   - On `/`, `_index.tsx` sanitizes `redirectTo` with `parseSafeRedirectTo` and renders that list directly.
 
 ### 4. Shared List Links & Multiplatform Parity
-- Web route support added for `/list/:id` ([`app/routes/list.$id.tsx`](file:///c:/Users/chris/Documents/GitHub/to-do-list/app/routes/list.$id.tsx)).
+- Web route support added for `/list/:id` ([`app/routes/list.$id.tsx`](../app/routes/list.$id.tsx)).
 - Shared links in both the web toolbar and mobile app format URLs as `https://synx.christran.io/list/<id>`.
 - Legacy `/<id>` URLs continue to be supported on the web for backwards compatibility.
