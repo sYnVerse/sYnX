@@ -7,7 +7,6 @@ export function renderLandingHtml(destination: string): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="0;url=${escapeHtml(safeDestination)}">
   <title>sYnX</title>
   <style>
     body {
@@ -40,11 +39,23 @@ export function renderLandingHtml(destination: string): string {
 <body>
   <div class="spinner"></div>
   <p>Finalizing sign-in...</p>
+  <p id="fallback-link" style="display: none; margin-top: 1rem; font-size: 0.8125rem;">
+    Taking longer than expected? <a href="${escapeHtml(safeDestination)}">Click here to continue</a>
+  </p>
   <noscript>
+    <meta http-equiv="refresh" content="0;url=${escapeHtml(safeDestination)}">
     <p style="margin-top: 1rem;">Click <a href="${escapeHtml(safeDestination)}">here</a> to continue.</p>
   </noscript>
   <script>
-    window.location.replace(${JSON.stringify(safeDestination)});
+    try {
+      window.location.replace(${JSON.stringify(safeDestination)});
+    } catch (e) {
+      window.location.href = ${JSON.stringify(safeDestination)};
+    }
+    setTimeout(function() {
+      var el = document.getElementById("fallback-link");
+      if (el) el.style.display = "block";
+    }, 2000);
   </script>
 </body>
 </html>`;

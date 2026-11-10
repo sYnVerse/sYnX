@@ -122,11 +122,10 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
   }
 };
 
-export default function Callback() {
-  return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
-      <div className="w-9 h-9 border-3 border-slate-700 border-t-indigo-500 rounded-full animate-spin mb-4" />
-      <p className="text-slate-400 text-sm">Finalizing sign-in...</p>
-    </div>
-  );
-}
+// Note: This route intentionally does NOT export a default React component.
+// In React Router v7, a route without a default export is a Resource Route.
+// This allows the loader's Response (renderLandingResponse with full Set-Cookie headers
+// and self-executing redirect HTML, or HTTP 302 redirect for APIs) to be returned
+// directly to the client without passing through the document SSR shell.
+
+
