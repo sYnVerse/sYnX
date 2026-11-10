@@ -566,4 +566,169 @@ describe("app/routes/_index loader behavior (#196)", () => {
     expect(insertedTodo.list_id).toBe(listId);
     expect(insertedTodo.text).toBe("Test Task on Root");
   });
+
+  it("POST to /?redirectTo=/<inaccessible-id> lands on the primary list", async () => {
+    const primaryId = "3f2b8c1e-9a4d-4f6b-8e2a-1c5d7e9f0a3b";
+    const inaccessibleId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    let insertedTodo: any = null;
+    const ownedList = {
+      id: primaryId,
+      name: "My Tasks",
+      owner_id: "user-1",
+      share_mode: "private",
+      created_at: 1000,
+    };
+    const mockDb = {
+      prepare: vi.fn((sql: string) => {
+        return {
+          bind: vi.fn((...args: any[]) => {
+            if (sql.includes("INSERT INTO todos")) {
+              insertedTodo = { id: args[0], list_id: args[1], text: args[2] };
+            }
+            return {
+              first: vi.fn().mockImplementation(() => {
+                if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+                  return Promise.resolve({ id: primaryId });
+                }
+                if (sql.includes("FROM lists WHERE id = ?")) {
+                  const requested = args[0];
+                  if (requested === primaryId) {
+                    return Promise.resolve(ownedList);
+                  }
+                  return Promise.resolve(null);
+                }
+                if (sql.includes("COUNT(*)")) {
+                  return Promise.resolve({ n: 0 });
+                }
+                return Promise.resolve(null);
+              }),
+              all: vi.fn().mockImplementation(() => {
+                if (sql.includes("SELECT * FROM lists WHERE owner_id = ?")) {
+                  return Promise.resolve({ results: [ownedList] });
+                }
+                return Promise.resolve({ results: [] });
+              }),
+              run: vi.fn().mockResolvedValue({ success: true }),
+            };
+          }),
+        };
+      }),
+    };
+
+    const formData = new FormData();
+    formData.append("intent", "create");
+    formData.append("text", "Should land on primary");
+
+    const req = new Request(`http://localhost/?redirectTo=/${inaccessibleId}`, {
+      method: "POST",
+      headers: {
+        Cookie: "synx_auth_session=e2e_test_session:user-1:user@example.com",
+      },
+      body: formData,
+    });
+
+    const res = await indexAction({
+      request: req,
+      context: {
+        cloudflare: {
+          env: {
+            DB: mockDb,
+            ALLOW_DEV_TEST_AUTH: "true",
+          },
+        },
+      },
+      params: {},
+    } as any);
+
+    expect(res).toBeDefined();
+    expect(insertedTodo).not.toBeNull();
+    expect(insertedTodo.list_id).toBe(primaryId);
+    expect(insertedTodo.list_id).not.toBe(inaccessibleId);
+    expect(insertedTodo.text).toBe("Should land on primary");
+  });
+
+  it("POST to /?redirectTo=/<accessible-id> still targets that list", async () => {
+    const primaryId = "3f2b8c1e-9a4d-4f6b-8e2a-1c5d7e9f0a3b";
+    const redirectToId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    let insertedTodo: any = null;
+    const ownedLists = [
+      {
+        id: primaryId,
+        name: "My Tasks",
+        owner_id: "user-1",
+        share_mode: "private",
+        created_at: 1000,
+      },
+      {
+        id: redirectToId,
+        name: "Shared Inbox",
+        owner_id: "user-1",
+        share_mode: "private",
+        created_at: 2000,
+      },
+    ];
+    const mockDb = {
+      prepare: vi.fn((sql: string) => {
+        return {
+          bind: vi.fn((...args: any[]) => {
+            if (sql.includes("INSERT INTO todos")) {
+              insertedTodo = { id: args[0], list_id: args[1], text: args[2] };
+            }
+            return {
+              first: vi.fn().mockImplementation(() => {
+                if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+                  return Promise.resolve({ id: primaryId });
+                }
+                if (sql.includes("FROM lists WHERE id = ?")) {
+                  return Promise.resolve(ownedLists.find((list) => list.id === args[0]) || null);
+                }
+                if (sql.includes("COUNT(*)")) {
+                  return Promise.resolve({ n: 0 });
+                }
+                return Promise.resolve(null);
+              }),
+              all: vi.fn().mockImplementation(() => {
+                if (sql.includes("SELECT * FROM lists WHERE owner_id = ?")) {
+                  return Promise.resolve({ results: ownedLists });
+                }
+                return Promise.resolve({ results: [] });
+              }),
+              run: vi.fn().mockResolvedValue({ success: true }),
+            };
+          }),
+        };
+      }),
+    };
+
+    const formData = new FormData();
+    formData.append("intent", "create");
+    formData.append("text", "Should land on redirectTo list");
+
+    const req = new Request(`http://localhost/?redirectTo=/${redirectToId}`, {
+      method: "POST",
+      headers: {
+        Cookie: "synx_auth_session=e2e_test_session:user-1:user@example.com",
+      },
+      body: formData,
+    });
+
+    const res = await indexAction({
+      request: req,
+      context: {
+        cloudflare: {
+          env: {
+            DB: mockDb,
+            ALLOW_DEV_TEST_AUTH: "true",
+          },
+        },
+      },
+      params: {},
+    } as any);
+
+    expect(res).toBeDefined();
+    expect(insertedTodo).not.toBeNull();
+    expect(insertedTodo.list_id).toBe(redirectToId);
+    expect(insertedTodo.list_id).not.toBe(primaryId);
+    expect(insertedTodo.text).toBe("Should land on redirectTo list");
+  });
 });

@@ -64,27 +64,11 @@ async function getPrimaryListId(db: D1Database | undefined, userId: string): Pro
   }
 }
 
-async function resolveActiveListIdForIndex(request: Request, context: unknown): Promise<string> {
-  const { env } = getCloudflareContext(context);
-  const { userId, isLoggedIn } = await getOptionalUser(request, env);
-
-  // 1. Check redirectTo query param
-  const url = new URL(request.url);
-  const safeRedirectTo = parseSafeRedirectTo(url.searchParams.get("redirectTo"));
-  const requestedListId = extractListIdFromRedirectTo(safeRedirectTo);
-  if (requestedListId) return requestedListId;
-
-  // 2. Check primary list in DB if logged in
-  if (isLoggedIn && env.DB) {
-    const primary = await getPrimaryListId(env.DB, userId);
-    if (primary) return primary;
-  }
-
-  // 3. Fallback to userId
-  return userId;
-}
-
-export const loader = async ({ request, context }: Route.LoaderArgs) => {
+/** Shared by the `/` loader and action so both honor inaccessible `redirectTo` the same way. */
+async function loadIndexList(
+  request: Request,
+  context: unknown,
+): Promise<{ result: unknown; currentId: string; userId: string; isLoggedIn: boolean }> {
   const { env } = getCloudflareContext(context);
   const { userId, isLoggedIn } = await getOptionalUser(request, env);
   const db = env.DB;
@@ -119,9 +103,15 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
       }
       break;
     } else {
-      return result;
+      return { result, currentId, userId, isLoggedIn };
     }
   }
+
+  return { result, currentId, userId, isLoggedIn };
+}
+
+export const loader = async ({ request, context }: Route.LoaderArgs) => {
+  const { result, currentId, userId, isLoggedIn } = await loadIndexList(request, context);
 
   // Never return a 3xx from _index. If still redirecting, return safe 200 list data.
   if (result instanceof Response && result.status >= 300 && result.status < 400) {
@@ -156,12 +146,12 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
 };
 
 export const action = async (args: Route.ActionArgs) => {
-  const resolvedId = await resolveActiveListIdForIndex(args.request, args.context);
+  const { currentId } = await loadIndexList(args.request, args.context);
   return listAction({
     ...args,
     params: {
       ...args.params,
-      id: resolvedId,
+      id: currentId,
     },
   });
 };
