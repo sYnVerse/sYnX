@@ -528,7 +528,22 @@ describe("app/routes/_index loader behavior (#196)", () => {
                 }
                 return Promise.resolve(null);
               }),
-              all: vi.fn().mockResolvedValue({ results: [] }),
+              all: vi.fn().mockImplementation(() => {
+                if (sql.includes("SELECT * FROM lists WHERE owner_id = ?")) {
+                  return Promise.resolve({
+                    results: [
+                      {
+                        id: listId,
+                        name: "My Tasks",
+                        owner_id: "user-1",
+                        share_mode: "private",
+                        created_at: 1000,
+                      },
+                    ],
+                  });
+                }
+                return Promise.resolve({ results: [] });
+              }),
               run: vi.fn().mockResolvedValue({ success: true }),
             };
           }),
