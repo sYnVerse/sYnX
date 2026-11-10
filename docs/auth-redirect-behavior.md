@@ -64,5 +64,5 @@ sYnX supports two distinct authentication entry points, each with independent se
 - If the mobile app is not installed, the link opens in the web browser normally.
 
 ### 4. Non-Browser / API Callers
-- If `/callback` or `/_index` receives a non-HTML request (e.g. automated test, API caller, `Accept: */*` or `application/json`):
+- If `/callback` receives a non-HTML request (e.g. automated test, API caller, `Accept: */*` or `application/json`):
   - The server continues to return an HTTP 302 redirect (`redirect(destination, { headers })`) for backward compatibility with programmatic clients.

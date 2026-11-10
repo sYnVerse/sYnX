@@ -2,7 +2,6 @@ import type { Route } from "./+types/_index";
 import { redirect } from "react-router";
 import { getOptionalUser } from "~/auth.server";
 import { getCloudflareContext } from "~/context.server";
-import { renderLandingResponse } from "~/auth-landing.server";
 
 export const loader = async ({ request, context }: Route.LoaderArgs) => {
   const { env } = getCloudflareContext(context);
@@ -14,20 +13,14 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
     headers.append("Set-Cookie", `guest_session=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
   }
 
-  let destination = `/${userId}`;
   if (isLoggedIn) {
     const firstList = await db.prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1").bind(userId).first<{ id: string }>();
     if (firstList) {
-      destination = `/${firstList.id}`;
+      return redirect(`/${firstList.id}`, { headers });
     }
   }
 
-  const acceptHeader = request.headers.get("Accept") || "";
-  if (acceptHeader.includes("text/html") && isLoggedIn) {
-    return renderLandingResponse(destination, headers);
-  }
-
-  return redirect(destination, { headers });
+  return redirect(`/${userId}`, { headers });
 };
 
 export default function Index() {

@@ -235,7 +235,7 @@ describe("app/routes/callback loader behavior", () => {
 });
 
 describe("app/routes/_index loader behavior", () => {
-  it("returns HTTP 200 landing document for logged-in users with Accept: text/html", async () => {
+  it("redirects logged-in users to their first list via HTTP 302", async () => {
     const firstListId = "3f2b8c1e-9a4d-4f6b-8e2a-1c5d7e9f0a3b";
     const mockDb = {
       prepare: vi.fn().mockReturnValue({
@@ -266,11 +266,8 @@ describe("app/routes/_index loader behavior", () => {
       params: {},
     } as any);
 
-    // Browser navigation for signed-in user must return HTTP 200 with landing script,
-    // NOT an HTTP 302 redirect that would be intercepted by Android App Links!
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    expect(body).toContain(`window.location.replace("/${firstListId}")`);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe(`/${firstListId}`);
   });
 
   it("returns HTTP 302 for non-HTML / programmatic callers", async () => {
