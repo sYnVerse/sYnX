@@ -51,7 +51,7 @@ const mocks = vi.hoisted(() => {
       expoConfig: { version: "3.8.0", android: { versionCode: 42 } },
     },
     apiClient: {
-      get: vi.fn(async () => ({ data: { updateRequired: false } })),
+      get: vi.fn<(...args: any[]) => any>(async () => ({ data: { updateRequired: false } })),
     },
     asyncStorage: {
       getItem: vi.fn(async () => null),
