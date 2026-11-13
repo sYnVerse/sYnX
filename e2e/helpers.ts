@@ -23,6 +23,16 @@ export async function suppressWhatsNew(page: Page): Promise<void> {
   }, WEB_VERSION);
 }
 
+export async function waitForHydration(page: Page): Promise<void> {
+  await page.locator("html[data-theme]").waitFor({ state: "attached", timeout: 15000 }).catch(() => {});
+}
+
+export async function gotoGuestList(page: Page): Promise<void> {
+  await page.goto("/");
+  await page.waitForURL(/\/[a-zA-Z0-9_-]+/, { timeout: 15000 });
+  await waitForHydration(page);
+}
+
 export async function signInAs(
   page: Page,
   user?: TestUser,
@@ -45,10 +55,12 @@ export async function signInAs(
   }
   await page.goto(`/login?${searchParams.toString()}`);
   await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15000 });
+  await waitForHydration(page);
   return resolved;
 }
 
 export async function addTask(page: Page, text: string): Promise<void> {
+  await waitForHydration(page);
   const taskInput = page.getByPlaceholder("What needs to be done?");
   const addButton = page.getByRole("button", { name: "Add", exact: true });
   await taskInput.fill(text);

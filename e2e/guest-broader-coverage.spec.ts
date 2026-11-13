@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { addTask, suppressWhatsNew } from "./helpers";
+import { addTask, gotoGuestList, suppressWhatsNew } from "./helpers";
 
 test.describe("Guest Broader Coverage", () => {
   test.beforeEach(async ({ page }) => {
@@ -7,16 +7,14 @@ test.describe("Guest Broader Coverage", () => {
   });
 
   test("empty state is displayed on a fresh guest list", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     await expect(page.getByText("No tasks in this list")).toBeVisible();
     await expect(page.getByText("Add your first task above to get started.")).toBeVisible();
   });
 
   test("filter buttons (All, Active, Done) and filter-specific empty states", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     // Add first task and keep it active
     await addTask(page, "Active Test Task");
@@ -53,8 +51,7 @@ test.describe("Guest Broader Coverage", () => {
   });
 
   test("task search filters tasks and clear button restores list", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     await addTask(page, "Buy fresh groceries");
     await addTask(page, "Schedule dentist appointment");
@@ -75,8 +72,7 @@ test.describe("Guest Broader Coverage", () => {
   });
 
   test("guest list header rename, sidebar rename, and list deletion", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     // Create a second guest list so deletion is allowed
     await page.getByRole("button", { name: "Create new list" }).click();
@@ -107,8 +103,7 @@ test.describe("Guest Broader Coverage", () => {
   });
 
   test("guest statistics modal, theme switcher, and sign in CTA", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     // Open guest statistics & themes modal
     await page.getByTitle("Guest Statistics & Themes").click();
