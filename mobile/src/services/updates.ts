@@ -3,8 +3,30 @@ import { AppState, Platform } from "react-native";
 import * as Updates from "expo-updates";
 import * as Application from "expo-application";
 import Constants from "expo-constants";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  DEFAULT_NATIVE_UPDATE_CONFIG,
+  checkNativeUpdateRequired,
+  isNativeUpdateDismissed,
+  NATIVE_UPDATE_DISMISSED_AT_KEY,
+  type NativeUpdateReason,
+} from "../shared";
+import { apiClient, onNativeUpdateRequired } from "../api/client";
+import { MOBILE_APP_VERSION } from "../shared/mobile-version";
 
 export const UPDATE_CHECK_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+export interface NativeUpdateState {
+  isUpdateRequired: boolean;
+  isBlocking: boolean;
+  reason: NativeUpdateReason | null;
+  message: string | null;
+  downloadUrl: string;
+  latestVersion: string | null;
+  latestBuildVersion: number | null;
+  latestRuntimeVersion: string | null;
+  isDismissed: boolean;
+}
 
 export interface UpdateState {
   isEnabled: boolean;
@@ -22,6 +44,16 @@ export interface UpdateState {
   channel: string | null;
   nativeAppVersion: string | null;
   nativeBuildVersion: string | null;
+  nativeUpdate: NativeUpdateState;
+}
+
+export interface CheckForUpdateResult {
+  hasUpdate: boolean;
+  isRollBack?: boolean;
+  isNativeUpdateRequired?: boolean;
+  nativeUpdateUrl?: string;
+  nativeUpdateMessage?: string;
+  error?: string;
 }
 
 function resolveNativeAppVersion(): string | null {
@@ -44,6 +76,18 @@ function resolveNativeBuildVersion(): string | null {
   );
 }
 
+export const defaultNativeUpdateState: NativeUpdateState = {
+  isUpdateRequired: false,
+  isBlocking: false,
+  reason: null,
+  message: null,
+  downloadUrl: DEFAULT_NATIVE_UPDATE_CONFIG.android.downloadUrl,
+  latestVersion: null,
+  latestBuildVersion: null,
+  latestRuntimeVersion: null,
+  isDismissed: false,
+};
+
 let currentState: UpdateState = {
   isEnabled: Updates.isEnabled ?? false,
   isChecking: false,
@@ -60,6 +104,7 @@ let currentState: UpdateState = {
   channel: Updates.channel ?? null,
   nativeAppVersion: resolveNativeAppVersion(),
   nativeBuildVersion: resolveNativeBuildVersion(),
+  nativeUpdate: { ...defaultNativeUpdateState },
 };
 
 type StateListener = (state: UpdateState) => void;
@@ -79,6 +124,26 @@ function updateState(patch: Partial<UpdateState>): void {
   currentState = { ...currentState, ...patch };
   notifyListeners();
 }
+
+/**
+ * Marks native update as required, triggered when API response contains
+ * X-sYnX-Native-Update-Required header or when manual/periodic check finds an outdated binary.
+ */
+export function markNativeUpdateRequired(options?: { downloadUrl?: string }): void {
+  updateState({
+    nativeUpdate: {
+      ...currentState.nativeUpdate,
+      isUpdateRequired: true,
+      downloadUrl: options?.downloadUrl || currentState.nativeUpdate.downloadUrl,
+      message:
+        currentState.nativeUpdate.message ||
+        "A native app update is required. Over-The-Air updates are no longer supported on this build.",
+    },
+  });
+}
+
+// Wire up API client header trigger
+onNativeUpdateRequired(markNativeUpdateRequired);
 
 /**
  * Synchronizes native Expo Updates state (e.g. startup downloads or rollback directives)
@@ -225,6 +290,7 @@ export function resetUpdateStateForTesting(): void {
     channel: Updates.channel ?? null,
     nativeAppVersion: resolveNativeAppVersion(),
     nativeBuildVersion: resolveNativeBuildVersion(),
+    nativeUpdate: { ...defaultNativeUpdateState },
   };
   syncNativeUpdateContext();
 }
@@ -258,18 +324,127 @@ export function formatShortId(id: string | null | undefined, fallback = "None"):
 }
 
 /**
+ * Evaluates whether a native application update is required.
+ * First evaluates against embedded/default configuration, then queries the server
+ * API (/api/v1/mobile/version) for any dynamic or remote updates to the floor.
+ */
+export async function checkNativeAppUpdate(): Promise<NativeUpdateState> {
+  if (Platform.OS === "web") {
+    return currentState.nativeUpdate;
+  }
+
+  const currentAppVersion = currentState.nativeAppVersion || MOBILE_APP_VERSION;
+  const currentBuildVersion = currentState.nativeBuildVersion;
+  const currentRuntime = currentState.runtimeVersion;
+
+  let isDismissed = false;
+  try {
+    const rawDismissed = await AsyncStorage.getItem(NATIVE_UPDATE_DISMISSED_AT_KEY);
+    if (rawDismissed) {
+      isDismissed = isNativeUpdateDismissed(parseInt(rawDismissed, 10));
+    }
+  } catch {
+    // Ignore storage read error
+  }
+
+  const platformKey = Platform.OS === "ios" ? "ios" : "android";
+  const localConfig = DEFAULT_NATIVE_UPDATE_CONFIG[platformKey] || DEFAULT_NATIVE_UPDATE_CONFIG.android;
+
+  const localEval = checkNativeUpdateRequired(
+    {
+      platform: Platform.OS,
+      appVersion: currentAppVersion,
+      buildVersion: currentBuildVersion,
+      runtimeVersion: currentRuntime,
+    },
+    localConfig
+  );
+
+  let nativeResult: NativeUpdateState = {
+    isUpdateRequired: localEval.updateRequired,
+    isBlocking: localEval.isBlocking,
+    reason: localEval.reason,
+    message: localEval.message,
+    downloadUrl: localEval.downloadUrl,
+    latestVersion: localEval.latestVersion,
+    latestBuildVersion: localEval.latestBuildVersion ?? null,
+    latestRuntimeVersion: localEval.latestRuntimeVersion ?? null,
+    isDismissed,
+  };
+
+  try {
+    const res = await apiClient.get("/api/v1/mobile/version", {
+      params: {
+        platform: Platform.OS,
+        version: currentAppVersion,
+        build: currentBuildVersion,
+        runtimeVersion: currentRuntime,
+      },
+      skipAuthRefresh: true,
+      timeout: 5000,
+    });
+    if (res.data && typeof res.data.updateRequired === "boolean") {
+      nativeResult = {
+        isUpdateRequired: Boolean(res.data.updateRequired),
+        isBlocking: Boolean(res.data.isBlocking),
+        reason: res.data.reason || null,
+        message: res.data.message || null,
+        downloadUrl: res.data.downloadUrl || localEval.downloadUrl,
+        latestVersion: res.data.latest?.latestVersion || localEval.latestVersion,
+        latestBuildVersion: res.data.latest?.latestBuildVersion ?? null,
+        latestRuntimeVersion: res.data.latest?.latestRuntimeVersion ?? null,
+        isDismissed,
+      };
+    }
+  } catch {
+    // Retain local evaluation on network failure
+  }
+
+  updateState({ nativeUpdate: nativeResult });
+  return nativeResult;
+}
+
+/**
+ * Dismisses the soft native update banner/prompt for 24 hours.
+ */
+export async function dismissNativeUpdatePrompt(): Promise<void> {
+  const now = Date.now();
+  try {
+    await AsyncStorage.setItem(NATIVE_UPDATE_DISMISSED_AT_KEY, String(now));
+  } catch {}
+  updateState({
+    nativeUpdate: {
+      ...currentState.nativeUpdate,
+      isDismissed: true,
+    },
+  });
+}
+
+/**
  * Checks for available updates and downloads any compatible update or rollback in the background.
+ * Also verifies native update requirements to alert users if Over-The-Air updates are no longer supported.
  * Automatically throttled unless manual: true is specified.
  */
 export async function checkForUpdate(options?: {
   manual?: boolean;
-}): Promise<{ hasUpdate: boolean; isRollBack?: boolean; error?: string }> {
+}): Promise<CheckForUpdateResult> {
   if (Platform.OS === "web") {
     return { hasUpdate: false };
   }
 
+  const nativeCheckPromise = checkNativeAppUpdate().catch(() => currentState.nativeUpdate);
+
   if (!Updates.isEnabled) {
+    const nativeResult = await nativeCheckPromise;
     updateState({ isChecking: false, updateError: null });
+    if (nativeResult.isUpdateRequired) {
+      return {
+        hasUpdate: false,
+        isNativeUpdateRequired: true,
+        nativeUpdateUrl: nativeResult.downloadUrl,
+        nativeUpdateMessage: nativeResult.message || undefined,
+      };
+    }
     return { hasUpdate: false, error: "OTA updates are disabled in this build." };
   }
 
@@ -277,17 +452,25 @@ export async function checkForUpdate(options?: {
   const now = Date.now();
   if (!options?.manual && currentState.lastCheckedAt) {
     if (now - currentState.lastCheckedAt < UPDATE_CHECK_COOLDOWN_MS) {
+      const nativeResult = await nativeCheckPromise;
       return {
         hasUpdate: currentState.isUpdatePending,
         isRollBack: currentState.isRollBackToEmbedded,
+        isNativeUpdateRequired: nativeResult.isUpdateRequired,
+        nativeUpdateUrl: nativeResult.downloadUrl,
+        nativeUpdateMessage: nativeResult.message || undefined,
       };
     }
   }
 
   if (currentState.isChecking || currentState.isDownloading) {
+    const nativeResult = await nativeCheckPromise;
     return {
       hasUpdate: currentState.isUpdatePending,
       isRollBack: currentState.isRollBackToEmbedded,
+      isNativeUpdateRequired: nativeResult.isUpdateRequired,
+      nativeUpdateUrl: nativeResult.downloadUrl,
+      nativeUpdateMessage: nativeResult.message || undefined,
     };
   }
 
@@ -316,7 +499,14 @@ export async function checkForUpdate(options?: {
         isUpdatePending: isPending,
         isRollBackToEmbedded: isRollBackPending,
       });
-      return { hasUpdate: isPending, isRollBack: isRollBackPending };
+      const nativeResult = await nativeCheckPromise;
+      return {
+        hasUpdate: isPending,
+        isRollBack: isRollBackPending,
+        isNativeUpdateRequired: nativeResult.isUpdateRequired,
+        nativeUpdateUrl: nativeResult.downloadUrl,
+        nativeUpdateMessage: nativeResult.message || undefined,
+      };
     }
 
     updateState({
@@ -324,16 +514,30 @@ export async function checkForUpdate(options?: {
       isUpdateAvailable: false,
       isRollBackToEmbedded: false,
     });
-    return { hasUpdate: false, isRollBack: false };
+    const nativeResult = await nativeCheckPromise;
+    return {
+      hasUpdate: false,
+      isRollBack: false,
+      isNativeUpdateRequired: nativeResult.isUpdateRequired,
+      nativeUpdateUrl: nativeResult.downloadUrl,
+      nativeUpdateMessage: nativeResult.message || undefined,
+    };
   } catch (err: any) {
     const message = err?.message || "Failed to check for updates.";
     console.warn("[updates] Update check/download failed:", message);
+    const nativeResult = await nativeCheckPromise;
     updateState({
       isChecking: false,
       isDownloading: false,
       updateError: message,
     });
-    return { hasUpdate: false, error: message };
+    return {
+      hasUpdate: false,
+      isNativeUpdateRequired: nativeResult.isUpdateRequired,
+      nativeUpdateUrl: nativeResult.downloadUrl,
+      nativeUpdateMessage: nativeResult.message || undefined,
+      error: message,
+    };
   }
 }
 

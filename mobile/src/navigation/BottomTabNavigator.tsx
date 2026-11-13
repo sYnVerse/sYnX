@@ -12,6 +12,7 @@ import { useTheme } from "../context/ThemeContext";
 import { apiClient } from "../api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { ScreenContainer } from "../components/ScreenContainer";
+import { NativeUpdateBanner } from "../components/NativeUpdateBanner";
 import { PushPromptProvider } from "../context/PushPromptContext";
 import { typography } from "../theme/theme";
 import { parseDeepLinkUrl } from "../shared";
@@ -305,6 +306,7 @@ const MainAppContent: React.FC = () => {
   return (
     <PushPromptProvider enabled>
       <View style={[styles.container, { backgroundColor: theme.bg, paddingTop: insets.top }]}>
+        <NativeUpdateBanner />
         <ScreenContainer style={styles.content} maxWidth={840}>
           {activeTab === "tasks" && (
             <TasksScreen

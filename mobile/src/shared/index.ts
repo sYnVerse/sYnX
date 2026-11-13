@@ -257,3 +257,5 @@ export * from "./time-zone";
 export * from "./todo-completed";
 
 export * from "./widget-snapshot";
+
+export * from "./native-update";

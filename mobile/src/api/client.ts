@@ -114,9 +114,38 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+type NativeUpdateHandler = (info: { downloadUrl?: string }) => void;
+let nativeUpdateHandler: NativeUpdateHandler | null = null;
+
+export function onNativeUpdateRequired(handler: NativeUpdateHandler | null) {
+  nativeUpdateHandler = handler;
+}
+
+function checkNativeUpdateHeader(headers?: any) {
+  if (!headers) return;
+  const isRequired =
+    headers["x-synx-native-update-required"] === "1" ||
+    headers["X-sYnX-Native-Update-Required"] === "1";
+  if (isRequired && nativeUpdateHandler) {
+    const downloadUrl =
+      headers["x-synx-native-update-url"] ||
+      headers["X-sYnX-Native-Update-Url"] ||
+      undefined;
+    nativeUpdateHandler({
+      downloadUrl: typeof downloadUrl === "string" ? downloadUrl : undefined,
+    });
+  }
+}
+
 apiClient.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    checkNativeUpdateHeader(res.headers);
+    return res;
+  },
   async (error: AxiosError) => {
+    if (error.response?.headers) {
+      checkNativeUpdateHeader(error.response.headers);
+    }
     const status = error.response?.status;
     const original = error.config as RetriableConfig | undefined;
 

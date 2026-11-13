@@ -6,6 +6,21 @@ export { MOBILE_APP_VERSION, MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-13",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Added native app update alerts that notify you when Over-The-Air updates are no longer supported on your installed build, with a direct link to install the new release.",
+      },
+      {
+        type: "IMPR",
+        text: "Upgraded Settings update check and diagnostics to identify required native binary upgrades and prevent misleading 'up to date' notices.",
+      },
+    ],
+  },
+  {
+    version: "v3.7.2",
     date: "2026-11-10",
     title: "What's new?",
     changes: [
