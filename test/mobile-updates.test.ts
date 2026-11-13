@@ -95,6 +95,7 @@ import {
   checkNativeAppUpdate,
   dismissNativeUpdatePrompt,
   markNativeUpdateRequired,
+  clearNativeUpdateRequired,
 } from "../mobile/src/services/updates";
 
 describe("mobile updates service", () => {
@@ -492,6 +493,15 @@ describe("mobile updates service", () => {
       mocks.constants.nativeAppVersion = "3.8.0";
       mocks.updates.runtimeVersion = "outdated-fingerprint-old";
       resetUpdateStateForTesting();
+      mocks.apiClient.get.mockResolvedValueOnce({
+        data: {
+          updateRequired: true,
+          reason: "runtime_mismatch",
+          message:
+            "A native app update is required. Over-The-Air updates are no longer supported on this build.",
+          downloadUrl: "https://synx.christran.io/download/android",
+        },
+      });
 
       const res = await checkNativeAppUpdate();
       expect(res.isUpdateRequired).toBe(true);
@@ -551,13 +561,14 @@ describe("mobile updates service", () => {
     it("falls back to local evaluation when remote /api/v1/mobile/version fails (offline)", async () => {
       mocks.application.nativeApplicationVersion = "3.8.0";
       mocks.constants.nativeAppVersion = "3.8.0";
-      mocks.updates.runtimeVersion = "outdated-fingerprint-old";
+      mocks.application.nativeBuildVersion = "28";
+      mocks.constants.nativeBuildVersion = "28";
       resetUpdateStateForTesting();
       mocks.apiClient.get.mockRejectedValueOnce(new Error("Network offline"));
 
       const res = await checkNativeAppUpdate();
       expect(res.isUpdateRequired).toBe(true);
-      expect(res.reason).toBe("runtime_mismatch");
+      expect(res.reason).toBe("build_below_minimum");
     });
 
     it("records dismissal timestamp in AsyncStorage and updates isDismissed", async () => {
@@ -570,17 +581,64 @@ describe("mobile updates service", () => {
     });
 
     it("markNativeUpdateRequired marks update required when signaled by response headers", () => {
+      resetUpdateStateForTesting();
       markNativeUpdateRequired({ downloadUrl: "https://synx.christran.io/download/android" });
       const state = getUpdateState();
       expect(state.nativeUpdate.isUpdateRequired).toBe(true);
       expect(state.nativeUpdate.downloadUrl).toBe("https://synx.christran.io/download/android");
     });
 
+    it("clears header-triggered update flag when checkNativeAppUpdate authoritatively determines no update is needed", async () => {
+      resetUpdateStateForTesting();
+      markNativeUpdateRequired({ downloadUrl: "https://old.url" });
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(true);
+
+      mocks.apiClient.get.mockResolvedValueOnce({
+        data: {
+          updateRequired: false,
+          isBlocking: false,
+          reason: null,
+          latest: {
+            latestVersion: "3.8.0",
+            latestBuildVersion: 29,
+          },
+        },
+      });
+
+      const res = await checkNativeAppUpdate();
+      expect(res.isUpdateRequired).toBe(false);
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(false);
+    });
+
+    it("suppresses subsequent header triggers when authoritative check confirmed binary is up-to-date", async () => {
+      resetUpdateStateForTesting();
+      mocks.apiClient.get.mockResolvedValueOnce({
+        data: { updateRequired: false },
+      });
+
+      await checkNativeAppUpdate();
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(false);
+
+      // Passive header arriving after authoritative clean check
+      markNativeUpdateRequired({ downloadUrl: "https://false.positive" });
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(false);
+    });
+
+    it("clearNativeUpdateRequired explicitly clears update requirement", () => {
+      resetUpdateStateForTesting();
+      markNativeUpdateRequired({ downloadUrl: "https://some.url" });
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(true);
+
+      clearNativeUpdateRequired();
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(false);
+    });
+
     it("checkForUpdate returns isNativeUpdateRequired: true when native update is required", async () => {
       mocks.application.nativeApplicationVersion = "3.8.0";
       mocks.constants.nativeAppVersion = "3.8.0";
+      mocks.application.nativeBuildVersion = "28";
+      mocks.constants.nativeBuildVersion = "28";
       mocks.updates.isEnabled = true;
-      mocks.updates.runtimeVersion = "outdated-fingerprint-old";
       resetUpdateStateForTesting();
 
       mocks.updates.checkForUpdateAsync.mockResolvedValueOnce({
@@ -597,8 +655,9 @@ describe("mobile updates service", () => {
     it("checkForUpdate returns isNativeUpdateRequired: true even when Updates.isEnabled is false", async () => {
       mocks.application.nativeApplicationVersion = "3.8.0";
       mocks.constants.nativeAppVersion = "3.8.0";
+      mocks.application.nativeBuildVersion = "28";
+      mocks.constants.nativeBuildVersion = "28";
       mocks.updates.isEnabled = false;
-      mocks.updates.runtimeVersion = "outdated-fingerprint-old";
       resetUpdateStateForTesting();
 
       const result = await checkForUpdate({ manual: true });

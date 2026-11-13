@@ -120,6 +120,9 @@ function notifyListeners(): void {
   }
 }
 
+let authoritativeUpdateRequired: boolean | null = null;
+let lastAuthoritativeCheckAt: number | null = null;
+
 function updateState(patch: Partial<UpdateState>): void {
   currentState = { ...currentState, ...patch };
   notifyListeners();
@@ -128,8 +131,19 @@ function updateState(patch: Partial<UpdateState>): void {
 /**
  * Marks native update as required, triggered when API response contains
  * X-sYnX-Native-Update-Required header or when manual/periodic check finds an outdated binary.
+ * If an authoritative /api/v1/mobile/version check recently confirmed the binary is up-to-date,
+ * the header flag is ignored to avoid sticky false positives.
  */
 export function markNativeUpdateRequired(options?: { downloadUrl?: string }): void {
+  const now = Date.now();
+  if (
+    authoritativeUpdateRequired === false &&
+    lastAuthoritativeCheckAt != null &&
+    now - lastAuthoritativeCheckAt < 5 * 60 * 1000
+  ) {
+    return;
+  }
+
   updateState({
     nativeUpdate: {
       ...currentState.nativeUpdate,
@@ -138,6 +152,26 @@ export function markNativeUpdateRequired(options?: { downloadUrl?: string }): vo
       message:
         currentState.nativeUpdate.message ||
         "A native app update is required. Over-The-Air updates are no longer supported on this build.",
+    },
+  });
+
+  if (lastAuthoritativeCheckAt == null || now - lastAuthoritativeCheckAt >= 5 * 60 * 1000) {
+    checkNativeAppUpdate().catch(() => {});
+  }
+}
+
+/**
+ * Authoritatively clears the native update requirement flag.
+ */
+export function clearNativeUpdateRequired(): void {
+  authoritativeUpdateRequired = false;
+  lastAuthoritativeCheckAt = Date.now();
+  updateState({
+    nativeUpdate: {
+      ...currentState.nativeUpdate,
+      isUpdateRequired: false,
+      reason: null,
+      message: null,
     },
   });
 }
@@ -274,6 +308,8 @@ export function useUpdatesBridge(): void {
  * Resets update state to default values for test isolation.
  */
 export function resetUpdateStateForTesting(): void {
+  authoritativeUpdateRequired = null;
+  lastAuthoritativeCheckAt = null;
   currentState = {
     isEnabled: Updates.isEnabled ?? false,
     isChecking: false,
@@ -395,6 +431,8 @@ export async function checkNativeAppUpdate(): Promise<NativeUpdateState> {
         latestRuntimeVersion: res.data.latest?.latestRuntimeVersion ?? null,
         isDismissed,
       };
+      authoritativeUpdateRequired = nativeResult.isUpdateRequired;
+      lastAuthoritativeCheckAt = Date.now();
     }
   } catch {
     // Retain local evaluation on network failure

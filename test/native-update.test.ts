@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   parseSemVer,
   compareSemVer,
+  parseBuildNumber,
   isNativeUpdateDismissed,
   checkNativeUpdateRequired,
+  resolveNativeUpdateConfig,
   DEFAULT_NATIVE_UPDATE_CONFIG,
   NATIVE_UPDATE_DISMISS_BACKOFF_MS,
   type NativePlatformConfig,
@@ -44,6 +46,28 @@ describe("shared/native-update", () => {
       expect(compareSemVer(null, "1.0.0")).toBe(-1);
       expect(compareSemVer("1.0.0", null)).toBe(1);
       expect(compareSemVer(null, null)).toBe(0);
+    });
+  });
+
+  describe("parseBuildNumber", () => {
+    it("parses pure integers", () => {
+      expect(parseBuildNumber(29)).toBe(29);
+      expect(parseBuildNumber("29")).toBe(29);
+      expect(parseBuildNumber("105")).toBe(105);
+    });
+
+    it("extracts build number from formatted string 'version (build)'", () => {
+      expect(parseBuildNumber("3.7.2 (29)")).toBe(29);
+      expect(parseBuildNumber("v3.8.0 (42)")).toBe(42);
+      expect(parseBuildNumber("(99)")).toBe(99);
+    });
+
+    it("returns null for invalid or missing inputs", () => {
+      expect(parseBuildNumber(null)).toBeNull();
+      expect(parseBuildNumber(undefined)).toBeNull();
+      expect(parseBuildNumber("")).toBeNull();
+      expect(parseBuildNumber("3.7.2")).toBeNull(); // Does not corrupt semver to 372
+      expect(parseBuildNumber("invalid")).toBeNull();
     });
   });
 
@@ -105,14 +129,45 @@ describe("shared/native-update", () => {
       expect(result.reason).toBe("build_below_minimum");
     });
 
-    it("flags runtime_mismatch when runtime fingerprint does not match active OTA runtime (Issue #202)", () => {
+    it("correctly parses parenthesized build version '3.7.2 (28)' and flags build_below_minimum", () => {
+      const result = checkNativeUpdateRequired(
+        { platform: "android", appVersion: "3.7.2", buildVersion: "3.7.2 (28)", runtimeVersion: "fingerprint-active-hash" },
+        config
+      );
+      expect(result.updateRequired).toBe(true);
+      expect(result.reason).toBe("build_below_minimum");
+    });
+
+    it("flags runtime_mismatch when runtime is in deprecatedRuntimeVersions (Issue #202)", () => {
+      const deprecatingConfig: NativePlatformConfig = {
+        ...config,
+        deprecatedRuntimeVersions: ["fingerprint-old-pre199"],
+      };
       const result = checkNativeUpdateRequired(
         { platform: "android", appVersion: "3.8.0", buildVersion: "29", runtimeVersion: "fingerprint-old-pre199" },
-        config
+        deprecatingConfig
       );
       expect(result.updateRequired).toBe(true);
       expect(result.reason).toBe("runtime_mismatch");
       expect(result.message).toMatch(/Over-The-Air updates are no longer supported/i);
+    });
+
+    it("flags runtime_mismatch when client without build number has unsupported runtime fingerprint", () => {
+      const result = checkNativeUpdateRequired(
+        { platform: "android", appVersion: "3.7.2", runtimeVersion: "fingerprint-old-pre199" },
+        config
+      );
+      expect(result.updateRequired).toBe(true);
+      expect(result.reason).toBe("runtime_mismatch");
+    });
+
+    it("treats unknown or newer runtime fingerprint on build at or above floor as OK", () => {
+      const result = checkNativeUpdateRequired(
+        { platform: "android", appVersion: "3.8.0", buildVersion: "30", runtimeVersion: "future-native-hash" },
+        config
+      );
+      expect(result.updateRequired).toBe(false);
+      expect(result.reason).toBeNull();
     });
 
     it("returns updateRequired: false when binary meets all floor requirements and matches runtime fingerprint", () => {
@@ -122,32 +177,6 @@ describe("shared/native-update", () => {
       );
       expect(result.updateRequired).toBe(false);
       expect(result.reason).toBeNull();
-    });
-
-    it("supports multiple runtime fingerprints in supportedRuntimeVersions", () => {
-      const multiConfig: NativePlatformConfig = {
-        ...config,
-        supportedRuntimeVersions: ["hash-a", "hash-b"],
-      };
-
-      const resultA = checkNativeUpdateRequired(
-        { platform: "android", appVersion: "3.8.0", buildVersion: "29", runtimeVersion: "hash-a" },
-        multiConfig
-      );
-      expect(resultA.updateRequired).toBe(false);
-
-      const resultB = checkNativeUpdateRequired(
-        { platform: "android", appVersion: "3.8.0", buildVersion: "29", runtimeVersion: "hash-b" },
-        multiConfig
-      );
-      expect(resultB.updateRequired).toBe(false);
-
-      const resultC = checkNativeUpdateRequired(
-        { platform: "android", appVersion: "3.8.0", buildVersion: "29", runtimeVersion: "hash-c" },
-        multiConfig
-      );
-      expect(resultC.updateRequired).toBe(true);
-      expect(resultC.reason).toBe("runtime_mismatch");
     });
 
     it("respects isBlocking flag from config", () => {
@@ -164,14 +193,38 @@ describe("shared/native-update", () => {
     });
   });
 
+  describe("resolveNativeUpdateConfig", () => {
+    it("falls back to default android config with no env overrides", () => {
+      const resolved = resolveNativeUpdateConfig("android", null);
+      expect(resolved.latestVersion).toBe("3.8.0");
+      expect(resolved.minVersion).toBe("3.7.2");
+      expect(resolved.minBuildVersion).toBe(29);
+      expect(resolved.downloadUrl).toContain("/download/android");
+    });
+
+    it("applies environment overrides for versions and runtimes", () => {
+      const resolved = resolveNativeUpdateConfig("android", {
+        MOBILE_MIN_APP_VERSION: "3.9.0",
+        MOBILE_MIN_BUILD_VERSION: "35",
+        MOBILE_DEPRECATED_RUNTIME_VERSIONS: "bad-hash-1, bad-hash-2",
+        MOBILE_DOWNLOAD_URL: "https://custom.apk/download",
+        MOBILE_BLOCK_OUTDATED_BUILDS: "true",
+      });
+      expect(resolved.minVersion).toBe("3.9.0");
+      expect(resolved.minBuildVersion).toBe(35);
+      expect(resolved.deprecatedRuntimeVersions).toEqual(["bad-hash-1", "bad-hash-2"]);
+      expect(resolved.downloadUrl).toBe("https://custom.apk/download");
+      expect(resolved.isBlocking).toBe(true);
+    });
+  });
+
   describe("DEFAULT_NATIVE_UPDATE_CONFIG", () => {
-    it("defines android configuration targeting PR #199 native build fingerprint", () => {
+    it("defines android configuration targeting minimum build 29 and version 3.7.2", () => {
       const android = DEFAULT_NATIVE_UPDATE_CONFIG.android;
       expect(android).toBeDefined();
       expect(android.latestVersion).toBe("3.8.0");
       expect(android.minVersion).toBe("3.7.2");
       expect(android.minBuildVersion).toBe(29);
-      expect(android.latestRuntimeVersion).toBe("9b83facafc79485ba4e7649aadf56dd10c617724");
       expect(android.downloadUrl).toContain("/download/android");
     });
   });

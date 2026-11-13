@@ -24,8 +24,10 @@ export interface NativePlatformConfig {
   latestRuntimeVersion?: string;
   /** Minimum acceptable runtime version */
   minRuntimeVersion?: string;
-  /** Set of runtime versions still served OTAs */
+  /** Set of runtime versions still served OTAs (used when build number is unknown or below latest) */
   supportedRuntimeVersions?: string[];
+  /** Explicit deny list of deprecated runtime versions */
+  deprecatedRuntimeVersions?: string[];
   /** Destination link to download or install the native build */
   downloadUrl: string;
   /** Whether the update is strictly blocking (prevents continuing in-app) */
@@ -64,22 +66,56 @@ export const DEFAULT_NATIVE_UPDATE_CONFIG: Record<string, NativePlatformConfig> 
     minVersion: "3.7.2",
     latestBuildVersion: 29,
     minBuildVersion: 29,
-    // Fingerprint from PR #199 native build (App Links narrowing)
-    latestRuntimeVersion: "9b83facafc79485ba4e7649aadf56dd10c617724",
-    supportedRuntimeVersions: ["9b83facafc79485ba4e7649aadf56dd10c617724"],
     downloadUrl: "https://synx.christran.io/download/android",
     isBlocking: false,
-    message:
-      "A native app update is required. Over-The-Air updates are no longer supported on this build.",
   },
   ios: {
     latestVersion: "3.8.0",
     minVersion: "3.7.2",
     downloadUrl: "https://synx.christran.io",
     isBlocking: false,
-    message: "A native app update is required to continue receiving updates.",
   },
 };
+
+/**
+ * Resolves effective platform config combining hardcoded defaults with Cloudflare environment overrides.
+ */
+export function resolveNativeUpdateConfig(
+  platform: string = "android",
+  env?: Record<string, string | undefined> | null
+): NativePlatformConfig {
+  const p = platform.toLowerCase() === "ios" ? "ios" : "android";
+  const baseConfig = DEFAULT_NATIVE_UPDATE_CONFIG[p] || DEFAULT_NATIVE_UPDATE_CONFIG.android;
+
+  const supportedRuntimesEnv = env?.MOBILE_SUPPORTED_RUNTIME_VERSIONS;
+  const supportedRuntimeVersions = supportedRuntimesEnv
+    ? supportedRuntimesEnv.split(",").map((s) => s.trim()).filter(Boolean)
+    : baseConfig.supportedRuntimeVersions;
+
+  const deprecatedRuntimesEnv = env?.MOBILE_DEPRECATED_RUNTIME_VERSIONS;
+  const deprecatedRuntimeVersions = deprecatedRuntimesEnv
+    ? deprecatedRuntimesEnv.split(",").map((s) => s.trim()).filter(Boolean)
+    : baseConfig.deprecatedRuntimeVersions;
+
+  return {
+    ...baseConfig,
+    latestVersion: env?.MOBILE_LATEST_APP_VERSION || baseConfig.latestVersion,
+    minVersion: env?.MOBILE_MIN_APP_VERSION || baseConfig.minVersion,
+    latestBuildVersion: env?.MOBILE_LATEST_BUILD_VERSION
+      ? parseInt(env.MOBILE_LATEST_BUILD_VERSION, 10)
+      : baseConfig.latestBuildVersion,
+    minBuildVersion: env?.MOBILE_MIN_BUILD_VERSION
+      ? parseInt(env.MOBILE_MIN_BUILD_VERSION, 10)
+      : baseConfig.minBuildVersion,
+    latestRuntimeVersion: env?.MOBILE_LATEST_RUNTIME_VERSION || baseConfig.latestRuntimeVersion,
+    minRuntimeVersion: env?.MOBILE_MIN_RUNTIME_VERSION || baseConfig.minRuntimeVersion,
+    supportedRuntimeVersions,
+    deprecatedRuntimeVersions,
+    downloadUrl: env?.MOBILE_DOWNLOAD_URL || env?.ANDROID_DOWNLOAD_URL || baseConfig.downloadUrl,
+    isBlocking: env?.MOBILE_BLOCK_OUTDATED_BUILDS === "true" || baseConfig.isBlocking,
+    message: env?.MOBILE_UPDATE_MESSAGE || baseConfig.message,
+  };
+}
 
 /**
  * Parses a semantic version string (e.g. "3.8.0" or "v3.8.0") into [major, minor, patch].
@@ -107,6 +143,26 @@ export function compareSemVer(a: string | null | undefined, b: string | null | u
     if (pa[i] < pb[i]) return -1;
   }
   return 0;
+}
+
+/**
+ * Parses an integer build number / versionCode from a number or string.
+ * Handles pure numbers ("29" -> 29) and formatted versions ("3.7.2 (29)" -> 29).
+ */
+export function parseBuildNumber(v: string | number | null | undefined): number | null {
+  if (v == null) return null;
+  if (typeof v === "number") return Number.isFinite(v) ? Math.floor(v) : null;
+  const s = String(v).trim();
+  const parenMatch = s.match(/\((\d+)\)/);
+  if (parenMatch) {
+    const num = parseInt(parenMatch[1], 10);
+    return isNaN(num) ? null : num;
+  }
+  if (/^\d+$/.test(s)) {
+    const num = parseInt(s, 10);
+    return isNaN(num) ? null : num;
+  }
+  return null;
 }
 
 /**
@@ -168,13 +224,9 @@ export function checkNativeUpdateRequired(
   }
 
   // 2. Check native build number (e.g. Android versionCode)
-  if (client.buildVersion != null && config.minBuildVersion != null) {
-    const rawBuild =
-      typeof client.buildVersion === "string"
-        ? client.buildVersion.replace(/[^\d]/g, "")
-        : String(client.buildVersion);
-    const parsedBuild = parseInt(rawBuild, 10);
-    if (!isNaN(parsedBuild) && parsedBuild < config.minBuildVersion) {
+  const parsedBuild = parseBuildNumber(client.buildVersion);
+  if (parsedBuild != null && config.minBuildVersion != null) {
+    if (parsedBuild < config.minBuildVersion) {
       return {
         updateRequired: true,
         isBlocking,
@@ -191,10 +243,48 @@ export function checkNativeUpdateRequired(
   }
 
   // 3. Check runtime version (fingerprint) compatibility
-  // If client provides a valid runtime fingerprint (not "embedded", null, or empty):
+  // Hashes have no natural ordering, so fingerprints are treated as allow/deny lists.
+  // Unknown fingerprints on builds at or above the native floor are treated as OK.
   if (client.runtimeVersion && client.runtimeVersion !== "embedded") {
-    if (config.supportedRuntimeVersions && config.supportedRuntimeVersions.length > 0) {
-      if (!config.supportedRuntimeVersions.includes(client.runtimeVersion)) {
+    // 3a. Explicit deny list: always requires update if matched
+    if (config.deprecatedRuntimeVersions && config.deprecatedRuntimeVersions.includes(client.runtimeVersion)) {
+      return {
+        updateRequired: true,
+        isBlocking,
+        reason: "runtime_mismatch",
+        message:
+          config.message ||
+          "A native app update is required. Over-The-Air updates are no longer supported on this build.",
+        downloadUrl: defaultDownloadUrl,
+        latestVersion,
+        latestBuildVersion,
+        latestRuntimeVersion,
+      };
+    }
+
+    // 3b. If build number / SemVer is below floor or unknown, check supportedRuntimeVersions
+    const isAtOrAboveFloor =
+      parsedBuild != null &&
+      (config.minBuildVersion == null || parsedBuild >= config.minBuildVersion) &&
+      (client.appVersion == null || config.minVersion == null || compareSemVer(client.appVersion, config.minVersion) >= 0);
+
+    if (!isAtOrAboveFloor) {
+      if (config.supportedRuntimeVersions && config.supportedRuntimeVersions.length > 0) {
+        if (!config.supportedRuntimeVersions.includes(client.runtimeVersion)) {
+          return {
+            updateRequired: true,
+            isBlocking,
+            reason: "runtime_mismatch",
+            message:
+              config.message ||
+              "A native app update is required. Over-The-Air updates are no longer supported on this build.",
+            downloadUrl: defaultDownloadUrl,
+            latestVersion,
+            latestBuildVersion,
+            latestRuntimeVersion,
+          };
+        }
+      } else if (config.latestRuntimeVersion && client.runtimeVersion !== config.latestRuntimeVersion) {
         return {
           updateRequired: true,
           isBlocking,
@@ -208,32 +298,6 @@ export function checkNativeUpdateRequired(
           latestRuntimeVersion,
         };
       }
-    } else if (config.latestRuntimeVersion && client.runtimeVersion !== config.latestRuntimeVersion) {
-      return {
-        updateRequired: true,
-        isBlocking,
-        reason: "runtime_mismatch",
-        message:
-          config.message ||
-          "A native app update is required. Over-The-Air updates are no longer supported on this build.",
-        downloadUrl: defaultDownloadUrl,
-        latestVersion,
-        latestBuildVersion,
-        latestRuntimeVersion,
-      };
-    } else if (config.minRuntimeVersion && client.runtimeVersion !== config.minRuntimeVersion) {
-      return {
-        updateRequired: true,
-        isBlocking,
-        reason: "runtime_mismatch",
-        message:
-          config.message ||
-          "A native app update is required. Over-The-Air updates are no longer supported on this build.",
-        downloadUrl: defaultDownloadUrl,
-        latestVersion,
-        latestBuildVersion,
-        latestRuntimeVersion,
-      };
     }
   }
 

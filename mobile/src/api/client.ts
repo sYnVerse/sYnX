@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import * as Updates from "expo-updates";
 import * as Application from "expo-application";
@@ -80,6 +81,7 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   async (config) => {
+    config.headers["X-sYnX-Platform"] = Platform.OS;
     config.headers["X-sYnX-Client-Version"] = MOBILE_APP_VERSION;
     const binaryVersion =
       Application.nativeApplicationVersion ??
@@ -96,6 +98,9 @@ apiClient.interceptors.request.use(
       config.headers["X-sYnX-Binary-Version"] = `${binaryVersion}${
         buildVersion ? ` (${buildVersion})` : ""
       }`;
+    }
+    if (buildVersion) {
+      config.headers["X-sYnX-Build-Number"] = String(buildVersion);
     }
     if (Updates.runtimeVersion) {
       config.headers["X-sYnX-Runtime-Version"] = Updates.runtimeVersion;
