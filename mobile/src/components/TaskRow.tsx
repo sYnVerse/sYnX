@@ -51,8 +51,10 @@ export const TaskRow: React.FC<TaskRowProps> = ({
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => canDragPriority,
+        onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_evt, gestureState) =>
+          canDragPriority && Math.abs(gestureState.dy) > 4,
+        onMoveShouldSetPanResponderCapture: (_evt, gestureState) =>
           canDragPriority && Math.abs(gestureState.dy) > 4,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {

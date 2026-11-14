@@ -324,10 +324,21 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       const currentPriority = (task.priority || "none") as PriorityLevel;
       if (currentPriority === nextPriority) return;
       triggerImpactHaptic();
+      const previous = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
       queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
         applyOptimisticTaskPriority(old, task.id, nextPriority)
       );
-      updateMutation.mutate({ id: task.id, payload: { priority: nextPriority } });
+      updateMutation.mutate(
+        { id: task.id, payload: { priority: nextPriority } },
+        {
+          onError: () => {
+            if (previous !== undefined) {
+              queryClient.setQueryData(["todos", listId], previous);
+            }
+            void queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+          },
+        }
+      );
     },
     [listId, queryClient, triggerImpactHaptic, updateMutation]
   );
@@ -643,6 +654,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 
       {draggingTask ? (
         <View
+          pointerEvents="none"
           style={[
             styles.priorityDropBar,
             { backgroundColor: theme.cardBg, borderColor: theme.accent },
@@ -650,7 +662,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
           accessibilityLabel="Priority drop targets"
         >
           <Text style={[styles.priorityDropLabel, { color: theme.textSecondary }]}>
-            Drop or tap priority for &ldquo;{draggingTask.text}&rdquo;:
+            Release to set priority for &ldquo;{draggingTask.text}&rdquo;:
           </Text>
           <View style={styles.priorityDropChips}>
             {PRIORITY_LEVELS_DESC.map((level) => {
@@ -658,7 +670,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
               const chipTint =
                 level === "none" ? theme.textSecondary : priorityColor(level, theme);
               return (
-                <TouchableOpacity
+                <View
                   key={level}
                   style={[
                     styles.priorityDropChip,
@@ -667,10 +679,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                       backgroundColor: isSelected ? `${chipTint}22` : theme.inputBg,
                     },
                   ]}
-                  onPress={() => handlePriorityDragEnd(draggingTask, level)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Set priority to ${PRIORITY_DROP_LABELS[level]}`}
-                  accessibilityState={{ selected: isSelected }}
+                  accessibilityLabel={PRIORITY_DROP_LABELS[level]}
                 >
                   <Text
                     style={[
@@ -680,7 +689,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                   >
                     {PRIORITY_DROP_LABELS[level]}
                   </Text>
-                </TouchableOpacity>
+                </View>
               );
             })}
           </View>
@@ -1208,11 +1217,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   priorityDropBar: {
+    position: "absolute",
+    top: spacing.sm,
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 20,
+    elevation: 6,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    marginBottom: 10,
     gap: 8,
   },
   priorityDropLabel: {
