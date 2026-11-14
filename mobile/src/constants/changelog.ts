@@ -10,6 +10,17 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "IMPR",
+        text: "Enabled the React Compiler across the mobile app to automatically memoize screens and task items for smoother scrolling and interactions.",
+      },
+    ],
+  },
+  {
+    version: "v3.8.0",
+    date: "2026-11-13",
+    title: "What's new?",
+    changes: [
+      {
         type: "NEW",
         text: "Added native app update alerts that notify you when Over-The-Air updates are no longer supported on your installed build, with a direct link to install the new release.",
       },

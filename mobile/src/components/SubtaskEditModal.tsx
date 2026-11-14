@@ -86,9 +86,8 @@ export const SubtaskEditModal: React.FC<SubtaskEditModalProps> = ({
     } catch (e) {
       triggerErrorHaptic(hapticsEnabled);
       showError(getErrorMessage(e, "Couldn't save subtask"));
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   if (!visible || !subtask) return null;
