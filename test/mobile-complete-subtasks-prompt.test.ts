@@ -297,6 +297,7 @@ describe("complete subtasks prompt (#204)", () => {
     const openSub = makeTodo({ id: "s-1", parentId: "p-1", text: "Buy milk" });
     mocks.queryClient.setQueryData(["todos", "list-1"], [parent, openSub]);
     mocks.apiPost.mockRejectedValueOnce(new Error("Network offline"));
+    const invalidateSpy = vi.spyOn(mocks.queryClient, "invalidateQueries");
 
     const { setCompleted } = useSetTodoCompleted("list-1");
     setCompleted(parent);
@@ -310,5 +311,6 @@ describe("complete subtasks prompt (#204)", () => {
     expect(rolledBack.find((t) => t.id === "s-1")?.parentId).toBe("p-1");
     expect(rolledBack.find((t) => t.id === "s-1")?.completed).toBe(false);
     expect(mocks.showError).toHaveBeenCalledWith("Couldn't save, change undone: Network offline");
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["todos", "list-1"] });
   });
 });
