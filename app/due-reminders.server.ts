@@ -4,6 +4,7 @@ export interface DueReminderRow {
   listId: string;
   text: string;
   reminderAt: number;
+  recurrence?: string | null;
   userId: string;
   listName: string | null;
   email: string | null;
@@ -23,7 +24,7 @@ export interface DueReminderRow {
 export async function getDueReminderRecipients(db: D1Database, now: number): Promise<DueReminderRow[]> {
   const { results } = await db.prepare(`
     SELECT 
-      t.id, t.list_id as listId, t.text, t.reminder_at as reminderAt,
+      t.id, t.list_id as listId, t.text, t.reminder_at as reminderAt, t.recurrence as recurrence,
       COALESCE(t.reminder_user_id, l.owner_id) as userId, l.name as listName,
       s.email, s.email_enabled as emailEnabled, s.sms_enabled as smsEnabled, 
       s.phone_number as phoneNumber, s.phone_carrier as phoneCarrier, s.discord_webhook_url as discordWebhookUrl

@@ -2,6 +2,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as BackgroundTask from 'expo-background-task';
 import { BackgroundTaskResult } from 'expo-background-task';
 import { Platform } from 'react-native';
+import { drainAndReplayPendingNotificationOps } from './notifications';
 import { drainAndReplayPendingWidgetOps, syncAllWidgets } from './widgetSync';
 
 export const WIDGET_BACKGROUND_SYNC_TASK = 'synx-widget-background-sync';
@@ -9,8 +10,8 @@ export const WIDGET_BACKGROUND_SYNC_TASK = 'synx-widget-background-sync';
 // Define the task outside of components (required by expo-task-manager)
 TaskManager.defineTask(WIDGET_BACKGROUND_SYNC_TASK, async () => {
   try {
-    // 1. Replay checkoffs queued in the Current and Pinned list widgets. This uses the
-    //    same path as the app, so ops that fail for a temporary reason stay queued.
+    // 1. Replay offline reminder notification actions and widget checkoffs.
+    await drainAndReplayPendingNotificationOps();
     await drainAndReplayPendingWidgetOps();
 
     // 2. Refresh the active list (Current + Progress widgets) and the pinned list,

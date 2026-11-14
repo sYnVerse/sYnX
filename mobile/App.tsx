@@ -8,6 +8,7 @@ import { ToastProvider } from "./src/context/ToastContext";
 import { BottomTabNavigator } from "./src/navigation/BottomTabNavigator";
 import { startWidgetSyncService } from "./src/services/widgetSync";
 import { startCalendarReconcileService } from "./src/services/calendarReconcile";
+import { startNotificationResponseService } from "./src/services/notifications";
 import { registerWidgetBackgroundSync } from "./src/services/widgetBackgroundTask";
 import { startPeriodicUpdateService, useUpdatesBridge } from "./src/services/updates";
 
@@ -20,11 +21,13 @@ export default function App() {
   useEffect(() => {
     const unsubWidgets = startWidgetSyncService(queryClient);
     const unsubCalendar = startCalendarReconcileService(queryClient);
+    const unsubNotifications = startNotificationResponseService(queryClient);
     const unsubUpdates = startPeriodicUpdateService();
     registerWidgetBackgroundSync().catch(() => {});
     return () => {
       unsubWidgets();
       unsubCalendar();
+      unsubNotifications();
       unsubUpdates();
     };
   }, []);

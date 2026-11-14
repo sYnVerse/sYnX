@@ -11,6 +11,10 @@ import { getDueReminderRecipients, type DueReminderRow } from "./app/due-reminde
 import { deleteExpiredGuestLists } from "./app/guest-access.server";
 import { pruneOldListActivity } from "./app/list-activity.server";
 import { phoneCarrierGatewayDomain } from "./shared/phone-carriers";
+import {
+  REMINDER_NOTIFICATION_CATEGORY,
+  reminderNotificationIdentifier,
+} from "./shared";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const handleRequest = createRequestHandler(build as any as ServerBuild);
@@ -220,7 +224,15 @@ export default {
                 {
                   title: listTitle,
                   body: reminder.text,
-                  data: { todoId: reminder.id, listId: reminder.listId },
+                  categoryId: REMINDER_NOTIFICATION_CATEGORY,
+                  data: {
+                    todoId: reminder.id,
+                    listId: reminder.listId,
+                    tag: reminderNotificationIdentifier(reminder.id),
+                    ...(reminder.recurrence && reminder.recurrence !== "none"
+                      ? { recurrence: reminder.recurrence }
+                      : {}),
+                  },
                 },
                 env
               )
