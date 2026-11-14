@@ -62,16 +62,16 @@ export const NATIVE_UPDATE_DISMISSED_AT_KEY = "synx_native_update_dismissed_at";
 
 export const DEFAULT_NATIVE_UPDATE_CONFIG: Record<string, NativePlatformConfig> = {
   android: {
-    latestVersion: "3.8.0",
-    minVersion: "3.7.2",
-    latestBuildVersion: 29,
-    minBuildVersion: 29,
+    latestVersion: "3.9.0",
+    minVersion: "3.8.0",
+    latestBuildVersion: 30,
+    minBuildVersion: 30,
     downloadUrl: "https://synx.christran.io/download/android",
     isBlocking: false,
   },
   ios: {
-    latestVersion: "3.8.0",
-    minVersion: "3.7.2",
+    latestVersion: "3.9.0",
+    minVersion: "3.8.0",
     downloadUrl: "https://synx.christran.io",
     isBlocking: false,
   },

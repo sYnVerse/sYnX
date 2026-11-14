@@ -196,9 +196,9 @@ describe("shared/native-update", () => {
   describe("resolveNativeUpdateConfig", () => {
     it("falls back to default android config with no env overrides", () => {
       const resolved = resolveNativeUpdateConfig("android", null);
-      expect(resolved.latestVersion).toBe("3.8.0");
-      expect(resolved.minVersion).toBe("3.7.2");
-      expect(resolved.minBuildVersion).toBe(29);
+      expect(resolved.latestVersion).toBe("3.9.0");
+      expect(resolved.minVersion).toBe("3.8.0");
+      expect(resolved.minBuildVersion).toBe(30);
       expect(resolved.downloadUrl).toContain("/download/android");
     });
 
@@ -219,12 +219,12 @@ describe("shared/native-update", () => {
   });
 
   describe("DEFAULT_NATIVE_UPDATE_CONFIG", () => {
-    it("defines android configuration targeting minimum build 29 and version 3.7.2", () => {
+    it("defines android configuration targeting minimum build 30 and version 3.8.0", () => {
       const android = DEFAULT_NATIVE_UPDATE_CONFIG.android;
       expect(android).toBeDefined();
-      expect(android.latestVersion).toBe("3.8.0");
-      expect(android.minVersion).toBe("3.7.2");
-      expect(android.minBuildVersion).toBe(29);
+      expect(android.latestVersion).toBe("3.9.0");
+      expect(android.minVersion).toBe("3.8.0");
+      expect(android.minBuildVersion).toBe(30);
       expect(android.downloadUrl).toContain("/download/android");
     });
   });
