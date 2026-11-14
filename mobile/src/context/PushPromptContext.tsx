@@ -47,15 +47,19 @@ const PushPromptContext = createContext<PushPromptContextType>({
 
 const CHANGELOG_KEY = "last_seen_changelog_version";
 
+export async function isChangelogSettled(): Promise<boolean> {
+  try {
+    const lastSeen = await AsyncStorage.getItem(CHANGELOG_KEY);
+    return lastSeen === MOBILE_VERSION;
+  } catch {
+    return true;
+  }
+}
+
 async function waitUntilChangelogSettled(maxMs = 180_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < maxMs) {
-    try {
-      const lastSeen = await AsyncStorage.getItem(CHANGELOG_KEY);
-      if (lastSeen === MOBILE_VERSION) return;
-    } catch {
-      return;
-    }
+    if (await isChangelogSettled()) return;
     await new Promise((r) => setTimeout(r, 400));
   }
 }
@@ -75,6 +79,8 @@ export const PushPromptProvider: React.FC<PushPromptProviderProps> = ({
   const [showCalendarSoftAsk, setShowCalendarSoftAsk] = useState(false);
   const busyRef = useRef(false);
   const ranLaunchRef = useRef(false);
+  const appStateRef = useRef(AppState.currentState);
+  const awaitingSettingsReturnRef = useRef(false);
 
   // Hide soft asks as soon as the provider is disabled (for example on sign-out),
   // adjusting state during render instead of in an effect.
@@ -148,14 +154,28 @@ export const PushPromptProvider: React.FC<PushPromptProviderProps> = ({
 
   // Check calendar permission on foreground (e.g. returning from system settings)
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      awaitingSettingsReturnRef.current = false;
+      appStateRef.current = AppState.currentState;
+      return;
+    }
+    appStateRef.current = AppState.currentState;
     const subscription = AppState.addEventListener("change", async (nextState) => {
-      if (nextState !== "active") return;
+      const prev = appStateRef.current;
+      appStateRef.current = nextState;
+      if ((prev !== "inactive" && prev !== "background") || nextState !== "active") {
+        return;
+      }
+
       const syncOn = await isCalendarSyncEnabled();
-      if (!syncOn) return;
+      if (!syncOn) {
+        awaitingSettingsReturnRef.current = false;
+        return;
+      }
 
       const perm = await checkCalendarPermissions();
       if (perm.granted) {
+        awaitingSettingsReturnRef.current = false;
         setShowCalendarSoftAsk(false);
         await clearCalendarSoftAskDeclined();
         const cached = collectCachedTasks(queryClient);
@@ -165,7 +185,15 @@ export const PushPromptProvider: React.FC<PushPromptProviderProps> = ({
         return;
       }
 
-      if (!showSoftAsk && !showCalendarSoftAsk && !busyRef.current) {
+      if (busyRef.current) return;
+
+      if (awaitingSettingsReturnRef.current) {
+        awaitingSettingsReturnRef.current = false;
+        await markCalendarSoftAskDeclined();
+        return;
+      }
+
+      if (!showSoftAsk && !showCalendarSoftAsk && (await isChangelogSettled())) {
         const should = await shouldShowCalendarSoftAsk();
         if (should) {
           setShowCalendarSoftAsk(true);
@@ -205,14 +233,19 @@ export const PushPromptProvider: React.FC<PushPromptProviderProps> = ({
 
   const handleCalendarTurnOn = async () => {
     busyRef.current = true;
+    awaitingSettingsReturnRef.current = true;
     setShowCalendarSoftAsk(false);
     try {
       const result = await enableCalendarAccessFromPrompt();
       if (result.granted) {
+        awaitingSettingsReturnRef.current = false;
         const cached = collectCachedTasks(queryClient);
         if (cached.length > 0) {
           await syncAllTasksToNativeCalendar(cached, (listId) => getCachedListName(queryClient, listId));
         }
+      } else if (!result.openedSettings) {
+        awaitingSettingsReturnRef.current = false;
+        await markCalendarSoftAskDeclined();
       }
     } finally {
       busyRef.current = false;
