@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type QueryClient, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { Platform } from "react-native";
+import { Alert, Platform } from "react-native";
 import { apiClient } from "../api/client";
 import {
+  SubtaskCompletionAction,
   TodoItem,
   applySetCompletedLocal,
+  applySetCompletedWithSubtasksLocal,
   formatRescheduledToast,
+  formatSubtaskCompletionPrompt,
+  getIncompleteSubtasks,
   isRecurring,
+  shouldPromptSubtaskCompletion,
 } from "../shared";
 import { useToast } from "../context/ToastContext";
 import { useTheme } from "../context/ThemeContext";
@@ -165,15 +170,24 @@ export function useSlowPendingTracker() {
   return { slowPendingIds, isSlowPendingId, startSlowTimer, finishSlowTracking };
 }
 
-type SetCompletedVars = { id: string; completed: boolean };
-type SetCompletedResult = { todo: TodoItem; rescheduled: boolean };
+type SetCompletedVars = {
+  id: string;
+  completed: boolean;
+  subtaskAction?: SubtaskCompletionAction;
+};
+type SetCompletedResult = {
+  todo: TodoItem;
+  rescheduled: boolean;
+  updatedSubtasks?: TodoItem[];
+};
 type SetCompletedContext = { seq: number };
 
 /**
  * Idempotent mark-done / undo with optimistic cache updates, per-task sequence
  * tracking (latest intended toggle wins, duplicate same-value requests suppressed),
  * rollback + native calendar restore + error toast on failure, slow (>10s)
- * pending tracking, and reschedule toast for recurring tasks.
+ * pending tracking, subtask completion prompt when completing a parent with open
+ * subtasks, and reschedule toast for recurring tasks.
  */
 export function useSetTodoCompleted(listId: string | undefined) {
   const queryClient = useQueryClient();
@@ -195,11 +209,12 @@ export function useSetTodoCompleted(listId: string | undefined) {
     SetCompletedVars,
     SetCompletedContext
   >({
-    mutationFn: async ({ id, completed }: SetCompletedVars) => {
-      const res = await apiClient.post(`/api/v1/todos/${id}/completed`, { completed });
+    mutationFn: async ({ id, completed, subtaskAction }: SetCompletedVars) => {
+      const body = subtaskAction ? { completed, subtaskAction } : { completed };
+      const res = await apiClient.post(`/api/v1/todos/${id}/completed`, body);
       return res.data as SetCompletedResult;
     },
-    onMutate: async ({ id, completed }) => {
+    onMutate: async ({ id, completed, subtaskAction }) => {
       const seq = (seqByIdRef.current.get(id) ?? 0) + 1;
       seqByIdRef.current.set(id, seq);
       inFlightDesiredByIdRef.current.set(id, completed);
@@ -226,7 +241,9 @@ export function useSetTodoCompleted(listId: string | undefined) {
       const applyOptimistic = () => {
         if (!listId) return;
         queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          patchTodosCache(old, id, (item) => applySetCompletedLocal(item, completed).todo)
+          subtaskAction
+            ? applySetCompletedWithSubtasksLocal(old, id, completed, subtaskAction)
+            : patchTodosCache(old, id, (item) => applySetCompletedLocal(item, completed).todo)
         );
       };
 
@@ -243,7 +260,15 @@ export function useSetTodoCompleted(listId: string | undefined) {
       if (context?.seq !== seqByIdRef.current.get(vars.id)) return;
       const baseline = baselineByIdRef.current.get(vars.id);
       if (listId && baseline) {
-        restoreTodoInCache(queryClient, listId, vars.id, baseline);
+        if (vars.subtaskAction && baseline.listSnapshot) {
+          // Restore the whole list so promoted or bulk-completed subtasks revert with the parent.
+          queryClient.setQueryData<TodoItem[] | undefined>(
+            ["todos", listId],
+            baseline.listSnapshot
+          );
+        } else {
+          restoreTodoInCache(queryClient, listId, vars.id, baseline);
+        }
         if (baseline.itemSnapshot) {
           syncTaskToNativeCalendar(baseline.itemSnapshot, {
             listName: getCachedListName(queryClient, baseline.itemSnapshot.listId),
@@ -265,16 +290,54 @@ export function useSetTodoCompleted(listId: string | undefined) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
       if (listId && data?.todo) {
-        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          patchTodosCache(old, data.todo.id, (item) => ({
-            ...item,
-            ...data.todo,
-            subtasks: item.subtasks ?? data.todo.subtasks,
-          }))
-        );
-        syncTaskToNativeCalendar(data.todo, {
-          listName: getCachedListName(queryClient, data.todo.listId),
-        }).catch(() => {});
+        const updatedSubtasks = data.updatedSubtasks ?? [];
+        if (updatedSubtasks.length > 0 || vars.subtaskAction) {
+          const subtaskMap = new Map(updatedSubtasks.map((st) => [st.id, st]));
+          queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) => {
+            if (!old) return old;
+            return old.map((item) => {
+              const updatedSub = subtaskMap.get(item.id);
+              if (updatedSub) {
+                return {
+                  ...updatedSub,
+                  subtasks: item.subtasks,
+                };
+              }
+              if (item.id === data.todo.id) {
+                return {
+                  ...item,
+                  ...data.todo,
+                  subtasks: item.subtasks
+                    ?.filter((s) => !(vars.subtaskAction === "promote" && subtaskMap.has(s.id)))
+                    .map((s) => subtaskMap.get(s.id) ?? s),
+                };
+              }
+              if (item.subtasks?.some((s) => s.id === data.todo.id || subtaskMap.has(s.id))) {
+                return {
+                  ...item,
+                  subtasks: item.subtasks.map((s) => {
+                    if (s.id === data.todo.id) return { ...s, ...data.todo };
+                    return subtaskMap.get(s.id) ?? s;
+                  }),
+                };
+              }
+              return item;
+            });
+          });
+        } else {
+          queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+            patchTodosCache(old, data.todo.id, (item) => ({
+              ...item,
+              ...data.todo,
+              subtasks: item.subtasks ?? data.todo.subtasks,
+            }))
+          );
+        }
+        const listName = getCachedListName(queryClient, data.todo.listId);
+        syncTaskToNativeCalendar(data.todo, { listName }).catch(() => {});
+        for (const st of updatedSubtasks) {
+          syncTaskToNativeCalendar(st, { listName }).catch(() => {});
+        }
       }
       if (data?.rescheduled && data.todo?.reminderAt) {
         showSuccess(formatRescheduledToast(data.todo.reminderAt));
@@ -311,7 +374,8 @@ export function useSetTodoCompleted(listId: string | undefined) {
 
   const setCompleted = useCallback(
     (
-      todo: Pick<TodoItem, "id" | "completed"> & { recurrence?: string | null },
+      todo: Pick<TodoItem, "id" | "completed"> &
+        Partial<Pick<TodoItem, "parentId" | "pendingDelete" | "recurrence" | "subtasks">>,
       completed?: boolean
     ) => {
       const desired = completed ?? !todo.completed;
@@ -327,10 +391,45 @@ export function useSetTodoCompleted(listId: string | undefined) {
       ) {
         return;
       }
+
+      const cachedTodos = listId
+        ? queryClient.getQueryData<TodoItem[]>(["todos", listId])
+        : undefined;
+
+      if (shouldPromptSubtaskCompletion(todo, desired, cachedTodos)) {
+        const incompleteCount = getIncompleteSubtasks(todo, cachedTodos).length;
+        const prompt = formatSubtaskCompletionPrompt(incompleteCount);
+        Alert.alert(
+          prompt.title,
+          prompt.message,
+          [
+            { text: prompt.cancelLabel, style: "cancel" },
+            {
+              text: prompt.promoteLabel,
+              onPress: () => {
+                if (inFlightDesiredByIdRef.current.get(todo.id) === true) return;
+                inFlightDesiredByIdRef.current.set(todo.id, true);
+                mutation.mutate({ id: todo.id, completed: true, subtaskAction: "promote" });
+              },
+            },
+            {
+              text: prompt.completeLabel,
+              onPress: () => {
+                if (inFlightDesiredByIdRef.current.get(todo.id) === true) return;
+                inFlightDesiredByIdRef.current.set(todo.id, true);
+                mutation.mutate({ id: todo.id, completed: true, subtaskAction: "complete" });
+              },
+            },
+          ],
+          { cancelable: true }
+        );
+        return;
+      }
+
       inFlightDesiredByIdRef.current.set(todo.id, desired);
       mutation.mutate({ id: todo.id, completed: desired });
     },
-    [mutation]
+    [listId, mutation, queryClient]
   );
 
   const isPendingId = useCallback((id: string) => pendingIds.has(id), [pendingIds]);

@@ -18,6 +18,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Added a drag handle on top-level tasks when sorted by priority so you can drag tasks up or down to change their priority between High, Medium, Low, and None.",
       },
       {
+        type: "NEW",
+        text: "Added a confirmation prompt when completing a task with open subtasks so you can complete all subtasks together or promote them to top-level tasks.",
+      },
+      {
         type: "IMPR",
         text: "Improved the calendar permission prompt when returning to sYnX with calendar sync turned on so granting access in Settings immediately syncs tasks and declining respects a quiet cooldown.",
       },

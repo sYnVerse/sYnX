@@ -45,10 +45,12 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
   }
 
   let completed: boolean;
+  let subtaskAction: "complete" | "promote" | undefined;
   try {
     const body = await request.json();
     const parsed = v.parse(SetTodoCompletedSchema, body);
     completed = parsed.completed;
+    subtaskAction = parsed.subtaskAction;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "";
     return Response.json(
@@ -60,7 +62,10 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
   const manager = new TodoManager(db, todoRow.list_id);
   // Repeats keep their local clock time in the reminder owner's (or caller's) stored time zone.
   const timeZone = await getUserTimeZone(db, todoRow.reminder_user_id || user.userId);
-  const { todo, rescheduled } = await manager.setCompleted(todoId, completed, { timeZone });
+  const { todo, rescheduled, updatedSubtasks } = await manager.setCompleted(todoId, completed, {
+    timeZone,
+    subtaskAction,
+  });
 
   const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
   const logPromise = logListActivity(db, {
@@ -75,5 +80,10 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
   });
   if (waitUntil) waitUntil(logPromise); else await logPromise;
 
-  return Response.json({ success: true, todo, rescheduled });
+  return Response.json({
+    success: true,
+    todo,
+    rescheduled,
+    updatedSubtasks: updatedSubtasks ?? [],
+  });
 }

@@ -300,6 +300,7 @@ const mocks = vi.hoisted(() => {
   return {
     reactNative: {
       Platform: { OS: "android" },
+      Alert: { alert: vi.fn() },
     },
     haptics: {
       impactAsync: vi.fn(async () => {}),

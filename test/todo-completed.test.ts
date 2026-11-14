@@ -88,4 +88,45 @@ describe("setCompleted / mark-done idempotency", () => {
     expect(local.todo.completed).toBe(false);
     expect(local.todo.reminderAt).toBe(now + 7 * 24 * 60 * 60 * 1000);
   });
+
+  it("setCompleted with subtaskAction='complete' marks parent and open subtasks complete", async () => {
+    const parent = await manager.create("Parent");
+    const openSub1 = await manager.create("Open sub 1", "none", undefined, parent.id);
+    const openSub2 = await manager.create("Open sub 2", "medium", undefined, parent.id, "none", 25);
+    const doneSub = await manager.create("Already done", "none", undefined, parent.id);
+    await manager.setCompleted(doneSub.id, true);
+
+    const res = await manager.setCompleted(parent.id, true, { subtaskAction: "complete" });
+    expect(res.todo.completed).toBe(true);
+    expect(res.updatedSubtasks?.map((s) => s.id).sort()).toEqual([openSub1.id, openSub2.id].sort());
+    expect(res.updatedSubtasks?.every((s) => s.completed)).toBe(true);
+
+    const all = await manager.list();
+    expect(all.find((t) => t.id === openSub1.id)?.completed).toBe(true);
+    expect(all.find((t) => t.id === openSub2.id)?.completed).toBe(true);
+    expect(all.find((t) => t.id === doneSub.id)?.completed).toBe(true);
+    expect(all.find((t) => t.id === openSub1.id)?.parentId).toBe(parent.id);
+  });
+
+  it("setCompleted with subtaskAction='promote' promotes open subtasks while keeping done subtasks attached", async () => {
+    const parent = await manager.create("Launch release");
+    const openSub = await manager.create("Write release notes", "high", undefined, parent.id, "none", 30);
+    const doneSub = await manager.create("Run checks", "none", undefined, parent.id);
+    await manager.setCompleted(doneSub.id, true);
+
+    const res = await manager.setCompleted(parent.id, true, { subtaskAction: "promote" });
+    expect(res.todo.completed).toBe(true);
+    expect(res.updatedSubtasks?.map((s) => s.id)).toEqual([openSub.id]);
+    expect(res.updatedSubtasks?.[0].parentId).toBeUndefined();
+
+    const all = await manager.list();
+    const promotedRow = all.find((t) => t.id === openSub.id);
+    const doneRow = all.find((t) => t.id === doneSub.id);
+    expect(promotedRow?.parentId).toBeUndefined();
+    expect(promotedRow?.completed).toBe(false);
+    expect(promotedRow?.text).toBe("Write release notes");
+    expect(promotedRow?.durationMinutes).toBe(30);
+    expect(doneRow?.parentId).toBe(parent.id);
+    expect(doneRow?.completed).toBe(true);
+  });
 });
