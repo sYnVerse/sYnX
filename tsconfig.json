@@ -21,7 +21,8 @@
     "test/mobile-calendar-reconcile.test.ts",
     "test/mobile-sign-out-cleanup.test.ts",
     "test/mobile-updates.test.ts",
-    "test/mobile-resume-draft-preservation.test.ts"
+    "test/mobile-resume-draft-preservation.test.ts",
+    "test/mobile-reminder-notification-actions.test.ts"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
