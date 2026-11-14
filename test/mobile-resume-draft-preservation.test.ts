@@ -405,6 +405,10 @@ const mocks = vi.hoisted(() => {
       },
       View: makeComp("AnimatedView"),
       timing: () => ({ start: (cb?: () => void) => cb?.() }),
+      spring: () => ({ start: (cb?: () => void) => cb?.() }),
+    },
+    PanResponder: {
+      create: (cfg: any) => ({ panHandlers: cfg ?? {} }),
     },
     Alert: { alert: vi.fn() },
     StyleSheet: { create: (s: any) => s },
@@ -504,6 +508,7 @@ const mocks = vi.hoisted(() => {
     ListTree: icon("ListTree"),
     Repeat: icon("Repeat"),
     Bell: icon("Bell"),
+    GripVertical: icon("GripVertical"),
   };
 
   return {

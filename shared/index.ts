@@ -250,6 +250,8 @@ export * from "./reminder-time";
 
 export * from "./task-sort";
 
+export * from "./task-priority-drag";
+
 export * from "./task-progress";
 
 export * from "./task-sections";

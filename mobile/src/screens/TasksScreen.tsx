@@ -21,6 +21,10 @@ import { apiClient } from "../api/client";
 import {
   TodoItem,
   TodoList,
+  PRIORITY_LEVELS_DESC,
+  PRIORITY_DROP_LABELS,
+  canDragTaskForPriority,
+  applyOptimisticTaskPriority,
   describeListActivityAction,
   resolveTaskSortMode,
   sortTasks,
@@ -28,6 +32,7 @@ import {
   type ListAccessDenialCode,
   type ListActivityEntry,
   type PendingDeleteRequest,
+  type PriorityLevel,
 } from "../shared";
 import { TaskModal } from "../components/TaskModal";
 import { TaskRow } from "../components/TaskRow";
@@ -45,7 +50,7 @@ import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { ChangelogModal } from "../components/ChangelogModal";
 import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding, getSheetBottomPadding } from "../theme/theme";
-import { listOwnershipLabel } from "../utils/format";
+import { listOwnershipLabel, priorityColor } from "../utils/format";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
 import { useTaskMutations } from "../hooks/useTaskMutations";
 import { syncActiveList, syncPinnedList } from "../services/widgetSync";
@@ -117,6 +122,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const [showShareListModal, setShowShareListModal] = useState(false);
   const [pinnedConfig, setPinnedConfig] = useState<PinnedWidgetConfig | null>(null);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [draggingTask, setDraggingTask] = useState<TodoItem | null>(null);
+  const [dragPreviewPriority, setDragPreviewPriority] = useState<PriorityLevel | null>(null);
+  const lastPreviewPriorityRef = React.useRef<PriorityLevel | null>(null);
 
   React.useEffect(() => {
     getPinnedWidgetConfig().then(setPinnedConfig).catch(() => {});
@@ -269,11 +277,11 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     return sortTasks(Object.values(parentMap), taskSortMode);
   }, [rawTodos, taskSortMode]);
 
-  const triggerImpactHaptic = () => {
+  const triggerImpactHaptic = React.useCallback(() => {
     if (hapticsEnabled && Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     }
-  };
+  }, [hapticsEnabled]);
 
   const hasListMeta = Boolean(listMeta);
   React.useEffect(() => {
@@ -290,6 +298,61 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     reviewDeleteMutation,
     isSlowPendingId: isSlowTaskUpdateId,
   } = useTaskMutations(listId);
+
+  const handlePriorityDragStart = React.useCallback(
+    (task: TodoItem) => {
+      triggerImpactHaptic();
+      const initial = (task.priority || "none") as PriorityLevel;
+      lastPreviewPriorityRef.current = initial;
+      setDraggingTask(task);
+      setDragPreviewPriority(initial);
+    },
+    [triggerImpactHaptic]
+  );
+
+  const handlePriorityDragHover = React.useCallback(
+    (_task: TodoItem, preview: PriorityLevel) => {
+      if (lastPreviewPriorityRef.current !== preview) {
+        lastPreviewPriorityRef.current = preview;
+        triggerImpactHaptic();
+        setDragPreviewPriority(preview);
+      }
+    },
+    [triggerImpactHaptic]
+  );
+
+  const handlePriorityDragEnd = React.useCallback(
+    (task: TodoItem, nextPriority: PriorityLevel) => {
+      lastPreviewPriorityRef.current = null;
+      setDraggingTask(null);
+      setDragPreviewPriority(null);
+      const currentPriority = (task.priority || "none") as PriorityLevel;
+      if (currentPriority === nextPriority) return;
+      triggerImpactHaptic();
+      const previous = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
+      updateMutation.mutate(
+        { id: task.id, payload: { priority: nextPriority } },
+        {
+          onError: () => {
+            if (previous !== undefined) {
+              queryClient.setQueryData(["todos", listId], previous);
+            }
+            void queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+          },
+        }
+      );
+      queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+        applyOptimisticTaskPriority(old, task.id, nextPriority)
+      );
+    },
+    [listId, queryClient, triggerImpactHaptic, updateMutation]
+  );
+
+  const handlePriorityDragCancel = React.useCallback(() => {
+    lastPreviewPriorityRef.current = null;
+    setDraggingTask(null);
+    setDragPreviewPriority(null);
+  }, []);
 
   const handleDeleteTask = (task: TodoItem) => {
     if (!canEdit || task.pendingDelete) return;
@@ -595,6 +658,50 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         </View>
       ) : null}
 
+      {draggingTask ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.priorityDropBar,
+            { backgroundColor: theme.cardBg, borderColor: theme.accent },
+          ]}
+          accessibilityLabel="Priority drop targets"
+        >
+          <Text style={[styles.priorityDropLabel, { color: theme.textSecondary }]}>
+            Release to set priority for &ldquo;{draggingTask.text}&rdquo;:
+          </Text>
+          <View style={styles.priorityDropChips}>
+            {PRIORITY_LEVELS_DESC.map((level) => {
+              const isSelected = dragPreviewPriority === level;
+              const chipTint =
+                level === "none" ? theme.textSecondary : priorityColor(level, theme);
+              return (
+                <View
+                  key={level}
+                  style={[
+                    styles.priorityDropChip,
+                    {
+                      borderColor: isSelected ? chipTint : theme.cardBorder,
+                      backgroundColor: isSelected ? `${chipTint}22` : theme.inputBg,
+                    },
+                  ]}
+                  accessibilityLabel={PRIORITY_DROP_LABELS[level]}
+                >
+                  <Text
+                    style={[
+                      styles.priorityDropChipText,
+                      { color: isSelected ? chipTint : theme.textPrimary },
+                    ]}
+                  >
+                    {PRIORITY_DROP_LABELS[level]}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+
       {isLoading && !rawTodos ? (
         <View style={{ paddingTop: 8 }}>
           <TaskCardSkeleton />
@@ -604,6 +711,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       ) : (
         <FlatList
           data={taskRows}
+          scrollEnabled={!draggingTask}
           keyExtractor={(row) => (row.kind === "task" ? row.task.id : "completed-header")}
           contentContainerStyle={{ paddingBottom: getListBottomPadding(insets.bottom) }}
           refreshControl={
@@ -663,6 +771,19 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 isOwner={isOwner}
                 isPending={isPendingId(row.task.id)}
                 isSlowPending={isSlowPendingId(row.task.id) || isSlowTaskUpdateId(row.task.id)}
+                canDragPriority={canDragTaskForPriority({
+                  canEdit,
+                  sortMode: taskSortMode,
+                  task: row.task,
+                })}
+                isDraggingPriority={draggingTask?.id === row.task.id}
+                dragPreviewPriority={
+                  draggingTask?.id === row.task.id ? dragPreviewPriority : null
+                }
+                onPriorityDragStart={handlePriorityDragStart}
+                onPriorityDragHover={handlePriorityDragHover}
+                onPriorityDragEnd={handlePriorityDragEnd}
+                onPriorityDragCancel={handlePriorityDragCancel}
                 onToggleCompleted={(task) => setCompleted(task)}
                 onEdit={setEditingTask}
                 onOpenSubtasks={setSelectedTaskForBreakdown}
@@ -1110,6 +1231,39 @@ const styles = StyleSheet.create({
     fontSize: typography.xs,
     fontWeight: "600",
     textAlign: "center",
+  },
+  priorityDropBar: {
+    position: "absolute",
+    top: spacing.sm,
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 20,
+    elevation: 6,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  priorityDropLabel: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+  },
+  priorityDropChips: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  priorityDropChip: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 6,
+  },
+  priorityDropChipText: {
+    fontSize: typography.xs,
+    fontWeight: "700",
   },
   searchInputWrapper: {
     flex: 1,
