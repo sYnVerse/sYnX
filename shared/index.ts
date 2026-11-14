@@ -244,6 +244,8 @@ export * from "./mobile-version";
 
 export * from "./phone-carriers";
 
+export * from "./reminder-notifications";
+
 export * from "./reminder-time";
 
 export * from "./task-sort";
