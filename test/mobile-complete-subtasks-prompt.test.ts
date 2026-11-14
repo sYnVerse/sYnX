@@ -9,12 +9,16 @@ import {
 } from "../shared";
 
 const mocks = vi.hoisted(() => {
-  let stateValue: any;
-  let stateInitialized = false;
+  let stateIndex = 0;
+  const states: any[] = [];
+  let refIndex = 0;
+  const refs: { current: any }[] = [];
   return {
     resetState: () => {
-      stateInitialized = false;
-      stateValue = undefined;
+      stateIndex = 0;
+      states.length = 0;
+      refIndex = 0;
+      refs.length = 0;
     },
     reactMod: {
       createContext: (defaultValue?: any) => ({
@@ -24,15 +28,23 @@ const mocks = vi.hoisted(() => {
       }),
       useContext: (ctx: any) => ctx?._currentValue,
       useState: (initial: any) => {
-        if (!stateInitialized) {
-          stateValue = typeof initial === "function" ? initial() : initial;
-          stateInitialized = true;
+        const idx = stateIndex++;
+        if (!(idx in states)) {
+          states[idx] = typeof initial === "function" ? initial() : initial;
         }
         const setState = (next: any) => {
-          stateValue = typeof next === "function" ? next(stateValue) : next;
+          states[idx] = typeof next === "function" ? next(states[idx]) : next;
         };
-        return [stateValue, setState];
+        return [states[idx], setState];
       },
+      useRef: (initial: any) => {
+        const idx = refIndex++;
+        if (!(idx in refs)) {
+          refs[idx] = { current: initial };
+        }
+        return refs[idx];
+      },
+      useEffect: () => {},
       useCallback: (fn: any) => fn,
     },
     queryClient: null as unknown as QueryClient,
@@ -97,11 +109,11 @@ vi.mock("react-native", () => mocks.reactNativeMod);
 vi.mock("../mobile/node_modules/react-native", () => mocks.reactNativeMod);
 vi.mock("../mobile/node_modules/react-native/index.js", () => mocks.reactNativeMod);
 vi.mock("expo-haptics", () => ({
-  NotificationFeedbackType: { Success: "Success" },
+  NotificationFeedbackType: { Success: "Success", Error: "Error" },
   notificationAsync: vi.fn(async () => {}),
 }));
 vi.mock("../mobile/node_modules/expo-haptics", () => ({
-  NotificationFeedbackType: { Success: "Success" },
+  NotificationFeedbackType: { Success: "Success", Error: "Error" },
   notificationAsync: vi.fn(async () => {}),
 }));
 vi.mock("../mobile/src/api/client", () => ({
@@ -278,5 +290,25 @@ describe("complete subtasks prompt (#204)", () => {
     expect(afterNo.find((t) => t.id === "s-1")?.parentId).toBeUndefined();
     expect(afterNo.find((t) => t.id === "s-1")?.completed).toBe(false);
     expect(afterNo.find((t) => t.id === "s-2")?.parentId).toBe("p-1");
+  });
+
+  it("rolls back both parent and subtasks and notifies the user when subtaskAction fails", async () => {
+    const parent = makeTodo({ id: "p-1", text: "Errands" });
+    const openSub = makeTodo({ id: "s-1", parentId: "p-1", text: "Buy milk" });
+    mocks.queryClient.setQueryData(["todos", "list-1"], [parent, openSub]);
+    mocks.apiPost.mockRejectedValueOnce(new Error("Network offline"));
+
+    const { setCompleted } = useSetTodoCompleted("list-1");
+    setCompleted(parent);
+    expect(mocks.alertCalls).toHaveLength(1);
+    const noBtn = mocks.alertCalls[0].buttons!.find((b) => b.text === "No, keep open");
+    noBtn.onPress();
+    await mocks.lastMutationPromise;
+
+    const rolledBack = mocks.queryClient.getQueryData<TodoItem[]>(["todos", "list-1"])!;
+    expect(rolledBack.find((t) => t.id === "p-1")?.completed).toBe(false);
+    expect(rolledBack.find((t) => t.id === "s-1")?.parentId).toBe("p-1");
+    expect(rolledBack.find((t) => t.id === "s-1")?.completed).toBe(false);
+    expect(mocks.showError).toHaveBeenCalledWith("Couldn't save, change undone: Network offline");
   });
 });

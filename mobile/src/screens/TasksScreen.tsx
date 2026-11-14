@@ -282,9 +282,14 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     }
   }, [listId, hasListMeta, refetch]);
 
-  const { setCompleted, isPendingId } = useSetTodoCompleted(listId);
-  const { createMutation, updateMutation, deleteMutation, reviewDeleteMutation } =
-    useTaskMutations(listId);
+  const { setCompleted, isPendingId, isSlowPendingId } = useSetTodoCompleted(listId);
+  const {
+    createMutation,
+    updateMutation,
+    deleteMutation,
+    reviewDeleteMutation,
+    isSlowPendingId: isSlowTaskUpdateId,
+  } = useTaskMutations(listId);
 
   const handleDeleteTask = (task: TodoItem) => {
     if (!canEdit || task.pendingDelete) return;
@@ -657,6 +662,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 canEdit={canEdit}
                 isOwner={isOwner}
                 isPending={isPendingId(row.task.id)}
+                isSlowPending={isSlowPendingId(row.task.id) || isSlowTaskUpdateId(row.task.id)}
                 onToggleCompleted={(task) => setCompleted(task)}
                 onEdit={setEditingTask}
                 onOpenSubtasks={setSelectedTaskForBreakdown}

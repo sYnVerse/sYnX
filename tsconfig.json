@@ -19,6 +19,7 @@
     "test/mobile-calendar-sync.test.ts",
     "test/mobile-calendar-soft-ask-context.test.ts",
     "test/mobile-calendar-reconcile.test.ts",
+    "test/mobile-optimistic-mutations.test.ts",
     "test/mobile-sign-out-cleanup.test.ts",
     "test/mobile-updates.test.ts",
     "test/mobile-resume-draft-preservation.test.ts",
