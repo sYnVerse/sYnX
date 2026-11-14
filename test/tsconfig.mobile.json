@@ -13,6 +13,7 @@
     "mobile-sign-out-cleanup.test.ts",
     "mobile-updates.test.ts",
     "mobile-resume-draft-preservation.test.ts",
+    "mobile-reminder-notification-actions.test.ts",
     "android-app-links.test.ts",
     "widget-pinned-toggle.test.ts",
     "widget-progress-ring.test.ts",
