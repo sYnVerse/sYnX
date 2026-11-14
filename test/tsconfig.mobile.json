@@ -9,6 +9,7 @@
   "include": [
     "mobile-calendar-sync.test.ts",
     "mobile-calendar-reconcile.test.ts",
+    "mobile-optimistic-mutations.test.ts",
     "mobile-sign-out-cleanup.test.ts",
     "mobile-updates.test.ts",
     "android-app-links.test.ts",

@@ -18,6 +18,7 @@
     // with the mobile types by test/tsconfig.mobile.json instead.
     "test/mobile-calendar-sync.test.ts",
     "test/mobile-calendar-reconcile.test.ts",
+    "test/mobile-optimistic-mutations.test.ts",
     "test/mobile-sign-out-cleanup.test.ts",
     "test/mobile-updates.test.ts"
   ],

@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 import type { TodoItem } from "../shared";
@@ -11,15 +12,33 @@ import {
   triggerImpactHaptic,
   triggerSuccessHaptic,
 } from "../utils/feedback";
+import {
+  findTodoInCache,
+  formatRollbackError,
+  patchTodosCache,
+  restoreTodoInCache,
+  useSlowPendingTracker,
+  type TaskBaselineSnapshot,
+} from "./useSetTodoCompleted";
+
+type UpdateTaskVars = { id: string; payload: any };
+type UpdateTaskContext = { seq: number };
 
 /**
  * Create, update, delete and delete-request review for one list's tasks, with
- * cache updates, native calendar sync, haptics and toasts.
+ * optimistic single-task updates (sequence-guarded rollback, calendar restore,
+ * and >10s slow pending tracking), cache updates, haptics, and toasts.
  */
 export function useTaskMutations(listId: string) {
   const { hapticsEnabled } = useTheme();
   const { showError, showSuccess, showToast } = useToast();
   const queryClient = useQueryClient();
+  const seqByIdRef = useRef<Map<string, number>>(new Map());
+  const inFlightCountByIdRef = useRef<Map<string, number>>(new Map());
+  const totalUpdateInFlightRef = useRef(0);
+  const baselineByIdRef = useRef<Map<string, TaskBaselineSnapshot>>(new Map());
+  const { slowPendingIds, isSlowPendingId, startSlowTimer, finishSlowTracking } =
+    useSlowPendingTracker();
 
   const onMutationError = (error: unknown, fallback: string) => {
     triggerErrorHaptic(hapticsEnabled);
@@ -107,25 +126,105 @@ export function useTaskMutations(listId: string) {
     onError: (e) => onMutationError(e, "Couldn't create task"),
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, payload }: { id: string; payload: any }) => {
+  const updateMutation = useMutation<TodoItem, unknown, UpdateTaskVars, UpdateTaskContext>({
+    mutationFn: async ({ id, payload }: UpdateTaskVars) => {
       const res = await apiClient.put(`/api/v1/todos/${id}`, payload);
       return res.data.todo as TodoItem;
     },
-    onSuccess: (updatedTodo) => {
-      triggerSuccessHaptic(hapticsEnabled);
-      if (updatedTodo) {
+    onMutate: async ({ id, payload }) => {
+      const seq = (seqByIdRef.current.get(id) ?? 0) + 1;
+      seqByIdRef.current.set(id, seq);
+      const prevCount = inFlightCountByIdRef.current.get(id) ?? 0;
+      if (prevCount === 0 && listId) {
+        const listSnapshot = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
+        const itemSnapshot = findTodoInCache(listSnapshot, id);
+        baselineByIdRef.current.set(id, { listSnapshot, itemSnapshot });
+      }
+      inFlightCountByIdRef.current.set(id, prevCount + 1);
+      totalUpdateInFlightRef.current += 1;
+      startSlowTimer(id);
+
+      const applyOptimistic = () => {
+        if (!listId) return;
+        const patchObj = (payload || {}) as Partial<TodoItem> & { reminderAt?: number | null };
         queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          old ? old.map((t) => (t.id === updatedTodo.id ? updatedTodo : t)) : []
+          patchTodosCache(old, id, (item) => ({
+            ...item,
+            ...patchObj,
+            reminderAt:
+              patchObj.reminderAt === null
+                ? undefined
+                : (patchObj.reminderAt ?? item.reminderAt),
+          }))
+        );
+      };
+
+      applyOptimistic();
+      if (listId) {
+        await queryClient.cancelQueries({ queryKey: ["todos", listId] });
+        if (seqByIdRef.current.get(id) === seq) {
+          applyOptimistic();
+        }
+      }
+      return { seq };
+    },
+    onSuccess: (updatedTodo, vars, context) => {
+      if (context?.seq !== seqByIdRef.current.get(vars.id)) return;
+      triggerSuccessHaptic(hapticsEnabled);
+      if (updatedTodo && listId) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          patchTodosCache(old, updatedTodo.id, (item) => ({
+            ...item,
+            ...updatedTodo,
+            subtasks: item.subtasks ?? updatedTodo.subtasks,
+          }))
         );
         syncTaskToNativeCalendar(updatedTodo, {
           listName: getCachedListName(queryClient, updatedTodo.listId),
         }).catch(() => {});
       }
-      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      if (listId && totalUpdateInFlightRef.current <= 1) {
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      }
     },
-    onError: (e) => onMutationError(e, "Couldn't update task"),
+    onError: (error, vars, context) => {
+      if (context?.seq !== seqByIdRef.current.get(vars.id)) return;
+      const baseline = baselineByIdRef.current.get(vars.id);
+      if (listId && baseline) {
+        restoreTodoInCache(queryClient, listId, vars.id, baseline);
+        if (baseline.itemSnapshot) {
+          if (baseline.itemSnapshot.reminderAt) {
+            syncTaskToNativeCalendar(baseline.itemSnapshot, {
+              listName: getCachedListName(queryClient, baseline.itemSnapshot.listId),
+            }).catch(() => {});
+          } else {
+            removeTaskFromNativeCalendar(vars.id).catch(() => {});
+          }
+        }
+      }
+      triggerErrorHaptic(hapticsEnabled);
+      showError(formatRollbackError(error));
+    },
+    onSettled: (_data, _error, vars, context) => {
+      totalUpdateInFlightRef.current = Math.max(0, totalUpdateInFlightRef.current - 1);
+      const nextCount = Math.max(0, (inFlightCountByIdRef.current.get(vars.id) ?? 1) - 1);
+      if (nextCount === 0) {
+        inFlightCountByIdRef.current.delete(vars.id);
+      } else {
+        inFlightCountByIdRef.current.set(vars.id, nextCount);
+      }
+      if (context?.seq !== seqByIdRef.current.get(vars.id)) return;
+      finishSlowTracking(vars.id);
+      baselineByIdRef.current.delete(vars.id);
+    },
   });
 
-  return { createMutation, updateMutation, deleteMutation, reviewDeleteMutation };
+  return {
+    createMutation,
+    updateMutation,
+    deleteMutation,
+    reviewDeleteMutation,
+    slowPendingIds,
+    isSlowPendingId,
+  };
 }

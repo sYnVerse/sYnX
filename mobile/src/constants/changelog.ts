@@ -10,6 +10,17 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "IMPR",
+        text: "Standardized optimistic task and subtask updates with automatic rollback, native calendar restore, and slow-save indicators if a request fails.",
+      },
+    ],
+  },
+  {
+    version: "v3.8.0",
+    date: "2026-11-13",
+    title: "What's new?",
+    changes: [
+      {
         type: "NEW",
         text: "Added native app update alerts that notify you when Over-The-Air updates are no longer supported on your installed build, with a direct link to install the new release.",
       },
