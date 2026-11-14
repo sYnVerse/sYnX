@@ -202,6 +202,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     const cleanDur = durationMinutes.trim();
     const parsedDur = cleanDur ? parseInt(cleanDur.replace(/\D/g, ""), 10) : NaN;
 
+    const resolvedDurationMinutes = isNaN(parsedDur) ? null : parsedDur;
+    const shouldAskReminder = reminderAt != null && reminderTouched;
+
     setSaving(true);
     try {
       await onSave({
@@ -209,19 +212,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         priority,
         reminderAt: reminderAt as any,
         recurrence,
-        durationMinutes: isNaN(parsedDur) ? null : parsedDur,
+        durationMinutes: resolvedDurationMinutes,
       });
       onClose();
       // Contextual soft-ask when user first sets a reminder after declining
-      if (reminderAt != null && reminderTouched) {
+      if (shouldAskReminder) {
         maybeAskOnReminder().catch(() => {});
       }
     } catch (e) {
       triggerErrorHaptic();
       showError(getErrorMessage(e, "Couldn't save task"));
-    } finally {
-      setSaving(false);
     }
+    setSaving(false);
   };
 
   return (

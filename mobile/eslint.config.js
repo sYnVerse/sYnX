@@ -38,6 +38,8 @@ module.exports = defineConfig([
       "import/namespace": "off",
       "import/default": "off",
       "import/no-named-as-default-member": "off",
+      "react-hooks/incompatible-library": "error",
+      "react-hooks/unsupported-syntax": "error",
     },
   },
 ]);

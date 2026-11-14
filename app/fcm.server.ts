@@ -2,6 +2,7 @@ export interface FCMMessagePayload {
   title: string;
   body: string;
   data?: Record<string, string>;
+  categoryId?: string;
 }
 
 /**
@@ -37,14 +38,22 @@ export async function sendFCMPushNotification(
     }
 
     const fcmEndpoint = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
-    const response = await fetch(fcmEndpoint, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        message: {
+    const messageBody = payload.categoryId
+      ? {
+          token,
+          data: {
+            title: payload.title,
+            message: payload.body,
+            categoryId: payload.categoryId,
+            channelId: "task_reminders",
+            sound: "default",
+            ...(payload.data || {}),
+          },
+          android: {
+            priority: "high",
+          },
+        }
+      : {
           token,
           notification: {
             title: payload.title,
@@ -58,7 +67,16 @@ export async function sendFCMPushNotification(
               channel_id: "task_reminders",
             },
           },
-        },
+        };
+
+    const response = await fetch(fcmEndpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: messageBody,
       }),
     });
 
