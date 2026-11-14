@@ -95,15 +95,15 @@ describe("push token unregister", () => {
     const sentPayloads: unknown[] = [];
 
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url: RequestInfo | URL, init?: RequestInit) => {
-      const target = String(url);
-      if (target.includes("oauth2.googleapis.com/token")) {
+      const targetUrl = new URL(typeof url === "string" ? url : url.toString());
+      if (targetUrl.hostname === "oauth2.googleapis.com" && targetUrl.pathname === "/token") {
         return new Response(JSON.stringify({ access_token: "ya29.test" }), { status: 200 });
       }
-      if (target.includes("fcm.googleapis.com")) {
+      if (targetUrl.hostname === "fcm.googleapis.com") {
         sentPayloads.push(JSON.parse(String(init?.body)));
         return new Response(JSON.stringify({ name: "projects/synx-test/messages/1" }), { status: 200 });
       }
-      throw new Error(`Unexpected fetch URL: ${target}`);
+      throw new Error(`Unexpected fetch URL: ${targetUrl.toString()}`);
     });
 
     try {

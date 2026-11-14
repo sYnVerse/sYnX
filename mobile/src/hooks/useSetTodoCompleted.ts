@@ -266,6 +266,7 @@ export function useSetTodoCompleted(listId: string | undefined) {
             ["todos", listId],
             baseline.listSnapshot
           );
+          needsReconcileRef.current = true;
         } else {
           restoreTodoInCache(queryClient, listId, vars.id, baseline);
         }
