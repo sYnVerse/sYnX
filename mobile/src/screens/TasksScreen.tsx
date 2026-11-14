@@ -162,6 +162,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       const res = await apiClient.get(`/api/v1/lists/${listId}`);
       return res.data.list as TodoList;
     },
+    placeholderData: () =>
+      queryClient.getQueryData<TodoList[]>(["lists", "all"])?.find((l) => l.id === listId),
     enabled: !!listId,
     retry: (failureCount, error) => {
       const status = (error as { response?: { status?: number } })?.response?.status;
@@ -211,7 +213,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       );
       return res.data.todos as TodoItem[];
     },
-    enabled: !!listId && !!listMeta,
+    enabled: !!listId && (!!listMeta || !listMetaIsError),
     retry: (failureCount, error) => {
       const status = (error as { response?: { status?: number } })?.response?.status;
       if (status === 403 || status === 404) return false;
@@ -225,7 +227,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       const res = await apiClient.get(`/api/v1/delete-requests?listId=${listId}`);
       return (res.data.requests || []) as PendingDeleteRequest[];
     },
-    enabled: !!listId && !!listMeta,
+    enabled: !!listId && (!!listMeta || !listMetaIsError),
   });
 
   React.useEffect(() => {
@@ -241,7 +243,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     }
   }, [listId, listMeta, rawTodos, queryClient]);
 
-  const showingCachedWhileOffline = Boolean(todosIsError && rawTodos);
+  const showingCachedWhileOffline = Boolean(
+    (todosIsError || accessError?.kind === "NETWORK") && (rawTodos || listMeta)
+  );
 
   const structuredTodos = useMemo(() => {
     if (!rawTodos) return [];
@@ -271,11 +275,12 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     }
   };
 
+  const hasListMeta = Boolean(listMeta);
   React.useEffect(() => {
-    if (listId && listMeta) {
+    if (listId && hasListMeta) {
       refetch();
     }
-  }, [listId, listMeta, refetch]);
+  }, [listId, hasListMeta, refetch]);
 
   const { setCompleted, isPendingId } = useSetTodoCompleted(listId);
   const { createMutation, updateMutation, deleteMutation, reviewDeleteMutation } =
@@ -370,7 +375,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const ownerDisplayName = listMeta?.owner?.displayName ?? null;
   const ownershipLabel = listOwnershipLabel(isOwner, ownerDisplayName);
 
-  if (listMetaLoading && !listMeta) {
+  if (listMetaLoading && !listMeta && !rawTodos) {
     return (
       <View style={[styles.container, styles.centered, { backgroundColor: theme.bg }]}>
         <ActivityIndicator color={theme.accent} size="large" />
@@ -379,7 +384,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     );
   }
 
-  if (accessError) {
+  if (accessError && !(accessError.kind === "NETWORK" && (rawTodos || listMeta))) {
     return (
       <View style={[styles.container, { backgroundColor: theme.bg }]}>
         <ListAccessErrorState
