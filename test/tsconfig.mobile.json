@@ -12,12 +12,14 @@
     "mobile-optimistic-mutations.test.ts",
     "mobile-sign-out-cleanup.test.ts",
     "mobile-updates.test.ts",
+    "mobile-resume-draft-preservation.test.ts",
     "android-app-links.test.ts",
     "widget-pinned-toggle.test.ts",
     "widget-progress-ring.test.ts",
     "widget-snapshot.test.ts",
     "widget-switch-list.test.ts",
-    // Types for the `?raw` imports.
+    // Ambient module augmentations and `?raw` import types used by mobile code.
+    "../mobile/src/types/expo-ui.d.ts",
     "../node_modules/vite/client.d.ts"
   ]
 }
