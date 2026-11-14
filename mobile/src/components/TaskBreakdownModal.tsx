@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   Modal,
   View,
@@ -21,7 +21,15 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useToast } from "../context/ToastContext";
 import { typography, spacing, MIN_TOUCH_TARGET, getSheetBottomPadding } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
-import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
+import {
+  advanceTaskBaseline,
+  findTodoInCache,
+  formatRollbackError,
+  patchTodosCache,
+  restoreTodoInCache,
+  type TaskBaselineSnapshot,
+  useSetTodoCompleted,
+} from "../hooks/useSetTodoCompleted";
 import { CompletedSectionHeader } from "./CompletedSectionHeader";
 import { SubtaskEditModal } from "./SubtaskEditModal";
 
@@ -100,7 +108,13 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
     onError: (e) => onErr(e, "Couldn't add subtask"),
   });
 
-  const { setCompleted, isPendingId } = useSetTodoCompleted(task?.listId);
+  const { setCompleted, isPendingId, isSlowPendingId } = useSetTodoCompleted(task?.listId);
+  const subtaskSeqByIdRef = useRef<Map<string, number>>(new Map());
+  const subtaskInFlightCountRef = useRef<Map<string, number>>(new Map());
+  const subtaskHadOverlapByIdRef = useRef<Map<string, boolean>>(new Map());
+  const subtaskNeedsReconcileRef = useRef(false);
+  const totalSubtaskInFlightRef = useRef(0);
+  const subtaskBaselineByIdRef = useRef<Map<string, TaskBaselineSnapshot>>(new Map());
 
   const removeSubtaskMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -126,27 +140,115 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
     onError: (e) => onErr(e, "Couldn't remove subtask"),
   });
 
-  const updateSubtaskMutation = useMutation({
-    mutationFn: async ({
-      id,
-      text,
-      durationMinutes,
-    }: {
-      id: string;
-      text?: string;
-      durationMinutes?: number | null;
-    }) => {
+  type UpdateSubtaskVars = {
+    id: string;
+    text?: string;
+    durationMinutes?: number | null;
+  };
+  type UpdateSubtaskContext = { seq: number; listId: string | undefined };
+
+  const updateSubtaskMutation = useMutation<
+    TodoItem | undefined,
+    unknown,
+    UpdateSubtaskVars,
+    UpdateSubtaskContext
+  >({
+    mutationFn: async ({ id, text, durationMinutes }: UpdateSubtaskVars) => {
       const payload: Record<string, unknown> = {};
       if (text !== undefined) payload.text = text;
       if (durationMinutes !== undefined) payload.durationMinutes = durationMinutes;
-      await apiClient.put(`/api/v1/todos/${id}`, payload);
+      const res = await apiClient.put(`/api/v1/todos/${id}`, payload);
+      return res.data?.todo as TodoItem | undefined;
     },
-    onSuccess: () => {
-      if (task) {
-        queryClient.invalidateQueries({ queryKey: ["todos", task.listId] });
+    onMutate: async ({ id, text, durationMinutes }) => {
+      const listId = task?.listId;
+      const seq = (subtaskSeqByIdRef.current.get(id) ?? 0) + 1;
+      subtaskSeqByIdRef.current.set(id, seq);
+
+      const prevCount = subtaskInFlightCountRef.current.get(id) ?? 0;
+      if (prevCount > 0) {
+        subtaskHadOverlapByIdRef.current.set(id, true);
+      }
+      if (!subtaskBaselineByIdRef.current.has(id) && listId) {
+        const listSnapshot = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
+        const itemSnapshot = findTodoInCache(listSnapshot, id);
+        subtaskBaselineByIdRef.current.set(id, { listSnapshot, itemSnapshot });
+      }
+      subtaskInFlightCountRef.current.set(id, prevCount + 1);
+      totalSubtaskInFlightRef.current += 1;
+
+      const applyOptimistic = () => {
+        if (!listId) return;
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          patchTodosCache(old, id, (item) => ({
+            ...item,
+            ...(text !== undefined ? { text } : {}),
+            ...(durationMinutes !== undefined ? { durationMinutes } : {}),
+          }))
+        );
+      };
+
+      applyOptimistic();
+      if (listId) {
+        await queryClient.cancelQueries({ queryKey: ["todos", listId] });
+        if (subtaskSeqByIdRef.current.get(id) === seq) {
+          applyOptimistic();
+        }
+      }
+      return { seq, listId };
+    },
+    onSuccess: (updatedTodo, vars, context) => {
+      if (updatedTodo) {
+        advanceTaskBaseline(subtaskBaselineByIdRef.current, vars.id, updatedTodo);
+      }
+      if (context?.seq !== subtaskSeqByIdRef.current.get(vars.id)) return;
+      triggerHaptic();
+      const listId = context?.listId;
+      if (listId && updatedTodo) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          patchTodosCache(old, vars.id, (item) => ({
+            ...item,
+            ...updatedTodo,
+          }))
+        );
+      }
+      if (listId && totalSubtaskInFlightRef.current <= 1) {
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
       }
     },
-    onError: (e) => onErr(e, "Couldn't save subtask"),
+    onError: (e, vars, context) => {
+      if (context?.seq !== subtaskSeqByIdRef.current.get(vars.id)) return;
+      const listId = context?.listId;
+      const baseline = subtaskBaselineByIdRef.current.get(vars.id);
+      if (listId && baseline) {
+        restoreTodoInCache(queryClient, listId, vars.id, baseline);
+      }
+      if (listId && subtaskHadOverlapByIdRef.current.get(vars.id)) {
+        subtaskNeedsReconcileRef.current = true;
+      }
+      triggerErrorHaptic(hapticsEnabled);
+      showError(formatRollbackError(e));
+    },
+    onSettled: (_data, _error, vars, context) => {
+      totalSubtaskInFlightRef.current = Math.max(0, totalSubtaskInFlightRef.current - 1);
+      const nextCount = Math.max(0, (subtaskInFlightCountRef.current.get(vars.id) ?? 1) - 1);
+      if (nextCount === 0) {
+        subtaskInFlightCountRef.current.delete(vars.id);
+        subtaskBaselineByIdRef.current.delete(vars.id);
+        subtaskHadOverlapByIdRef.current.delete(vars.id);
+      } else {
+        subtaskInFlightCountRef.current.set(vars.id, nextCount);
+      }
+      const listId = context?.listId;
+      if (
+        subtaskNeedsReconcileRef.current &&
+        listId &&
+        subtaskInFlightCountRef.current.size === 0
+      ) {
+        subtaskNeedsReconcileRef.current = false;
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      }
+    },
   });
 
   const overallDurationMinutes = useMemo(() => {
@@ -186,16 +288,19 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
       ]}
     >
       <TouchableOpacity
-        disabled={!canEdit || isPendingId(st.id)}
-        style={[styles.checkboxHit, isPendingId(st.id) && { opacity: 0.7 }]}
+        disabled={!canEdit}
+        style={[
+          styles.checkboxHit,
+          (!canEdit || isPendingId(st.id)) && { opacity: canEdit ? 0.85 : 0.7 },
+        ]}
         onPress={() => {
-          if (!canEdit || isPendingId(st.id)) return;
+          if (!canEdit) return;
           setCompleted({ id: st.id, completed: st.completed });
         }}
         accessibilityRole="checkbox"
         accessibilityState={{
           checked: st.completed,
-          disabled: !canEdit || isPendingId(st.id),
+          disabled: !canEdit,
         }}
         accessibilityLabel={`Mark subtask ${st.completed ? "incomplete" : "complete"}`}
       >
@@ -226,6 +331,14 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
             <Clock size={10} color={theme.accent} />
             <Text style={[styles.durationBadgeText, { color: theme.accent }]}>
               {st.durationMinutes}m
+            </Text>
+          </View>
+        ) : null}
+        {isSlowPendingId(st.id) ? (
+          <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
+            <ActivityIndicator size="small" color={theme.accent} />
+            <Text style={[styles.durationBadgeText, { color: theme.accent }]}>
+              Saving…
             </Text>
           </View>
         ) : null}

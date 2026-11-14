@@ -177,8 +177,8 @@ export class TodoManager {
   async setCompleted(
     id: string,
     completed: boolean,
-    options: { timeZone?: string } = {}
-  ): Promise<{ todo: Todo; rescheduled: boolean }> {
+    options: { timeZone?: string; subtaskAction?: "complete" | "promote" } = {}
+  ): Promise<{ todo: Todo; rescheduled: boolean; updatedSubtasks?: Todo[] }> {
     const todo = await this.db
       .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
       .bind(id, this.listId)
@@ -210,14 +210,45 @@ export class TodoManager {
       return { todo: this.mapRow(updated), rescheduled: true };
     }
 
-    if (currentlyCompleted === Boolean(completed)) {
-      return { todo: this.mapRow(todo), rescheduled: false };
+    if (currentlyCompleted !== Boolean(completed)) {
+      await this.db
+        .prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?")
+        .bind(completed ? 1 : 0, id, this.listId)
+        .run();
     }
 
-    await this.db
-      .prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?")
-      .bind(completed ? 1 : 0, id, this.listId)
-      .run();
+    let updatedSubtasks: Todo[] | undefined;
+    if (completed && (options.subtaskAction === "complete" || options.subtaskAction === "promote")) {
+      const { results: openRows } = await this.db
+        .prepare("SELECT * FROM todos WHERE list_id = ? AND parent_id = ? AND completed = 0 ORDER BY created_at DESC")
+        .bind(this.listId, id)
+        .all<TodoRow>();
+
+      if (openRows.length > 0) {
+        if (options.subtaskAction === "complete") {
+          await this.db
+            .prepare("UPDATE todos SET completed = 1 WHERE list_id = ? AND parent_id = ? AND completed = 0")
+            .bind(this.listId, id)
+            .run();
+          updatedSubtasks = openRows.map((row) => ({ ...this.mapRow(row), completed: true }));
+        } else {
+          await this.db
+            .prepare("UPDATE todos SET parent_id = NULL WHERE list_id = ? AND parent_id = ? AND completed = 0")
+            .bind(this.listId, id)
+            .run();
+          updatedSubtasks = openRows.map((row) => ({ ...this.mapRow(row), parentId: undefined }));
+        }
+      } else {
+        updatedSubtasks = [];
+      }
+    }
+
+    if (currentlyCompleted === Boolean(completed)) {
+      const mapped = this.mapRow(todo);
+      return updatedSubtasks
+        ? { todo: mapped, rescheduled: false, updatedSubtasks }
+        : { todo: mapped, rescheduled: false };
+    }
 
     const updated = await this.db
       .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
@@ -226,7 +257,10 @@ export class TodoManager {
     if (!updated) {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
-    return { todo: this.mapRow(updated), rescheduled: false };
+    const mapped = this.mapRow(updated);
+    return updatedSubtasks
+      ? { todo: mapped, rescheduled: false, updatedSubtasks }
+      : { todo: mapped, rescheduled: false };
   }
 
   /**

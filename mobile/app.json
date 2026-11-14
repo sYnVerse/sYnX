@@ -2,7 +2,7 @@
   "expo": {
     "name": "sYnX",
     "slug": "synx",
-    "version": "3.8.0",
+    "version": "3.9.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -126,6 +126,9 @@
       "url": "https://u.expo.dev/cf164c52-5a77-472a-9120-768ab5499a2d",
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
+    },
+    "experiments": {
+      "reactCompiler": true
     },
     "runtimeVersion": {
       "policy": "fingerprint"

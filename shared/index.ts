@@ -196,9 +196,14 @@ export const UpdateTodoSchema = v.object({
 
 export type UpdateTodoInput = v.InferOutput<typeof UpdateTodoSchema>;
 
+export const SubtaskCompletionActionSchema = v.picklist(["complete", "promote"]);
+
+export type SubtaskCompletionAction = v.InferOutput<typeof SubtaskCompletionActionSchema>;
+
 /** Explicit done-state payload for POST /api/v1/todos/:id/completed */
 export const SetTodoCompletedSchema = v.object({
   completed: v.boolean(),
+  subtaskAction: v.optional(SubtaskCompletionActionSchema),
 });
 
 export type SetTodoCompletedInput = v.InferOutput<typeof SetTodoCompletedSchema>;
@@ -244,9 +249,13 @@ export * from "./mobile-version";
 
 export * from "./phone-carriers";
 
+export * from "./reminder-notifications";
+
 export * from "./reminder-time";
 
 export * from "./task-sort";
+
+export * from "./task-priority-drag";
 
 export * from "./task-progress";
 

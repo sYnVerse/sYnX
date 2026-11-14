@@ -6,6 +6,41 @@ export { MOBILE_APP_VERSION, MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-14",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Added Complete and 10-minute Snooze actions directly on task reminder notifications, working from the lock screen, in the background, and while offline.",
+      },
+      {
+        type: "NEW",
+        text: "Added a drag handle on top-level tasks when sorted by priority so you can drag tasks up or down to change their priority between High, Medium, Low, and None.",
+      },
+      {
+        type: "NEW",
+        text: "Added a confirmation prompt when completing a task with open subtasks so you can complete all subtasks together or promote them to top-level tasks.",
+      },
+      {
+        type: "IMPR",
+        text: "Improved the calendar permission prompt when returning to sYnX with calendar sync turned on so granting access in Settings immediately syncs tasks and declining respects a quiet cooldown.",
+      },
+      {
+        type: "IMPR",
+        text: "Enabled the React Compiler across the mobile app to automatically memoize screens and task items for smoother scrolling and interactions.",
+      },
+      {
+        type: "IMPR",
+        text: "Standardized optimistic task and subtask updates with automatic rollback, native calendar restore, and slow-save indicators if a request fails.",
+      },
+      {
+        type: "FIX",
+        text: "Preserved in-progress task drafts when resuming the app from screen lock or app switching, showing cached lists immediately while refreshing in the background.",
+      },
+    ],
+  },
+  {
+    version: "v3.8.0",
     date: "2026-11-13",
     title: "What's new?",
     changes: [
