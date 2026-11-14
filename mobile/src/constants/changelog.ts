@@ -13,6 +13,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         type: "IMPR",
         text: "Enabled the React Compiler across the mobile app to automatically memoize screens and task items for smoother scrolling and interactions.",
       },
+      {
+        type: "FIX",
+        text: "Preserved in-progress task drafts when resuming the app from screen lock or app switching, showing cached lists immediately while refreshing in the background.",
+      },
     ],
   },
   {

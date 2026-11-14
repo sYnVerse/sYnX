@@ -15,7 +15,7 @@ import { ScreenContainer } from "../components/ScreenContainer";
 import { NativeUpdateBanner } from "../components/NativeUpdateBanner";
 import { PushPromptProvider } from "../context/PushPromptContext";
 import { typography } from "../theme/theme";
-import { parseDeepLinkUrl } from "../shared";
+import { parseDeepLinkUrl, type TodoList } from "../shared";
 import { getLastActiveListId, setLastActiveListId } from "../services/widgetPreferences";
 import { syncActiveList } from "../services/widgetSync";
 
@@ -41,6 +41,10 @@ const MainAppContent: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>("tasks");
   const [activeListId, setActiveListId] = useState<string | null>(null);
+  const activeListIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    activeListIdRef.current = activeListId;
+  }, [activeListId]);
   /**
    * One-shot "open the new task form" request from a widget or quick-add link.
    * Cleared as soon as TasksScreen handles it, so later list opens (which remount
@@ -70,6 +74,7 @@ const MainAppContent: React.FC = () => {
 
   const applyDeepLinkedList = useCallback((listId: string) => {
     setPendingDeepLinkListId(listId);
+    activeListIdRef.current = listId;
     setActiveListId(listId);
     setActiveTab("tasks");
     setListError(null);
@@ -165,54 +170,116 @@ const MainAppContent: React.FC = () => {
   const resolveActiveList = useCallback(async () => {
     // Prefer a pending deep-linked list over inventing/picking an owned list.
     if (pendingDeepLinkListIdRef.current) {
-      setActiveListId(pendingDeepLinkListIdRef.current);
+      const deepLinkedId = pendingDeepLinkListIdRef.current;
+      activeListIdRef.current = deepLinkedId;
+      setActiveListId(deepLinkedId);
       setListLoading(false);
       setListError(null);
       return;
     }
 
-    setListLoading(true);
+    const hasMountedList = Boolean(activeListIdRef.current);
+    if (!hasMountedList) {
+      setListLoading(true);
+    }
     setListError(null);
+
+    const refreshListMetaInBackground = (listIdToVerify: string) => {
+      apiClient
+        .get(`/api/v1/lists/${listIdToVerify}`)
+        .then((res) => {
+          if (res.data?.list) {
+            queryClient.setQueryData(["list_meta", listIdToVerify], res.data.list);
+          }
+        })
+        .catch(async (e: any) => {
+          if (e?.response?.status === 403 || e?.response?.status === 404) {
+            await setLastActiveListId(null);
+            if (!pendingDeepLinkListIdRef.current && activeListIdRef.current === listIdToVerify) {
+              try {
+                const fallbackId = await fetchOrCreateActiveListId();
+                if (!pendingDeepLinkListIdRef.current) {
+                  activeListIdRef.current = fallbackId;
+                  setActiveListId(fallbackId);
+                }
+              } catch (fallbackErr: any) {
+                activeListIdRef.current = null;
+                setActiveListId(null);
+                setListError(
+                  fallbackErr?.response?.data?.error ||
+                    fallbackErr?.message ||
+                    "Failed to load your lists."
+                );
+              }
+            }
+          }
+        });
+    };
+
     try {
       const lastId = await getLastActiveListId();
       if (lastId) {
+        const hasCachedListData = Boolean(
+          queryClient.getQueryData(["list_meta", lastId]) ||
+            queryClient.getQueryData(["todos", lastId]) ||
+            queryClient
+              .getQueryData<TodoList[]>(["lists", "all"])
+              ?.some((l) => l.id === lastId)
+        );
+        if (hasCachedListData) {
+          const resolved = pendingDeepLinkListIdRef.current ?? lastId;
+          activeListIdRef.current = resolved;
+          setActiveListId(resolved);
+          setListLoading(false);
+          if (!pendingDeepLinkListIdRef.current) {
+            refreshListMetaInBackground(lastId);
+          }
+          return;
+        }
+
         try {
           const res = await apiClient.get(`/api/v1/lists/${lastId}`);
           if (res.data?.list) {
             queryClient.setQueryData(["list_meta", lastId], res.data.list);
           }
-          if (pendingDeepLinkListIdRef.current) {
-            setActiveListId(pendingDeepLinkListIdRef.current);
-          } else {
-            setActiveListId(lastId);
-          }
+          const resolved = pendingDeepLinkListIdRef.current ?? lastId;
+          activeListIdRef.current = resolved;
+          setActiveListId(resolved);
           return;
         } catch (e: any) {
           if (e?.response?.status === 403 || e?.response?.status === 404) {
             await setLastActiveListId(null);
           } else {
             // Keep lastId if offline/network error
-            if (pendingDeepLinkListIdRef.current) {
-              setActiveListId(pendingDeepLinkListIdRef.current);
-            } else {
-              setActiveListId(lastId);
-            }
+            const resolved = pendingDeepLinkListIdRef.current ?? lastId;
+            activeListIdRef.current = resolved;
+            setActiveListId(resolved);
             return;
           }
         }
       }
 
+      const cachedLists = queryClient.getQueryData<TodoList[]>(["lists", "all"]);
+      if (cachedLists && cachedLists.length > 0 && !pendingDeepLinkListIdRef.current) {
+        const cachedFirstId = cachedLists[0].id;
+        activeListIdRef.current = cachedFirstId;
+        setActiveListId(cachedFirstId);
+        setListLoading(false);
+        refreshListMetaInBackground(cachedFirstId);
+        return;
+      }
+
       const id = await fetchOrCreateActiveListId();
       // Deep link may have arrived while we were resolving.
-      if (pendingDeepLinkListIdRef.current) {
-        setActiveListId(pendingDeepLinkListIdRef.current);
-      } else {
-        setActiveListId(id);
-      }
+      const resolved = pendingDeepLinkListIdRef.current ?? id;
+      activeListIdRef.current = resolved;
+      setActiveListId(resolved);
     } catch (e: any) {
       console.error("Failed to resolve active list", e);
-      setActiveListId(null);
-      setListError(e.response?.data?.error || e.message || "Failed to load your lists.");
+      if (!activeListIdRef.current) {
+        setActiveListId(null);
+        setListError(e.response?.data?.error || e.message || "Failed to load your lists.");
+      }
     } finally {
       setListLoading(false);
     }
@@ -231,13 +298,33 @@ const MainAppContent: React.FC = () => {
     }
   }
 
+  const isSignedIn = Boolean(token);
+  const wasSignedInRef = useRef(false);
   useEffect(() => {
-    if (token) resolveActiveList();
-  }, [token, resolveActiveList]);
+    if (!isSignedIn) {
+      wasSignedInRef.current = false;
+      activeListIdRef.current = null;
+      return;
+    }
+    if (!wasSignedInRef.current) {
+      wasSignedInRef.current = true;
+      void resolveActiveList();
+      return;
+    }
+    // Token refreshed (e.g. silent refresh on app resume) while already signed in:
+    // refresh cached data in the background without unmounting active screens or drafts.
+    queryClient.invalidateQueries({ queryKey: ["lists"] });
+    const currentListId = activeListIdRef.current;
+    if (currentListId) {
+      queryClient.invalidateQueries({ queryKey: ["todos", currentListId] });
+      queryClient.invalidateQueries({ queryKey: ["list_meta", currentListId] });
+    }
+  }, [isSignedIn, token, resolveActiveList, queryClient]);
 
   const selectOwnedOrOtherList = (id: string, options?: { stayOnListsTab?: boolean }) => {
     // Explicit user selection clears deep-link priority.
     setPendingDeepLinkListId(null);
+    activeListIdRef.current = id;
     setActiveListId(id);
     if (!options?.stayOnListsTab) {
       handleTabSwitch("tasks");
@@ -249,6 +336,7 @@ const MainAppContent: React.FC = () => {
     setActiveTab("lists");
     try {
       const id = await fetchOrCreateActiveListId();
+      activeListIdRef.current = id;
       setActiveListId(id);
       queryClient.invalidateQueries({ queryKey: ["lists"] });
     } catch (e) {
