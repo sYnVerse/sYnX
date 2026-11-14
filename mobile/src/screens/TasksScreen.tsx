@@ -324,7 +324,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       const params = new URLSearchParams({ limit: "50" });
       if (before != null) params.set("before", String(before));
       const res = await apiClient.get(`/api/v1/lists/${listId}/activity?${params.toString()}`);
-      const entries = (res.data.entries || []) as ListActivityEntry[];
+      let rawEntries = res.data.entries;
+      if (!rawEntries) rawEntries = [];
+      const entries = rawEntries as ListActivityEntry[];
       setActivityEntries((prev) => {
         if (replace) return entries;
         const seen = new Set(prev.map((e) => e.id));
@@ -333,9 +335,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       setActivityHasMore(entries.length >= 50);
     } catch {
       setActivityError(true);
-    } finally {
-      setActivityLoading(false);
     }
+    setActivityLoading(false);
   };
 
   const openActivity = () => {
@@ -758,32 +759,41 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
               text: isListOwner ? "Delete" : "Send request",
               style: "destructive",
               onPress: async () => {
+                let resData: { pendingApproval?: boolean; message?: string } | undefined;
                 try {
                   const res = await apiClient.delete(`/api/v1/lists/${listId}`);
-                  if (res.data?.pendingApproval) {
-                    showToast(
-                      res.data?.message || "Delete request sent. The list owner must approve it.",
-                      "success"
-                    );
-                    queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
-                    return;
-                  }
-                  if (pinnedConfig?.listId === listId) {
-                    await setPinnedWidgetConfig(null);
-                    setPinnedConfig(null);
-                    await syncPinnedList(null);
-                  }
-                  queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) =>
-                    old ? old.filter((l) => l.id !== listId) : []
-                  );
-                  queryClient.invalidateQueries({ queryKey: ["lists"] });
-                  queryClient.invalidateQueries({ queryKey: ["todos", listId] });
-                  showToast("List deleted", "info");
-                  onGoToMyLists?.() ?? onSwitchLists?.();
+                  resData = res.data;
                 } catch (e) {
                   triggerErrorHaptic(hapticsEnabled);
                   showError(getErrorMessage(e, "Couldn't delete list"));
+                  return;
                 }
+                if (resData?.pendingApproval) {
+                  showToast(
+                    resData?.message || "Delete request sent. The list owner must approve it.",
+                    "success"
+                  );
+                  queryClient.invalidateQueries({ queryKey: ["delete-requests", listId] });
+                  return;
+                }
+                if (pinnedConfig?.listId === listId) {
+                  try {
+                    await setPinnedWidgetConfig(null);
+                    setPinnedConfig(null);
+                    await syncPinnedList(null);
+                  } catch (e) {
+                    triggerErrorHaptic(hapticsEnabled);
+                    showError(getErrorMessage(e, "Couldn't delete list"));
+                    return;
+                  }
+                }
+                queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) =>
+                  old ? old.filter((l) => l.id !== listId) : []
+                );
+                queryClient.invalidateQueries({ queryKey: ["lists"] });
+                queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+                showToast("List deleted", "info");
+                onGoToMyLists?.() ?? onSwitchLists?.();
               },
             },
           ]);

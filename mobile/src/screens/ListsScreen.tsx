@@ -348,7 +348,9 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
       const params = new URLSearchParams({ limit: "50" });
       if (before != null) params.set("before", String(before));
       const res = await apiClient.get(`/api/v1/lists/${listId}/activity?${params.toString()}`);
-      const entries = (res.data.entries || []) as ListActivityEntry[];
+      let rawEntries = res.data.entries;
+      if (!rawEntries) rawEntries = [];
+      const entries = rawEntries as ListActivityEntry[];
       setActivityEntries((prev) => {
         if (replace) return entries;
         const seen = new Set(prev.map((e) => e.id));
@@ -357,9 +359,8 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
       setActivityHasMore(entries.length >= 50);
     } catch {
       setActivityError(true);
-    } finally {
-      setActivityLoading(false);
     }
+    setActivityLoading(false);
   };
 
   const closeActivity = () => {

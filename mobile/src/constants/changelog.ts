@@ -14,6 +14,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Improved the calendar permission prompt when returning to sYnX with calendar sync turned on so granting access in Settings immediately syncs tasks and declining respects a quiet cooldown.",
       },
       {
+        type: "IMPR",
+        text: "Enabled the React Compiler across the mobile app to automatically memoize screens and task items for smoother scrolling and interactions.",
+      },
+      {
         type: "FIX",
         text: "Preserved in-progress task drafts when resuming the app from screen lock or app switching, showing cached lists immediately while refreshing in the background.",
       },
