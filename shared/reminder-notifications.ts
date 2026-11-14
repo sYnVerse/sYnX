@@ -23,8 +23,16 @@ export interface ReminderNotificationActionPayload {
   notificationId: string;
   todoId: string;
   listId?: string;
+  recurrence?: string;
   title?: string;
   body?: string;
+}
+
+/**
+ * Returns true when a task recurrence value represents a repeating schedule.
+ */
+export function isRepeatingTaskRecurrence(recurrence: unknown): boolean {
+  return typeof recurrence === "string" && recurrence.length > 0 && recurrence !== "none";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -84,11 +92,14 @@ export function extractReminderNotificationActionPayload(
   }
   if (!todoId) return null;
 
+  const recurrence = nonEmptyString(data?.recurrence);
+
   return {
     actionIdentifier,
     notificationId,
     todoId,
     listId: nonEmptyString(data?.listId),
+    ...(recurrence ? { recurrence } : {}),
     title: nonEmptyString(content?.title) ?? nonEmptyString(data?.title),
     body:
       nonEmptyString(content?.body) ??

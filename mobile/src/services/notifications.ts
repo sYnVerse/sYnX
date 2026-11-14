@@ -20,6 +20,7 @@ import {
   removeHandledNotificationOps,
   classifyWidgetReplayError,
   applySetCompletedLocal,
+  isRepeatingTaskRecurrence,
   type PushPermissionStatus,
   type PendingNotificationOp,
   type TodoItem,
@@ -270,7 +271,7 @@ export async function scheduleLocalNotification(
   title: string,
   body: string,
   triggerTimestamp: number,
-  options?: { todoId?: string; listId?: string }
+  options?: { todoId?: string; listId?: string; recurrence?: string }
 ) {
   if (triggerTimestamp <= Date.now()) return;
   await ensureReminderNotificationCategory().catch(() => {});
@@ -285,6 +286,7 @@ export async function scheduleLocalNotification(
       data: {
         todoId,
         ...(options?.listId ? { listId: options.listId } : {}),
+        ...(options?.recurrence ? { recurrence: options.recurrence } : {}),
         title,
         message: body,
         categoryId: REMINDER_NOTIFICATION_CATEGORY,
@@ -352,6 +354,38 @@ function shouldDeduplicateAction(key: string, now: number): boolean {
   }
   handledActionKeys.set(key, now);
   return false;
+}
+
+function findTodoInList(list: TodoItem[] | undefined, todoId: string): TodoItem | undefined {
+  if (!list) return undefined;
+  for (const item of list) {
+    if (item.id === todoId) return item;
+    const subMatch = item.subtasks?.find((s) => s.id === todoId);
+    if (subMatch) return subMatch;
+  }
+  return undefined;
+}
+
+function findTodoInQueryCaches(
+  queryClient: QueryClient | undefined,
+  listId: string | undefined,
+  todoId: string
+): TodoItem | undefined {
+  if (!queryClient) return undefined;
+  if (listId) {
+    const direct =
+      findTodoInList(queryClient.getQueryData<TodoItem[]>(["todos", listId]), todoId) ??
+      findTodoInList(
+        queryClient.getQueryData<TodoItem[]>(["active_list_todos_preview", listId]),
+        todoId
+      );
+    if (direct) return direct;
+  }
+  for (const [, data] of queryClient.getQueriesData<TodoItem[]>({ queryKey: ["todos"] })) {
+    const match = findTodoInList(data, todoId);
+    if (match) return match;
+  }
+  return undefined;
 }
 
 function patchTodoInQueryCaches(
@@ -500,6 +534,9 @@ export async function handleReminderNotificationAction(
     if (payload.notificationId && typeof Notifications.dismissNotificationAsync === "function") {
       await Notifications.dismissNotificationAsync(payload.notificationId).catch(() => {});
     }
+    const cachedTodo = findTodoInQueryCaches(queryClient, payload.listId, payload.todoId);
+    const effectiveRecurrence = payload.recurrence ?? cachedTodo?.recurrence;
+    const isRepeating = isRepeatingTaskRecurrence(effectiveRecurrence);
     const reminderAt = computeSnoozedReminderAt(now);
     const localId = reminderNotificationIdentifier(payload.todoId);
     await scheduleLocalNotification(
@@ -507,8 +544,18 @@ export async function handleReminderNotificationAction(
       payload.title || "sYnX Reminder",
       payload.body || "Task reminder",
       reminderAt,
-      { todoId: payload.todoId, listId: payload.listId }
+      {
+        todoId: payload.todoId,
+        listId: payload.listId,
+        ...(effectiveRecurrence ? { recurrence: effectiveRecurrence } : {}),
+      }
     ).catch(() => {});
+
+    // Option A (#110): repeating tasks only snooze locally so server reminder_at
+    // keeps the original time of day for the next recurrence upon completion.
+    if (isRepeating) {
+      return true;
+    }
 
     patchTodoInQueryCaches(queryClient, payload.listId, payload.todoId, (item) => ({
       ...item,

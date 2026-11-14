@@ -229,6 +229,9 @@ export default {
                     todoId: reminder.id,
                     listId: reminder.listId,
                     tag: reminderNotificationIdentifier(reminder.id),
+                    ...(reminder.recurrence && reminder.recurrence !== "none"
+                      ? { recurrence: reminder.recurrence }
+                      : {}),
                   },
                 },
                 env

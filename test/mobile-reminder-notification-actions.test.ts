@@ -461,6 +461,124 @@ describe("mobile reminder notification Complete & Snooze actions (#110)", () => 
     expect(mocks.storage.has(SYNX_PENDING_NOTIFICATION_OPS_KEY)).toBe(false);
   });
 
+  it("snoozes a repeating task locally without shifting server or cached recurrence time when later completed", async () => {
+    const nineAm = Date.UTC(2026, 10, 14, 9, 0, 0);
+    const nineTenAm = Date.UTC(2026, 10, 14, 9, 10, 0);
+    const nextDayNineAm = Date.UTC(2026, 10, 15, 9, 0, 0);
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(nineAm);
+
+    const qc = new QueryClient();
+    const initialRepeatTodo: TodoItem = {
+      id: "todo-repeat",
+      listId: "list-1",
+      text: "Take vitamins",
+      completed: false,
+      createdAt: 1000,
+      priority: "medium",
+      reminderAt: nineAm,
+      reminderSent: true,
+      recurrence: "daily",
+    };
+    qc.setQueryData<TodoItem[]>(["todos", "list-1"], [initialRepeatTodo]);
+
+    await handleReminderNotificationAction(
+      {
+        actionIdentifier: REMINDER_ACTION_SNOOZE,
+        notification: {
+          date: nineAm,
+          request: {
+            identifier: "reminder_todo-repeat",
+            content: {
+              title: "Health",
+              body: "Take vitamins",
+              data: { todoId: "todo-repeat", listId: "list-1", recurrence: "daily" },
+            },
+          },
+        },
+      },
+      qc
+    );
+
+    expect(mocks.notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: "reminder_todo-repeat",
+        content: expect.objectContaining({
+          data: expect.objectContaining({
+            todoId: "todo-repeat",
+            listId: "list-1",
+            recurrence: "daily",
+          }),
+        }),
+        trigger: expect.objectContaining({
+          date: new Date(nineTenAm),
+        }),
+      })
+    );
+    expect(mocks.client.apiClient.put).not.toHaveBeenCalled();
+    expect(mocks.storage.has(SYNX_PENDING_NOTIFICATION_OPS_KEY)).toBe(false);
+    expect(qc.getQueryData<TodoItem[]>(["todos", "list-1"])?.[0]?.reminderAt).toBe(nineAm);
+
+    // Completing the snoozed repeating task at 9:10 keeps tomorrow's schedule at 9:00 AM
+    resetNotificationActionDedupForTests();
+    nowSpy.mockReturnValue(nineTenAm);
+    const serverNextTodo: TodoItem = {
+      ...initialRepeatTodo,
+      completed: false,
+      reminderAt: nextDayNineAm,
+      reminderSent: false,
+    };
+    mocks.client.apiClient.post.mockImplementationOnce(async () => {
+      const optimisticTodos = qc.getQueryData<TodoItem[]>(["todos", "list-1"]);
+      expect(optimisticTodos?.[0]?.reminderAt).toBe(nextDayNineAm);
+      return {
+        data: { success: true, todo: serverNextTodo, rescheduled: true },
+      };
+    });
+
+    await handleReminderNotificationAction(
+      {
+        actionIdentifier: REMINDER_ACTION_COMPLETE,
+        notification: {
+          date: nineTenAm,
+          request: {
+            identifier: "reminder_todo-repeat",
+            content: {
+              title: "Health",
+              body: "Take vitamins",
+              data: { todoId: "todo-repeat", listId: "list-1", recurrence: "daily" },
+            },
+          },
+        },
+      },
+      qc
+    );
+
+    expect(mocks.client.apiClient.post).toHaveBeenCalledWith("/api/v1/todos/todo-repeat/completed", {
+      completed: true,
+    });
+    expect(qc.getQueryData<TodoItem[]>(["todos", "list-1"])?.[0]?.reminderAt).toBe(nextDayNineAm);
+
+    // Headless snooze (without QueryClient) also respects recurrence in notification data
+    resetNotificationActionDedupForTests();
+    nowSpy.mockReturnValue(nineAm);
+    mocks.client.apiClient.put.mockClear();
+    await handleReminderNotificationAction({
+      actionIdentifier: REMINDER_ACTION_SNOOZE,
+      notification: {
+        date: nineAm + 1,
+        request: {
+          identifier: "reminder_todo-repeat-headless",
+          content: {
+            title: "Health",
+            body: "Daily stretch",
+            data: { todoId: "todo-repeat-headless", listId: "list-1", recurrence: "daily" },
+          },
+        },
+      },
+    });
+    expect(mocks.client.apiClient.put).not.toHaveBeenCalled();
+  });
+
   it("registers the headless TaskManager task and starts listeners in App + background worker", async () => {
     const taskFn = mocks.definedTasks.get(REMINDER_NOTIFICATION_TASK);
     expect(taskFn).toBeTypeOf("function");
