@@ -290,9 +290,14 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     }
   }, [listId, hasListMeta, refetch]);
 
-  const { setCompleted, isPendingId } = useSetTodoCompleted(listId);
-  const { createMutation, updateMutation, deleteMutation, reviewDeleteMutation } =
-    useTaskMutations(listId);
+  const { setCompleted, isPendingId, isSlowPendingId } = useSetTodoCompleted(listId);
+  const {
+    createMutation,
+    updateMutation,
+    deleteMutation,
+    reviewDeleteMutation,
+    isSlowPendingId: isSlowTaskUpdateId,
+  } = useTaskMutations(listId);
 
   const handlePriorityDragStart = React.useCallback(
     (task: TodoItem) => {
@@ -325,9 +330,6 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       if (currentPriority === nextPriority) return;
       triggerImpactHaptic();
       const previous = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
-      queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-        applyOptimisticTaskPriority(old, task.id, nextPriority)
-      );
       updateMutation.mutate(
         { id: task.id, payload: { priority: nextPriority } },
         {
@@ -338,6 +340,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             void queryClient.invalidateQueries({ queryKey: ["todos", listId] });
           },
         }
+      );
+      queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+        applyOptimisticTaskPriority(old, task.id, nextPriority)
       );
     },
     [listId, queryClient, triggerImpactHaptic, updateMutation]
@@ -765,6 +770,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 canEdit={canEdit}
                 isOwner={isOwner}
                 isPending={isPendingId(row.task.id)}
+                isSlowPending={isSlowPendingId(row.task.id) || isSlowTaskUpdateId(row.task.id)}
                 canDragPriority={canDragTaskForPriority({
                   canEdit,
                   sortMode: taskSortMode,

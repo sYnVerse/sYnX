@@ -10,6 +10,7 @@
     "mobile-calendar-sync.test.ts",
     "mobile-calendar-soft-ask-context.test.ts",
     "mobile-calendar-reconcile.test.ts",
+    "mobile-optimistic-mutations.test.ts",
     "mobile-sign-out-cleanup.test.ts",
     "mobile-updates.test.ts",
     "mobile-resume-draft-preservation.test.ts",

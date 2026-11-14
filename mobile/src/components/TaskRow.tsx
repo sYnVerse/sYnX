@@ -1,5 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Animated, PanResponder } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Animated,
+  PanResponder,
+  ActivityIndicator,
+} from "react-native";
 import { Check, Clock, ListTree, Repeat, Bell, Plus, GripVertical } from "lucide-react-native";
 import {
   PRIORITY_DROP_LABELS,
@@ -17,6 +25,8 @@ export interface TaskRowProps {
   isOwner: boolean;
   /** True while a complete/undo request for this task is in flight. */
   isPending: boolean;
+  /** True when an in-flight mutation on this task has exceeded the slow threshold. */
+  isSlowPending?: boolean;
   canDragPriority?: boolean;
   isDraggingPriority?: boolean;
   dragPreviewPriority?: PriorityLevel | null;
@@ -34,6 +44,7 @@ export const TaskRow: React.FC<TaskRowProps> = ({
   item,
   canEdit,
   isPending,
+  isSlowPending = false,
   canDragPriority = false,
   isDraggingPriority = false,
   dragPreviewPriority = null,
@@ -127,19 +138,19 @@ export const TaskRow: React.FC<TaskRowProps> = ({
         accessibilityLabel={`Edit task ${item.text}`}
       >
       <TouchableOpacity
-        disabled={!canEdit || isPending}
+        disabled={!canEdit}
         style={[
           styles.checkboxHit,
-          (!canEdit || isPending) && { opacity: 0.7 },
+          (!canEdit || isPending) && { opacity: canEdit ? 0.85 : 0.7 },
         ]}
         onPress={() => {
-          if (!canEdit || isPending) return;
+          if (!canEdit) return;
           onToggleCompleted(item);
         }}
         accessibilityRole="checkbox"
         accessibilityState={{
           checked: item.completed,
-          disabled: !canEdit || isPending,
+          disabled: !canEdit,
         }}
         accessibilityLabel={`Mark ${item.text} ${item.completed ? "incomplete" : "complete"}`}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -190,6 +201,15 @@ export const TaskRow: React.FC<TaskRowProps> = ({
             <View style={[styles.pillBadge, { backgroundColor: "rgba(245, 158, 11, 0.18)" }]}>
               <Text style={[styles.pillBadgeText, { color: "#F59E0B" }]}>
                 Delete requested
+              </Text>
+            </View>
+          ) : null}
+
+          {isSlowPending ? (
+            <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
+              <ActivityIndicator size="small" color={theme.accent} />
+              <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
+                Saving…
               </Text>
             </View>
           ) : null}

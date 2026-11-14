@@ -156,6 +156,7 @@ describe("mobile drag-and-drop task priority helpers (#109)", () => {
     };
     const jsxStub = { jsx: createElement, jsxs: createElement, jsxDEV: createElement, Fragment: "Fragment" };
     const reactNativeStub = {
+      ActivityIndicator: "ActivityIndicator",
       View: "View",
       Text: "Text",
       TouchableOpacity: "TouchableOpacity",
