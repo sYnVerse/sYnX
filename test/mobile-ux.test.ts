@@ -232,7 +232,7 @@ describe("mobile version single source of truth", () => {
     expect(MOBILE_APP_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
     expect(MOBILE_VERSION).toBe(`v${MOBILE_APP_VERSION}`);
     // Current release for this PR
-    expect(MOBILE_APP_VERSION).toBe("3.8.0");
+    expect(MOBILE_APP_VERSION).toBe("3.9.0");
   });
 });
 

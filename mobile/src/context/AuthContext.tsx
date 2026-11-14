@@ -131,9 +131,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const applyAccessToken = useCallback((accessToken: string) => {
-    setToken(accessToken);
+    setToken((prev) => (prev === accessToken ? prev : accessToken));
     const decoded = tryDecodeJwtUser(accessToken);
-    if (decoded) setUser(decoded);
+    if (decoded) {
+      setUser((prev) =>
+        prev && prev.userId === decoded.userId && prev.email === decoded.email ? prev : decoded
+      );
+    }
   }, []);
 
   const clearLocalSessionState = useCallback(async () => {
