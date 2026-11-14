@@ -1,7 +1,12 @@
-import React from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
-import { Check, Clock, ListTree, Repeat, Bell, Plus } from "lucide-react-native";
-import type { PriorityLevel, TodoItem } from "../shared";
+import React, { useMemo, useState } from "react";
+import { View, Text, TouchableOpacity, StyleSheet, Animated, PanResponder } from "react-native";
+import { Check, Clock, ListTree, Repeat, Bell, Plus, GripVertical } from "lucide-react-native";
+import {
+  PRIORITY_DROP_LABELS,
+  resolvePriorityFromVerticalOffset,
+  type PriorityLevel,
+  type TodoItem,
+} from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { typography, MIN_TOUCH_TARGET } from "../theme/theme";
 import { formatReminderPillLabel, priorityColor } from "../utils/format";
@@ -12,6 +17,13 @@ export interface TaskRowProps {
   isOwner: boolean;
   /** True while a complete/undo request for this task is in flight. */
   isPending: boolean;
+  canDragPriority?: boolean;
+  isDraggingPriority?: boolean;
+  dragPreviewPriority?: PriorityLevel | null;
+  onPriorityDragStart?: (item: TodoItem) => void;
+  onPriorityDragHover?: (item: TodoItem, previewPriority: PriorityLevel) => void;
+  onPriorityDragEnd?: (item: TodoItem, nextPriority: PriorityLevel) => void;
+  onPriorityDragCancel?: () => void;
   onToggleCompleted: (item: TodoItem) => void;
   onEdit: (item: TodoItem) => void;
   onOpenSubtasks: (item: TodoItem) => void;
@@ -22,33 +34,96 @@ export const TaskRow: React.FC<TaskRowProps> = ({
   item,
   canEdit,
   isPending,
+  canDragPriority = false,
+  isDraggingPriority = false,
+  dragPreviewPriority = null,
+  onPriorityDragStart,
+  onPriorityDragHover,
+  onPriorityDragEnd,
+  onPriorityDragCancel,
   onToggleCompleted,
   onEdit,
   onOpenSubtasks,
 }) => {
   const { theme } = useTheme();
+  const [translateY] = useState(() => new Animated.Value(0));
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => canDragPriority,
+        onMoveShouldSetPanResponder: (_evt, gestureState) =>
+          canDragPriority && Math.abs(gestureState.dy) > 4,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          onPriorityDragStart?.(item);
+        },
+        onPanResponderMove: (_evt, gestureState) => {
+          const clampedDy = Math.max(-96, Math.min(96, gestureState.dy * 0.35));
+          translateY.setValue(clampedDy);
+          const preview = resolvePriorityFromVerticalOffset(item.priority, gestureState.dy);
+          onPriorityDragHover?.(item, preview);
+        },
+        onPanResponderRelease: (_evt, gestureState) => {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+          const next = resolvePriorityFromVerticalOffset(item.priority, gestureState.dy);
+          onPriorityDragEnd?.(item, next);
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+          onPriorityDragCancel?.();
+        },
+      }),
+    [
+      canDragPriority,
+      item,
+      onPriorityDragCancel,
+      onPriorityDragEnd,
+      onPriorityDragHover,
+      onPriorityDragStart,
+      translateY,
+    ]
+  );
+
   const subtaskCount = item.subtasks?.length || 0;
   const completedSubtasks = item.subtasks?.filter((s) => s.completed).length || 0;
-  const prio = (item.priority || "none") as PriorityLevel;
+  const prio = (
+    isDraggingPriority && dragPreviewPriority
+      ? dragPreviewPriority
+      : item.priority || "none"
+  ) as PriorityLevel;
   const hasPriorityStripe = prio !== "none";
 
   return (
-    <TouchableOpacity
-      activeOpacity={0.8}
-      style={[
-        styles.todoCard,
-        {
-          backgroundColor: theme.cardBg,
-          borderColor: theme.cardBorder,
-          shadowColor: theme.shadowColor,
-          borderLeftWidth: hasPriorityStripe ? 4 : 1,
-          borderLeftColor: hasPriorityStripe ? priorityColor(prio, theme) : theme.cardBorder,
-        },
-      ]}
-      onPress={() => onEdit(item)}
-      accessibilityRole="button"
-      accessibilityLabel={`Edit task ${item.text}`}
+    <Animated.View
+      style={{
+        transform: [{ translateY }],
+        zIndex: isDraggingPriority ? 10 : 0,
+      }}
     >
+      <TouchableOpacity
+        activeOpacity={0.8}
+        disabled={isDraggingPriority}
+        style={[
+          styles.todoCard,
+          {
+            backgroundColor: theme.cardBg,
+            borderColor: isDraggingPriority ? theme.accent : theme.cardBorder,
+            shadowColor: theme.shadowColor,
+            borderLeftWidth: hasPriorityStripe ? 4 : 1,
+            borderLeftColor: hasPriorityStripe ? priorityColor(prio, theme) : theme.cardBorder,
+          },
+        ]}
+        onPress={() => onEdit(item)}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit task ${item.text}`}
+      >
       <TouchableOpacity
         disabled={!canEdit || isPending}
         style={[
@@ -140,6 +215,34 @@ export const TaskRow: React.FC<TaskRowProps> = ({
               </Text>
             </TouchableOpacity>
           )}
+
+          {isDraggingPriority && dragPreviewPriority ? (
+            <View
+              style={[
+                styles.pillBadge,
+                {
+                  backgroundColor:
+                    dragPreviewPriority === "none"
+                      ? theme.inputBg
+                      : priorityColor(dragPreviewPriority, theme) + "22",
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.pillBadgeText,
+                  {
+                    color:
+                      dragPreviewPriority === "none"
+                        ? theme.textSecondary
+                        : priorityColor(dragPreviewPriority, theme),
+                  },
+                ]}
+              >
+                Priority: {PRIORITY_DROP_LABELS[dragPreviewPriority]}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -149,12 +252,27 @@ export const TaskRow: React.FC<TaskRowProps> = ({
           onPress={() => onOpenSubtasks(item)}
           accessibilityRole="button"
           accessibilityLabel={`Add or manage subtasks for ${item.text}`}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
         >
           <Plus size={18} color={theme.textMuted} />
         </TouchableOpacity>
       )}
+
+      {canDragPriority && (
+        <View
+          style={styles.actionBtn}
+          {...panResponder.panHandlers}
+          accessibilityRole="adjustable"
+          accessibilityLabel={`Drag to change priority for ${item.text}`}
+        >
+          <GripVertical
+            size={18}
+            color={isDraggingPriority ? theme.accent : theme.textMuted}
+          />
+        </View>
+      )}
     </TouchableOpacity>
+    </Animated.View>
   );
 };
 
