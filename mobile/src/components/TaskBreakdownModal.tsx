@@ -22,6 +22,7 @@ import { useToast } from "../context/ToastContext";
 import { typography, spacing, MIN_TOUCH_TARGET, getSheetBottomPadding } from "../theme/theme";
 import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
 import {
+  advanceTaskBaseline,
   findTodoInCache,
   formatRollbackError,
   patchTodosCache,
@@ -110,6 +111,8 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   const { setCompleted, isPendingId, isSlowPendingId } = useSetTodoCompleted(task?.listId);
   const subtaskSeqByIdRef = useRef<Map<string, number>>(new Map());
   const subtaskInFlightCountRef = useRef<Map<string, number>>(new Map());
+  const subtaskHadOverlapByIdRef = useRef<Map<string, boolean>>(new Map());
+  const subtaskNeedsReconcileRef = useRef(false);
   const totalSubtaskInFlightRef = useRef(0);
   const subtaskBaselineByIdRef = useRef<Map<string, TaskBaselineSnapshot>>(new Map());
 
@@ -163,7 +166,10 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
       subtaskSeqByIdRef.current.set(id, seq);
 
       const prevCount = subtaskInFlightCountRef.current.get(id) ?? 0;
-      if (prevCount === 0 && listId) {
+      if (prevCount > 0) {
+        subtaskHadOverlapByIdRef.current.set(id, true);
+      }
+      if (!subtaskBaselineByIdRef.current.has(id) && listId) {
         const listSnapshot = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
         const itemSnapshot = findTodoInCache(listSnapshot, id);
         subtaskBaselineByIdRef.current.set(id, { listSnapshot, itemSnapshot });
@@ -192,6 +198,9 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
       return { seq, listId };
     },
     onSuccess: (updatedTodo, vars, context) => {
+      if (updatedTodo) {
+        advanceTaskBaseline(subtaskBaselineByIdRef.current, vars.id, updatedTodo);
+      }
       if (context?.seq !== subtaskSeqByIdRef.current.get(vars.id)) return;
       triggerHaptic();
       const listId = context?.listId;
@@ -214,6 +223,9 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
       if (listId && baseline) {
         restoreTodoInCache(queryClient, listId, vars.id, baseline);
       }
+      if (listId && subtaskHadOverlapByIdRef.current.get(vars.id)) {
+        subtaskNeedsReconcileRef.current = true;
+      }
       triggerErrorHaptic(hapticsEnabled);
       showError(formatRollbackError(e));
     },
@@ -222,11 +234,20 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
       const nextCount = Math.max(0, (subtaskInFlightCountRef.current.get(vars.id) ?? 1) - 1);
       if (nextCount === 0) {
         subtaskInFlightCountRef.current.delete(vars.id);
+        subtaskBaselineByIdRef.current.delete(vars.id);
+        subtaskHadOverlapByIdRef.current.delete(vars.id);
       } else {
         subtaskInFlightCountRef.current.set(vars.id, nextCount);
       }
-      if (context?.seq !== subtaskSeqByIdRef.current.get(vars.id)) return;
-      subtaskBaselineByIdRef.current.delete(vars.id);
+      const listId = context?.listId;
+      if (
+        subtaskNeedsReconcileRef.current &&
+        listId &&
+        subtaskInFlightCountRef.current.size === 0
+      ) {
+        subtaskNeedsReconcileRef.current = false;
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      }
     },
   });
 

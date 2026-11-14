@@ -81,6 +81,30 @@ export function restoreTodoInCache(
   );
 }
 
+/**
+ * Advances the stored baseline for `id` when a server response succeeds so a later
+ * overlapping rollback cannot revert past confirmed server state.
+ */
+export function advanceTaskBaseline(
+  baselineMap: Map<string, TaskBaselineSnapshot>,
+  id: string,
+  confirmedTodo: TodoItem
+): void {
+  const existing = baselineMap.get(id);
+  if (!existing) return;
+  const mergedItem: TodoItem = existing.itemSnapshot
+    ? {
+        ...existing.itemSnapshot,
+        ...confirmedTodo,
+        subtasks: existing.itemSnapshot.subtasks ?? confirmedTodo.subtasks,
+      }
+    : confirmedTodo;
+  baselineMap.set(id, {
+    itemSnapshot: mergedItem,
+    listSnapshot: patchTodosCache(existing.listSnapshot, id, () => mergedItem),
+  });
+}
+
 export function useSlowPendingTracker() {
   const [slowPendingIds, setSlowPendingIds] = useState<Set<string>>(() => new Set());
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -159,6 +183,8 @@ export function useSetTodoCompleted(listId: string | undefined) {
   const seqByIdRef = useRef<Map<string, number>>(new Map());
   const inFlightDesiredByIdRef = useRef<Map<string, boolean>>(new Map());
   const inFlightCountByIdRef = useRef<Map<string, number>>(new Map());
+  const hadOverlapByIdRef = useRef<Map<string, boolean>>(new Map());
+  const needsReconcileRef = useRef(false);
   const baselineByIdRef = useRef<Map<string, TaskBaselineSnapshot>>(new Map());
   const { slowPendingIds, isSlowPendingId, startSlowTimer, finishSlowTracking } =
     useSlowPendingTracker();
@@ -179,7 +205,10 @@ export function useSetTodoCompleted(listId: string | undefined) {
       inFlightDesiredByIdRef.current.set(id, completed);
 
       const prevCount = inFlightCountByIdRef.current.get(id) ?? 0;
-      if (prevCount === 0 && listId) {
+      if (prevCount > 0) {
+        hadOverlapByIdRef.current.set(id, true);
+      }
+      if (!baselineByIdRef.current.has(id) && listId) {
         const listSnapshot = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
         const itemSnapshot = findTodoInCache(listSnapshot, id);
         baselineByIdRef.current.set(id, { listSnapshot, itemSnapshot });
@@ -221,10 +250,16 @@ export function useSetTodoCompleted(listId: string | undefined) {
           }).catch(() => {});
         }
       }
+      if (listId && hadOverlapByIdRef.current.get(vars.id)) {
+        needsReconcileRef.current = true;
+      }
       triggerErrorHaptic(hapticsEnabled);
       showError(formatRollbackError(error));
     },
     onSuccess: (data, vars, context) => {
+      if (data?.todo) {
+        advanceTaskBaseline(baselineByIdRef.current, vars.id, data.todo);
+      }
       if (context?.seq !== seqByIdRef.current.get(vars.id)) return;
       if (hapticsEnabled && Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -250,15 +285,21 @@ export function useSetTodoCompleted(listId: string | undefined) {
       const nextCount = Math.max(0, (inFlightCountByIdRef.current.get(vars.id) ?? 1) - 1);
       if (nextCount === 0) {
         inFlightCountByIdRef.current.delete(vars.id);
+        baselineByIdRef.current.delete(vars.id);
+        hadOverlapByIdRef.current.delete(vars.id);
       } else {
         inFlightCountByIdRef.current.set(vars.id, nextCount);
+      }
+
+      if (needsReconcileRef.current && listId && inFlightCountByIdRef.current.size === 0) {
+        needsReconcileRef.current = false;
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
       }
 
       if (context?.seq !== seqByIdRef.current.get(vars.id)) return;
 
       finishSlowTracking(vars.id);
       inFlightDesiredByIdRef.current.delete(vars.id);
-      baselineByIdRef.current.delete(vars.id);
       setPendingIds((prev) => {
         if (!prev.has(vars.id)) return prev;
         const next = new Set(prev);

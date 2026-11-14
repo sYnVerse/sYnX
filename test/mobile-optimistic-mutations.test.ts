@@ -734,4 +734,115 @@ describe("mobile optimistic update safeguards (#170)", () => {
     expect(finalTask?.text).toBe("Draft 2");
     expect(finalTask?.priority).toBe("high");
   });
+
+  it("earlier request succeeds, later request fails: rolls back to confirmed server state, preserves baseline while earlier request is in flight, and reconciles", async () => {
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const getHook = mountCompletedHook();
+
+    // Case 1: seq 1 (check) succeeds first, then seq 2 (uncheck) fails
+    const d1 = createDeferred<{ data: { todo: TodoItem; rescheduled: boolean } }>();
+    const d2 = createDeferred<{ data: { todo: TodoItem; rescheduled: boolean } }>();
+    mocks.apiClient.post
+      .mockImplementationOnce(() => d1.promise)
+      .mockImplementationOnce(() => d2.promise);
+
+    getHook().setCompleted(baseTask, true);
+    getHook().setCompleted(baseTask, false);
+    await flushAsync();
+
+    d1.resolve({ data: { todo: { ...baseTask, completed: true }, rescheduled: false } });
+    await flushAsync();
+    // Stale optimistic UI still shows seq 2's unchecked value until seq 2 settles
+    expect(
+      queryClient.getQueryData<TodoItem[]>(["todos", "list-1"])?.find((t) => t.id === "todo-1")
+        ?.completed
+    ).toBe(false);
+
+    d2.reject({ response: { data: { error: "Conflict" } } });
+    await flushAsync();
+
+    // Rollback must restore seq 1's server-confirmed completed=true (not pre-burst false)
+    const afterRollback = queryClient
+      .getQueryData<TodoItem[]>(["todos", "list-1"])
+      ?.find((t) => t.id === "todo-1");
+    expect(afterRollback?.completed).toBe(true);
+    expect(mocks.calendar.syncTaskToNativeCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "todo-1", completed: true }),
+      { listName: "Personal" }
+    );
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["todos", "list-1"] });
+
+    // Case 2: seq 2 settles BEFORE seq 1; seq 3 started afterward still keeps a valid baseline
+    vi.clearAllMocks();
+    queryClient.setQueryData(["todos", "list-1"], [{ ...baseTask, completed: false }]);
+    const s1 = createDeferred<{ data: { todo: TodoItem; rescheduled: boolean } }>();
+    const s2 = createDeferred<{ data: { todo: TodoItem; rescheduled: boolean } }>();
+    const s3 = createDeferred<{ data: { todo: TodoItem; rescheduled: boolean } }>();
+    mocks.apiClient.post
+      .mockImplementationOnce(() => s1.promise)
+      .mockImplementationOnce(() => s2.promise)
+      .mockImplementationOnce(() => s3.promise);
+
+    getHook().setCompleted(baseTask, true); // seq 1
+    getHook().setCompleted(baseTask, false); // seq 2
+    await flushAsync();
+
+    // seq 2 settles first while seq 1 is still in flight
+    s2.reject(new Error("Temporary error"));
+    await flushAsync();
+
+    // Now seq 3 starts while seq 1 is still in flight, then fails -> must still restore baseline (false)
+    getHook().setCompleted(baseTask, true); // seq 3
+    await flushAsync();
+    expect(
+      queryClient.getQueryData<TodoItem[]>(["todos", "list-1"])?.find((t) => t.id === "todo-1")
+        ?.completed
+    ).toBe(true);
+
+    s3.reject(new Error("Failed again"));
+    await flushAsync();
+    expect(
+      queryClient.getQueryData<TodoItem[]>(["todos", "list-1"])?.find((t) => t.id === "todo-1")
+        ?.completed
+    ).toBe(false);
+
+    s1.resolve({ data: { todo: { ...baseTask, completed: true }, rescheduled: false } });
+    await flushAsync();
+  });
+
+  it("useTaskMutations updateMutation restores seq 1 server state when seq 1 succeeds before seq 2 fails", async () => {
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const getMutations = mountTaskMutationsHook();
+
+    const u1 = createDeferred<{ data: { todo: TodoItem } }>();
+    const u2 = createDeferred<{ data: { todo: TodoItem } }>();
+    mocks.apiClient.put
+      .mockImplementationOnce(() => u1.promise)
+      .mockImplementationOnce(() => u2.promise);
+
+    const p1 = getMutations()
+      .updateMutation.mutateAsync({ id: "todo-1", payload: { text: "Confirmed Draft", priority: "medium" } })
+      .catch(() => {});
+    const p2 = getMutations()
+      .updateMutation.mutateAsync({ id: "todo-1", payload: { text: "Rejected Draft", priority: "high" } })
+      .catch(() => {});
+    await flushAsync();
+
+    u1.resolve({
+      data: { todo: { ...baseTask, text: "Confirmed Draft", priority: "medium" } },
+    });
+    await p1;
+    await flushAsync();
+
+    u2.reject({ response: { data: { error: "Conflict" } } });
+    await p2;
+    await flushAsync();
+
+    const finalTask = queryClient
+      .getQueryData<TodoItem[]>(["todos", "list-1"])
+      ?.find((t) => t.id === "todo-1");
+    expect(finalTask?.text).toBe("Confirmed Draft");
+    expect(finalTask?.priority).toBe("medium");
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["todos", "list-1"] });
+  });
 });

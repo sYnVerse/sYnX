@@ -13,6 +13,7 @@ import {
   triggerSuccessHaptic,
 } from "../utils/feedback";
 import {
+  advanceTaskBaseline,
   findTodoInCache,
   formatRollbackError,
   patchTodosCache,
@@ -35,6 +36,8 @@ export function useTaskMutations(listId: string) {
   const queryClient = useQueryClient();
   const seqByIdRef = useRef<Map<string, number>>(new Map());
   const inFlightCountByIdRef = useRef<Map<string, number>>(new Map());
+  const hadOverlapByIdRef = useRef<Map<string, boolean>>(new Map());
+  const needsReconcileRef = useRef(false);
   const totalUpdateInFlightRef = useRef(0);
   const baselineByIdRef = useRef<Map<string, TaskBaselineSnapshot>>(new Map());
   const { slowPendingIds, isSlowPendingId, startSlowTimer, finishSlowTracking } =
@@ -135,7 +138,10 @@ export function useTaskMutations(listId: string) {
       const seq = (seqByIdRef.current.get(id) ?? 0) + 1;
       seqByIdRef.current.set(id, seq);
       const prevCount = inFlightCountByIdRef.current.get(id) ?? 0;
-      if (prevCount === 0 && listId) {
+      if (prevCount > 0) {
+        hadOverlapByIdRef.current.set(id, true);
+      }
+      if (!baselineByIdRef.current.has(id) && listId) {
         const listSnapshot = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
         const itemSnapshot = findTodoInCache(listSnapshot, id);
         baselineByIdRef.current.set(id, { listSnapshot, itemSnapshot });
@@ -169,6 +175,9 @@ export function useTaskMutations(listId: string) {
       return { seq };
     },
     onSuccess: (updatedTodo, vars, context) => {
+      if (updatedTodo) {
+        advanceTaskBaseline(baselineByIdRef.current, vars.id, updatedTodo);
+      }
       if (context?.seq !== seqByIdRef.current.get(vars.id)) return;
       triggerSuccessHaptic(hapticsEnabled);
       if (updatedTodo && listId) {
@@ -202,6 +211,9 @@ export function useTaskMutations(listId: string) {
           }
         }
       }
+      if (listId && hadOverlapByIdRef.current.get(vars.id)) {
+        needsReconcileRef.current = true;
+      }
       triggerErrorHaptic(hapticsEnabled);
       showError(formatRollbackError(error));
     },
@@ -210,12 +222,17 @@ export function useTaskMutations(listId: string) {
       const nextCount = Math.max(0, (inFlightCountByIdRef.current.get(vars.id) ?? 1) - 1);
       if (nextCount === 0) {
         inFlightCountByIdRef.current.delete(vars.id);
+        baselineByIdRef.current.delete(vars.id);
+        hadOverlapByIdRef.current.delete(vars.id);
       } else {
         inFlightCountByIdRef.current.set(vars.id, nextCount);
       }
+      if (needsReconcileRef.current && listId && inFlightCountByIdRef.current.size === 0) {
+        needsReconcileRef.current = false;
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      }
       if (context?.seq !== seqByIdRef.current.get(vars.id)) return;
       finishSlowTracking(vars.id);
-      baselineByIdRef.current.delete(vars.id);
     },
   });
 
