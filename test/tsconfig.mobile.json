@@ -15,6 +15,7 @@
     "mobile-updates.test.ts",
     "mobile-resume-draft-preservation.test.ts",
     "mobile-reminder-notification-actions.test.ts",
+    "mobile-task-priority-drag.test.ts",
     "mobile-complete-subtasks-prompt.test.ts",
     "android-app-links.test.ts",
     "widget-pinned-toggle.test.ts",

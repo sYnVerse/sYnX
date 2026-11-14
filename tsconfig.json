@@ -24,6 +24,7 @@
     "test/mobile-updates.test.ts",
     "test/mobile-resume-draft-preservation.test.ts",
     "test/mobile-reminder-notification-actions.test.ts",
+    "test/mobile-task-priority-drag.test.ts",
     "test/mobile-complete-subtasks-prompt.test.ts"
   ],
   "compilerOptions": {

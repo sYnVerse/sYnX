@@ -15,6 +15,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
       },
       {
         type: "NEW",
+        text: "Added a drag handle on top-level tasks when sorted by priority so you can drag tasks up or down to change their priority between High, Medium, Low, and None.",
+      },
+      {
+        type: "NEW",
         text: "Added a confirmation prompt when completing a task with open subtasks so you can complete all subtasks together or promote them to top-level tasks.",
       },
       {
