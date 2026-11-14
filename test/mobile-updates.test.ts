@@ -42,13 +42,21 @@ const mocks = vi.hoisted(() => {
       }),
     },
     application: {
-      nativeApplicationVersion: "3.7.0" as string | null,
+      nativeApplicationVersion: "3.8.0" as string | null,
       nativeBuildVersion: "42" as string | null,
     },
     constants: {
-      nativeAppVersion: "3.7.0",
+      nativeAppVersion: "3.8.0",
       nativeBuildVersion: "42",
-      expoConfig: { version: "3.7.0", android: { versionCode: 42 } },
+      expoConfig: { version: "3.8.0", android: { versionCode: 42 } },
+    },
+    apiClient: {
+      get: vi.fn<(...args: any[]) => any>(async () => ({ data: { updateRequired: false } })),
+    },
+    asyncStorage: {
+      getItem: vi.fn(async () => null),
+      setItem: vi.fn(async () => {}),
+      removeItem: vi.fn(async () => {}),
     },
     appStateListeners,
     updatesStateListeners,
@@ -63,6 +71,16 @@ vi.mock("expo-updates", () => mocks.updates);
 vi.mock("../mobile/node_modules/expo-updates", () => mocks.updates);
 vi.mock("expo-constants", () => ({ default: mocks.constants }));
 vi.mock("../mobile/node_modules/expo-constants", () => ({ default: mocks.constants }));
+vi.mock("../mobile/src/api/client", () => ({
+  apiClient: mocks.apiClient,
+  onNativeUpdateRequired: vi.fn(),
+}));
+vi.mock("@react-native-async-storage/async-storage", () => ({
+  default: mocks.asyncStorage,
+}));
+vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage", () => ({
+  default: mocks.asyncStorage,
+}));
 
 import ignoreContent from "../mobile/.fingerprintignore?raw";
 import {
@@ -74,6 +92,10 @@ import {
   resetUpdateStateForTesting,
   syncNativeUpdateContext,
   bridgeNativeUpdatesState,
+  checkNativeAppUpdate,
+  dismissNativeUpdatePrompt,
+  markNativeUpdateRequired,
+  clearNativeUpdateRequired,
 } from "../mobile/src/services/updates";
 
 describe("mobile updates service", () => {
@@ -83,6 +105,13 @@ describe("mobile updates service", () => {
     mocks.updates.isEmergencyLaunch = false;
     mocks.updates.isEmbeddedLaunch = true;
     mocks.updates.latestContext = null;
+    mocks.application.nativeApplicationVersion = "3.8.0";
+    mocks.application.nativeBuildVersion = "42";
+    mocks.constants.nativeAppVersion = "3.8.0";
+    mocks.constants.nativeBuildVersion = "42";
+    mocks.updates.runtimeVersion = "9b83facafc79485ba4e7649aadf56dd10c617724";
+    mocks.apiClient.get.mockRejectedValue(new Error("Offline default in tests"));
+    mocks.asyncStorage.getItem.mockResolvedValue(null);
     mocks.updates.useUpdates.mockReturnValue({
       isUpdatePending: false,
       isUpdateAvailable: false,
@@ -119,7 +148,7 @@ describe("mobile updates service", () => {
       expect(state).toHaveProperty("isUpdateAvailable");
       expect(state).toHaveProperty("isUpdatePending");
       expect(state).toHaveProperty("isRollBackToEmbedded", false);
-      expect(state).toHaveProperty("nativeAppVersion", "3.7.0");
+      expect(state).toHaveProperty("nativeAppVersion", "3.8.0");
       expect(state).toHaveProperty("nativeBuildVersion", "42");
     });
 
@@ -128,15 +157,15 @@ describe("mobile updates service", () => {
       mocks.application.nativeBuildVersion = null;
       mocks.constants.nativeAppVersion = undefined as any;
       mocks.constants.nativeBuildVersion = undefined as any;
-      mocks.constants.expoConfig = { version: "3.7.0", android: { versionCode: 42 } };
+      mocks.constants.expoConfig = { version: "3.8.0", android: { versionCode: 42 } };
 
       resetUpdateStateForTesting();
       const state = getUpdateState();
-      expect(state.nativeAppVersion).toBe("3.7.0");
+      expect(state.nativeAppVersion).toBe("3.8.0");
       expect(state.nativeBuildVersion).toBe("42");
 
       // Restore defaults for subsequent tests
-      mocks.application.nativeApplicationVersion = "3.7.0";
+      mocks.application.nativeApplicationVersion = "3.8.0";
       mocks.application.nativeBuildVersion = "42";
       resetUpdateStateForTesting();
     });
@@ -448,6 +477,192 @@ describe("mobile updates service", () => {
       const ok = await reloadToApplyUpdate();
       expect(ok).toBe(true);
       expect(mocks.updates.reloadAsync).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("native app updates (issue #202)", () => {
+    it("initializes with default nativeUpdate state", () => {
+      const state = getUpdateState();
+      expect(state.nativeUpdate).toBeDefined();
+      expect(state.nativeUpdate.isUpdateRequired).toBe(false);
+      expect(state.nativeUpdate.isDismissed).toBe(false);
+    });
+
+    it("evaluates native update required when runtime version does not match active OTA runtime", async () => {
+      mocks.application.nativeApplicationVersion = "3.8.0";
+      mocks.constants.nativeAppVersion = "3.8.0";
+      mocks.updates.runtimeVersion = "outdated-fingerprint-old";
+      resetUpdateStateForTesting();
+      mocks.apiClient.get.mockResolvedValueOnce({
+        data: {
+          updateRequired: true,
+          reason: "runtime_mismatch",
+          message:
+            "A native app update is required. Over-The-Air updates are no longer supported on this build.",
+          downloadUrl: "https://synx.christran.io/download/android",
+        },
+      });
+
+      const res = await checkNativeAppUpdate();
+      expect(res.isUpdateRequired).toBe(true);
+      expect(res.reason).toBe("runtime_mismatch");
+      expect(res.message).toMatch(/Over-The-Air updates are no longer supported/i);
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(true);
+    });
+
+    it("evaluates native update required when native build version is below minimum", async () => {
+      mocks.application.nativeApplicationVersion = "3.8.0";
+      mocks.constants.nativeAppVersion = "3.8.0";
+      mocks.application.nativeBuildVersion = "10";
+      mocks.constants.nativeBuildVersion = "10";
+      resetUpdateStateForTesting();
+
+      const res = await checkNativeAppUpdate();
+      expect(res.isUpdateRequired).toBe(true);
+      expect(res.reason).toBe("build_below_minimum");
+    });
+
+    it("evaluates native update required when native app version is below minimum", async () => {
+      mocks.application.nativeApplicationVersion = "3.5.0";
+      mocks.constants.nativeAppVersion = "3.5.0";
+      resetUpdateStateForTesting();
+
+      const res = await checkNativeAppUpdate();
+      expect(res.isUpdateRequired).toBe(true);
+      expect(res.reason).toBe("version_below_minimum");
+    });
+
+    it("incorporates server response when /api/v1/mobile/version returns update requirement", async () => {
+      mocks.application.nativeApplicationVersion = "3.8.0";
+      mocks.constants.nativeAppVersion = "3.8.0";
+      mocks.apiClient.get.mockResolvedValueOnce({
+        data: {
+          updateRequired: true,
+          isBlocking: true,
+          reason: "runtime_mismatch",
+          message: "Remote server demands update",
+          downloadUrl: "https://custom.download/url",
+          latest: {
+            latestVersion: "3.9.0",
+            latestBuildVersion: 35,
+            latestRuntimeVersion: "remote-hash",
+          },
+        },
+      });
+
+      const res = await checkNativeAppUpdate();
+      expect(res.isUpdateRequired).toBe(true);
+      expect(res.isBlocking).toBe(true);
+      expect(res.downloadUrl).toBe("https://custom.download/url");
+      expect(res.message).toBe("Remote server demands update");
+      expect(res.latestVersion).toBe("3.9.0");
+    });
+
+    it("falls back to local evaluation when remote /api/v1/mobile/version fails (offline)", async () => {
+      mocks.application.nativeApplicationVersion = "3.8.0";
+      mocks.constants.nativeAppVersion = "3.8.0";
+      mocks.application.nativeBuildVersion = "28";
+      mocks.constants.nativeBuildVersion = "28";
+      resetUpdateStateForTesting();
+      mocks.apiClient.get.mockRejectedValueOnce(new Error("Network offline"));
+
+      const res = await checkNativeAppUpdate();
+      expect(res.isUpdateRequired).toBe(true);
+      expect(res.reason).toBe("build_below_minimum");
+    });
+
+    it("records dismissal timestamp in AsyncStorage and updates isDismissed", async () => {
+      await dismissNativeUpdatePrompt();
+      expect(mocks.asyncStorage.setItem).toHaveBeenCalledWith(
+        "synx_native_update_dismissed_at",
+        expect.any(String)
+      );
+      expect(getUpdateState().nativeUpdate.isDismissed).toBe(true);
+    });
+
+    it("markNativeUpdateRequired marks update required when signaled by response headers", () => {
+      resetUpdateStateForTesting();
+      markNativeUpdateRequired({ downloadUrl: "https://synx.christran.io/download/android" });
+      const state = getUpdateState();
+      expect(state.nativeUpdate.isUpdateRequired).toBe(true);
+      expect(state.nativeUpdate.downloadUrl).toBe("https://synx.christran.io/download/android");
+    });
+
+    it("clears header-triggered update flag when checkNativeAppUpdate authoritatively determines no update is needed", async () => {
+      resetUpdateStateForTesting();
+      markNativeUpdateRequired({ downloadUrl: "https://old.url" });
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(true);
+
+      mocks.apiClient.get.mockResolvedValueOnce({
+        data: {
+          updateRequired: false,
+          isBlocking: false,
+          reason: null,
+          latest: {
+            latestVersion: "3.8.0",
+            latestBuildVersion: 29,
+          },
+        },
+      });
+
+      const res = await checkNativeAppUpdate();
+      expect(res.isUpdateRequired).toBe(false);
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(false);
+    });
+
+    it("suppresses subsequent header triggers when authoritative check confirmed binary is up-to-date", async () => {
+      resetUpdateStateForTesting();
+      mocks.apiClient.get.mockResolvedValueOnce({
+        data: { updateRequired: false },
+      });
+
+      await checkNativeAppUpdate();
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(false);
+
+      // Passive header arriving after authoritative clean check
+      markNativeUpdateRequired({ downloadUrl: "https://false.positive" });
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(false);
+    });
+
+    it("clearNativeUpdateRequired explicitly clears update requirement", () => {
+      resetUpdateStateForTesting();
+      markNativeUpdateRequired({ downloadUrl: "https://some.url" });
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(true);
+
+      clearNativeUpdateRequired();
+      expect(getUpdateState().nativeUpdate.isUpdateRequired).toBe(false);
+    });
+
+    it("checkForUpdate returns isNativeUpdateRequired: true when native update is required", async () => {
+      mocks.application.nativeApplicationVersion = "3.8.0";
+      mocks.constants.nativeAppVersion = "3.8.0";
+      mocks.application.nativeBuildVersion = "28";
+      mocks.constants.nativeBuildVersion = "28";
+      mocks.updates.isEnabled = true;
+      resetUpdateStateForTesting();
+
+      mocks.updates.checkForUpdateAsync.mockResolvedValueOnce({
+        isAvailable: false,
+        isRollBackToEmbedded: false,
+      });
+
+      const result = await checkForUpdate({ manual: true });
+      expect(result.hasUpdate).toBe(false);
+      expect(result.isNativeUpdateRequired).toBe(true);
+      expect(result.nativeUpdateUrl).toBeDefined();
+    });
+
+    it("checkForUpdate returns isNativeUpdateRequired: true even when Updates.isEnabled is false", async () => {
+      mocks.application.nativeApplicationVersion = "3.8.0";
+      mocks.constants.nativeAppVersion = "3.8.0";
+      mocks.application.nativeBuildVersion = "28";
+      mocks.constants.nativeBuildVersion = "28";
+      mocks.updates.isEnabled = false;
+      resetUpdateStateForTesting();
+
+      const result = await checkForUpdate({ manual: true });
+      expect(result.hasUpdate).toBe(false);
+      expect(result.isNativeUpdateRequired).toBe(true);
     });
   });
 });

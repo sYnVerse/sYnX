@@ -416,6 +416,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             ? "Rollback downloaded! Restart to apply."
             : "Update downloaded! Restart to apply."
         );
+      } else if (result.isNativeUpdateRequired) {
+        showError(
+          result.nativeUpdateMessage ||
+            "Native app update required: Over-The-Air updates are no longer supported on this build."
+        );
       } else if (result.error) {
         showError(result.error);
       } else {
@@ -1373,12 +1378,40 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           </View>
         )}
 
+        {updateState.nativeUpdate.isUpdateRequired && (
+          <View
+            style={[
+              styles.emergencyBanner,
+              {
+                backgroundColor: "rgba(217, 119, 6, 0.12)",
+                borderColor: "rgba(217, 119, 6, 0.35)",
+              },
+            ]}
+          >
+            <AlertTriangle size={16} color="#d97706" />
+            <Text style={[styles.emergencyBannerText, { color: "#d97706" }]}>
+              {updateState.nativeUpdate.message ||
+                "Native update required: Over-The-Air updates are no longer supported on this build."}
+            </Text>
+          </View>
+        )}
+
         <View style={[styles.diagContainer, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}>
           <View style={styles.diagRow}>
             <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Native Binary</Text>
-            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+            <Text
+              style={[
+                styles.diagValue,
+                {
+                  color: updateState.nativeUpdate.isUpdateRequired
+                    ? "#d97706"
+                    : theme.textPrimary,
+                },
+              ]}
+            >
               {updateState.nativeAppVersion || MOBILE_APP_VERSION}
               {updateState.nativeBuildVersion ? ` (${updateState.nativeBuildVersion})` : ""}
+              {updateState.nativeUpdate.isUpdateRequired ? " (Outdated)" : ""}
             </Text>
           </View>
           <View style={styles.diagRow}>
@@ -1389,8 +1422,21 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
           </View>
           <View style={styles.diagRow}>
             <Text style={[styles.diagLabel, { color: theme.textMuted }]}>Runtime Fingerprint</Text>
-            <Text style={[styles.diagValue, { color: theme.textPrimary }]}>
+            <Text
+              style={[
+                styles.diagValue,
+                {
+                  color:
+                    updateState.nativeUpdate.reason === "runtime_mismatch"
+                      ? "#d97706"
+                      : theme.textPrimary,
+                },
+              ]}
+            >
               {formatShortId(updateState.runtimeVersion, "embedded")}
+              {updateState.nativeUpdate.reason === "runtime_mismatch"
+                ? " (OTA unsupported)"
+                : ""}
             </Text>
           </View>
           <View style={styles.diagRow}>
@@ -1402,6 +1448,34 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             </Text>
           </View>
         </View>
+
+        {updateState.nativeUpdate.isUpdateRequired && (
+          <TouchableOpacity
+            style={[
+              styles.updateActionBtn,
+              {
+                backgroundColor: "#d97706",
+                marginBottom: spacing.sm,
+              },
+            ]}
+            onPress={() => {
+              triggerImpact();
+              const url =
+                updateState.nativeUpdate.downloadUrl ||
+                "https://synx.christran.io/download/android";
+              Linking.openURL(url).catch((err) => {
+                console.warn("[updates] Could not open download URL:", err);
+              });
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Install native update"
+          >
+            <ExternalLink size={16} color="#FFFFFF" />
+            <Text style={[styles.updateActionBtnText, { color: "#FFFFFF" }]}>
+              Install Native Update
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {updateState.isUpdatePending ? (
           <TouchableOpacity

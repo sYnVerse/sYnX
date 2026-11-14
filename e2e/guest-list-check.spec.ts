@@ -1,17 +1,14 @@
 import { test, expect } from "@playwright/test";
-import { WEB_VERSION } from "../app/constants/changelog";
+import { gotoGuestList, suppressWhatsNew } from "./helpers";
 
 test.describe("List page smoke tests", () => {
   test.beforeEach(async ({ page }) => {
     // Suppress the auto-opening What's New modal during smoke tests
-    await page.addInitScript((version) => {
-      window.localStorage.setItem("last_seen_changelog_version", version);
-    }, WEB_VERSION);
+    await suppressWhatsNew(page);
   });
 
   test("creates a new list", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     // Open the create list dialog from the sidebar
     await page.getByRole("button", { name: "Create new list" }).click();
@@ -28,8 +25,7 @@ test.describe("List page smoke tests", () => {
   });
 
   test("adds a task, marks it complete, and deletes it", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     // Add a new task
     const taskInput = page.getByPlaceholder("What needs to be done?");
@@ -61,8 +57,7 @@ test.describe("List page smoke tests", () => {
   });
 
   test("adds a subtask and checks that it moves to the Completed section once completed", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     // Add a parent task
     const taskInput = page.getByPlaceholder("What needs to be done?");
@@ -101,8 +96,7 @@ test.describe("List page smoke tests", () => {
   });
 
   test("changes the sort and confirms the list remembers it after a reload", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     const sortSelect = page.locator("div:has(> span:text-is('Sort by')) select");
     await expect(sortSelect).toHaveValue("reminder");
@@ -117,8 +111,7 @@ test.describe("List page smoke tests", () => {
   });
 
   test("switches to the calendar view and back", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     // Calendar elements should not be visible in list view
     await expect(page.getByRole("button", { name: "Today" })).not.toBeVisible();
@@ -134,8 +127,7 @@ test.describe("List page smoke tests", () => {
   });
 
   test("opens task pickers on the bottom-most item without getting clipped inside the scrolling list (#140)", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     const taskInput = page.getByPlaceholder("What needs to be done?");
     const addButton = page.getByRole("button", { name: "Add", exact: true });
@@ -170,8 +162,7 @@ test.describe("List page smoke tests", () => {
 
   test("opens duration selector completely on screen on narrow mobile viewport (#138)", async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 640 });
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     const taskInput = page.getByPlaceholder("What needs to be done?");
     await taskInput.fill("Narrow screen task");
@@ -198,8 +189,7 @@ test.describe("List page smoke tests", () => {
   });
 
   test("creates a list with no category by default, allows adding a category tag, and clearing it back to none (#139)", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     // Open create list modal
     await page.getByRole("button", { name: "Create new list" }).click();

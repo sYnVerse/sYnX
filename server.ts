@@ -30,7 +30,7 @@ export default {
         },
       });
       const response = await handleRequest(request, loadContext);
-      return finalizeWorkerResponse(request, response);
+      return finalizeWorkerResponse(request, response, env);
     } catch (error) {
       console.log(error);
       return unexpectedErrorResponse();

@@ -1,4 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
+import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import * as Updates from "expo-updates";
 import * as Application from "expo-application";
@@ -80,6 +81,7 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   async (config) => {
+    config.headers["X-sYnX-Platform"] = Platform.OS;
     config.headers["X-sYnX-Client-Version"] = MOBILE_APP_VERSION;
     const binaryVersion =
       Application.nativeApplicationVersion ??
@@ -96,6 +98,9 @@ apiClient.interceptors.request.use(
       config.headers["X-sYnX-Binary-Version"] = `${binaryVersion}${
         buildVersion ? ` (${buildVersion})` : ""
       }`;
+    }
+    if (buildVersion) {
+      config.headers["X-sYnX-Build-Number"] = String(buildVersion);
     }
     if (Updates.runtimeVersion) {
       config.headers["X-sYnX-Runtime-Version"] = Updates.runtimeVersion;
@@ -114,9 +119,38 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+type NativeUpdateHandler = (info: { downloadUrl?: string }) => void;
+let nativeUpdateHandler: NativeUpdateHandler | null = null;
+
+export function onNativeUpdateRequired(handler: NativeUpdateHandler | null) {
+  nativeUpdateHandler = handler;
+}
+
+function checkNativeUpdateHeader(headers?: any) {
+  if (!headers) return;
+  const isRequired =
+    headers["x-synx-native-update-required"] === "1" ||
+    headers["X-sYnX-Native-Update-Required"] === "1";
+  if (isRequired && nativeUpdateHandler) {
+    const downloadUrl =
+      headers["x-synx-native-update-url"] ||
+      headers["X-sYnX-Native-Update-Url"] ||
+      undefined;
+    nativeUpdateHandler({
+      downloadUrl: typeof downloadUrl === "string" ? downloadUrl : undefined,
+    });
+  }
+}
+
 apiClient.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    checkNativeUpdateHeader(res.headers);
+    return res;
+  },
   async (error: AxiosError) => {
+    if (error.response?.headers) {
+      checkNativeUpdateHeader(error.response.headers);
+    }
     const status = error.response?.status;
     const original = error.config as RetriableConfig | undefined;
 
