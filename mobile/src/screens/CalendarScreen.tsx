@@ -1,30 +1,27 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   FlatList,
   StyleSheet,
   TouchableOpacity,
-  Platform,
   RefreshControl,
 } from "react-native";
 import { Calendar, DateData } from "react-native-calendars";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
 import { Clock, Check, Calendar as CalendarIcon, Plus, Bell, Flag } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import { TodoItem, TodoList, type PriorityLevel } from "../shared";
 import { useTheme } from "../context/ThemeContext";
-import { useToast } from "../context/ToastContext";
 import { TaskModal } from "../components/TaskModal";
 import { ListPermissionBanner } from "../components/ListPermissionBanner";
-import { syncTaskToNativeCalendar } from "../services/calendar";
-import { getCachedListName } from "../services/listNames";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding } from "../theme/theme";
 import { formatFriendlyDate, formatReminderTime, priorityColor, priorityLabel } from "../utils/format";
-import { getErrorMessage, triggerErrorHaptic } from "../utils/feedback";
+import { getErrorMessage, triggerImpactHaptic } from "../utils/feedback";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
+import { useTaskMutations } from "../hooks/useTaskMutations";
 
 const getLocalDateString = (dateInput: Date | number = new Date()) => {
   const d = typeof dateInput === "number" ? new Date(dateInput) : dateInput;
@@ -36,10 +33,8 @@ const getLocalDateString = (dateInput: Date | number = new Date()) => {
 
 export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
   const { theme, resolvedMode, hapticsEnabled } = useTheme();
-  const { showError } = useToast();
   const insets = useSafeAreaInsets();
   const fabBottom = getFabBottomOffset(insets.bottom);
-  const queryClient = useQueryClient();
   const today = getLocalDateString();
   const [selectedDate, setSelectedDate] = useState(today);
   const [modalVisible, setModalVisible] = useState(false);
@@ -78,44 +73,8 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
     }
   }, [listId, listMeta, refetch]);
 
-  const triggerImpactHaptic = () => {
-    if (hapticsEnabled && Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    }
-  };
-
-  const triggerSuccessHaptic = () => {
-    if (hapticsEnabled && Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    }
-  };
-
-  const onMutationError = (e: unknown, fallback: string) => {
-    triggerErrorHaptic(hapticsEnabled);
-    showError(getErrorMessage(e, fallback));
-  };
-
-  const { setCompleted, isPendingId } = useSetTodoCompleted(listId);
-
-  const createMutation = useMutation({
-    mutationFn: async (newTodo: any) => {
-      const res = await apiClient.post("/api/v1/todos", { ...newTodo, listId });
-      return res.data.todo as TodoItem;
-    },
-    onSuccess: (createdTodo) => {
-      triggerSuccessHaptic();
-      if (createdTodo) {
-        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
-          old ? [...old, createdTodo] : [createdTodo]
-        );
-        syncTaskToNativeCalendar(createdTodo, {
-          listName: getCachedListName(queryClient, createdTodo.listId),
-        }).catch(() => {});
-      }
-      queryClient.invalidateQueries({ queryKey: ["todos", listId] });
-    },
-    onError: (e) => onMutationError(e, "Couldn't create task"),
-  });
+  const { setCompleted, isPendingId, isSlowPendingId } = useSetTodoCompleted(listId);
+  const { createMutation } = useTaskMutations(listId);
 
   const markedDates: Record<string, any> = {};
   (todos || []).forEach((t) => {
@@ -165,7 +124,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
           key={resolvedMode}
           current={selectedDate}
           onDayPress={(day: DateData) => {
-            triggerImpactHaptic();
+            triggerImpactHaptic(hapticsEnabled);
             setSelectedDate(day.dateString);
           }}
           markedDates={markedDates}
@@ -251,16 +210,19 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
                 ]}
               >
                 <TouchableOpacity
-                  disabled={!canEdit || isPendingId(item.id)}
-                  style={[styles.checkboxHit, (!canEdit || isPendingId(item.id)) && { opacity: 0.7 }]}
+                  disabled={!canEdit}
+                  style={[
+                    styles.checkboxHit,
+                    (!canEdit || isPendingId(item.id)) && { opacity: canEdit ? 0.85 : 0.7 },
+                  ]}
                   onPress={() => {
-                    if (!canEdit || isPendingId(item.id)) return;
+                    if (!canEdit) return;
                     setCompleted(item);
                   }}
                   accessibilityRole="checkbox"
                   accessibilityState={{
                     checked: item.completed,
-                    disabled: !canEdit || isPendingId(item.id),
+                    disabled: !canEdit,
                   }}
                   accessibilityLabel={`Mark ${item.text} ${item.completed ? "incomplete" : "complete"}`}
                 >
@@ -308,6 +270,14 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
                         </Text>
                       </View>
                     ) : null}
+                    {isSlowPendingId(item.id) ? (
+                      <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
+                        <ActivityIndicator size="small" color={theme.accent} />
+                        <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
+                          Saving…
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
 
@@ -329,7 +299,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
         <TouchableOpacity
           style={[styles.fab, { backgroundColor: theme.accent, bottom: fabBottom }]}
           onPress={() => {
-            triggerImpactHaptic();
+            triggerImpactHaptic(hapticsEnabled);
             setModalVisible(true);
           }}
           accessibilityRole="button"
