@@ -10,6 +10,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "NEW",
+        text: "Added a confirmation prompt when completing a task with open subtasks so you can complete all subtasks together or promote them to top-level tasks.",
+      },
+      {
         type: "IMPR",
         text: "Improved the calendar permission prompt when returning to sYnX with calendar sync turned on so granting access in Settings immediately syncs tasks and declining respects a quiet cooldown.",
       },
