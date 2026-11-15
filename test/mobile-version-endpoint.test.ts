@@ -16,7 +16,7 @@ describe("mobile version API and download routes", () => {
   describe("GET /api/v1/mobile/version", () => {
     it("returns updateRequired: false when client meets floor requirements", async () => {
       const request = new Request(
-        "https://synx.christran.io/api/v1/mobile/version?platform=android&version=3.8.0&build=29"
+        "https://synx.christran.io/api/v1/mobile/version?platform=android&version=3.9.0&build=30"
       );
       const response = await versionLoader({
         request,
@@ -36,8 +36,8 @@ describe("mobile version API and download routes", () => {
       const request = new Request("https://synx.christran.io/api/v1/mobile/version", {
         headers: {
           "X-sYnX-Platform": "android",
-          "X-sYnX-Client-Version": "3.7.2",
-          "X-sYnX-Binary-Version": "3.7.2 (28)", // pre-#199 native build
+          "X-sYnX-Client-Version": "3.8.0",
+          "X-sYnX-Binary-Version": "3.8.0 (29)", // build 29 is below new floor 30
         },
       });
       const response = await versionLoader({
@@ -59,8 +59,8 @@ describe("mobile version API and download routes", () => {
       const request = new Request("https://synx.christran.io/api/v1/mobile/version", {
         headers: {
           "X-sYnX-Platform": "android",
-          "X-sYnX-Client-Version": "3.8.0",
-          "X-sYnX-Build-Number": "29",
+          "X-sYnX-Client-Version": "3.9.0",
+          "X-sYnX-Build-Number": "30",
           "X-sYnX-Runtime-Version": "deprecated-fingerprint-hash",
         },
       });
@@ -192,8 +192,8 @@ describe("mobile version API and download routes", () => {
       const request = new Request("https://synx.christran.io/api/v1/todos", {
         headers: {
           "X-sYnX-Platform": "android",
-          "X-sYnX-Client-Version": "3.8.0",
-          "X-sYnX-Binary-Version": "3.8.0 (29)",
+          "X-sYnX-Client-Version": "3.9.0",
+          "X-sYnX-Binary-Version": "3.9.0 (30)",
           "X-sYnX-Runtime-Version": "any-newer-hash",
         },
       });
