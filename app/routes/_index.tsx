@@ -178,5 +178,5 @@ export default function Index() {
     }
   }, [navigate, activeListId]);
 
-  return <TodoPage />;
+  return <TodoPage isIndexRedirecting={Boolean(activeListId)} />;
 }

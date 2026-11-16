@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { addTask, createTestUser, signInAs, suppressWhatsNew } from "./helpers";
+import { addTask, createTestUser, signInAs, suppressWhatsNew, waitForHydration } from "./helpers";
 
 test.describe("Signed-in Lists & Tasks Suite", () => {
   test.beforeEach(async ({ page }) => {
@@ -155,6 +155,7 @@ test.describe("Signed-in Lists & Tasks Suite", () => {
 
     // Reload page to confirm all properties persisted in D1
     await page.reload();
+    await waitForHydration(page);
 
     const reloadedItem = page.locator("li", { hasText: "Task With All Pickers" });
     await expect(reloadedItem).toBeVisible();
@@ -187,6 +188,7 @@ test.describe("Signed-in Lists & Tasks Suite", () => {
 
     // Reload page
     await page.reload();
+    await waitForHydration(page);
 
     // Verify sort is remembered from storage and default All filter restored
     await expect(sortSelect).toHaveValue("priority");

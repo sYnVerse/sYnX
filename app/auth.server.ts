@@ -421,7 +421,27 @@ export async function requireUser(request: Request, env: AuthEnv | null | undefi
   });
 }
 
-export async function getOptionalUser(request: Request, env: AuthEnv | null | undefined) {
+export interface OptionalUserResult {
+  userId: string;
+  email: string;
+  isLoggedIn: boolean;
+  guestId: string | null;
+  isNewGuest: boolean;
+  /** The verified sYnID access token (server-side only; never send to the client). */
+  accessToken: string | null;
+}
+
+/**
+ * Cache resolved user/guest identity per incoming Request so repeated loader
+ * calls on a single SSR turn (e.g. `_index` delegating to `listLoader`) reuse
+ * the same minted guest ID and avoid redundant token verification.
+ */
+const requestOptionalUserMap = new WeakMap<Request, Promise<OptionalUserResult>>();
+
+async function resolveOptionalUser(
+  request: Request,
+  env: AuthEnv | null | undefined,
+): Promise<OptionalUserResult> {
   const cookieHeader = request.headers.get("Cookie") || "";
   const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
   const token = match ? decodeURIComponent(match[1]) : null;
@@ -480,6 +500,17 @@ export async function getOptionalUser(request: Request, env: AuthEnv | null | un
     isNewGuest,
     accessToken: null as string | null,
   };
+}
+
+export function getOptionalUser(
+  request: Request,
+  env: AuthEnv | null | undefined,
+): Promise<OptionalUserResult> {
+  const cached = requestOptionalUserMap.get(request);
+  if (cached) return cached;
+  const pending = resolveOptionalUser(request, env);
+  requestOptionalUserMap.set(request, pending);
+  return pending;
 }
 
 export async function verifyBearerToken(request: Request, env: AuthEnv | null | undefined) {
