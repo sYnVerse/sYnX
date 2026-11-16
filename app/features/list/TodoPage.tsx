@@ -24,6 +24,7 @@ import { useListDialogs } from "./hooks/useListDialogs";
 import { useVisibleTodos, type Filter } from "./hooks/useVisibleTodos";
 import { useBrowserReminders } from "./hooks/useBrowserReminders";
 import { useWebMcpTools } from "./hooks/useWebMcpTools";
+import { useSubtaskCompletionPrompt } from "./hooks/useSubtaskCompletionPrompt";
 
 import { CalendarView } from "~/components/calendar-view";
 import { CompletedSectionToggle, Confetti, EmptyState, ProgressRing, Toast } from "./components/ui-bits";
@@ -35,6 +36,7 @@ import { ProfileModal } from "./components/ProfileModal";
 import { ActivityLogModal } from "./components/ActivityLogModal";
 import { WhatsNewModal } from "./components/WhatsNewModal";
 import { ListDialogs } from "./components/ListDialogs";
+import { SubtaskCompletionModal } from "./components/SubtaskCompletionModal";
 
 export default function TodoPage({
   isIndexRedirecting = false,
@@ -367,6 +369,20 @@ export default function TodoPage({
   useBrowserReminders({ lists, userId });
   useWebMcpTools({ activeListId, todos, createFetcher });
 
+  const {
+    optimisticTodos: listTodosWithSubtaskAction,
+    promptState: subtaskPromptState,
+    isSlowPending: isSubtaskCompletionSlowPending,
+    maybePromptForCompletion,
+    confirmSubtaskCompletion,
+    cancelSubtaskCompletion,
+  } = useSubtaskCompletionPrompt({
+    todos,
+    isLoggedIn,
+    handleGuestAction,
+    onNotify: showToast,
+  });
+
   // Visible todos and counts
   const {
     optimisticTodos,
@@ -379,7 +395,7 @@ export default function TodoPage({
     activeCount,
     progress,
     clearCompletedNeedsApproval,
-  } = useVisibleTodos({ todos, filter, searchQuery, sortBy });
+  } = useVisibleTodos({ todos: listTodosWithSubtaskAction, filter, searchQuery, sortBy });
 
   const completedSectionOpen = completedOpenListId === effectiveActiveListId;
 
@@ -817,6 +833,7 @@ export default function TodoPage({
                     subtasks={subtasksMap[todo.id] || []}
                     canEdit={canEdit}
                     onNotify={showToast}
+                    onBeforeSetCompleted={maybePromptForCompletion}
                     searchQuery={searchQuery}
                   />
                 ))}
@@ -840,6 +857,7 @@ export default function TodoPage({
                       subtasks={subtasksMap[todo.id] || []}
                       canEdit={canEdit}
                       onNotify={showToast}
+                      onBeforeSetCompleted={maybePromptForCompletion}
                       searchQuery={searchQuery}
                     />
                   ))}
@@ -979,8 +997,24 @@ export default function TodoPage({
           editCategoryInputRef={editCategoryInputRef}
         />
 
+        <SubtaskCompletionModal
+          prompt={subtaskPromptState}
+          onConfirm={confirmSubtaskCompletion}
+          onCancel={cancelSubtaskCompletion}
+        />
+
+        {isSubtaskCompletionSlowPending && (
+          <div
+            role="status"
+            data-slow-pending="true"
+            className="fixed bottom-16 left-1/2 -translate-x-1/2 z-40 px-3 py-1 rounded-lg text-xs font-medium text-amber-300 bg-slate-900/95 border border-amber-400/25 shadow-lg animate-pulse"
+          >
+            Saving…
+          </div>
+        )}
+
         {/* One-time display name offer outside Profile (Profile shows it inline). */}
-        {isLoggedIn && pendingNameSuggestion && !isAnyModalOpen && (
+        {isLoggedIn && pendingNameSuggestion && !isAnyModalOpen && !subtaskPromptState && (
           <div
             role="status"
             className="fixed bottom-20 left-4 right-4 sm:left-auto sm:right-6 sm:w-80 z-40 rounded-xl border border-themeAccentRing/30 bg-slate-900/95 backdrop-blur p-3.5 shadow-2xl text-left"

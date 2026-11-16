@@ -113,6 +113,7 @@ export async function handleSetCompleted(ctx: ListActionContext) {
   } = ctx;
   const id = formData.get("id");
   const completedRaw = formData.get("completed");
+  const subtaskActionRaw = formData.get("subtaskAction");
   if (typeof id !== "string" || !id) {
     return Response.json({ error: "Invalid task id" }, { status: 400 });
   }
@@ -124,6 +125,13 @@ export async function handleSetCompleted(ctx: ListActionContext) {
   ) {
     return Response.json({ error: "Invalid completed state" }, { status: 400 });
   }
+  let subtaskAction: "complete" | "promote" | undefined;
+  if (subtaskActionRaw !== null && subtaskActionRaw !== "") {
+    if (subtaskActionRaw !== "complete" && subtaskActionRaw !== "promote") {
+      return Response.json({ error: "Invalid subtaskAction" }, { status: 400 });
+    }
+    subtaskAction = subtaskActionRaw;
+  }
   const completed = completedRaw === "true" || completedRaw === "1";
   const reminderRow = await db
     .prepare("SELECT reminder_user_id FROM todos WHERE id = ? AND list_id = ?")
@@ -131,7 +139,10 @@ export async function handleSetCompleted(ctx: ListActionContext) {
     .first<{ reminder_user_id: string | null }>();
   const tzUserId = reminderRow?.reminder_user_id || (isLoggedIn ? userId : "");
   const timeZone = tzUserId ? await getUserTimeZone(db, tzUserId) : undefined;
-  const { todo, rescheduled } = await todoManager.setCompleted(id, completed, { timeZone });
+  const { todo, rescheduled, updatedSubtasks } = await todoManager.setCompleted(id, completed, {
+    timeZone,
+    subtaskAction,
+  });
   scheduleActivityLog({
     listId: activeListId,
     taskId: id,
@@ -141,7 +152,7 @@ export async function handleSetCompleted(ctx: ListActionContext) {
     shareMode: activeShareMode,
     summary: todo.text,
   });
-  return { success: true, todo, rescheduled };
+  return { success: true, todo, rescheduled, updatedSubtasks: updatedSubtasks ?? [] };
 }
 
 export async function handleDeleteTask(ctx: ListActionContext) {
