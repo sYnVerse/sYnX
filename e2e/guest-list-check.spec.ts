@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { gotoGuestList, suppressWhatsNew } from "./helpers";
+import { gotoGuestList, suppressWhatsNew, waitForHydration } from "./helpers";
 
 test.describe("List page smoke tests", () => {
   test.beforeEach(async ({ page }) => {
@@ -107,6 +107,7 @@ test.describe("List page smoke tests", () => {
 
     // Reload the page and verify sort selection persists
     await page.reload();
+    await waitForHydration(page);
     await expect(sortSelect).toHaveValue("alphabetical");
   });
 

@@ -36,7 +36,11 @@ import { ActivityLogModal } from "./components/ActivityLogModal";
 import { WhatsNewModal } from "./components/WhatsNewModal";
 import { ListDialogs } from "./components/ListDialogs";
 
-export default function TodoPage() {
+export default function TodoPage({
+  isIndexRedirecting = false,
+}: {
+  isIndexRedirecting?: boolean;
+} = {}) {
   const {
     userId,
     email,
@@ -87,13 +91,13 @@ export default function TodoPage() {
   // browser when the account has none. Never changed silently afterwards;
   // the user changes it under Profile → Home time zone.
   useEffect(() => {
-    if (!isLoggedIn || settings?.timeZone || initTimeZoneSent.current) return;
+    if (!isLoggedIn || isIndexRedirecting || settings?.timeZone || initTimeZoneSent.current) return;
     const zone = getLocalTimeZone();
     if (!zone) return;
     initTimeZoneSent.current = true;
     timeZoneFetcher.submit({ intent: "initTimeZone", timeZone: zone }, { method: "post" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, settings?.timeZone]);
+  }, [isLoggedIn, isIndexRedirecting, settings?.timeZone]);
 
   const {
     hydrated,
@@ -112,6 +116,7 @@ export default function TodoPage() {
     serverLists,
     activeListId,
     listFetcher,
+    isIndexRedirecting,
   });
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -137,7 +142,8 @@ export default function TodoPage() {
   // or when the user opens it from the menu.
   const [lastSeenChangelog, setLastSeenChangelog] = useStoredValue("last_seen_changelog_version");
   const [isChangelogOpenedManually, setIsChangelogOpenedManually] = useState(false);
-  const isChangelogOpen = isChangelogOpenedManually || (hydrated && lastSeenChangelog !== WEB_VERSION);
+  const isChangelogOpen =
+    isChangelogOpenedManually || (hydrated && !isIndexRedirecting && lastSeenChangelog !== WEB_VERSION);
 
   const handleCloseChangelog = () => {
     setLastSeenChangelog(WEB_VERSION);
@@ -167,10 +173,11 @@ export default function TodoPage() {
   const [showActivityModal, setShowActivityModal] = useState(false);
 
   // Apply the saved theme to the page once it is read from localStorage.
+  // Skip while routes/_index is transiently redirecting to /$id so tests wait for the settled route.
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || isIndexRedirecting) return;
     document.documentElement.setAttribute("data-theme", theme);
-  }, [hydrated, theme]);
+  }, [hydrated, isIndexRedirecting, theme]);
 
   const changeTheme = (newTheme: string) => {
     setSavedTheme(newTheme);

@@ -12,6 +12,7 @@ interface UseGuestListsOptions {
   serverLists: GuestList[];
   activeListId: string | undefined;
   listFetcher: FetcherWithComponents<unknown>;
+  isIndexRedirecting?: boolean;
 }
 
 export function useGuestLists({
@@ -20,6 +21,7 @@ export function useGuestLists({
   serverLists,
   activeListId,
   listFetcher,
+  isIndexRedirecting = false,
 }: UseGuestListsOptions) {
   const hydrated = useHydrated();
   const [storedGuestLists] = useStoredValue(GUEST_STORAGE_KEY);
@@ -31,9 +33,10 @@ export function useGuestLists({
   );
 
   // After signing in, move any guest lists into the account once.
+  // Skip during the transient _index redirect so migration submits against $id.
   const submitListFetcher = listFetcher.submit;
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || isIndexRedirecting) return;
     const raw = readStoredValue(GUEST_STORAGE_KEY);
     if (!raw) return;
     try {
@@ -58,7 +61,7 @@ export function useGuestLists({
     } catch (e) {
       console.error("Failed to migrate guest lists:", e);
     }
-  }, [isLoggedIn, userId, submitListFetcher]);
+  }, [isLoggedIn, isIndexRedirecting, userId, submitListFetcher]);
 
   const isSharedServerList = serverLists.some((l) => l.id === activeListId && l.owner_id !== userId);
   const lists = isLoggedIn || isSharedServerList ? serverLists : guestLists;

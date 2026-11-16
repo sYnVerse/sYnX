@@ -413,7 +413,14 @@ describe("app/routes/_index loader behavior (#196)", () => {
     expect(data).toBeDefined();
     expect(data.isLoggedIn).toBe(false);
     expect(data.activeListId).toBeDefined();
+    expect(data.activeListId).toBe(data.userId);
     expect(Array.isArray(data.lists)).toBe(true);
+
+    const responseHeaders =
+      res instanceof Response
+        ? res.headers
+        : new Headers((res as { init?: ResponseInit } | null)?.init?.headers);
+    expect(responseHeaders.get("Set-Cookie")).toContain(`guest_session=${data.userId}`);
   });
 
   it("renders list data when primary list query fails and preferredId falls back to userId", async () => {
