@@ -106,13 +106,12 @@ export function useOptimisticField<TValue, TData extends OptimisticActionData = 
             await submitPromise;
           } catch {
             // Rejected submits are surfaced once fetcher settles back to idle.
-          } finally {
-            if (activeSeqRef.current === seq) {
-              activeSeqRef.current = null;
-            }
-            setSettledGen((g) => g + 1);
-            resolve();
           }
+          if (activeSeqRef.current === seq) {
+            activeSeqRef.current = null;
+          }
+          setSettledGen((g) => g + 1);
+          resolve();
         });
       });
     },

@@ -6,6 +6,21 @@ import type { Todo } from "~/to-do-manager";
 import type { GuestActionPayload } from "~/guest-context";
 import { GUEST_STORAGE_KEY, parseGuestLists, type GuestList } from "../guest-lists";
 
+function parseMigratableGuestLists(raw: string): GuestList[] | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    return parsed.filter((gList: { name?: string; todos?: unknown[] }) => {
+      const listName = (gList.name || "My Tasks").trim();
+      const hasTodos = Array.isArray(gList.todos) && gList.todos.length > 0;
+      return !(listName === "My Tasks" && !hasTodos);
+    });
+  } catch (e) {
+    console.error("Failed to migrate guest lists:", e);
+    return null;
+  }
+}
+
 interface UseGuestListsOptions {
   isLoggedIn: boolean;
   userId: string;
@@ -39,28 +54,15 @@ export function useGuestLists({
     if (!isLoggedIn || isIndexRedirecting) return;
     const raw = readStoredValue(GUEST_STORAGE_KEY);
     if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const validLists = parsed.filter((gList: { name?: string; todos?: unknown[] }) => {
-          const listName = (gList.name || "My Tasks").trim();
-          const hasTodos = Array.isArray(gList.todos) && gList.todos.length > 0;
-          if (listName === "My Tasks" && !hasTodos) {
-            return false;
-          }
-          return true;
-        });
-        if (validLists.length > 0) {
-          const form = new FormData();
-          form.append("intent", "migrateGuestLists");
-          form.append("guestLists", JSON.stringify(validLists));
-          submitListFetcher(form, { method: "post" });
-        }
-        writeStoredValue(GUEST_STORAGE_KEY, null);
-      }
-    } catch (e) {
-      console.error("Failed to migrate guest lists:", e);
+    const validLists = parseMigratableGuestLists(raw);
+    if (!validLists) return;
+    if (validLists.length > 0) {
+      const form = new FormData();
+      form.append("intent", "migrateGuestLists");
+      form.append("guestLists", JSON.stringify(validLists));
+      submitListFetcher(form, { method: "post" });
     }
+    writeStoredValue(GUEST_STORAGE_KEY, null);
   }, [isLoggedIn, isIndexRedirecting, userId, submitListFetcher]);
 
   const isSharedServerList = serverLists.some((l) => l.id === activeListId && l.owner_id !== userId);

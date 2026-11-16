@@ -18,6 +18,7 @@ import {
 import { MAX_LIST_NAME_LENGTH } from "~/write-limits";
 
 import type { loader as listLoader } from "./loader.server";
+import { useFetcherToast } from "./hooks/useFetcherToast";
 import { useGuestLists } from "./hooks/useGuestLists";
 import { useProfileSettings } from "./hooks/useProfileSettings";
 import { useListDialogs } from "./hooks/useListDialogs";
@@ -64,7 +65,7 @@ export default function TodoPage({
   });
 
   const navigate = useNavigate();
-  const createFetcher = useFetcher();
+  const createFetcher = useFetcher<{ error?: string }>();
   const clearFetcher = useFetcher<{
     success?: boolean;
     pendingApproval?: boolean;
@@ -92,14 +93,14 @@ export default function TodoPage({
   // Fill in the home time zone (used by repeating reminders) once from this
   // browser when the account has none. Never changed silently afterwards;
   // the user changes it under Profile → Home time zone.
+  const submitTimeZoneFetcher = timeZoneFetcher.submit;
   useEffect(() => {
     if (!isLoggedIn || isIndexRedirecting || settings?.timeZone || initTimeZoneSent.current) return;
     const zone = getLocalTimeZone();
     if (!zone) return;
     initTimeZoneSent.current = true;
-    timeZoneFetcher.submit({ intent: "initTimeZone", timeZone: zone }, { method: "post" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, isIndexRedirecting, settings?.timeZone]);
+    submitTimeZoneFetcher({ intent: "initTimeZone", timeZone: zone }, { method: "post" });
+  }, [isLoggedIn, isIndexRedirecting, settings?.timeZone, submitTimeZoneFetcher]);
 
   const {
     hydrated,
@@ -399,33 +400,10 @@ export default function TodoPage({
 
   const completedSectionOpen = completedOpenListId === effectiveActiveListId;
 
-  // Surface server-side rejections of a new task (too long, list full, rate limited).
-  const createData = createFetcher.data as { error?: string } | undefined;
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (createFetcher.state === "idle" && createData?.error) showToast(createData.error);
-  }, [createFetcher.state, createData, showToast]);
-
-  // Collaborator delete / clear-completed / list-delete → pending approval toast.
-  useEffect(() => {
-    if (clearFetcher.state !== "idle" || !clearFetcher.data) return;
-    if (clearFetcher.data.pendingApproval && clearFetcher.data.message) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      showToast(clearFetcher.data.message);
-    } else if (clearFetcher.data.error) {
-      showToast(clearFetcher.data.error);
-    }
-  }, [clearFetcher.state, clearFetcher.data, showToast]);
-
-  useEffect(() => {
-    if (listFetcher.state !== "idle" || !listFetcher.data) return;
-    if (listFetcher.data.pendingApproval && listFetcher.data.message) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      showToast(listFetcher.data.message);
-    } else if (listFetcher.data.error) {
-      showToast(listFetcher.data.error);
-    }
-  }, [listFetcher.state, listFetcher.data, showToast]);
+  // Surface server-side rejections (too long, list full, rate limited) and pending-approval notices.
+  useFetcherToast(createFetcher, showToast);
+  useFetcherToast(clearFetcher, showToast, { surfacePendingApproval: true });
+  useFetcherToast(listFetcher, showToast, { surfacePendingApproval: true });
 
   const handleExportData = () => {
     const dataStr =

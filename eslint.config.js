@@ -63,7 +63,7 @@ export default tseslint.config(
     },
   },
   { files: ["**/*.{js,jsx,ts,tsx}"], ...react.configs.flat["jsx-runtime"] },
-  { files: ["**/*.{js,jsx,ts,tsx}"], ...reactHooks.configs.flat.recommended },
+  { files: ["**/*.{js,jsx,ts,tsx}"], ...reactHooks.configs.flat["recommended-latest"] },
   { files: ["**/*.{js,jsx,ts,tsx}"], ...jsxA11y.flatConfigs.recommended },
 
   // TypeScript
@@ -110,6 +110,8 @@ export default tseslint.config(
     rules: {
       "react-hooks/set-state-in-effect": "error",
       "react-hooks/purity": "error",
+      "react-hooks/incompatible-library": "error",
+      "react-hooks/unsupported-syntax": "error",
       "jsx-a11y/click-events-have-key-events": "error",
       "jsx-a11y/no-static-element-interactions": "error",
       "jsx-a11y/no-noninteractive-element-interactions": "error",
