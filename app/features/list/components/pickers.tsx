@@ -1,24 +1,33 @@
 import { useContext, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import { GuestContext } from "~/guest-context";
+import type { Todo } from "~/to-do-manager";
 import { priorityConfig } from "../format";
+import { useOptimisticField } from "../hooks/useOptimisticField";
 import { FloatingPopover } from "./FloatingPopover";
 
 export function PriorityPicker({
   currentPriority,
   todoId,
+  onNotify,
 }: {
   currentPriority: "low" | "medium" | "high" | "none";
   todoId: string;
+  onNotify?: (message: string) => void;
 }) {
   const { isLoggedIn, onGuestAction } = useContext(GuestContext);
-  const fetcher = useFetcher();
+  const priorityField = useOptimisticField<
+    "low" | "medium" | "high" | "none",
+    { success?: boolean; todo?: Todo; error?: string }
+  >({
+    serverValue: currentPriority,
+    fetcherKey: `todo-priority-${todoId}`,
+    onError: onNotify,
+  });
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const optimisticPriority =
-    fetcher.formData?.get("priority") as "low" | "medium" | "high" | "none" | null;
-  const displayPriority = optimisticPriority || currentPriority;
+  const displayPriority = priorityField.value;
   const cfg = priorityConfig[displayPriority];
 
   return (
@@ -26,11 +35,15 @@ export function PriorityPicker({
       <button
         ref={buttonRef}
         type="button"
+        aria-busy={priorityField.isPending}
+        data-slow-pending={priorityField.isSlowPending ? "true" : undefined}
+        title={priorityField.isSlowPending ? "Saving priority…" : undefined}
         onClick={() => setOpen((o) => !o)}
         className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-md border transition-all duration-200 cursor-pointer
-          ${cfg.bg} ${cfg.color} ${cfg.border} hover:ring-2 ${cfg.ring}`}
+          ${cfg.bg} ${cfg.color} ${cfg.border} hover:ring-2 ${cfg.ring} ${priorityField.isSlowPending ? "animate-pulse" : ""}`}
       >
         {cfg.label}
+        {priorityField.isSlowPending ? " · Saving…" : ""}
       </button>
 
       <FloatingPopover
@@ -50,11 +63,12 @@ export function PriorityPicker({
                 if (!isLoggedIn) {
                   onGuestAction("updatePriority", { id: todoId, priority: p });
                 }
-                fetcher.submit(
-                  { intent: "updatePriority", id: todoId, priority: p },
-                  { method: "post" }
-                );
                 setOpen(false);
+                void priorityField.submit(p, {
+                  intent: "updatePriority",
+                  id: todoId,
+                  priority: p,
+                });
               }}
             >
               <span className={`w-2 h-2 rounded-full ${c.dot}`} />

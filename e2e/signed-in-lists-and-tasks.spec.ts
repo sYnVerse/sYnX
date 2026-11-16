@@ -240,4 +240,56 @@ test.describe("Signed-in Lists & Tasks Suite", () => {
     await page.getByRole("button", { name: "📝 List" }).click();
     await expect(page.locator("li", { hasText: "Scheduled Calendar Event" })).toBeVisible();
   });
+
+  test("optimistic check-off shows checked state while pending and reverts visibly on error (#170)", async ({ page }) => {
+    const user = createTestUser("optimistic_rollback");
+    await signInAs(page, user);
+
+    await addTask(page, "Optimistic Fail Task");
+    const listId = new URL(page.url()).pathname.slice(1);
+
+    let failNextSetCompleted = true;
+    let releaseRequest!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseRequest = resolve;
+    });
+
+    await page.route(
+      (url) => url.pathname === `/${listId}.data` || url.pathname === `/${listId}`,
+      async (route) => {
+        const req = route.request();
+        if (req.method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        const params = new URLSearchParams(req.postData() ?? "");
+        if (failNextSetCompleted && params.get("intent") === "setCompleted") {
+          failNextSetCompleted = false;
+          // Force a real 404/error response through React Router's action pipeline
+          params.set("id", "nonexistent-task-id");
+          await gate;
+          await route.continue({ postData: params.toString() });
+          return;
+        }
+        await route.continue();
+      }
+    );
+
+    const taskItem = page.locator("li", { hasText: "Optimistic Fail Task" });
+    const checkbox = taskItem.locator("button[data-checked]");
+    await expect(checkbox).toHaveAttribute("data-checked", "false");
+
+    // Click check-off and verify optimistic state updates immediately while request is held
+    await checkbox.click();
+    await expect(checkbox).toHaveAttribute("data-checked", "true");
+
+    // Release failed write -> reverts checkbox and shows visible error toast
+    releaseRequest();
+    await expect(checkbox).toHaveAttribute("data-checked", "false");
+    await expect(page.getByRole("status")).toContainText("Couldn't save, change undone");
+
+    // Retrying normally succeeds and moves task to Completed
+    await checkbox.click();
+    await expect(page.getByRole("button", { name: /Completed tasks, 1/ })).toBeVisible();
+  });
 });

@@ -50,7 +50,12 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
       scheduleActivityLog,
       waitUntil,
     };
-    return accountHandler(ctx);
+    try {
+      return await accountHandler(ctx);
+    } catch (error) {
+      console.error(`Account action "${intent}" failed:`, error);
+      return Response.json({ error: "Couldn't save, change undone" }, { status: 500 });
+    }
   }
 
   const listHandler = Object.hasOwn(LIST_INTENTS, intent) ? LIST_INTENTS[intent] : undefined;
@@ -84,5 +89,14 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     waitUntil,
   };
 
-  return listHandler(ctx);
+  try {
+    return await listHandler(ctx);
+  } catch (error) {
+    console.error(`List action "${intent}" failed:`, error);
+    const isNotFound = error instanceof Error && /not found/i.test(error.message);
+    return Response.json(
+      { error: isNotFound ? error.message : "Couldn't save, change undone" },
+      { status: isNotFound ? 404 : 500 }
+    );
+  }
 }
