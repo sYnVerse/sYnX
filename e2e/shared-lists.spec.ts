@@ -252,4 +252,48 @@ test.describe("Shared Lists Suite", () => {
     await ownerContext.close();
     await collabContext.close();
   });
+
+  test("root POST with ?redirectTo=/<inaccessible-id> acts on primary list (#201)", async ({ browser }) => {
+    const ownerContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+    await suppressWhatsNew(ownerPage);
+
+    const owner = createTestUser("owner_redirect_post");
+    await signInAs(ownerPage, owner);
+
+    await ownerPage.getByRole("button", { name: "Create new list" }).click();
+    await ownerPage.locator("#create-list-name").fill("Private Target List");
+    await ownerPage.getByRole("button", { name: "Create List" }).click();
+
+    await ownerPage.locator("aside nav").getByText("Private Target List").click();
+    await expect(ownerPage.getByRole("heading", { level: 1 })).toContainText("Private Target List");
+    const privateListId = ownerPage.url().split("/").pop();
+
+    const collabContext = await browser.newContext();
+    const collabPage = await collabContext.newPage();
+    await suppressWhatsNew(collabPage);
+
+    const collab = createTestUser("collab_redirect_post");
+    await signInAs(collabPage, collab);
+
+    const postRes = await collabPage.request.post(`/?index&redirectTo=/${privateListId}`, {
+      form: {
+        intent: "create",
+        text: "Redirect fallback task",
+        priority: "none",
+      },
+    });
+    expect(postRes.ok()).toBe(true);
+
+    await collabPage.reload();
+    await waitForHydration(collabPage);
+    await expect(collabPage.getByText("Redirect fallback task")).toBeVisible();
+
+    await ownerPage.reload();
+    await waitForHydration(ownerPage);
+    await expect(ownerPage.getByText("Redirect fallback task")).not.toBeVisible();
+
+    await ownerContext.close();
+    await collabContext.close();
+  });
 });

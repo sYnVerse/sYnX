@@ -1,8 +1,19 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.6.5";
+export const WEB_VERSION = "v5.6.6";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.6.6",
+    date: "2026-11-16",
+    title: "What's new?",
+    changes: [
+      {
+        type: "FIX",
+        text: "Root-page form actions with a ?redirectTo= target now verify list access before acting and fall back to your primary list when that target is inaccessible (#201)."
+      }
+    ]
+  },
   {
     version: "v5.6.5",
     date: "2026-11-10",
