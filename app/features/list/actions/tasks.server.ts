@@ -111,8 +111,19 @@ export async function handleSetCompleted(ctx: ListActionContext) {
     hasOwnership,
     activeShareMode,
   } = ctx;
-  const id = formData.get("id") as string;
+  const id = formData.get("id");
   const completedRaw = formData.get("completed");
+  if (typeof id !== "string" || !id) {
+    return Response.json({ error: "Invalid task id" }, { status: 400 });
+  }
+  if (
+    completedRaw !== "true" &&
+    completedRaw !== "false" &&
+    completedRaw !== "1" &&
+    completedRaw !== "0"
+  ) {
+    return Response.json({ error: "Invalid completed state" }, { status: 400 });
+  }
   const completed = completedRaw === "true" || completedRaw === "1";
   const reminderRow = await db
     .prepare("SELECT reminder_user_id FROM todos WHERE id = ? AND list_id = ?")

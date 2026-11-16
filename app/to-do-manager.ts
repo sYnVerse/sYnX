@@ -73,6 +73,17 @@ export class TodoManager {
     this.expirationTtl = expirationTtl;
   }
 
+  private assertRunSucceeded(result: unknown): void {
+    if (
+      result &&
+      typeof result === "object" &&
+      "success" in result &&
+      (result as { success?: boolean }).success === false
+    ) {
+      throw new Error("D1 write operation failed");
+    }
+  }
+
   /**
    * Helper to map DB row to Todo object
    */
@@ -195,10 +206,12 @@ export class TodoManager {
       const currentReminder = todo.reminder_at ? Number(todo.reminder_at) : Date.now();
       const nextReminder = nextReminderAt(currentReminder, String(recurrence), options.timeZone);
 
-      await this.db
-        .prepare("UPDATE todos SET reminder_at = ?, reminder_sent = 0, completed = 0 WHERE id = ? AND list_id = ?")
-        .bind(nextReminder, id, this.listId)
-        .run();
+      this.assertRunSucceeded(
+        await this.db
+          .prepare("UPDATE todos SET reminder_at = ?, reminder_sent = 0, completed = 0 WHERE id = ? AND list_id = ?")
+          .bind(nextReminder, id, this.listId)
+          .run()
+      );
 
       const updated = await this.db
         .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
@@ -211,10 +224,12 @@ export class TodoManager {
     }
 
     if (currentlyCompleted !== Boolean(completed)) {
-      await this.db
-        .prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?")
-        .bind(completed ? 1 : 0, id, this.listId)
-        .run();
+      this.assertRunSucceeded(
+        await this.db
+          .prepare("UPDATE todos SET completed = ? WHERE id = ? AND list_id = ?")
+          .bind(completed ? 1 : 0, id, this.listId)
+          .run()
+      );
     }
 
     let updatedSubtasks: Todo[] | undefined;
@@ -295,7 +310,9 @@ export class TodoManager {
    * @returns Promise containing the updated Todo item
    */
   async updateText(id: string, text: string): Promise<Todo> {
-    await this.db.prepare("UPDATE todos SET text = ? WHERE id = ? AND list_id = ?").bind(text, id, this.listId).run();
+    this.assertRunSucceeded(
+      await this.db.prepare("UPDATE todos SET text = ? WHERE id = ? AND list_id = ?").bind(text, id, this.listId).run()
+    );
     const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<TodoRow>();
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);
@@ -310,7 +327,9 @@ export class TodoManager {
    * @returns Promise containing the updated Todo item
    */
   async updatePriority(id: string, priority: "low" | "medium" | "high" | "none"): Promise<Todo> {
-    await this.db.prepare("UPDATE todos SET priority = ? WHERE id = ? AND list_id = ?").bind(priority, id, this.listId).run();
+    this.assertRunSucceeded(
+      await this.db.prepare("UPDATE todos SET priority = ? WHERE id = ? AND list_id = ?").bind(priority, id, this.listId).run()
+    );
     const todo = await this.db.prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?").bind(id, this.listId).first<TodoRow>();
     if (!todo) {
       throw new Error(`Todo with id ${id} not found in this list`);

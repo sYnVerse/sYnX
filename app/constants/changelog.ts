@@ -9,6 +9,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
     title: "What's new?",
     changes: [
       {
+        type: "IMPR",
+        text: "Task check-off, rename, and priority updates now respond optimistically with React 19 useOptimistic and automatically revert with an error notice if saving fails (#170)."
+      },
+      {
         type: "FIX",
         text: "Root-page form actions with a ?redirectTo= target now verify list access before acting and fall back to your primary list when that target is inaccessible (#201)."
       }

@@ -193,9 +193,15 @@ export default function TodoPage({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showSharePopover]);
 
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback((message: string) => {
     setToast({ message, visible: true });
-    setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2200);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    const duration = message.startsWith("Couldn't save") ? 4000 : 2200;
+    toastTimerRef.current = setTimeout(
+      () => setToast((t) => ({ ...t, visible: false })),
+      duration
+    );
   }, []);
 
   const {
