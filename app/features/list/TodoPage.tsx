@@ -324,7 +324,17 @@ export default function TodoPage({
   useEffect(() => {
     if (prevIsCreating.current && !isCreating) {
       if (inputRef.current) inputRef.current.value = "";
-      inputRef.current?.focus();
+      // Only return focus to the main create input if the user hasn't moved
+      // focus elsewhere (e.g., into an inline subtask composer while creating).
+      const activeEl = document.activeElement;
+      const shouldRefocus =
+        !activeEl ||
+        activeEl === document.body ||
+        activeEl === inputRef.current ||
+        Boolean(inputRef.current?.form?.contains(activeEl));
+      if (shouldRefocus) {
+        inputRef.current?.focus();
+      }
       // Reset reminder & duration states
       setReminderMode("none");
       setReminderDuration(5);

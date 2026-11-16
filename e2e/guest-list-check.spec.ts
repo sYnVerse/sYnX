@@ -31,6 +31,7 @@ test.describe("List page smoke tests", () => {
     const taskInput = page.getByPlaceholder("What needs to be done?");
     await taskInput.fill("Buy milk");
     await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(taskInput).toHaveValue("");
 
     // Verify task appears in the list
     const taskItem = page.locator("li", { hasText: "Buy milk" });
@@ -59,10 +60,11 @@ test.describe("List page smoke tests", () => {
   test("adds a subtask and checks that it moves to the Completed section once completed", async ({ page }) => {
     await gotoGuestList(page);
 
-    // Add a parent task
+    // Add a parent task and wait for the create fetcher to finish clearing the input
     const taskInput = page.getByPlaceholder("What needs to be done?");
     await taskInput.fill("Parent task");
     await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(taskInput).toHaveValue("");
 
     const parentTask = page.locator("li", { hasText: "Parent task" });
     await expect(parentTask).toBeVisible();
