@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import type { FetcherWithComponents } from "react-router";
 import { readStoredValue, useHydrated, useStoredValue, writeStoredValue } from "~/client-storage";
-import { applySetCompletedLocal } from "../../../../shared";
+import { applySetCompletedLocal, applySetCompletedWithSubtasksLocal } from "../../../../shared";
 import type { Todo } from "~/to-do-manager";
 import type { GuestActionPayload } from "~/guest-context";
 import { GUEST_STORAGE_KEY, parseGuestLists, type GuestList } from "../guest-lists";
@@ -136,12 +136,20 @@ export function useGuestLists({
         break;
       }
       case "setCompleted": {
+        const subtaskAction = payload.subtaskAction as "complete" | "promote" | undefined;
         updatedLists = prevLists.map((l) => {
           if (l.id !== targetListId) return l;
-          const updatedTodos = l.todos.map((t) => {
-            if (t.id !== payload.id) return t;
-            return applySetCompletedLocal(t, Boolean(payload.completed)).todo;
-          });
+          const updatedTodos = subtaskAction
+            ? applySetCompletedWithSubtasksLocal(
+                l.todos,
+                String(payload.id),
+                Boolean(payload.completed),
+                subtaskAction
+              ) ?? l.todos
+            : l.todos.map((t) => {
+                if (t.id !== payload.id) return t;
+                return applySetCompletedLocal(t, Boolean(payload.completed)).todo;
+              });
           return { ...l, todos: updatedTodos };
         });
         break;

@@ -45,6 +45,7 @@ export interface TodoItemProps {
   isSubtask?: boolean;
   canEdit?: boolean;
   onNotify?: (message: string) => void;
+  onBeforeSetCompleted?: (todo: Todo, nextCompleted: boolean) => boolean;
   searchQuery?: string;
 }
 
@@ -54,6 +55,7 @@ export function TodoItem({
   isSubtask = false,
   canEdit = true,
   onNotify,
+  onBeforeSetCompleted,
   searchQuery = "",
 }: TodoItemProps) {
   const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
@@ -179,6 +181,9 @@ export function TodoItem({
   const handleToggleAction = () => {
     if (!canEdit || (isRecurring && isToggling)) return;
     const nextCompleted = !optimisticCompleted;
+    if (onBeforeSetCompleted?.(todo, nextCompleted)) {
+      return;
+    }
     if (!isLoggedIn) {
       onGuestAction("setCompleted", { id: todo.id, completed: nextCompleted });
     }

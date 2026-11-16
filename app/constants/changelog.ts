@@ -1,13 +1,17 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.6.6";
+export const WEB_VERSION = "v5.7.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
   {
-    version: "v5.6.6",
+    version: "v5.7.0",
     date: "2026-11-16",
     title: "What's new?",
     changes: [
+      {
+        type: "NEW",
+        text: "Checking off a task that has open subtasks now prompts you to complete them too, keep them open as top-level tasks, or cancel (#213)."
+      },
       {
         type: "IMPR",
         text: "Task check-off, rename, and priority updates now respond optimistically with React 19 useOptimistic and automatically revert with an error notice if saving fails (#170)."
