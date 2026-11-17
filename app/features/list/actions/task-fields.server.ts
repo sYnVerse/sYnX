@@ -2,6 +2,8 @@ import type { ListActionContext } from "./context";
 import { taskTextError } from "~/write-limits";
 import { canEditReminderText } from "~/reminder-ownership";
 
+const VALID_PRIORITIES = new Set(["none", "low", "medium", "high"]);
+
 export async function handleUpdatePriority(ctx: ListActionContext) {
   const {
     formData,
@@ -12,9 +14,16 @@ export async function handleUpdatePriority(ctx: ListActionContext) {
     hasOwnership,
     activeShareMode,
   } = ctx;
-  const id = formData.get("id") as string;
-  const priority = formData.get("priority") as "low" | "medium" | "high" | "none";
-  await todoManager.updatePriority(id, priority);
+  const id = formData.get("id");
+  const priorityRaw = formData.get("priority");
+  if (typeof id !== "string" || !id) {
+    return Response.json({ error: "Invalid task id" }, { status: 400 });
+  }
+  if (typeof priorityRaw !== "string" || !VALID_PRIORITIES.has(priorityRaw)) {
+    return Response.json({ error: "Invalid priority" }, { status: 400 });
+  }
+  const priority = priorityRaw as "low" | "medium" | "high" | "none";
+  const todo = await todoManager.updatePriority(id, priority);
   scheduleActivityLog({
     listId: activeListId,
     taskId: id,
@@ -24,7 +33,7 @@ export async function handleUpdatePriority(ctx: ListActionContext) {
     shareMode: activeShareMode,
     summary: `Priority → ${priority}`,
   });
-  return { success: true };
+  return { success: true, todo };
 }
 
 export async function handleUpdateText(ctx: ListActionContext) {
@@ -40,8 +49,11 @@ export async function handleUpdateText(ctx: ListActionContext) {
     hasOwnership,
     activeShareMode,
   } = ctx;
-  const id = formData.get("id") as string;
-  const text = formData.get("text") as string;
+  const id = formData.get("id");
+  const text = formData.get("text");
+  if (typeof id !== "string" || !id) {
+    return Response.json({ error: "Invalid task id" }, { status: 400 });
+  }
   if (typeof text !== "string" || !text.trim()) {
     return Response.json({ error: "Invalid text" }, { status: 400 });
   }
@@ -61,7 +73,7 @@ export async function handleUpdateText(ctx: ListActionContext) {
       return Response.json({ error: "Only the user who set the reminder can edit this task's text." }, { status: 403 });
     }
   }
-  await todoManager.updateText(id, text.trim());
+  const todo = await todoManager.updateText(id, text.trim());
   scheduleActivityLog({
     listId: activeListId,
     taskId: id,
@@ -74,7 +86,7 @@ export async function handleUpdateText(ctx: ListActionContext) {
         ? `${previous.text} → ${text.trim()}`
         : text.trim(),
   });
-  return { success: true };
+  return { success: true, todo };
 }
 
 export async function handleUpdateReminder(ctx: ListActionContext) {

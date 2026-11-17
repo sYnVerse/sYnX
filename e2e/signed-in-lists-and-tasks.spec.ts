@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { addTask, createTestUser, signInAs, suppressWhatsNew } from "./helpers";
+import { addTask, createTestUser, signInAs, suppressWhatsNew, waitForHydration } from "./helpers";
 
 test.describe("Signed-in Lists & Tasks Suite", () => {
   test.beforeEach(async ({ page }) => {
@@ -155,6 +155,7 @@ test.describe("Signed-in Lists & Tasks Suite", () => {
 
     // Reload page to confirm all properties persisted in D1
     await page.reload();
+    await waitForHydration(page);
 
     const reloadedItem = page.locator("li", { hasText: "Task With All Pickers" });
     await expect(reloadedItem).toBeVisible();
@@ -187,6 +188,7 @@ test.describe("Signed-in Lists & Tasks Suite", () => {
 
     // Reload page
     await page.reload();
+    await waitForHydration(page);
 
     // Verify sort is remembered from storage and default All filter restored
     await expect(sortSelect).toHaveValue("priority");
@@ -237,5 +239,136 @@ test.describe("Signed-in Lists & Tasks Suite", () => {
     // Switch back to List view
     await page.getByRole("button", { name: "📝 List" }).click();
     await expect(page.locator("li", { hasText: "Scheduled Calendar Event" })).toBeVisible();
+  });
+
+  test("optimistic check-off shows checked state while pending and reverts visibly on error (#170)", async ({ page }) => {
+    const user = createTestUser("optimistic_rollback");
+    await signInAs(page, user);
+
+    await addTask(page, "Optimistic Fail Task");
+    const listId = new URL(page.url()).pathname.slice(1);
+
+    let failNextSetCompleted = true;
+    let releaseRequest!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseRequest = resolve;
+    });
+
+    await page.route(
+      (url) => url.pathname === `/${listId}.data` || url.pathname === `/${listId}`,
+      async (route) => {
+        const req = route.request();
+        if (req.method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        const params = new URLSearchParams(req.postData() ?? "");
+        if (failNextSetCompleted && params.get("intent") === "setCompleted") {
+          failNextSetCompleted = false;
+          // Force a real 404/error response through React Router's action pipeline
+          params.set("id", "nonexistent-task-id");
+          await gate;
+          await route.continue({ postData: params.toString() });
+          return;
+        }
+        await route.continue();
+      }
+    );
+
+    const taskItem = page.locator("li", { hasText: "Optimistic Fail Task" });
+    const checkbox = taskItem.locator("button[data-checked]");
+    await expect(checkbox).toHaveAttribute("data-checked", "false");
+
+    // Click check-off and verify optimistic state updates immediately while request is held
+    await checkbox.click();
+    await expect(checkbox).toHaveAttribute("data-checked", "true");
+
+    // Release failed write -> reverts checkbox and shows visible error toast
+    releaseRequest();
+    await expect(checkbox).toHaveAttribute("data-checked", "false");
+    await expect(page.getByRole("status")).toContainText("Couldn't save, change undone");
+
+    // Retrying normally succeeds and moves task to Completed
+    await checkbox.click();
+    await expect(page.getByRole("button", { name: /Completed tasks, 1/ })).toBeVisible();
+  });
+
+  test("subtask completion prompt supports Cancel, No (promote), and Yes (complete all) (#213)", async ({ page }) => {
+    const user = createTestUser("subtask_prompt");
+    await signInAs(page, user);
+
+    // 1. Parent task with open subtasks and one already-completed subtask
+    await addTask(page, "Release Prep");
+    const releaseParent = page.locator("li", { hasText: "Release Prep" });
+    await expect(releaseParent).toBeVisible();
+
+    for (const subTitle of ["Open Sub A", "Open Sub B", "Done Sub C"]) {
+      await releaseParent.getByTitle("Add Subtask").click();
+      const subtaskInput = page.getByPlaceholder("New subtask name...");
+      await subtaskInput.fill(subTitle);
+      await subtaskInput.press("Enter");
+      await expect(page.locator("li", { hasText: subTitle })).toBeVisible();
+    }
+
+    // Complete "Done Sub C" so it stays attached to the parent
+    await page.locator("li", { hasText: "Done Sub C" }).locator("button[data-checked]").click();
+    await expect(page.getByRole("button", { name: /Completed subtasks, 1/ })).toBeVisible();
+
+    // Check off parent -> Cancel leaves everything unchanged
+    await releaseParent.locator("button[data-checked]").first().click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Complete subtasks too?");
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(releaseParent.locator("button[data-checked]").first()).toHaveAttribute("data-checked", "false");
+
+    // Check off parent -> "No, keep open" completes parent and promotes open subtasks to top level
+    await releaseParent.locator("button[data-checked]").first().click();
+    await expect(dialog).toBeVisible();
+    const promoteDone = page.waitForResponse(
+      (resp) => resp.request().method() === "POST" && resp.status() === 200
+    );
+    await dialog.getByRole("button", { name: "No, keep open" }).click();
+    await expect(dialog).not.toBeVisible();
+    await promoteDone;
+
+    const completedToggle = page.getByRole("button", { name: /Completed tasks, 1/ });
+    await expect(completedToggle).toBeVisible();
+    await expect(page.locator("li", { hasText: "Open Sub A" })).toBeVisible();
+    await expect(page.locator("li", { hasText: "Open Sub B" })).toBeVisible();
+
+    // Expanding Completed shows "Release Prep" still holds its 1 already-completed subtask
+    await completedToggle.click();
+    await expect(page.locator("li", { hasText: "Release Prep" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Completed subtasks, 1/ })).toBeVisible();
+
+    // 2. Second parent -> "Yes, complete all" marks parent and open subtasks complete
+    await addTask(page, "Deploy Flow");
+    const deployParent = page.locator("li", { hasText: "Deploy Flow" });
+    await deployParent.getByTitle("Add Subtask").click();
+    const deploySubInput = page.getByPlaceholder("New subtask name...");
+    await deploySubInput.fill("Run Smoke");
+    await deploySubInput.press("Enter");
+    await expect(page.locator("li", { hasText: "Run Smoke" })).toBeVisible();
+
+    await deployParent.locator("button[data-checked]").first().click();
+    await expect(dialog).toBeVisible();
+    const completeAllDone = page.waitForResponse(
+      (resp) => resp.request().method() === "POST" && resp.status() === 200
+    );
+    await dialog.getByRole("button", { name: "Yes, complete all" }).click();
+    await expect(dialog).not.toBeVisible();
+
+    await expect(page.getByRole("button", { name: /Completed tasks, 2/ })).toBeVisible();
+    await expect(page.locator("li", { hasText: "Run Smoke" })).not.toBeVisible();
+    await completeAllDone;
+
+    // Reload to confirm persistence in D1
+    await page.reload();
+    await waitForHydration(page);
+    await expect(page.getByRole("button", { name: /Completed tasks, 2/ })).toBeVisible();
+    await expect(page.locator("li", { hasText: "Open Sub A" })).toBeVisible();
+    await expect(page.locator("li", { hasText: "Open Sub B" })).toBeVisible();
   });
 });

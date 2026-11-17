@@ -413,7 +413,14 @@ describe("app/routes/_index loader behavior (#196)", () => {
     expect(data).toBeDefined();
     expect(data.isLoggedIn).toBe(false);
     expect(data.activeListId).toBeDefined();
+    expect(data.activeListId).toBe(data.userId);
     expect(Array.isArray(data.lists)).toBe(true);
+
+    const responseHeaders =
+      res instanceof Response
+        ? res.headers
+        : new Headers((res as { init?: ResponseInit } | null)?.init?.headers);
+    expect(responseHeaders.get("Set-Cookie")).toContain(`guest_session=${data.userId}`);
   });
 
   it("renders list data when primary list query fails and preferredId falls back to userId", async () => {
@@ -565,5 +572,219 @@ describe("app/routes/_index loader behavior (#196)", () => {
     expect(insertedTodo).not.toBeNull();
     expect(insertedTodo.list_id).toBe(listId);
     expect(insertedTodo.text).toBe("Test Task on Root");
+  });
+
+  it("POST /?redirectTo=/<inaccessible-id> falls back to the primary list (#201)", async () => {
+    const primaryListId = "11111111-1111-4111-8111-111111111111";
+    const privateListId = "22222222-2222-4222-8222-222222222222";
+    let insertedTodo: { id: string; list_id: string; text: string } | null = null;
+    const insertedLists: unknown[] = [];
+
+    const mockDb = {
+      prepare: vi.fn((sql: string) => ({
+        bind: vi.fn((...args: any[]) => {
+          if (sql.includes("INSERT INTO todos")) {
+            insertedTodo = { id: args[0], list_id: args[1], text: args[2] };
+          }
+          if (sql.includes("INSERT INTO lists")) {
+            insertedLists.push(args);
+          }
+          return {
+            first: vi.fn().mockImplementation(() => {
+              if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+                return Promise.resolve({ id: primaryListId });
+              }
+              if (sql.includes("FROM lists WHERE id = ?")) {
+                const requestedId = args[0];
+                if (requestedId === privateListId) {
+                  return Promise.resolve({
+                    id: privateListId,
+                    name: "Other User Private List",
+                    owner_id: "user-2",
+                    share_mode: "private",
+                  });
+                }
+                if (requestedId === primaryListId) {
+                  return Promise.resolve({
+                    id: primaryListId,
+                    name: "My Tasks",
+                    owner_id: "user-1",
+                    share_mode: "private",
+                  });
+                }
+                return Promise.resolve(null);
+              }
+              if (sql.includes("COUNT(*)")) {
+                return Promise.resolve({ n: 0 });
+              }
+              return Promise.resolve(null);
+            }),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            run: vi.fn().mockResolvedValue({ success: true }),
+          };
+        }),
+      })),
+    };
+
+    const formData = new FormData();
+    formData.append("intent", "create");
+    formData.append("text", "Fallback Primary Task");
+
+    const req = new Request(`http://localhost/?redirectTo=/${privateListId}`, {
+      method: "POST",
+      headers: {
+        Cookie: "synx_auth_session=e2e_test_session:user-1:user@example.com",
+      },
+      body: formData,
+    });
+
+    const res = await indexAction({
+      request: req,
+      context: {
+        cloudflare: {
+          env: {
+            DB: mockDb,
+            ALLOW_DEV_TEST_AUTH: "true",
+          },
+        },
+      },
+      params: {},
+    } as any);
+
+    expect(res).toBeDefined();
+    expect(insertedTodo).not.toBeNull();
+    expect(insertedTodo!.list_id).toBe(primaryListId);
+    expect(insertedTodo!.text).toBe("Fallback Primary Task");
+    expect(insertedLists).toHaveLength(0);
+  });
+
+  it("POST /?redirectTo=/<accessible-id> targets that accessible list instead of primary (#201)", async () => {
+    const primaryListId = "11111111-1111-4111-8111-111111111111";
+    const secondaryOwnedId = "33333333-3333-4333-8333-333333333333";
+    const sharedEditId = "44444444-4444-4444-8444-444444444444";
+    const insertedTodos: Array<{ list_id: string; text: string }> = [];
+
+    const createMockDb = () => ({
+      prepare: vi.fn((sql: string) => ({
+        bind: vi.fn((...args: any[]) => {
+          if (sql.includes("INSERT INTO todos")) {
+            insertedTodos.push({ list_id: args[1], text: args[2] });
+          }
+          return {
+            first: vi.fn().mockImplementation(() => {
+              if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+                return Promise.resolve({ id: primaryListId });
+              }
+              if (sql.includes("FROM lists WHERE id = ?")) {
+                if (args[0] === secondaryOwnedId) {
+                  return Promise.resolve({
+                    id: secondaryOwnedId,
+                    owner_id: "user-1",
+                    share_mode: "private",
+                  });
+                }
+                if (args[0] === sharedEditId) {
+                  return Promise.resolve({
+                    id: sharedEditId,
+                    owner_id: "user-2",
+                    share_mode: "public_edit",
+                  });
+                }
+                return Promise.resolve(null);
+              }
+              if (sql.includes("COUNT(*)")) {
+                return Promise.resolve({ n: 0 });
+              }
+              return Promise.resolve(null);
+            }),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            run: vi.fn().mockResolvedValue({ success: true }),
+          };
+        }),
+      })),
+    });
+
+    // Owned secondary list
+    const ownedForm = new FormData();
+    ownedForm.append("intent", "create");
+    ownedForm.append("text", "Secondary Owned Task");
+    await indexAction({
+      request: new Request(`http://localhost/?redirectTo=/${secondaryOwnedId}`, {
+        method: "POST",
+        headers: {
+          Cookie: "synx_auth_session=e2e_test_session:user-1:user@example.com",
+        },
+        body: ownedForm,
+      }),
+      context: {
+        cloudflare: { env: { DB: createMockDb(), ALLOW_DEV_TEST_AUTH: "true" } },
+      },
+      params: {},
+    } as any);
+
+    // Collaborative shared list
+    const sharedForm = new FormData();
+    sharedForm.append("intent", "create");
+    sharedForm.append("text", "Shared Collab Task");
+    await indexAction({
+      request: new Request(`http://localhost/?redirectTo=/list/${sharedEditId}`, {
+        method: "POST",
+        headers: {
+          Cookie: "synx_auth_session=e2e_test_session:user-1:user@example.com",
+        },
+        body: sharedForm,
+      }),
+      context: {
+        cloudflare: { env: { DB: createMockDb(), ALLOW_DEV_TEST_AUTH: "true" } },
+      },
+      params: {},
+    } as any);
+
+    expect(insertedTodos).toEqual([
+      { list_id: secondaryOwnedId, text: "Secondary Owned Task" },
+      { list_id: sharedEditId, text: "Shared Collab Task" },
+    ]);
+  });
+
+  it("POST /?redirectTo=/<inaccessible-id> does not create a default list when user has none (#201)", async () => {
+    const missingListId = "55555555-5555-4555-8555-555555555555";
+    const insertedLists: unknown[] = [];
+
+    const mockDb = {
+      prepare: vi.fn((sql: string) => ({
+        bind: vi.fn((...args: any[]) => {
+          if (sql.includes("INSERT INTO lists")) {
+            insertedLists.push(args);
+          }
+          return {
+            first: vi.fn().mockResolvedValue(null),
+            all: vi.fn().mockResolvedValue({ results: [] }),
+            run: vi.fn().mockResolvedValue({ success: true }),
+          };
+        }),
+      })),
+    };
+
+    const formData = new FormData();
+    formData.append("intent", "create");
+    formData.append("text", "Should Not Create List");
+
+    const res = await indexAction({
+      request: new Request(`http://localhost/?redirectTo=/${missingListId}`, {
+        method: "POST",
+        headers: {
+          Cookie: "synx_auth_session=e2e_test_session:user-1:user@example.com",
+        },
+        body: formData,
+      }),
+      context: {
+        cloudflare: { env: { DB: mockDb, ALLOW_DEV_TEST_AUTH: "true" } },
+      },
+      params: {},
+    } as any);
+
+    expect(res).toBeInstanceOf(Response);
+    expect((res as Response).status).toBe(403);
+    expect(insertedLists).toHaveLength(0);
   });
 });

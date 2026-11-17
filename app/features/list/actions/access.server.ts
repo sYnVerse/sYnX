@@ -39,6 +39,10 @@ export async function getActiveListAccess(
   return { hasOwnership, isCollaborative, activeShareMode, listOwnerId };
 }
 
+export function canAccessList(access: ListAccessInfo): boolean {
+  return access.hasOwnership || (access.activeShareMode !== null && access.activeShareMode !== "private");
+}
+
 export function checkListAccessGate(
   intent: string,
   isLoggedIn: boolean,

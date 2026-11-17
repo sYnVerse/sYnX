@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { addTask, createTestUser, signInAs, suppressWhatsNew } from "./helpers";
+import { addTask, createTestUser, signInAs, suppressWhatsNew, waitForHydration } from "./helpers";
 
 test.describe("Shared Lists Suite", () => {
   test("private list access control redirects unauthorized collaborator", async ({ browser }) => {
@@ -33,6 +33,7 @@ test.describe("Shared Lists Suite", () => {
 
     // Collaborator tries to navigate to the private list URL
     await collabPage.goto(`/${listId}`);
+    await waitForHydration(collabPage);
 
     // Collaborator should be redirected away from the private list URL to their own primary list
     await expect(collabPage).not.toHaveURL(`/${listId}`);
@@ -75,6 +76,7 @@ test.describe("Shared Lists Suite", () => {
     await signInAs(collabPage, collab);
 
     await collabPage.goto(`/${listId}`);
+    await waitForHydration(collabPage);
 
     // View-Only banner should be visible and task input form hidden
     await expect(collabPage.getByText("👁 View-Only Access")).toBeVisible();
@@ -126,6 +128,7 @@ test.describe("Shared Lists Suite", () => {
     await signInAs(collabPage, collab);
 
     await collabPage.goto(`/${listId}`);
+    await waitForHydration(collabPage);
     await expect(collabPage.getByRole("heading", { level: 1 })).toContainText("Team Sprint");
 
     // Collaborator can add a task
@@ -150,6 +153,7 @@ test.describe("Shared Lists Suite", () => {
 
     // 3. Owner handles delete request (Decline first)
     await ownerPage.goto(`/${listId}`);
+    await waitForHydration(ownerPage);
     const deleteRequestsSection = ownerPage.locator("section[aria-label='Pending delete requests']");
     await expect(deleteRequestsSection).toBeVisible();
     await deleteRequestsSection.getByRole("button", { name: "Decline" }).click();
@@ -158,12 +162,14 @@ test.describe("Shared Lists Suite", () => {
 
     // Collaborator requests delete again
     await collabPage.goto(`/${listId}`);
+    await waitForHydration(collabPage);
     await collabPage.locator("ul.space-y-2 li", { hasText: "Owner Critical Task" }).hover();
     await collabPage.locator("ul.space-y-2 li", { hasText: "Owner Critical Task" }).getByTitle("Request delete (owner must approve)").click();
     await expect(collabPage.locator("ul.space-y-2 li", { hasText: "Owner Critical Task" }).getByText("Delete requested")).toBeVisible();
 
     // Owner approves the delete request
     await ownerPage.goto(`/${listId}`);
+    await waitForHydration(ownerPage);
     const pendingSection = ownerPage.locator("section[aria-label='Pending delete requests']");
     await expect(pendingSection).toBeVisible();
     await pendingSection.getByRole("button", { name: "Approve" }).click();
@@ -182,6 +188,7 @@ test.describe("Shared Lists Suite", () => {
 
     // 5. Collaborator removes the shared list from "Shared with me"
     await collabPage.goto(`/${listId}`);
+    await waitForHydration(collabPage);
     const sharedRow = collabPage.locator("aside nav").locator("div.group", { hasText: "Team Sprint" });
     await sharedRow.hover();
     await sharedRow.getByTitle("Remove from Shared with me").click();
@@ -224,20 +231,67 @@ test.describe("Shared Lists Suite", () => {
     await signInAs(collabPage, collab);
 
     await collabPage.goto(`/${listId}`);
+    await waitForHydration(collabPage);
     await expect(collabPage.getByRole("heading", { level: 1 })).toContainText("Confidential Project");
     await expect(collabPage.locator("aside nav").getByText("Confidential Project")).toBeVisible();
 
     // 3. Owner revokes access by changing share mode back to Private
     await ownerPage.goto(`/${listId}`);
+    await waitForHydration(ownerPage);
     await ownerPage.getByRole("button", { name: /^Share List/ }).click();
     await ownerPage.getByRole("button", { name: /Private/i }).click();
     await expect(ownerPage.getByRole("button", { name: /^Share List/ })).toContainText("Private");
 
     // 4. Collaborator tries to access the list -> redirected away and access blocked
     await collabPage.goto(`/${listId}`);
+    await waitForHydration(collabPage);
     await expect(collabPage).not.toHaveURL(`/${listId}`);
     await expect(collabPage.getByRole("heading", { level: 1 })).not.toContainText("Confidential Project");
     await expect(collabPage.locator("aside nav").getByText("Confidential Project")).not.toBeVisible();
+
+    await ownerContext.close();
+    await collabContext.close();
+  });
+
+  test("root POST with ?redirectTo=/<inaccessible-id> acts on primary list (#201)", async ({ browser }) => {
+    const ownerContext = await browser.newContext();
+    const ownerPage = await ownerContext.newPage();
+    await suppressWhatsNew(ownerPage);
+
+    const owner = createTestUser("owner_redirect_post");
+    await signInAs(ownerPage, owner);
+
+    await ownerPage.getByRole("button", { name: "Create new list" }).click();
+    await ownerPage.locator("#create-list-name").fill("Private Target List");
+    await ownerPage.getByRole("button", { name: "Create List" }).click();
+
+    await ownerPage.locator("aside nav").getByText("Private Target List").click();
+    await expect(ownerPage.getByRole("heading", { level: 1 })).toContainText("Private Target List");
+    const privateListId = ownerPage.url().split("/").pop();
+
+    const collabContext = await browser.newContext();
+    const collabPage = await collabContext.newPage();
+    await suppressWhatsNew(collabPage);
+
+    const collab = createTestUser("collab_redirect_post");
+    await signInAs(collabPage, collab);
+
+    const postRes = await collabPage.request.post(`/?index&redirectTo=/${privateListId}`, {
+      form: {
+        intent: "create",
+        text: "Redirect fallback task",
+        priority: "none",
+      },
+    });
+    expect(postRes.ok()).toBe(true);
+
+    await collabPage.reload();
+    await waitForHydration(collabPage);
+    await expect(collabPage.getByText("Redirect fallback task")).toBeVisible();
+
+    await ownerPage.reload();
+    await waitForHydration(ownerPage);
+    await expect(ownerPage.getByText("Redirect fallback task")).not.toBeVisible();
 
     await ownerContext.close();
     await collabContext.close();

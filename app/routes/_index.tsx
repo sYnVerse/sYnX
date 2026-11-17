@@ -5,7 +5,9 @@ import { getOptionalUser, parseSafeRedirectTo } from "~/auth.server";
 import { getCloudflareContext } from "~/context.server";
 import { loader as listLoader } from "~/features/list/loader.server";
 import { action as listAction } from "~/features/list/action.server";
+import { canAccessList, getActiveListAccess } from "~/features/list/actions/access.server";
 import TodoPage from "~/features/list/TodoPage";
+import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 
 function extractListIdFromRedirectTo(redirectTo: string | undefined): string | undefined {
   if (!redirectTo) return undefined;
@@ -42,16 +44,25 @@ function extractListIdFromLocation(location: string | null | undefined): string 
   return undefined;
 }
 
-async function getPrimaryListId(db: D1Database | undefined, userId: string): Promise<string | undefined> {
+async function findPrimaryListId(db: D1Database | undefined, userId: string): Promise<string | undefined> {
   if (!db) return undefined;
   try {
     const firstList = await db
       .prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1")
       .bind(userId)
       .first<{ id: string }>();
-    if (firstList?.id) {
-      return firstList.id;
-    }
+    return firstList?.id;
+  } catch (e) {
+    console.error("Failed to resolve primary list in _index:", e);
+    return undefined;
+  }
+}
+
+async function getPrimaryListId(db: D1Database | undefined, userId: string): Promise<string | undefined> {
+  const existing = await findPrimaryListId(db, userId);
+  if (existing) return existing;
+  if (!db) return undefined;
+  try {
     const defaultListId = crypto.randomUUID();
     await db
       .prepare("INSERT INTO lists (id, name, owner_id, created_at, expiration_ttl) VALUES (?, ?, ?, ?, ?)")
@@ -68,15 +79,20 @@ async function resolveActiveListIdForIndex(request: Request, context: unknown): 
   const { env } = getCloudflareContext(context);
   const { userId, isLoggedIn } = await getOptionalUser(request, env);
 
-  // 1. Check redirectTo query param
+  // 1. Check redirectTo query param, honoring it only if the user can access it
   const url = new URL(request.url);
   const safeRedirectTo = parseSafeRedirectTo(url.searchParams.get("redirectTo"));
   const requestedListId = extractListIdFromRedirectTo(safeRedirectTo);
-  if (requestedListId) return requestedListId;
+  if (requestedListId && env.DB) {
+    const access = await getActiveListAccess(env.DB, requestedListId, userId, isLoggedIn);
+    if (canAccessList(access)) {
+      return requestedListId;
+    }
+  }
 
-  // 2. Check primary list in DB if logged in
+  // 2. Check existing primary list in DB if logged in (never create default lists on POST)
   if (isLoggedIn && env.DB) {
-    const primary = await getPrimaryListId(env.DB, userId);
+    const primary = await findPrimaryListId(env.DB, userId);
     if (primary) return primary;
   }
 
@@ -178,5 +194,9 @@ export default function Index() {
     }
   }, [navigate, activeListId]);
 
-  return <TodoPage />;
+  return <TodoPage isIndexRedirecting={Boolean(activeListId)} />;
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  return <RouteErrorBoundary error={error} routeId="_index" preset="index" />;
 }

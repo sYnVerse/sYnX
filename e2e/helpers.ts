@@ -24,12 +24,12 @@ export async function suppressWhatsNew(page: Page): Promise<void> {
 }
 
 export async function waitForHydration(page: Page): Promise<void> {
-  await page.locator("html[data-theme]").waitFor({ state: "attached", timeout: 15000 }).catch(() => {});
+  await page.locator("html[data-theme]").waitFor({ state: "attached", timeout: 15000 });
 }
 
 export async function gotoGuestList(page: Page): Promise<void> {
   await page.goto("/");
-  await page.waitForURL(/\/[a-zA-Z0-9_-]+/, { timeout: 15000 });
+  await page.waitForURL((url) => /^\/[a-zA-Z0-9_-]+$/.test(url.pathname), { timeout: 15000 });
   await waitForHydration(page);
 }
 
@@ -54,7 +54,10 @@ export async function signInAs(
     searchParams.set("redirectTo", options.redirectTo);
   }
   await page.goto(`/login?${searchParams.toString()}`);
-  await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 15000 });
+  await page.waitForURL(
+    (url) => !url.pathname.startsWith("/login") && url.pathname !== "/",
+    { timeout: 15000 }
+  );
   await waitForHydration(page);
   return resolved;
 }

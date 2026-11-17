@@ -1,8 +1,35 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.6.5";
+export const WEB_VERSION = "v5.7.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v5.7.0",
+    date: "2026-11-16",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Checking off a task that has open subtasks now prompts you to complete them too, keep them open as top-level tasks, or cancel (#213)."
+      },
+      {
+        type: "IMPR",
+        text: "Task check-off, rename, and priority updates now respond optimistically with React 19 useOptimistic and automatically revert with an error notice if saving fails (#170)."
+      },
+      {
+        type: "IMPR",
+        text: "Enabled React Compiler 1.0 across web components and hooks to automatically memoize task lists and reduce unnecessary re-renders (#171)."
+      },
+      {
+        type: "IMPR",
+        text: "Added route-level error boundaries on list and authentication web routes so loader and action failures show clear recovery options (#169)."
+      },
+      {
+        type: "FIX",
+        text: "Root-page form actions with a ?redirectTo= target now verify list access before acting and fall back to your primary list when that target is inaccessible (#201)."
+      }
+    ]
+  },
   {
     version: "v5.6.5",
     date: "2026-11-10",

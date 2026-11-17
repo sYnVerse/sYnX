@@ -1,10 +1,11 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
 import { GuestContext } from "~/guest-context";
 import { canEditReminderText } from "~/reminder-ownership";
 import { MAX_TASK_TEXT_LENGTH } from "~/write-limits";
-import { applySetCompletedLocal, formatRescheduledToast, splitCompletedTasks } from "../../../../shared";
+import { formatRescheduledToast, splitCompletedTasks } from "../../../../shared";
 import type { Todo } from "~/to-do-manager";
+import { useOptimisticField } from "../hooks/useOptimisticField";
 import { ReminderPicker } from "./ReminderPicker";
 import { DurationPicker, PriorityPicker, RecurrencePicker } from "./pickers";
 import { CompletedSectionToggle } from "./CompletedSectionToggle";
@@ -44,6 +45,7 @@ export interface TodoItemProps {
   isSubtask?: boolean;
   canEdit?: boolean;
   onNotify?: (message: string) => void;
+  onBeforeSetCompleted?: (todo: Todo, nextCompleted: boolean) => boolean;
   searchQuery?: string;
 }
 
@@ -53,6 +55,7 @@ export function TodoItem({
   isSubtask = false,
   canEdit = true,
   onNotify,
+  onBeforeSetCompleted,
   searchQuery = "",
 }: TodoItemProps) {
   const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
@@ -65,7 +68,6 @@ export function TodoItem({
   // one with subtasks others added) sends a request the owner must approve.
   const deleteNeedsApproval =
     isLoggedIn && Boolean(listOwnerId) && listOwnerId !== currentUserId && !todo.canDeleteDirectly;
-  const toggleFetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
   const deleteFetcher = useFetcher<{
     success?: boolean;
     pendingApproval?: boolean;
@@ -73,7 +75,6 @@ export function TodoItem({
     error?: string;
   }>();
   const subtaskFetcher = useFetcher();
-  const editFetcher = useFetcher();
 
   useEffect(() => {
     if (deleteFetcher.state !== "idle" || !deleteFetcher.data) return;
@@ -104,37 +105,44 @@ export function TodoItem({
   const [flashComplete, setFlashComplete] = useState(false);
   const lastRescheduleToastKey = useRef<string | null>(null);
 
-  const isSetCompletedPending =
-    toggleFetcher.state !== "idle" && toggleFetcher.formData?.get("intent") === "setCompleted";
-  const desiredCompleted =
-    isSetCompletedPending && toggleFetcher.formData
-      ? toggleFetcher.formData.get("completed") === "true"
-      : null;
-  const optimistic =
-    desiredCompleted !== null ? applySetCompletedLocal(todo, desiredCompleted) : { todo, rescheduled: false };
-  const optimisticCompleted = optimistic.todo.completed;
-  const isToggling = isSetCompletedPending;
+  const handleToggleSuccess = useCallback(
+    (data: { success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }) => {
+      if (data.rescheduled && data.todo?.reminderAt) {
+        const key = `${data.todo.id}:${data.todo.reminderAt}`;
+        if (lastRescheduleToastKey.current === key) return;
+        lastRescheduleToastKey.current = key;
+        setFlashComplete(true);
+        setTimeout(() => setFlashComplete(false), 450);
+        onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+      }
+    },
+    [onNotify]
+  );
+
+  const toggleField = useOptimisticField<
+    boolean,
+    { success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }
+  >({
+    serverValue: todo.completed,
+    fetcherKey: `todo-toggle-${todo.id}`,
+    onError: onNotify,
+    onSuccess: handleToggleSuccess,
+  });
+
+  const editField = useOptimisticField<string, { success?: boolean; todo?: Todo; error?: string }>({
+    serverValue: todo.text,
+    fetcherKey: `todo-edit-${todo.id}`,
+    onError: onNotify,
+  });
+
+  const isRecurring = Boolean(todo.recurrence && todo.recurrence !== "none");
+  const optimisticCompleted = toggleField.value;
+  const optimisticText = editField.value;
+  const isToggling = toggleField.isPending;
+  const isSlowPending = toggleField.isSlowPending || editField.isSlowPending;
   const isDeleting = deleteFetcher.formData?.get("intent") === "delete";
 
   const { active: activeSubtasks, completed: completedSubtasks } = splitCompletedTasks(subtasks);
-
-  useEffect(() => {
-    if (toggleFetcher.state !== "idle") return;
-    const data = toggleFetcher.data;
-    if (!data) return;
-    if (data.error) {
-      onNotify?.(data.error);
-      return;
-    }
-    if (data.rescheduled && data.todo?.reminderAt) {
-      const key = `${data.todo.id}:${data.todo.reminderAt}`;
-      if (lastRescheduleToastKey.current === key) return;
-      lastRescheduleToastKey.current = key;
-      setFlashComplete(true);
-      window.setTimeout(() => setFlashComplete(false), 450);
-      onNotify?.(formatRescheduledToast(data.todo.reminderAt));
-    }
-  }, [toggleFetcher.state, toggleFetcher.data, onNotify]);
 
   useEffect(() => {
     if (showAddSubtask && subtaskInputRef.current) {
@@ -170,33 +178,48 @@ export function TodoItem({
     setShowAddSubtask(false);
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editText.trim() || !canEditText) return;
-    if (editText.trim() === todo.text) {
+  const handleToggleAction = () => {
+    if (!canEdit || (isRecurring && isToggling)) return;
+    const nextCompleted = !optimisticCompleted;
+    if (onBeforeSetCompleted?.(todo, nextCompleted)) {
+      return;
+    }
+    if (!isLoggedIn) {
+      onGuestAction("setCompleted", { id: todo.id, completed: nextCompleted });
+    }
+    void toggleField.submit(nextCompleted, {
+      intent: "setCompleted",
+      id: todo.id,
+      completed: String(nextCompleted),
+    });
+  };
+
+  const handleEditAction = () => {
+    const trimmed = editText.trim();
+    if (!trimmed || !canEditText) return;
+    if (trimmed === todo.text) {
       setIsEditing(false);
       return;
     }
     if (!isLoggedIn) {
-      onGuestAction("updateText", { id: todo.id, text: editText.trim() });
+      onGuestAction("updateText", { id: todo.id, text: trimmed });
     }
-    editFetcher.submit(
-      {
-        intent: "updateText",
-        id: todo.id,
-        text: editText.trim(),
-      },
-      { method: "post" }
-    );
     setIsEditing(false);
+    void editField.submit(trimmed, {
+      intent: "updateText",
+      id: todo.id,
+      text: trimmed,
+    });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
-      setEditText(todo.text);
+      setEditText(optimisticText);
       setIsEditing(false);
     }
   };
+
+  const checkboxDisabled = !canEdit || (isRecurring && isToggling);
 
   return (
     <div className="flex flex-col w-full relative">
@@ -208,29 +231,20 @@ export function TodoItem({
           }
           ${optimisticCompleted || flashComplete ? "opacity-60" : "opacity-100"}`}
       >
-        <toggleFetcher.Form
-          method="post"
-          className="flex-shrink-0"
+        <form
           onSubmit={(e) => {
-            if (!canEdit || isToggling) {
-              e.preventDefault();
-              return;
-            }
-            if (!isLoggedIn) {
-              onGuestAction("setCompleted", { id: todo.id, completed: !todo.completed });
-            }
+            e.preventDefault();
+            handleToggleAction();
           }}
+          className="flex-shrink-0"
         >
-          <input type="hidden" name="id" value={todo.id} />
-          <input type="hidden" name="intent" value="setCompleted" />
-          <input type="hidden" name="completed" value={String(!todo.completed)} />
           <button
             type="submit"
-            disabled={!canEdit || isToggling}
+            disabled={checkboxDisabled}
             aria-busy={isToggling}
-            className={`rounded-md border-2 flex items-center justify-center transition-all duration-200 ${canEdit && !isToggling ? "cursor-pointer" : "cursor-default opacity-80"}
+            className={`rounded-md border-2 flex items-center justify-center transition-all duration-200 ${!checkboxDisabled ? "cursor-pointer" : "cursor-default opacity-80"}
               ${isSubtask ? "w-4 h-4 border-slate-700" : "w-5 h-5 border-slate-700"}
-              ${canEdit && !isToggling ? "hover:border-themeAccentFrom" : ""}
+              ${!checkboxDisabled ? "hover:border-themeAccentFrom" : ""}
               data-[checked=true]:bg-themeAccentFrom data-[checked=true]:border-themeAccentFrom`}
             data-checked={optimisticCompleted || flashComplete}
           >
@@ -250,10 +264,16 @@ export function TodoItem({
               </svg>
             )}
           </button>
-        </toggleFetcher.Form>
+        </form>
 
         {isEditing && canEditText ? (
-          <form onSubmit={handleEditSubmit} className="flex-1 flex items-center gap-2">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleEditAction();
+            }}
+            className="flex-1 flex items-center gap-2"
+          >
             <input
               ref={editInputRef}
               type="text"
@@ -274,7 +294,7 @@ export function TodoItem({
             <button
               type="button"
               onClick={() => {
-                setEditText(todo.text);
+                setEditText(optimisticText);
                 setIsEditing(false);
               }}
               className="text-[10px] text-slate-500 hover:text-slate-350 px-1 py-1 cursor-pointer"
@@ -291,14 +311,15 @@ export function TodoItem({
                 ? "line-through text-slate-500 italic opacity-50"
                 : ""
             }`}
-            title={todo.text}
+            title={optimisticText}
             onDoubleClick={() => {
               if (!optimisticCompleted && canEditText) {
+                setEditText(optimisticText);
                 setIsEditing(true);
               }
             }}
           >
-            {renderHighlightedText(todo.text, searchQuery)}
+            {renderHighlightedText(optimisticText, searchQuery)}
           </span>
         )}
 
@@ -334,7 +355,17 @@ export function TodoItem({
           </span>
         )}
 
-        {canEdit && <PriorityPicker currentPriority={todo.priority || "none"} todoId={todo.id} />}
+        {isSlowPending && (
+          <span
+            role="status"
+            data-slow-pending="true"
+            className="text-[10px] text-amber-300/90 bg-amber-500/10 border border-amber-400/20 px-1.5 py-0.5 rounded font-medium animate-pulse"
+          >
+            Saving…
+          </span>
+        )}
+
+        {canEdit && <PriorityPicker currentPriority={todo.priority || "none"} todoId={todo.id} onNotify={onNotify} />}
         {canEdit && !optimisticCompleted && !isSubtask && <ReminderPicker todo={todo} />}
 
         {/* Recurrence Picker dropdown (only for parent tasks) */}
@@ -359,7 +390,10 @@ export function TodoItem({
         {canEditText && !optimisticCompleted && !isEditing && (
           <button
             type="button"
-            onClick={() => setIsEditing(true)}
+            onClick={() => {
+              setEditText(optimisticText);
+              setIsEditing(true);
+            }}
             className="lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 text-slate-500 hover:text-themeAccentText transition-all duration-200 p-1 rounded-lg hover:bg-white/[0.04] cursor-pointer"
             title="Edit task"
             aria-label="Edit task"

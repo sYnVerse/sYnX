@@ -18,12 +18,14 @@ import {
 import { MAX_LIST_NAME_LENGTH } from "~/write-limits";
 
 import type { loader as listLoader } from "./loader.server";
+import { useFetcherToast } from "./hooks/useFetcherToast";
 import { useGuestLists } from "./hooks/useGuestLists";
 import { useProfileSettings } from "./hooks/useProfileSettings";
 import { useListDialogs } from "./hooks/useListDialogs";
 import { useVisibleTodos, type Filter } from "./hooks/useVisibleTodos";
 import { useBrowserReminders } from "./hooks/useBrowserReminders";
 import { useWebMcpTools } from "./hooks/useWebMcpTools";
+import { useSubtaskCompletionPrompt } from "./hooks/useSubtaskCompletionPrompt";
 
 import { CalendarView } from "~/components/calendar-view";
 import { CompletedSectionToggle, Confetti, EmptyState, ProgressRing, Toast } from "./components/ui-bits";
@@ -35,8 +37,13 @@ import { ProfileModal } from "./components/ProfileModal";
 import { ActivityLogModal } from "./components/ActivityLogModal";
 import { WhatsNewModal } from "./components/WhatsNewModal";
 import { ListDialogs } from "./components/ListDialogs";
+import { SubtaskCompletionModal } from "./components/SubtaskCompletionModal";
 
-export default function TodoPage() {
+export default function TodoPage({
+  isIndexRedirecting = false,
+}: {
+  isIndexRedirecting?: boolean;
+} = {}) {
   const {
     userId,
     email,
@@ -58,7 +65,7 @@ export default function TodoPage() {
   });
 
   const navigate = useNavigate();
-  const createFetcher = useFetcher();
+  const createFetcher = useFetcher<{ error?: string }>();
   const clearFetcher = useFetcher<{
     success?: boolean;
     pendingApproval?: boolean;
@@ -86,14 +93,14 @@ export default function TodoPage() {
   // Fill in the home time zone (used by repeating reminders) once from this
   // browser when the account has none. Never changed silently afterwards;
   // the user changes it under Profile → Home time zone.
+  const submitTimeZoneFetcher = timeZoneFetcher.submit;
   useEffect(() => {
-    if (!isLoggedIn || settings?.timeZone || initTimeZoneSent.current) return;
+    if (!isLoggedIn || isIndexRedirecting || settings?.timeZone || initTimeZoneSent.current) return;
     const zone = getLocalTimeZone();
     if (!zone) return;
     initTimeZoneSent.current = true;
-    timeZoneFetcher.submit({ intent: "initTimeZone", timeZone: zone }, { method: "post" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, settings?.timeZone]);
+    submitTimeZoneFetcher({ intent: "initTimeZone", timeZone: zone }, { method: "post" });
+  }, [isLoggedIn, isIndexRedirecting, settings?.timeZone, submitTimeZoneFetcher]);
 
   const {
     hydrated,
@@ -112,6 +119,7 @@ export default function TodoPage() {
     serverLists,
     activeListId,
     listFetcher,
+    isIndexRedirecting,
   });
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -137,7 +145,8 @@ export default function TodoPage() {
   // or when the user opens it from the menu.
   const [lastSeenChangelog, setLastSeenChangelog] = useStoredValue("last_seen_changelog_version");
   const [isChangelogOpenedManually, setIsChangelogOpenedManually] = useState(false);
-  const isChangelogOpen = isChangelogOpenedManually || (hydrated && lastSeenChangelog !== WEB_VERSION);
+  const isChangelogOpen =
+    isChangelogOpenedManually || (hydrated && !isIndexRedirecting && lastSeenChangelog !== WEB_VERSION);
 
   const handleCloseChangelog = () => {
     setLastSeenChangelog(WEB_VERSION);
@@ -167,10 +176,11 @@ export default function TodoPage() {
   const [showActivityModal, setShowActivityModal] = useState(false);
 
   // Apply the saved theme to the page once it is read from localStorage.
+  // Skip while routes/_index is transiently redirecting to /$id so tests wait for the settled route.
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || isIndexRedirecting) return;
     document.documentElement.setAttribute("data-theme", theme);
-  }, [hydrated, theme]);
+  }, [hydrated, isIndexRedirecting, theme]);
 
   const changeTheme = (newTheme: string) => {
     setSavedTheme(newTheme);
@@ -186,9 +196,15 @@ export default function TodoPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showSharePopover]);
 
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useCallback((message: string) => {
     setToast({ message, visible: true });
-    setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2200);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    const duration = message.startsWith("Couldn't save") ? 4000 : 2200;
+    toastTimerRef.current = setTimeout(
+      () => setToast((t) => ({ ...t, visible: false })),
+      duration
+    );
   }, []);
 
   const {
@@ -317,7 +333,17 @@ export default function TodoPage() {
   useEffect(() => {
     if (prevIsCreating.current && !isCreating) {
       if (inputRef.current) inputRef.current.value = "";
-      inputRef.current?.focus();
+      // Only return focus to the main create input if the user hasn't moved
+      // focus elsewhere (e.g., into an inline subtask composer while creating).
+      const activeEl = document.activeElement;
+      const shouldRefocus =
+        !activeEl ||
+        activeEl === document.body ||
+        activeEl === inputRef.current ||
+        Boolean(inputRef.current?.form?.contains(activeEl));
+      if (shouldRefocus) {
+        inputRef.current?.focus();
+      }
       // Reset reminder & duration states
       setReminderMode("none");
       setReminderDuration(5);
@@ -344,6 +370,20 @@ export default function TodoPage() {
   useBrowserReminders({ lists, userId });
   useWebMcpTools({ activeListId, todos, createFetcher });
 
+  const {
+    optimisticTodos: listTodosWithSubtaskAction,
+    promptState: subtaskPromptState,
+    isSlowPending: isSubtaskCompletionSlowPending,
+    maybePromptForCompletion,
+    confirmSubtaskCompletion,
+    cancelSubtaskCompletion,
+  } = useSubtaskCompletionPrompt({
+    todos,
+    isLoggedIn,
+    handleGuestAction,
+    onNotify: showToast,
+  });
+
   // Visible todos and counts
   const {
     optimisticTodos,
@@ -356,37 +396,14 @@ export default function TodoPage() {
     activeCount,
     progress,
     clearCompletedNeedsApproval,
-  } = useVisibleTodos({ todos, filter, searchQuery, sortBy });
+  } = useVisibleTodos({ todos: listTodosWithSubtaskAction, filter, searchQuery, sortBy });
 
   const completedSectionOpen = completedOpenListId === effectiveActiveListId;
 
-  // Surface server-side rejections of a new task (too long, list full, rate limited).
-  const createData = createFetcher.data as { error?: string } | undefined;
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (createFetcher.state === "idle" && createData?.error) showToast(createData.error);
-  }, [createFetcher.state, createData, showToast]);
-
-  // Collaborator delete / clear-completed / list-delete → pending approval toast.
-  useEffect(() => {
-    if (clearFetcher.state !== "idle" || !clearFetcher.data) return;
-    if (clearFetcher.data.pendingApproval && clearFetcher.data.message) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      showToast(clearFetcher.data.message);
-    } else if (clearFetcher.data.error) {
-      showToast(clearFetcher.data.error);
-    }
-  }, [clearFetcher.state, clearFetcher.data, showToast]);
-
-  useEffect(() => {
-    if (listFetcher.state !== "idle" || !listFetcher.data) return;
-    if (listFetcher.data.pendingApproval && listFetcher.data.message) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      showToast(listFetcher.data.message);
-    } else if (listFetcher.data.error) {
-      showToast(listFetcher.data.error);
-    }
-  }, [listFetcher.state, listFetcher.data, showToast]);
+  // Surface server-side rejections (too long, list full, rate limited) and pending-approval notices.
+  useFetcherToast(createFetcher, showToast);
+  useFetcherToast(clearFetcher, showToast, { surfacePendingApproval: true });
+  useFetcherToast(listFetcher, showToast, { surfacePendingApproval: true });
 
   const handleExportData = () => {
     const dataStr =
@@ -794,6 +811,7 @@ export default function TodoPage() {
                     subtasks={subtasksMap[todo.id] || []}
                     canEdit={canEdit}
                     onNotify={showToast}
+                    onBeforeSetCompleted={maybePromptForCompletion}
                     searchQuery={searchQuery}
                   />
                 ))}
@@ -817,6 +835,7 @@ export default function TodoPage() {
                       subtasks={subtasksMap[todo.id] || []}
                       canEdit={canEdit}
                       onNotify={showToast}
+                      onBeforeSetCompleted={maybePromptForCompletion}
                       searchQuery={searchQuery}
                     />
                   ))}
@@ -956,8 +975,24 @@ export default function TodoPage() {
           editCategoryInputRef={editCategoryInputRef}
         />
 
+        <SubtaskCompletionModal
+          prompt={subtaskPromptState}
+          onConfirm={confirmSubtaskCompletion}
+          onCancel={cancelSubtaskCompletion}
+        />
+
+        {isSubtaskCompletionSlowPending && (
+          <div
+            role="status"
+            data-slow-pending="true"
+            className="fixed bottom-16 left-1/2 -translate-x-1/2 z-40 px-3 py-1 rounded-lg text-xs font-medium text-amber-300 bg-slate-900/95 border border-amber-400/25 shadow-lg animate-pulse"
+          >
+            Saving…
+          </div>
+        )}
+
         {/* One-time display name offer outside Profile (Profile shows it inline). */}
-        {isLoggedIn && pendingNameSuggestion && !isAnyModalOpen && (
+        {isLoggedIn && pendingNameSuggestion && !isAnyModalOpen && !subtaskPromptState && (
           <div
             role="status"
             className="fixed bottom-20 left-4 right-4 sm:left-auto sm:right-6 sm:w-80 z-40 rounded-xl border border-themeAccentRing/30 bg-slate-900/95 backdrop-blur p-3.5 shadow-2xl text-left"

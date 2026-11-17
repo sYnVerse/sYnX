@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { addTask, createTestUser, signInAs, suppressWhatsNew } from "./helpers";
+import { addTask, createTestUser, gotoGuestList, signInAs, suppressWhatsNew, waitForHydration } from "./helpers";
 
 test.describe("Signed-in Auth & Profile Suite", () => {
   test.beforeEach(async ({ page }) => {
@@ -15,6 +15,7 @@ test.describe("Signed-in Auth & Profile Suite", () => {
 
     // Reload and assert session persists
     await page.reload();
+    await waitForHydration(page);
     await expect(page.locator("aside").getByText(user.displayName!)).toBeVisible();
 
     // Sign out via the sidebar sign-out button
@@ -26,6 +27,7 @@ test.describe("Signed-in Auth & Profile Suite", () => {
 
     // Reload and assert user remains signed out as guest
     await page.reload();
+    await waitForHydration(page);
     await expect(page.locator("aside").getByText("Unsaved Guest")).toBeVisible();
     await expect(page.locator("aside").getByRole("link", { name: "Sign In to Save Lists" })).toBeVisible();
 
@@ -65,8 +67,7 @@ test.describe("Signed-in Auth & Profile Suite", () => {
   });
 
   test("migrates guest lists and tasks to the signed-in account and clears localStorage", async ({ page }) => {
-    await page.goto("/");
-    await expect(page).toHaveURL(/\/[a-zA-Z0-9_-]+/);
+    await gotoGuestList(page);
 
     // Create a task on default list
     await addTask(page, "Guest Task To Migrate");
@@ -137,6 +138,7 @@ test.describe("Signed-in Auth & Profile Suite", () => {
 
     // Reload page to verify persistence across sessions
     await page.reload();
+    await waitForHydration(page);
 
     // Verify updated display name in sidebar
     await expect(page.locator("aside").getByText(newName)).toBeVisible();

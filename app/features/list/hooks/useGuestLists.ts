@@ -1,10 +1,25 @@
 import { useCallback, useEffect, useMemo } from "react";
 import type { FetcherWithComponents } from "react-router";
 import { readStoredValue, useHydrated, useStoredValue, writeStoredValue } from "~/client-storage";
-import { applySetCompletedLocal } from "../../../../shared";
+import { applySetCompletedLocal, applySetCompletedWithSubtasksLocal } from "../../../../shared";
 import type { Todo } from "~/to-do-manager";
 import type { GuestActionPayload } from "~/guest-context";
 import { GUEST_STORAGE_KEY, parseGuestLists, type GuestList } from "../guest-lists";
+
+function parseMigratableGuestLists(raw: string): GuestList[] | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    return parsed.filter((gList: { name?: string; todos?: unknown[] }) => {
+      const listName = (gList.name || "My Tasks").trim();
+      const hasTodos = Array.isArray(gList.todos) && gList.todos.length > 0;
+      return !(listName === "My Tasks" && !hasTodos);
+    });
+  } catch (e) {
+    console.error("Failed to migrate guest lists:", e);
+    return null;
+  }
+}
 
 interface UseGuestListsOptions {
   isLoggedIn: boolean;
@@ -12,6 +27,7 @@ interface UseGuestListsOptions {
   serverLists: GuestList[];
   activeListId: string | undefined;
   listFetcher: FetcherWithComponents<unknown>;
+  isIndexRedirecting?: boolean;
 }
 
 export function useGuestLists({
@@ -20,6 +36,7 @@ export function useGuestLists({
   serverLists,
   activeListId,
   listFetcher,
+  isIndexRedirecting = false,
 }: UseGuestListsOptions) {
   const hydrated = useHydrated();
   const [storedGuestLists] = useStoredValue(GUEST_STORAGE_KEY);
@@ -31,34 +48,22 @@ export function useGuestLists({
   );
 
   // After signing in, move any guest lists into the account once.
+  // Skip during the transient _index redirect so migration submits against $id.
   const submitListFetcher = listFetcher.submit;
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || isIndexRedirecting) return;
     const raw = readStoredValue(GUEST_STORAGE_KEY);
     if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const validLists = parsed.filter((gList: { name?: string; todos?: unknown[] }) => {
-          const listName = (gList.name || "My Tasks").trim();
-          const hasTodos = Array.isArray(gList.todos) && gList.todos.length > 0;
-          if (listName === "My Tasks" && !hasTodos) {
-            return false;
-          }
-          return true;
-        });
-        if (validLists.length > 0) {
-          const form = new FormData();
-          form.append("intent", "migrateGuestLists");
-          form.append("guestLists", JSON.stringify(validLists));
-          submitListFetcher(form, { method: "post" });
-        }
-        writeStoredValue(GUEST_STORAGE_KEY, null);
-      }
-    } catch (e) {
-      console.error("Failed to migrate guest lists:", e);
+    const validLists = parseMigratableGuestLists(raw);
+    if (!validLists) return;
+    if (validLists.length > 0) {
+      const form = new FormData();
+      form.append("intent", "migrateGuestLists");
+      form.append("guestLists", JSON.stringify(validLists));
+      submitListFetcher(form, { method: "post" });
     }
-  }, [isLoggedIn, userId, submitListFetcher]);
+    writeStoredValue(GUEST_STORAGE_KEY, null);
+  }, [isLoggedIn, isIndexRedirecting, userId, submitListFetcher]);
 
   const isSharedServerList = serverLists.some((l) => l.id === activeListId && l.owner_id !== userId);
   const lists = isLoggedIn || isSharedServerList ? serverLists : guestLists;
@@ -133,12 +138,20 @@ export function useGuestLists({
         break;
       }
       case "setCompleted": {
+        const subtaskAction = payload.subtaskAction as "complete" | "promote" | undefined;
         updatedLists = prevLists.map((l) => {
           if (l.id !== targetListId) return l;
-          const updatedTodos = l.todos.map((t) => {
-            if (t.id !== payload.id) return t;
-            return applySetCompletedLocal(t, Boolean(payload.completed)).todo;
-          });
+          const updatedTodos = subtaskAction
+            ? applySetCompletedWithSubtasksLocal(
+                l.todos,
+                String(payload.id),
+                Boolean(payload.completed),
+                subtaskAction
+              ) ?? l.todos
+            : l.todos.map((t) => {
+                if (t.id !== payload.id) return t;
+                return applySetCompletedLocal(t, Boolean(payload.completed)).todo;
+              });
           return { ...l, todos: updatedTodos };
         });
         break;

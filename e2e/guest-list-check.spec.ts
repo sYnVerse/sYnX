@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { gotoGuestList, suppressWhatsNew } from "./helpers";
+import { gotoGuestList, suppressWhatsNew, waitForHydration } from "./helpers";
 
 test.describe("List page smoke tests", () => {
   test.beforeEach(async ({ page }) => {
@@ -31,6 +31,7 @@ test.describe("List page smoke tests", () => {
     const taskInput = page.getByPlaceholder("What needs to be done?");
     await taskInput.fill("Buy milk");
     await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(taskInput).toHaveValue("");
 
     // Verify task appears in the list
     const taskItem = page.locator("li", { hasText: "Buy milk" });
@@ -59,10 +60,11 @@ test.describe("List page smoke tests", () => {
   test("adds a subtask and checks that it moves to the Completed section once completed", async ({ page }) => {
     await gotoGuestList(page);
 
-    // Add a parent task
+    // Add a parent task and wait for the create fetcher to finish clearing the input
     const taskInput = page.getByPlaceholder("What needs to be done?");
     await taskInput.fill("Parent task");
     await page.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(taskInput).toHaveValue("");
 
     const parentTask = page.locator("li", { hasText: "Parent task" });
     await expect(parentTask).toBeVisible();
@@ -107,6 +109,7 @@ test.describe("List page smoke tests", () => {
 
     // Reload the page and verify sort selection persists
     await page.reload();
+    await waitForHydration(page);
     await expect(sortSelect).toHaveValue("alphabetical");
   });
 
@@ -235,5 +238,66 @@ test.describe("List page smoke tests", () => {
     // Verify tag is cleared and "+ Add Tag" is back
     await expect(categoryTag).not.toBeVisible();
     await expect(page.getByRole("button", { name: "+ Add Tag" })).toBeVisible();
+  });
+
+  test("shows route ErrorBoundary UI on loader and action failures (#169)", async ({ page }) => {
+    await gotoGuestList(page);
+
+    // Create a second list so we can trigger a client-side navigation loader failure to /$id
+    await page.getByRole("button", { name: "Create new list" }).click();
+    await page.locator("#create-list-name").fill("Error Boundary Target");
+    await page.getByRole("button", { name: "Create List" }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Error Boundary Target");
+    const secondListPath = new URL(page.url()).pathname;
+
+    // Switch back to the original list
+    await page.locator("aside nav").getByText("My Tasks").first().click();
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("My Tasks");
+
+    // Simulate a 500 loader failure for the target list's .data request
+    await page.route("**/*", async (route) => {
+      const reqUrl = new URL(route.request().url());
+      if (reqUrl.pathname === `${secondListPath}.data`) {
+        await route.fulfill({
+          status: 500,
+          contentType: "text/plain",
+          body: "Simulated loader failure",
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    await page.locator("aside nav").getByText("Error Boundary Target").first().click();
+
+    const boundary = page.getByTestId("route-error-boundary");
+    await expect(boundary).toBeVisible();
+    await expect(boundary).toHaveAttribute("data-route-id", "$id");
+    await expect(boundary.getByRole("heading", { name: "Couldn't load this list" })).toBeVisible();
+    await expect(boundary.getByRole("button", { name: "Try again" })).toBeVisible();
+    await expect(boundary.getByRole("link", { name: "Go to my list" })).toBeVisible();
+
+    // Unroute and recover back home
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await boundary.getByRole("link", { name: "Go to my list" }).click();
+    await page.waitForURL((url) => /^\/[a-zA-Z0-9_-]+$/.test(url.pathname), { timeout: 15000 });
+    await waitForHydration(page);
+
+    // Trigger a real server action failure on /$id (text/plain POST causes request.formData() to throw)
+    await page.evaluate(() => {
+      const form = document.createElement("form");
+      form.method = "post";
+      form.action = window.location.pathname;
+      form.enctype = "text/plain";
+      const input = document.createElement("input");
+      input.name = "intent";
+      input.value = "create";
+      form.appendChild(input);
+      document.body.appendChild(form);
+      form.submit();
+    });
+
+    await expect(boundary).toBeVisible();
+    await expect(boundary).toHaveAttribute("data-route-id", "$id");
   });
 });
