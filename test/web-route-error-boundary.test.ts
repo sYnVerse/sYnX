@@ -102,6 +102,28 @@ describe("route ErrorBoundary components (#169)", () => {
       "list"
     );
     expect(errorData.message).not.toContain("secret stack info");
+
+    // Client-hydrated / single-fetch serialized ErrorResponse strings have internal=false and
+    // stringified Error.toString() payloads.
+    const hydrated404 = describeRouteError(
+      makeRouteErrorResponse(404, "Not Found", 'Error: No route matches URL "/a/b"', false),
+      "root"
+    );
+    expect(hydrated404.statusLabel).toBe("404 Not Found");
+    expect(hydrated404.title).toBe("Page not found");
+    expect(hydrated404.message).not.toContain("No route matches URL");
+
+    const hydrated405 = describeRouteError(
+      makeRouteErrorResponse(
+        405,
+        "Method Not Allowed",
+        'Error: You made a POST request to "/mobile/callback" but did not provide an `action` for route "routes/mobile.callback", so there is no way to handle the request.',
+        false
+      ),
+      "mobileCallback"
+    );
+    expect(hydrated405.statusLabel).toBe("405 Method Not Allowed");
+    expect(hydrated405.message).not.toContain("routes/mobile.callback");
   });
 
   it("exports ErrorBoundary from $id and API-adjacent UI routes plus root", () => {

@@ -53,19 +53,31 @@ const PRESET_COPY: Record<
   },
 };
 
+function isFrameworkDebugString(value: string): boolean {
+  return (
+    /^(?:[A-Z][A-Za-z]*Error|Error):/.test(value) ||
+    value.startsWith("No route matches URL ") ||
+    (value.startsWith("You made a ") && value.includes('for route "'))
+  );
+}
+
 function extractResponseDetail(data: unknown): string | null {
   if (data instanceof Error) {
     return null;
   }
   if (typeof data === "string") {
     const trimmed = data.trim();
-    return trimmed || null;
+    if (!trimmed || isFrameworkDebugString(trimmed)) {
+      return null;
+    }
+    return trimmed;
   }
   if (data && typeof data === "object") {
     const record = data as Record<string, unknown>;
     for (const key of ["error", "message"] as const) {
       if (typeof record[key] === "string" && record[key].trim()) {
-        return record[key].trim();
+        const trimmed = record[key].trim();
+        return isFrameworkDebugString(trimmed) ? null : trimmed;
       }
     }
   }
