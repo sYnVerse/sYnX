@@ -1,4 +1,5 @@
 import type { Route } from "./+types/mobile.callback";
+import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 
 /**
  * Mobile OAuth redirect target for App Links / PKCE.
@@ -36,5 +37,15 @@ export default function MobileCallback() {
         If the app did not open automatically, switch back to it manually.
       </p>
     </div>
+  );
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  return (
+    <RouteErrorBoundary
+      error={error}
+      routeId="mobile.callback"
+      preset="mobileCallback"
+    />
   );
 }

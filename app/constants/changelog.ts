@@ -21,6 +21,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Enabled React Compiler 1.0 across web components and hooks to automatically memoize task lists and reduce unnecessary re-renders (#171)."
       },
       {
+        type: "IMPR",
+        text: "Added route-level error boundaries on list and authentication web routes so loader and action failures show clear recovery options (#169)."
+      },
+      {
         type: "FIX",
         text: "Root-page form actions with a ?redirectTo= target now verify list access before acting and fall back to your primary list when that target is inaccessible (#201)."
       }

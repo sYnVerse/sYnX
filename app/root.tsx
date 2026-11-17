@@ -6,6 +6,7 @@ import {
   ScrollRestoration,
 } from "react-router";
 import type { Route } from "./+types/root";
+import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 
 import "./tailwind.css";
 
@@ -47,4 +48,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return <Outlet />;
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  return <RouteErrorBoundary error={error} routeId="root" preset="root" />;
 }

@@ -7,6 +7,7 @@ import { loader as listLoader } from "~/features/list/loader.server";
 import { action as listAction } from "~/features/list/action.server";
 import { canAccessList, getActiveListAccess } from "~/features/list/actions/access.server";
 import TodoPage from "~/features/list/TodoPage";
+import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 
 function extractListIdFromRedirectTo(redirectTo: string | undefined): string | undefined {
   if (!redirectTo) return undefined;
@@ -194,4 +195,8 @@ export default function Index() {
   }, [navigate, activeListId]);
 
   return <TodoPage isIndexRedirecting={Boolean(activeListId)} />;
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  return <RouteErrorBoundary error={error} routeId="_index" preset="index" />;
 }

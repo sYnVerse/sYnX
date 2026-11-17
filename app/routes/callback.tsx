@@ -1,5 +1,6 @@
 import type { Route } from "./+types/callback";
 import { redirect } from "react-router";
+import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 import { getAuthClient, getAuthSettings, parseSafeRedirectTo, verifyAccessToken } from "~/auth.server";
 import { syncProviderProfile } from "~/provider-profile.server";
 import {
@@ -91,3 +92,7 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
     return reject();
   }
 };
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  return <RouteErrorBoundary error={error} routeId="callback" preset="auth" />;
+}
