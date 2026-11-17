@@ -1,5 +1,6 @@
 import type { Route } from "./+types/logout";
 import { redirect } from "react-router";
+import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 import { getAuthSettings, isLocalTestAuthAllowed } from "~/auth.server";
 import { planLogoutAction, planLogoutLoader } from "~/logout-policy.server";
 import { getCloudflareContext } from "~/context.server";
@@ -29,4 +30,8 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
 
 export default function Logout() {
   return null;
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  return <RouteErrorBoundary error={error} routeId="logout" preset="auth" />;
 }

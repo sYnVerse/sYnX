@@ -1,5 +1,6 @@
 import type { Route } from "./+types/login";
 import { redirect } from "react-router";
+import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 import { getAuthClient, parseSafeRedirectTo, parseTestLoginRequest } from "~/auth.server";
 import { serializeAuthSessionCookie, serializePkceCookie } from "~/auth-cookies.server";
 import { syncUserProfileOnSignIn } from "~/user-profile.server";
@@ -99,4 +100,8 @@ export default function Login() {
       <p>Redirecting to authentication server...</p>
     </div>
   );
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  return <RouteErrorBoundary error={error} routeId="login" preset="auth" />;
 }
