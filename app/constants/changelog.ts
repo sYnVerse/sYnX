@@ -17,6 +17,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Task check-off, rename, and priority updates now respond optimistically with React 19 useOptimistic and automatically revert with an error notice if saving fails (#170)."
       },
       {
+        type: "IMPR",
+        text: "Enabled React Compiler 1.0 across web components and hooks to automatically memoize task lists and reduce unnecessary re-renders (#171)."
+      },
+      {
         type: "FIX",
         text: "Root-page form actions with a ?redirectTo= target now verify list access before acting and fall back to your primary list when that target is inaccessible (#201)."
       }
