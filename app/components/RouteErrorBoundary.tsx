@@ -54,6 +54,9 @@ const PRESET_COPY: Record<
 };
 
 function extractResponseDetail(data: unknown): string | null {
+  if (data instanceof Error) {
+    return null;
+  }
   if (typeof data === "string") {
     const trimmed = data.trim();
     return trimmed || null;
@@ -77,7 +80,8 @@ export function describeRouteError(
 
   if (isRouteErrorResponse(error)) {
     const status = error.status;
-    const detail = extractResponseDetail(error.data);
+    const isInternal = (error as { internal?: boolean }).internal === true;
+    const detail = isInternal ? null : extractResponseDetail(error.data);
     if (status === 404) {
       return {
         statusLabel: "404 Not Found",
@@ -155,7 +159,9 @@ export function RouteErrorBoundary({
         <div className="pt-2 flex flex-wrap gap-3">
           <button
             type="button"
-            onClick={() => window.location.reload()}
+            onClick={() =>
+              window.location.assign(window.location.pathname + window.location.search)
+            }
             className="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors cursor-pointer"
           >
             Try again

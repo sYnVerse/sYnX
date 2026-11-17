@@ -14,13 +14,14 @@ import * as rootRoute from "../app/root";
 function makeRouteErrorResponse(
   status: number,
   statusText: string,
-  data: unknown
+  data: unknown,
+  internal = false
 ) {
   return {
     status,
     statusText,
     data,
-    internal: true,
+    internal,
   };
 }
 
@@ -70,6 +71,37 @@ describe("route ErrorBoundary components (#169)", () => {
     expect(described.title).toBe("Couldn't load this list");
     expect(described.message).not.toContain("D1_ERROR");
     expect(described.message).not.toContain("SQLITE");
+  });
+
+  it("does not expose React Router internal ErrorResponse debug messages or route IDs", () => {
+    const internal404 = describeRouteError(
+      makeRouteErrorResponse(404, "Not Found", new Error('No route matches URL "/a/b"'), true),
+      "root"
+    );
+    expect(internal404.statusLabel).toBe("404 Not Found");
+    expect(internal404.title).toBe("Page not found");
+    expect(internal404.message).not.toContain("No route matches URL");
+
+    const internal405 = describeRouteError(
+      makeRouteErrorResponse(
+        405,
+        "Method Not Allowed",
+        new Error(
+          'You made a POST request to "/mobile/callback" but did not provide an `action` for route "routes/mobile.callback"'
+        ),
+        true
+      ),
+      "mobileCallback"
+    );
+    expect(internal405.statusLabel).toBe("405 Method Not Allowed");
+    expect(internal405.message).not.toContain("routes/mobile.callback");
+
+    // Even a non-internal ErrorResponse with Error data should not surface Error.message.
+    const errorData = describeRouteError(
+      makeRouteErrorResponse(500, "Internal Server Error", new Error("secret stack info"), false),
+      "list"
+    );
+    expect(errorData.message).not.toContain("secret stack info");
   });
 
   it("exports ErrorBoundary from $id and API-adjacent UI routes plus root", () => {
