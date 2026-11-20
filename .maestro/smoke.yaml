@@ -1,0 +1,65 @@
+appId: io.christran.synx
+---
+# Mobile E2E smoke test (#200) against local Wrangler backend + --local D1.
+# Expects a debug APK built with EXPO_PUBLIC_ALLOW_DEV_TEST_AUTH=true and
+# EXPO_PUBLIC_API_URL=http://127.0.0.1:8787 (with adb reverse tcp:8787 tcp:8787).
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible: "Test Sign In"
+    timeout: 30000
+- tapOn: "Test Sign In"
+
+# Fresh installs show the What's New dialog first.
+- extendedWaitUntil:
+    visible: "Got it!"
+    timeout: 30000
+- tapOn: "Got it!"
+
+# Notification soft-ask appears shortly after What's New on Android API 34 when
+# POST_NOTIFICATIONS has not been granted yet. Dismiss both soft-asks if shown.
+- extendedWaitUntil:
+    visible: "Not now"
+    timeout: 10000
+- tapOn: "Not now"
+- tapOn:
+    text: "Not now"
+    optional: true
+
+# Navigate to Lists tab and create a new list.
+- extendedWaitUntil:
+    visible: "Lists"
+    timeout: 20000
+- tapOn: "Lists"
+
+- extendedWaitUntil:
+    visible: "Create list"
+    timeout: 15000
+- tapOn: "Create list"
+
+- tapOn: "e.g. Supermarket, French HW, Big Movies..."
+- inputText: "Maestro Smoke List"
+- hideKeyboard
+- tapOn: "Create List"
+
+- extendedWaitUntil:
+    visible: "Maestro Smoke List"
+    timeout: 15000
+- tapOn: "Maestro Smoke List"
+
+# Create a task inside the new list and verify it appears.
+- extendedWaitUntil:
+    visible: "Add task"
+    timeout: 15000
+- tapOn: "Add task"
+
+- tapOn: "What needs to be done?"
+- inputText: "Maestro Smoke Task"
+- hideKeyboard
+- tapOn: "Save Task"
+
+- extendedWaitUntil:
+    visible: "Maestro Smoke Task"
+    timeout: 15000
+- assertVisible: "Maestro Smoke Task"

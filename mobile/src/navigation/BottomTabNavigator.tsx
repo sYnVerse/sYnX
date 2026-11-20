@@ -10,6 +10,7 @@ import { FloatingTabBar, TabType } from "../components/FloatingTabBar";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { apiClient } from "../api/client";
+import { DEV_TEST_AUTH_ENABLED } from "../api/devTestAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { NativeUpdateBanner } from "../components/NativeUpdateBanner";
@@ -35,8 +36,9 @@ async function fetchOrCreateActiveListId(): Promise<string> {
 }
 
 const MainAppContent: React.FC = () => {
-  const { token, login, isLoading } = useAuth();
+  const { token, login, loginWithTestAccount, isLoading } = useAuth();
   const { theme } = useTheme();
+  const [testLoginError, setTestLoginError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>("tasks");
@@ -344,6 +346,16 @@ const MainAppContent: React.FC = () => {
     }
   }, [queryClient, setPendingDeepLinkListId]);
 
+  const handleTestLogin = async () => {
+    if (!DEV_TEST_AUTH_ENABLED) return;
+    setTestLoginError(null);
+    try {
+      await loginWithTestAccount();
+    } catch (e: any) {
+      setTestLoginError(e?.response?.data?.error || e?.message || "Test sign in failed.");
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.bg }]}>
@@ -365,6 +377,29 @@ const MainAppContent: React.FC = () => {
         <TouchableOpacity style={[styles.loginBtn, { backgroundColor: theme.accent }]} onPress={login}>
           <Text style={styles.loginBtnText}>Sign In with sYnID</Text>
         </TouchableOpacity>
+        {DEV_TEST_AUTH_ENABLED ? (
+          <>
+            <TouchableOpacity
+              testID="dev-test-login-button"
+              style={[
+                styles.testLoginBtn,
+                { borderColor: theme.cardBorder, backgroundColor: theme.surface },
+              ]}
+              onPress={handleTestLogin}
+              accessibilityRole="button"
+              accessibilityLabel="Test Sign In"
+            >
+              <Text style={[styles.testLoginBtnText, { color: theme.textPrimary }]}>
+                Test Sign In
+              </Text>
+            </TouchableOpacity>
+            {testLoginError ? (
+              <Text style={[styles.testLoginError, { color: theme.danger }]}>
+                {testLoginError}
+              </Text>
+            ) : null}
+          </>
+        ) : null}
       </SafeAreaView>
     );
   }
@@ -473,6 +508,25 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "700",
+  },
+  testLoginBtn: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  testLoginBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  testLoginError: {
+    marginTop: 10,
+    fontSize: 13,
+    textAlign: "center",
   },
   loadingText: {
     fontSize: 15,
