@@ -13,6 +13,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Smart quick add detects dates, times, repeats, priority, and duration as you type in the add-task form and calendar quick add, with dismissible chips (Esc dismisses the latest chip).",
       },
       {
+        type: "NEW",
+        text: "Start/Stop task timers (▶ / ⏱) in both the task list and calendar, with per-task completion timing stats (last duration or recurring average vs estimate).",
+      },
+      {
         type: "FIX",
         text: "Checking off a repeating task now logs \"Completed a task\" instead of \"Marked a task incomplete\" in the shared-list activity log.",
       },

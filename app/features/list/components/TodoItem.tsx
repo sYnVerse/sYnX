@@ -3,7 +3,13 @@ import { useFetcher } from "react-router";
 import { GuestContext } from "~/guest-context";
 import { canEditReminderText } from "~/reminder-ownership";
 import { MAX_TASK_TEXT_LENGTH } from "~/write-limits";
-import { formatRescheduledToast, splitCompletedTasks } from "../../../../shared";
+import {
+  formatElapsedTimerLabel,
+  formatRescheduledToast,
+  formatTaskCompletionStatsLine,
+  splitCompletedTasks,
+  type TaskCompletionStats,
+} from "../../../../shared";
 import type { Todo } from "~/to-do-manager";
 import { useOptimisticField } from "../hooks/useOptimisticField";
 import { ReminderPicker } from "./ReminderPicker";
@@ -46,6 +52,9 @@ export interface TodoItemProps {
   canEdit?: boolean;
   onNotify?: (message: string) => void;
   onBeforeSetCompleted?: (todo: Todo, nextCompleted: boolean) => boolean;
+  completionStatsByTodoId?: Record<string, TaskCompletionStats>;
+  timerNow?: number;
+  onTimerTick?: (now: number) => void;
   searchQuery?: string;
 }
 
@@ -56,6 +65,9 @@ export function TodoItem({
   canEdit = true,
   onNotify,
   onBeforeSetCompleted,
+  completionStatsByTodoId,
+  timerNow = 0,
+  onTimerTick,
   searchQuery = "",
 }: TodoItemProps) {
   const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
@@ -135,12 +147,32 @@ export function TodoItem({
     onError: onNotify,
   });
 
+  const startField = useOptimisticField<
+    number | null,
+    { success?: boolean; todo?: Todo; error?: string }
+  >({
+    serverValue: todo.startedAt ?? null,
+    fetcherKey: `todo-start-${todo.id}`,
+    onError: onNotify,
+  });
+  const {
+    value: optimisticStartedAt,
+    submit: submitStartField,
+    isSlowPending: isStartSlowPending,
+  } = startField;
+
   const isRecurring = Boolean(todo.recurrence && todo.recurrence !== "none");
   const optimisticCompleted = toggleField.value;
   const optimisticText = editField.value;
   const isToggling = toggleField.isPending;
-  const isSlowPending = toggleField.isSlowPending || editField.isSlowPending;
+  const isSlowPending =
+    toggleField.isSlowPending || editField.isSlowPending || isStartSlowPending;
   const isDeleting = deleteFetcher.formData?.get("intent") === "delete";
+  const completionStats = completionStatsByTodoId?.[todo.id];
+  const statsLine = formatTaskCompletionStatsLine(completionStats, {
+    isRecurring,
+    estimatedMinutes: todo.durationMinutes ?? null,
+  });
 
   const { active: activeSubtasks, completed: completedSubtasks } = splitCompletedTasks(subtasks);
 
@@ -216,6 +248,29 @@ export function TodoItem({
     if (e.key === "Escape") {
       setEditText(optimisticText);
       setIsEditing(false);
+    }
+  };
+
+  const handleToggleTimer = (nowMs: number) => {
+    if (!canEdit || optimisticCompleted) return;
+    onTimerTick?.(nowMs);
+    if (optimisticStartedAt != null) {
+      if (!isLoggedIn) {
+        onGuestAction("cancelStart", { id: todo.id });
+      }
+      void submitStartField(null, {
+        intent: "cancelStart",
+        id: todo.id,
+      });
+    } else {
+      if (!isLoggedIn) {
+        onGuestAction("start", { id: todo.id, startedAt: nowMs });
+      }
+      void submitStartField(nowMs, {
+        intent: "start",
+        id: todo.id,
+        startedAt: String(nowMs),
+      });
     }
   };
 
@@ -303,24 +358,34 @@ export function TodoItem({
             </button>
           </form>
         ) : (
-          <span
-            className={`flex-1 min-w-0 break-words lg:truncate transition-all duration-200 ${canEditText ? "cursor-pointer hover:text-white" : "cursor-default"} ${
-              isSubtask ? "text-xs text-slate-350" : "text-sm text-slate-200"
-            } ${
-              optimisticCompleted
-                ? "line-through text-slate-500 italic opacity-50"
-                : ""
-            }`}
-            title={optimisticText}
-            onDoubleClick={() => {
-              if (!optimisticCompleted && canEditText) {
-                setEditText(optimisticText);
-                setIsEditing(true);
-              }
-            }}
-          >
-            {renderHighlightedText(optimisticText, searchQuery)}
-          </span>
+          <div className="flex-1 min-w-0 flex flex-col">
+            <span
+              className={`min-w-0 break-words lg:truncate transition-all duration-200 ${canEditText ? "cursor-pointer hover:text-white" : "cursor-default"} ${
+                isSubtask ? "text-xs text-slate-350" : "text-sm text-slate-200"
+              } ${
+                optimisticCompleted
+                  ? "line-through text-slate-500 italic opacity-50"
+                  : ""
+              }`}
+              title={optimisticText}
+              onDoubleClick={() => {
+                if (!optimisticCompleted && canEditText) {
+                  setEditText(optimisticText);
+                  setIsEditing(true);
+                }
+              }}
+            >
+              {renderHighlightedText(optimisticText, searchQuery)}
+            </span>
+            {statsLine && (
+              <span
+                data-testid="task-completion-stats"
+                className="text-[11px] text-slate-400 truncate mt-0.5"
+              >
+                📊 {statsLine}
+              </span>
+            )}
+          </div>
         )}
 
         {/* Badges and actions: their own wrapping row under the title on narrow
@@ -338,6 +403,33 @@ export function TodoItem({
             ⏱ {todo.durationMinutes}m
           </span>
         ) : null}
+
+        {/* Task Timer Start / Running Pill */}
+        {canEdit && !optimisticCompleted && (
+          optimisticStartedAt != null ? (
+            <button
+              type="button"
+              data-testid="task-timer-running"
+              onClick={() => handleToggleTimer(Date.now())}
+              aria-label="Stop task timer"
+              title="Timer running — click to stop"
+              className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 hover:bg-rose-500/15 hover:text-rose-300 hover:border-rose-400/30 transition-all cursor-pointer flex items-center gap-1 whitespace-nowrap"
+            >
+              {formatElapsedTimerLabel(optimisticStartedAt, timerNow || optimisticStartedAt)}
+            </button>
+          ) : (
+            <button
+              type="button"
+              data-testid="task-timer-start"
+              onClick={() => handleToggleTimer(Date.now())}
+              aria-label="Start task timer"
+              title="Start task timer"
+              className="lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 text-[11px] font-semibold px-1.5 py-0.5 rounded-md text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-transparent hover:border-emerald-400/25 transition-all duration-200 cursor-pointer flex items-center gap-1"
+            >
+              ▶
+            </button>
+          )
+        )}
 
         {/* Recurrence Indicator (for parent tasks only) */}
         {!isSubtask && todo.recurrence && todo.recurrence !== "none" && (
@@ -460,6 +552,9 @@ export function TodoItem({
               isSubtask={true}
               canEdit={canEdit}
               onNotify={onNotify}
+              completionStatsByTodoId={completionStatsByTodoId}
+              timerNow={timerNow}
+              onTimerTick={onTimerTick}
               searchQuery={searchQuery}
             />
           ))}
@@ -482,6 +577,9 @@ export function TodoItem({
                 isSubtask={true}
                 canEdit={canEdit}
                 onNotify={onNotify}
+                completionStatsByTodoId={completionStatsByTodoId}
+                timerNow={timerNow}
+                onTimerTick={onTimerTick}
                 searchQuery={searchQuery}
               />
             ))}

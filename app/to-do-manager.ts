@@ -105,6 +105,102 @@ interface TaskCompletionRow {
 }
 
 /**
+ * Summarizes completion timing stats from duration values ordered newest-first.
+ * Null/missing values and outliers over 12 hours are omitted from duration metrics
+ * while remaining counted in `count`.
+ */
+export function summarizeCompletionDurations(
+  rawDurations: ReadonlyArray<number | null | undefined>,
+  estimatedMinutes: number | null = null
+): Omit<TaskCompletionStats, "entries"> {
+  const timedDurations = rawDurations
+    .map((d) => (d != null ? Number(d) : null))
+    .filter(
+      (d): d is number =>
+        d !== null && Number.isFinite(d) && d >= 0 && d <= MAX_STAT_DURATION_SECONDS
+    );
+
+  let averageSeconds: number | null = null;
+  let medianSeconds: number | null = null;
+  if (timedDurations.length > 0) {
+    const sum = timedDurations.reduce((acc, val) => acc + val, 0);
+    averageSeconds = Math.round(sum / timedDurations.length);
+
+    const sorted = [...timedDurations].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    medianSeconds =
+      sorted.length % 2 === 1
+        ? sorted[mid]
+        : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+  }
+
+  return {
+    count: rawDurations.length,
+    timedCount: timedDurations.length,
+    averageSeconds,
+    medianSeconds,
+    lastDurationSeconds: timedDurations.length > 0 ? timedDurations[0] : null,
+    estimatedMinutes,
+  };
+}
+
+/**
+ * Loads per-task completion timing summaries for every task in `listId`
+ * scoped strictly to `callerUserId` (`COALESCE(started_by, user_id)`).
+ */
+export async function getListCompletionStats(
+  db: D1Database,
+  listId: string,
+  callerUserId: string
+): Promise<Record<string, TaskCompletionStats>> {
+  const { results } = await db
+    .prepare(
+      `SELECT tc.todo_id, tc.duration_seconds, t.duration_minutes
+       FROM task_completions tc
+       INNER JOIN todos t ON t.id = tc.todo_id AND t.list_id = tc.list_id
+       WHERE tc.list_id = ?
+         AND tc.voided_at IS NULL
+         AND COALESCE(tc.started_by, tc.user_id) = ?
+       ORDER BY tc.completed_at DESC`
+    )
+    .bind(listId, callerUserId)
+    .all<{
+      todo_id: string;
+      duration_seconds: number | null;
+      duration_minutes: number | null;
+    }>();
+
+  const grouped = new Map<
+    string,
+    { durations: Array<number | null>; estimatedMinutes: number | null }
+  >();
+  for (const row of results || []) {
+    let bucket = grouped.get(row.todo_id);
+    if (!bucket) {
+      bucket = {
+        durations: [],
+        estimatedMinutes:
+          row.duration_minutes != null ? Number(row.duration_minutes) : null,
+      };
+      grouped.set(row.todo_id, bucket);
+    }
+    bucket.durations.push(
+      row.duration_seconds != null ? Number(row.duration_seconds) : null
+    );
+  }
+
+  const statsByTodoId: Record<string, TaskCompletionStats> = {};
+  for (const [todoId, { durations, estimatedMinutes }] of grouped.entries()) {
+    const summary = summarizeCompletionDurations(durations, estimatedMinutes);
+    statsByTodoId[todoId] = {
+      ...summary,
+      entries: [],
+    };
+  }
+  return statsByTodoId;
+}
+
+/**
  * Loads a task's completion history and timing statistics attributed to `callerUserId`.
  * Entries longer than 12 hours are kept in `entries` / `count` but excluded from
  * averages, medians, and `lastDurationSeconds`.
@@ -138,25 +234,10 @@ export async function getTodoCompletions(
     .all<TaskCompletionRow>();
 
   const rows = results || [];
-  const timedDurations = rows
-    .map((r) => (r.duration_seconds != null ? Number(r.duration_seconds) : null))
-    .filter((d): d is number => d !== null && d >= 0 && d <= MAX_STAT_DURATION_SECONDS);
-
-  let averageSeconds: number | null = null;
-  let medianSeconds: number | null = null;
-  if (timedDurations.length > 0) {
-    const sum = timedDurations.reduce((acc, val) => acc + val, 0);
-    averageSeconds = Math.round(sum / timedDurations.length);
-
-    const sorted = [...timedDurations].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    medianSeconds =
-      sorted.length % 2 === 1
-        ? sorted[mid]
-        : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
-  }
-
-  const lastDurationSeconds = timedDurations.length > 0 ? timedDurations[0] : null;
+  const summary = summarizeCompletionDurations(
+    rows.map((r) => r.duration_seconds),
+    todoRow.duration_minutes != null ? Number(todoRow.duration_minutes) : null
+  );
   const entries: TaskCompletionEntry[] = rows.slice(0, safeLimit).map((r) => ({
     id: r.id,
     todoId: r.todo_id,
@@ -173,13 +254,7 @@ export async function getTodoCompletions(
   }));
 
   return {
-    count: rows.length,
-    timedCount: timedDurations.length,
-    averageSeconds,
-    medianSeconds,
-    lastDurationSeconds,
-    estimatedMinutes:
-      todoRow.duration_minutes != null ? Number(todoRow.duration_minutes) : null,
+    ...summary,
     entries,
   };
 }

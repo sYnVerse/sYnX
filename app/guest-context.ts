@@ -15,6 +15,7 @@ export interface GuestActionPayload {
   parentId?: string;
   recurrence?: "none" | "daily" | "weekly" | "monthly";
   durationMinutes?: number | null;
+  startedAt?: number | null;
   completed?: boolean;
   subtaskAction?: "complete" | "promote";
 }
