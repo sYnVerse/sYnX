@@ -1,3 +1,4 @@
+import { href } from "react-router";
 import type { ListActionContext } from "./context";
 import { redirect } from "./context";
 import { categoryError, listNameError, normalizeOptionalCategory } from "~/write-limits";
@@ -51,7 +52,7 @@ export async function handleCreateList(ctx: ListActionContext) {
   } catch (e) {
     console.error("Failed to create list:", e);
   }
-  return redirect(`/${newListId}`);
+  return redirect(href("/:id", { id: newListId }));
 }
 
 export async function handleRenameList(ctx: ListActionContext) {
@@ -177,13 +178,13 @@ export async function handleDeleteList(ctx: ListActionContext) {
         .bind(userId)
         .first<{ id: string }>();
       if (firstList) {
-        return redirect(`/${firstList.id}`);
+        return redirect(href("/:id", { id: firstList.id }));
       } else {
-        return redirect("/");
+        return redirect(href("/"));
       }
     } catch (e) {
       console.error("Failed to find fallback list:", e);
-      return redirect("/");
+      return redirect(href("/"));
     }
   }
   return { success: true };

@@ -1,4 +1,4 @@
-import { data, redirect } from "react-router";
+import { data, href, redirect } from "react-router";
 import { getCloudflareContext } from "~/context.server";
 import { getAuthSettings } from "~/auth.server";
 import { getRequestWebAuth } from "~/auth-context.server";
@@ -142,11 +142,11 @@ export const loader = async ({ request, params, context }: { request: Request; p
       } catch (e) {
         console.error("Failed to create default list:", e);
       }
-      return redirect(`/${defaultListId}`);
+      return redirect(href("/:id", { id: defaultListId }));
     }
 
     if (!activeListExists && lists.length > 0) {
-      return redirect(`/${lists[0].id}`);
+      return redirect(href("/:id", { id: lists[0].id }));
     }
   } else {
     // Guest user (isLoggedIn === false): DO NOT touch D1 for personal guest lists!

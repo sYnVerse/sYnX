@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { Await } from "react-router";
+import { Await, href } from "react-router";
 import { ProfileAvatar } from "~/components/profile-avatar";
 import { WEB_VERSION } from "~/constants/changelog";
 import {
@@ -438,7 +438,7 @@ export function ProfileModal({
                 Sign in to configure Email, SMS, and Discord task notifications.
               </p>
               <a
-                href="/login"
+                href={href("/login")}
                 className="mt-1 inline-block text-xs font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-xl px-4 py-2 transition-all shadow-md active:scale-[0.98]"
               >
                 Sign In
@@ -481,7 +481,7 @@ export function ProfileModal({
           </button>
 
           {isLoggedIn ? (
-            <form action="/logout" method="post" className="w-full">
+            <form action={href("/logout")} method="post" className="w-full">
               <button
                 type="submit"
                 className="w-full flex items-center justify-between text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
@@ -497,7 +497,7 @@ export function ProfileModal({
             </form>
           ) : (
             <a
-              href="/login"
+              href={href("/login")}
               className="w-full flex items-center justify-between text-xs font-semibold text-themeAccentText hover:text-themeAccentText bg-themeAccentBg hover:bg-themeAccentBg/20 border border-themeAccentRing/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
             >
               <span className="flex items-center gap-2">

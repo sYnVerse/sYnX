@@ -1,6 +1,6 @@
 import type { Route } from "./+types/_index";
 import { useEffect } from "react";
-import { useLoaderData, useNavigate } from "react-router";
+import { href, useLoaderData, useNavigate } from "react-router";
 import { parseSafeRedirectTo } from "~/auth.server";
 import { getRequestWebAuth } from "~/auth-context.server";
 import { getCloudflareContext } from "~/context.server";
@@ -191,7 +191,7 @@ export default function Index() {
   useEffect(() => {
     if (activeListId) {
       // Softly sync client-side route without triggering a document navigation
-      navigate(`/${activeListId}`, { replace: true });
+      navigate(href("/:id", { id: activeListId }), { replace: true });
     }
   }, [navigate, activeListId]);
 
