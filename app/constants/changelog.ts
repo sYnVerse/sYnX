@@ -21,6 +21,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Smart Quick Add toggle in Profile Settings to enter task titles literally when turned off, quick-pick duration buttons (15m, 30m, 1h, Skip) in the toast after untimed check-offs, Undo on repeating task completions, and CSV export of your completion log.",
       },
       {
+        type: "IMPR",
+        text: "Activity log is now available for all of your lists, including private lists.",
+      },
+      {
         type: "FIX",
         text: "Checking off a repeating task now logs \"Completed a task\" instead of \"Marked a task incomplete\" in the shared-list activity log.",
       },

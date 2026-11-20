@@ -225,17 +225,13 @@ export const loader = async ({ request, params, context }: { request: Request; p
         })
       : Promise.resolve([]);
 
-  // Owner-only activity for the active shared list (private lists have no log).
-  // Deferred so secondary log lookups do not block the task list paint.
+  // Owner-only activity for the active list (deferred so secondary log lookups
+  // do not block the task list paint).
   const listActivity: Promise<ListActivityEntry[]> = (async () => {
     try {
       if (isLoggedIn && activeListId) {
         const activeMeta = lists.find((l) => l.id === activeListId);
-        if (
-          activeMeta &&
-          activeMeta.owner_id === userId &&
-          (activeMeta.share_mode || "private") !== "private"
-        ) {
+        if (activeMeta && activeMeta.owner_id === userId) {
           const activity = await listActivityForOwner(db, activeListId, userId, { limit: 50 });
           if (activity.kind === "ok") return activity.entries;
         }

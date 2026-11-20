@@ -404,7 +404,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     [isOwner, pendingDeleteRequests]
   );
 
-  const canViewActivity = isOwner && shareMode !== "private";
+  const canViewActivity = isOwner;
   const [showActivity, setShowActivity] = useState(false);
   const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -1000,7 +1000,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
           >
             <Text style={[styles.activityTitle, { color: theme.textPrimary }]}>Activity</Text>
             <Text style={[styles.activitySubtitle, { color: theme.textMuted }]}>
-              Who changed this shared list, and from which IP. Only you can see this.
+              Recent changes to this list (last 90 days). Only you can see this.
             </Text>
             {activityLoading && activityEntries.length === 0 ? (
               <ActivityIndicator color={theme.accent} style={{ marginVertical: 24 }} />
@@ -1017,7 +1017,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
               <ScrollView style={styles.activityScroll} contentContainerStyle={{ paddingBottom: 16 }}>
                 {activityEntries.length === 0 ? (
                   <Text style={[styles.activityEmpty, { color: theme.textMuted }]}>
-                    No activity yet on this shared list.
+                    No activity yet on this list.
                   </Text>
                 ) : (
                   activityEntries.map((entry) => (

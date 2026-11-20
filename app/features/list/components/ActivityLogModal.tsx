@@ -35,7 +35,7 @@ export function ActivityLogModal({
           <div>
             <h3 className="text-lg font-extrabold text-slate-100 font-display">Activity</h3>
             <p className="text-[11px] text-slate-400">
-              Who changed this shared list, and from which IP. Only you can see this.
+              Recent changes to this list (last 90 days). Only you can see this.
             </p>
           </div>
           <button
@@ -129,7 +129,7 @@ function ActivityLogContent({
       <div className="max-h-[60vh] overflow-y-auto pr-1 space-y-3 custom-scrollbar mb-4">
         {entries.length === 0 ? (
           <p className="text-xs text-slate-500 py-6 text-center">
-            No activity yet on this shared list.
+            No activity yet on this list.
           </p>
         ) : (
           entries.map((entry) => (

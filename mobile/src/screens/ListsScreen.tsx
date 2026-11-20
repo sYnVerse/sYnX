@@ -663,21 +663,19 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
                     <Text style={[styles.sheetActionItemText, { color: theme.textPrimary }]}>Edit list details</Text>
                   </TouchableOpacity>
 
-                  {(actionSheetList.shareMode || "private") !== "private" && (
-                    <TouchableOpacity
-                      style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
-                      onPress={() => {
-                        const target = actionSheetList;
-                        setActionSheetList(null);
-                        openActivity(target);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Activity for ${actionSheetList.name}`}
-                    >
-                      <History size={18} color={theme.accent} />
-                      <Text style={[styles.sheetActionItemText, { color: theme.textPrimary }]}>View shared activity</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                    onPress={() => {
+                      const target = actionSheetList;
+                      setActionSheetList(null);
+                      openActivity(target);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Activity for ${actionSheetList.name}`}
+                  >
+                    <History size={18} color={theme.accent} />
+                    <Text style={[styles.sheetActionItemText, { color: theme.textPrimary }]}>View activity</Text>
+                  </TouchableOpacity>
 
                   {ownedLists.length > 1 && (
                     <TouchableOpacity
@@ -910,7 +908,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
             <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Activity</Text>
             <Text style={[styles.label, { color: theme.textMuted }]}>{activityList.name}</Text>
             <Text style={[styles.hintText, { color: theme.textMuted, marginBottom: 8 }]}>
-              Who changed this shared list, and from which IP. Only you can see this.
+              Recent changes to this list (last 90 days). Only you can see this.
             </Text>
             {activityLoading && activityEntries.length === 0 ? (
               <ActivityIndicator color={theme.accent} style={{ marginVertical: 24 }} />
@@ -927,7 +925,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
               <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ paddingBottom: 8 }}>
                 {activityEntries.length === 0 ? (
                   <Text style={[styles.hintText, { color: theme.textMuted, textAlign: "center", paddingVertical: 24 }]}>
-                    No activity yet on this shared list.
+                    No activity yet on this list.
                   </Text>
                 ) : (
                   activityEntries.map((entry) => (

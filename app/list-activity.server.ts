@@ -61,8 +61,9 @@ export function guestActorShortId(actorId: string): string {
 }
 
 /**
- * Best-effort activity log for non-private lists. Never throws; never blocks
- * the caller's success path (callers may still await it after the mutation).
+ * Best-effort activity log for all signed-in lists. Private lists omit client IP
+ * and user-agent metadata. Never throws; never blocks the caller's success path
+ * (callers may still await it after the mutation).
  */
 export async function logListActivity(
   db: D1Database,
@@ -78,11 +79,13 @@ export async function logListActivity(
       if (!row) return;
       shareMode = row.share_mode || "private";
     }
-    if (!shareMode || shareMode === "private") return;
+    const isPrivateList = !shareMode || shareMode === "private";
 
-    const meta = input.request
-      ? clientMetaFromRequest(input.request)
-      : { clientIp: input.clientIp ?? null, userAgent: input.userAgent ?? null };
+    const meta = isPrivateList
+      ? { clientIp: null, userAgent: null }
+      : input.request
+        ? clientMetaFromRequest(input.request)
+        : { clientIp: input.clientIp ?? null, userAgent: input.userAgent ?? null };
 
     await db
       .prepare(
