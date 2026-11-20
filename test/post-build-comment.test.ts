@@ -1,5 +1,40 @@
+import crypto from "node:crypto";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { body, main, parseUpdateRuntimeVersion } from "../mobile/scripts/post-build-comment.js";
+import {
+  body,
+  main,
+  parseUpdateRuntimeVersion,
+  normalizePrivateKey,
+  createAppJwt,
+  getInstallationToken,
+} from "../mobile/scripts/post-build-comment.js";
+
+function derToPem(der: ArrayBuffer, label: "PRIVATE KEY" | "PUBLIC KEY"): string {
+  const b64 = Buffer.from(der).toString("base64");
+  const lines = b64.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN ${label}-----\n${lines.join("\n")}\n-----END ${label}-----`;
+}
+
+async function generateEphemeralRsaPemPair(): Promise<{ privateKey: string; publicKey: string }> {
+  const pair = await crypto.subtle.generateKey(
+    {
+      name: "RSASSA-PKCS1-v1_5",
+      modulusLength: 2048,
+      publicExponent: new Uint8Array([1, 0, 1]),
+      hash: "SHA-256",
+    },
+    true,
+    ["sign", "verify"]
+  );
+  const [pkcs8, spki] = await Promise.all([
+    crypto.subtle.exportKey("pkcs8", pair.privateKey),
+    crypto.subtle.exportKey("spki", pair.publicKey),
+  ]);
+  return {
+    privateKey: derToPem(pkcs8, "PRIVATE KEY"),
+    publicKey: derToPem(spki, "PUBLIC KEY"),
+  };
+}
 
 describe("post-build-comment script", () => {
   beforeEach(() => {
@@ -161,6 +196,172 @@ describe("post-build-comment script", () => {
       ).rejects.toThrow(/OTA update runtime mismatch/);
 
       fetchSpy.mockRestore();
+    });
+  });
+
+  describe("GitHub App JWT & installation token authentication (#189)", () => {
+    it("normalizes escaped \\n sequences in PEM private keys", () => {
+      const normalized = normalizePrivateKey("line1\\nline2\\nline3  ");
+      expect(normalized).toBe("line1\nline2\nline3");
+    });
+
+    it("signs a valid RS256 JWT with issuer, iat, and exp claims", async () => {
+      const { privateKey, publicKey } = await generateEphemeralRsaPemPair();
+      const escapedPem = privateKey.replace(/\n/g, "\\n");
+      const nowSec = 1_700_000_000;
+
+      const jwt = createAppJwt("123456", escapedPem, nowSec);
+      const parts = jwt.split(".");
+      expect(parts).toHaveLength(3);
+
+      const header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+      const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+      expect(header).toEqual({ alg: "RS256", typ: "JWT" });
+      expect(payload).toEqual({
+        iss: "123456",
+        iat: nowSec - 60,
+        exp: nowSec + 9 * 60,
+      });
+
+      const verifier = crypto.createVerify("RSA-SHA256");
+      verifier.update(`${parts[0]}.${parts[1]}`);
+      verifier.end();
+      expect(verifier.verify(publicKey, Buffer.from(parts[2], "base64url"))).toBe(true);
+    });
+
+    it("resolves installation dynamically and exchanges JWT for an installation token", async () => {
+      const { privateKey } = await generateEphemeralRsaPemPair();
+      const calls: { url: string; method?: string; auth?: string }[] = [];
+
+      const mockFetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const headers = init?.headers as Record<string, string> | undefined;
+        calls.push({ url, method: init?.method, auth: headers?.Authorization });
+
+        if (url === "https://api.github.com/repos/sYnVerse/sYnX/installation") {
+          return new Response(JSON.stringify({ id: 987654 }), { status: 200 });
+        }
+        if (url === "https://api.github.com/app/installations/987654/access_tokens") {
+          return new Response(JSON.stringify({ token: "ghs_app_install_tok" }), { status: 201 });
+        }
+        throw new Error(`Unexpected fetch URL: ${url}`);
+      }) as unknown as typeof fetch;
+
+      const result = await getInstallationToken(
+        {
+          SYNX_GITHUB_APP_ID: "555111",
+          SYNX_GITHUB_APP_PRIVATE_KEY: privateKey,
+        },
+        mockFetch
+      );
+
+      expect(result).toEqual({ token: "ghs_app_install_tok", source: "github-app" });
+      expect(calls).toHaveLength(2);
+      expect(calls[0].method).toBe("GET");
+      expect(calls[0].auth).toMatch(/^Bearer eyJ/);
+      expect(calls[1].method).toBe("POST");
+      expect(calls[1].auth).toBe(calls[0].auth);
+    });
+
+    it("uses static SYNX_GITHUB_APP_INSTALLATION_ID without calling /installation", async () => {
+      const { privateKey } = await generateEphemeralRsaPemPair();
+      const urls: string[] = [];
+
+      const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        urls.push(url);
+        return new Response(JSON.stringify({ token: "ghs_static_tok" }), { status: 201 });
+      }) as unknown as typeof fetch;
+
+      const result = await getInstallationToken(
+        {
+          GITHUB_APP_ID: "555111",
+          GITHUB_APP_PRIVATE_KEY: privateKey,
+          SYNX_GITHUB_APP_INSTALLATION_ID: "424242",
+        },
+        mockFetch
+      );
+
+      expect(result).toEqual({ token: "ghs_static_tok", source: "github-app" });
+      expect(urls).toEqual(["https://api.github.com/app/installations/424242/access_tokens"]);
+    });
+
+    it("falls back to SYNX_GITHUB_COMMENT_TOKEN when App ID or key is absent", async () => {
+      const mockFetch = vi.fn() as unknown as typeof fetch;
+      const result = await getInstallationToken(
+        {
+          SYNX_GITHUB_APP_ID: "555111",
+          SYNX_GITHUB_COMMENT_TOKEN: "github_pat_fallback",
+        },
+        mockFetch
+      );
+
+      expect(result).toEqual({ token: "github_pat_fallback", source: "pat" });
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("uses the exchanged installation token when posting PR comments in main()", async () => {
+      const { privateKey } = await generateEphemeralRsaPemPair();
+      const requestLog: { url: string; auth?: string }[] = [];
+
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+        const url = String(input);
+        const headers = init?.headers as Record<string, string> | undefined;
+        requestLog.push({ url, auth: headers?.Authorization });
+
+        if (url === "https://api.github.com/app/installations/777/access_tokens") {
+          return new Response(JSON.stringify({ token: "ghs_exchanged_token" }), { status: 201 });
+        }
+        if (url === "https://api.github.com/repos/sYnVerse/sYnX/commits/deadbeef1234/pulls") {
+          return new Response(JSON.stringify([{ number: 99, merged_at: "2026-11-20T00:00:00Z" }]), {
+            status: 200,
+          });
+        }
+        if (url === "https://api.github.com/repos/sYnVerse/sYnX/issues/99/comments") {
+          return new Response(
+            JSON.stringify({ html_url: "https://github.com/sYnVerse/sYnX/pull/99#issuecomment-1" }),
+            { status: 201 }
+          );
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+      });
+
+      await main({
+        SYNX_GITHUB_APP_ID: "12345",
+        SYNX_GITHUB_APP_PRIVATE_KEY: privateKey,
+        SYNX_GITHUB_APP_INSTALLATION_ID: "777",
+        SYNX_GITHUB_COMMENT_TOKEN: "pat-should-not-be-used",
+        COMMIT_SHA: "deadbeef1234",
+        UPDATE_ID: "grp-1",
+        UPDATES_JSON: JSON.stringify([{ runtimeVersion: "fp-1" }]),
+        FINGERPRINT_HASH: "fp-1",
+      });
+
+      expect(requestLog.map((r) => r.url)).toEqual([
+        "https://api.github.com/app/installations/777/access_tokens",
+        "https://api.github.com/repos/sYnVerse/sYnX/commits/deadbeef1234/pulls",
+        "https://api.github.com/repos/sYnVerse/sYnX/issues/99/comments",
+      ]);
+      expect(requestLog[0].auth).toMatch(/^Bearer eyJ/);
+      expect(requestLog[1].auth).toBe("Bearer ghs_exchanged_token");
+      expect(requestLog[2].auth).toBe("Bearer ghs_exchanged_token");
+      fetchSpy.mockRestore();
+    });
+
+    it("throws when GitHub App installation token exchange returns an HTTP error", async () => {
+      const { privateKey } = await generateEphemeralRsaPemPair();
+      const mockFetch = vi.fn(async () => new Response("Unauthorized", { status: 401 })) as unknown as typeof fetch;
+
+      await expect(
+        getInstallationToken(
+          {
+            SYNX_GITHUB_APP_ID: "12345",
+            SYNX_GITHUB_APP_PRIVATE_KEY: privateKey,
+            SYNX_GITHUB_APP_INSTALLATION_ID: "777",
+          },
+          mockFetch
+        )
+      ).rejects.toThrow(/401 Unauthorized/);
     });
   });
 });
