@@ -17,12 +17,13 @@ appId: io.christran.synx
     timeout: 30000
 - tapOn: "Got it!"
 
-# Notification soft-ask appears shortly after What's New on Android API 34 when
-# POST_NOTIFICATIONS has not been granted yet. Dismiss both soft-asks if shown.
-- extendedWaitUntil:
-    visible: "Not now"
-    timeout: 10000
-- tapOn: "Not now"
+# Dismiss notification/calendar soft-asks if the emulator triggers them after
+# What's New settles; skip immediately when permission state doesn't prompt.
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    text: "Not now"
+    optional: true
 - tapOn:
     text: "Not now"
     optional: true
@@ -57,7 +58,7 @@ appId: io.christran.synx
 - tapOn: "What needs to be done?"
 - inputText: "Maestro Smoke Task"
 - hideKeyboard
-- tapOn: "Save Task"
+- tapOn: "Create task"
 
 - extendedWaitUntil:
     visible: "Maestro Smoke Task"
