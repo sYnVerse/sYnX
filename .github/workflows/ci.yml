@@ -70,6 +70,7 @@ jobs:
               - 'e2e/**'
               - 'public/**'
               - 'shared/**'
+              - 'scripts/verify-react-compiler-bundle.mjs'
               - 'migrations/**'
               - 'server.ts'
               - 'load-context.ts'
@@ -113,6 +114,8 @@ jobs:
         working-directory: mobile
       - name: Lint
         run: npm run lint
+      - name: Verify React Compiler transform
+        run: node scripts/verify-react-compiler-bundle.mjs --transform-only
       - name: Tests
         run: npm test -- --run --maxWorkers=2
       - name: Web typecheck
@@ -138,6 +141,8 @@ jobs:
         run: npx wrangler d1 migrations apply synx-db --local
       - name: Build web
         run: npm run build
+      - name: Verify React Compiler bundle
+        run: node scripts/verify-react-compiler-bundle.mjs
       - name: Run E2E tests
         run: npm run test:e2e
       - name: Upload test results

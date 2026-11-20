@@ -16,7 +16,7 @@ export default defineConfig({
         presets: [
           ["@babel/preset-typescript", { isTSX: true, allExtensions: true }],
         ],
-        plugins: [["babel-plugin-react-compiler", { target: "19" }]],
+        plugins: ["babel-plugin-react-compiler"],
       },
     }),
     reactRouter(),

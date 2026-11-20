@@ -65,7 +65,7 @@
   "scripts": {
     "build": "react-router build",
     "cf-typegen": "wrangler types",
-    "check": "react-router typegen && tsc && react-router build && wrangler deploy --dry-run",
+    "check": "react-router typegen && tsc && react-router build && node scripts/verify-react-compiler-bundle.mjs && wrangler deploy --dry-run",
     "deploy": "npm run build && wrangler d1 migrations apply synx-db --remote && wrangler deploy",
     "deploy:preview": "npm run build && wrangler d1 migrations apply PREVIEW_DB --remote --config wrangler.preview-migrations.jsonc && wrangler preview",
     "dev": "react-router dev",
