@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useContext } from "react";
 import { useFetcher } from "react-router";
-import type { Todo } from "~/to-do-manager";
+import type { CompletionSummary, Todo } from "~/to-do-manager";
 import { GUEST_REMINDER_HINT, GuestContext } from "~/guest-context";
 import {
   applySetCompletedLocal,
@@ -20,9 +20,15 @@ interface CalendarViewProps {
   activeListId: string;
   canEdit?: boolean;
   onNotify?: (message: string) => void;
+  onTaskCompleted?: (payload: {
+    todo: Todo;
+    rescheduled: boolean;
+    completion?: CompletionSummary | null;
+  }) => void;
   completionStatsByTodoId?: Record<string, TaskCompletionStats>;
   timerNow?: number;
   onTimerTick?: (now: number) => void;
+  smartQuickAddEnabled?: boolean;
 }
 
 export function CalendarView({
@@ -30,11 +36,19 @@ export function CalendarView({
   activeListId,
   canEdit = true,
   onNotify,
+  onTaskCompleted,
   completionStatsByTodoId,
   timerNow = 0,
   onTimerTick,
+  smartQuickAddEnabled = true,
 }: CalendarViewProps) {
-  const fetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
+  const fetcher = useFetcher<{
+    success?: boolean;
+    todo?: Todo;
+    rescheduled?: boolean;
+    completion?: CompletionSummary | null;
+    error?: string;
+  }>();
   const timerFetcher = useFetcher<{ success?: boolean; todo?: Todo; error?: string }>();
   // Guests' own lists live in localStorage, so their changes go through
   // onGuestAction as well as the server (which ignores them). Guests on
@@ -114,15 +128,28 @@ export function CalendarView({
       onNotify?.(data.error);
       return;
     }
-    if (data.rescheduled && data.todo?.reminderAt) {
-      const key = `${data.todo.id}:${data.todo.reminderAt}`;
+    if (data.todo && (data.rescheduled || data.todo.completed)) {
+      const key = data.completion?.id
+        ? `c:${data.completion.id}`
+        : `${data.todo.id}:${data.todo.reminderAt ?? ""}:${data.todo.completed}:${Boolean(data.rescheduled)}`;
       if (lastRescheduleToastKey.current === key) return;
       lastRescheduleToastKey.current = key;
-      setFlashCompleteId(data.todo.id);
-      window.setTimeout(() => setFlashCompleteId(null), 450);
-      onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+      if (data.rescheduled && data.todo.reminderAt) {
+        const flashId = data.todo.id;
+        window.setTimeout(() => setFlashCompleteId(flashId), 0);
+        window.setTimeout(() => setFlashCompleteId(null), 450);
+      }
+      if (onTaskCompleted) {
+        onTaskCompleted({
+          todo: data.todo,
+          rescheduled: Boolean(data.rescheduled),
+          completion: data.completion ?? null,
+        });
+      } else if (data.rescheduled && data.todo.reminderAt) {
+        onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+      }
     }
-  }, [fetcher.state, fetcher.data, onNotify]);
+  }, [fetcher.state, fetcher.data, onNotify, onTaskCompleted]);
 
   // Month navigation helpers
   const handlePrevMonth = () => {
@@ -677,6 +704,7 @@ export function CalendarView({
         <QuickAddTaskModal
           date={quickAddDate}
           activeListId={activeListId}
+          smartQuickAddEnabled={smartQuickAddEnabled}
           onClose={() => setQuickAddDate(null)}
         />
       )}

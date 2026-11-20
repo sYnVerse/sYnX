@@ -17,6 +17,7 @@ describe("list action dispatch maps", () => {
     "removeSharedList",
     "approveDeleteRequest",
     "declineDeleteRequest",
+    "setCompletionDuration",
   ];
 
   const expectedListIntents = [
@@ -25,6 +26,7 @@ describe("list action dispatch maps", () => {
     "setCompleted",
     "start",
     "cancelStart",
+    "undoRepeat",
     "delete",
     "clearCompleted",
     "updatePriority",

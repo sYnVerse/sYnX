@@ -59,3 +59,85 @@ export function applyStartTodoLocal<
     startedBy: startedBy ?? todo.startedBy ?? undefined,
   };
 }
+
+/** Quick-pick duration options (in minutes) offered after an untimed check-off. */
+export const QUICK_PICK_DURATION_MINUTES = [15, 30, 60] as const;
+
+export interface CompletionExportRow {
+  id: string;
+  todoId: string;
+  listId: string;
+  listName: string | null;
+  taskText: string;
+  startedAt: number | null;
+  completedAt: number;
+  durationSeconds: number | null;
+  estimatedMinutes: number | null;
+  timeZone: string | null;
+  source: string;
+}
+
+const COMPLETIONS_CSV_HEADER =
+  "id,todo_id,list_id,list_name,task_text,started_at,completed_at,duration_seconds,estimated_minutes,time_zone,source";
+
+function neutralizeCsvFormula(value: string): string {
+  if (value.length === 0) return value;
+  const first = value[0];
+  const trimmedFirst = value.trimStart()[0];
+  if (
+    first === "=" ||
+    first === "+" ||
+    first === "-" ||
+    first === "@" ||
+    first === "\t" ||
+    first === "\r" ||
+    trimmedFirst === "=" ||
+    trimmedFirst === "+" ||
+    trimmedFirst === "-" ||
+    trimmedFirst === "@"
+  ) {
+    return `'${value}`;
+  }
+  return value;
+}
+
+function escapeCsvCell(raw: string): string {
+  if (raw.includes(",") || raw.includes('"') || raw.includes("\n") || raw.includes("\r")) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function formatCsvIso(ts: number | null | undefined): string {
+  if (typeof ts !== "number" || !Number.isFinite(ts)) return "";
+  return new Date(ts).toISOString();
+}
+
+/**
+ * Formats completion log rows into an RFC-4180 CSV string with spreadsheet
+ * formula-injection neutralization on text fields and CRLF line endings.
+ */
+export function formatCompletionsCsv(rows: ReadonlyArray<CompletionExportRow>): string {
+  const lines: string[] = [COMPLETIONS_CSV_HEADER];
+  for (const row of rows) {
+    const cells = [
+      escapeCsvCell(row.id),
+      escapeCsvCell(row.todoId),
+      escapeCsvCell(row.listId),
+      escapeCsvCell(neutralizeCsvFormula(row.listName ?? "")),
+      escapeCsvCell(neutralizeCsvFormula(row.taskText)),
+      escapeCsvCell(formatCsvIso(row.startedAt)),
+      escapeCsvCell(formatCsvIso(row.completedAt)),
+      row.durationSeconds != null && Number.isFinite(row.durationSeconds)
+        ? String(row.durationSeconds)
+        : "",
+      row.estimatedMinutes != null && Number.isFinite(row.estimatedMinutes)
+        ? String(row.estimatedMinutes)
+        : "",
+      escapeCsvCell(row.timeZone ?? ""),
+      escapeCsvCell(row.source),
+    ];
+    lines.push(cells.join(","));
+  }
+  return `${lines.join("\r\n")}\r\n`;
+}

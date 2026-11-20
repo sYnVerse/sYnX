@@ -6,7 +6,9 @@ import { getProfileLabel } from "~/profile-label";
 import { WEB_VERSION } from "~/constants/changelog";
 import {
   DEFAULT_TASK_SORT_MODE,
+  QUICK_PICK_DURATION_MINUTES,
   describeDeleteTarget,
+  formatRescheduledToast,
   getCategoryTagEmoji,
   isPresetCategory,
   getLocalTimeZone,
@@ -16,6 +18,7 @@ import {
   type PendingDeleteRequest,
 } from "../../../shared";
 import { MAX_LIST_NAME_LENGTH } from "~/write-limits";
+import type { CompletionSummary, Todo } from "~/to-do-manager";
 
 import type { loader as listLoader } from "./loader.server";
 import { useFetcherToast } from "./hooks/useFetcherToast";
@@ -28,7 +31,14 @@ import { useWebMcpTools } from "./hooks/useWebMcpTools";
 import { useSubtaskCompletionPrompt } from "./hooks/useSubtaskCompletionPrompt";
 
 import { CalendarView } from "~/components/calendar-view";
-import { CompletedSectionToggle, Confetti, EmptyState, ProgressRing, Toast } from "./components/ui-bits";
+import {
+  CompletedSectionToggle,
+  Confetti,
+  EmptyState,
+  ProgressRing,
+  Toast,
+  type WebToastAction,
+} from "./components/ui-bits";
 import { TodoItem } from "./components/TodoItem";
 import { Sidebar } from "./components/Sidebar";
 import { CreateTaskForm } from "./components/CreateTaskForm";
@@ -89,6 +99,11 @@ export default function TodoPage({
   const settingsFetcher = useFetcher();
   const suggestionFetcher = useFetcher();
   const timeZoneFetcher = useFetcher();
+  const completionActionFetcher = useFetcher<{
+    success?: boolean;
+    todo?: Todo;
+    error?: string;
+  }>();
   const initTimeZoneSent = useRef(false);
 
   // Fill in the home time zone (used by repeating reminders) once from this
@@ -138,7 +153,11 @@ export default function TodoPage({
   const [reminderDateTime, setReminderDateTime] = useState<string>("");
   const [showReminderPanel, setShowReminderPanel] = useState<boolean>(false);
 
-  const [toast, setToast] = useState({ message: "", visible: false });
+  const [toast, setToast] = useState<{
+    message: string;
+    visible: boolean;
+    actions?: WebToastAction[];
+  }>({ message: "", visible: false });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
@@ -198,15 +217,31 @@ export default function TodoPage({
   }, [showSharePopover]);
 
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = useCallback((message: string) => {
-    setToast({ message, visible: true });
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    const duration = message.startsWith("Couldn't save") ? 4000 : 2200;
-    toastTimerRef.current = setTimeout(
-      () => setToast((t) => ({ ...t, visible: false })),
-      duration
-    );
+  const dismissToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToast((t) => ({ ...t, visible: false }));
   }, []);
+
+  const showToast = useCallback(
+    (
+      message: string,
+      options?: { actions?: WebToastAction[]; durationMs?: number }
+    ) => {
+      setToast({ message, visible: true, actions: options?.actions });
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      const duration =
+        options?.durationMs ??
+        (message.startsWith("Couldn't save") ? 4000 : 2200);
+      toastTimerRef.current = setTimeout(
+        () => setToast((t) => ({ ...t, visible: false })),
+        duration
+      );
+    },
+    []
+  );
 
   const {
     emailEnabled,
@@ -235,6 +270,8 @@ export default function TodoPage({
     resetSettings,
     handleSaveSettings,
     requestCloseProfile,
+    smartQuickAddEnabled,
+    setSmartQuickAddEnabled,
   } = useProfileSettings({
     settings,
     providerProfile,
@@ -371,6 +408,83 @@ export default function TodoPage({
   useBrowserReminders({ lists, userId });
   useWebMcpTools({ activeListId, todos, createFetcher });
 
+  const submitCompletionAction = completionActionFetcher.submit;
+  const handleTaskCompletedFeedback = useCallback(
+    ({
+      todo,
+      rescheduled,
+      completion,
+    }: {
+      todo: Todo;
+      rescheduled: boolean;
+      completion?: CompletionSummary | null;
+    }) => {
+      const actions: WebToastAction[] = [];
+      const needsQuickPick = Boolean(
+        isLoggedIn && completion && completion.durationSeconds === null
+      );
+      if (needsQuickPick && completion) {
+        for (const mins of QUICK_PICK_DURATION_MINUTES) {
+          const label = mins === 60 ? "1h" : `${mins}m`;
+          actions.push({
+            label,
+            testId: `toast-duration-${mins}`,
+            variant: "primary",
+            onClick: () => {
+              submitCompletionAction(
+                {
+                  intent: "setCompletionDuration",
+                  completionId: completion.id,
+                  durationMinutes: String(mins),
+                },
+                { method: "post" }
+              );
+              showToast(`✓ Logged ${label}`);
+            },
+          });
+        }
+        actions.push({
+          label: "Skip",
+          testId: "toast-duration-skip",
+          variant: "ghost",
+          onClick: () => dismissToast(),
+        });
+      }
+      if (rescheduled && isLoggedIn && completion) {
+        actions.push({
+          label: "Undo",
+          testId: "toast-undo-repeat",
+          variant: "ghost",
+          onClick: () => {
+            submitCompletionAction(
+              {
+                intent: "undoRepeat",
+                id: todo.id,
+                completionId: completion.id,
+              },
+              { method: "post" }
+            );
+            showToast("↩ Undid completion");
+          },
+        });
+      }
+
+      if (rescheduled && todo.reminderAt) {
+        const baseMsg = formatRescheduledToast(todo.reminderAt);
+        const message = needsQuickPick
+          ? `${baseMsg} · How long did it take?`
+          : baseMsg;
+        showToast(
+          message,
+          actions.length > 0 ? { actions, durationMs: 6500 } : undefined
+        );
+      } else if (needsQuickPick) {
+        showToast("How long did it take?", { actions, durationMs: 6500 });
+      }
+    },
+    [isLoggedIn, submitCompletionAction, showToast, dismissToast]
+  );
+
   const {
     optimisticTodos: listTodosWithSubtaskAction,
     promptState: subtaskPromptState,
@@ -383,6 +497,7 @@ export default function TodoPage({
     isLoggedIn,
     handleGuestAction,
     onNotify: showToast,
+    onTaskCompleted: handleTaskCompletedFeedback,
   });
 
   // Visible todos and counts
@@ -423,6 +538,7 @@ export default function TodoPage({
   useFetcherToast(createFetcher, showToast);
   useFetcherToast(clearFetcher, showToast, { surfacePendingApproval: true });
   useFetcherToast(listFetcher, showToast, { surfacePendingApproval: true });
+  useFetcherToast(completionActionFetcher, showToast);
 
   const handleExportData = () => {
     const dataStr =
@@ -434,6 +550,30 @@ export default function TodoPage({
     downloadAnchor.click();
     downloadAnchor.remove();
     showToast("✓ Exported all list data!");
+  };
+
+  const handleExportCompletionsCsv = async () => {
+    try {
+      const response = await fetch("/api/v1/completions/export");
+      if (!response.ok) {
+        showToast("Couldn't export completions");
+        return;
+      }
+      const csvText = await response.text();
+      const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
+      const blobUrl = URL.createObjectURL(blob);
+      const downloadAnchor = document.createElement("a");
+      downloadAnchor.setAttribute("href", blobUrl);
+      downloadAnchor.setAttribute("download", `synx_completions_${userId}.csv`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      URL.revokeObjectURL(blobUrl);
+      showToast("✓ Exported completion log (CSV)!");
+    } catch (err) {
+      console.error("Failed to export completion CSV:", err);
+      showToast("Couldn't export completions");
+    }
   };
 
   const handleTitleSubmit = () => {
@@ -774,6 +914,7 @@ export default function TodoPage({
             showReminderPanel={showReminderPanel}
             setShowReminderPanel={setShowReminderPanel}
             canSetReminders={canSetReminders}
+            smartQuickAddEnabled={smartQuickAddEnabled}
             handleGuestAction={handleGuestAction}
             showToast={showToast}
           />
@@ -817,9 +958,11 @@ export default function TodoPage({
                 activeListId={activeListId || ""}
                 canEdit={canEdit}
                 onNotify={showToast}
+                onTaskCompleted={handleTaskCompletedFeedback}
                 completionStatsByTodoId={completionStatsByTodoId}
                 timerNow={timerNow}
                 onTimerTick={setTimerNow}
+                smartQuickAddEnabled={smartQuickAddEnabled}
               />
             ) : visibleParents.length === 0 && totalCount === 0 ? (
               <div className="flex-1 overflow-y-auto scrollbar-thin flex flex-col justify-center">
@@ -839,6 +982,7 @@ export default function TodoPage({
                     canEdit={canEdit}
                     onNotify={showToast}
                     onBeforeSetCompleted={maybePromptForCompletion}
+                    onTaskCompleted={handleTaskCompletedFeedback}
                     completionStatsByTodoId={completionStatsByTodoId}
                     timerNow={timerNow}
                     onTimerTick={setTimerNow}
@@ -866,6 +1010,7 @@ export default function TodoPage({
                       canEdit={canEdit}
                       onNotify={showToast}
                       onBeforeSetCompleted={maybePromptForCompletion}
+                      onTaskCompleted={handleTaskCompletedFeedback}
                       completionStatsByTodoId={completionStatsByTodoId}
                       timerNow={timerNow}
                       onTimerTick={setTimerNow}
@@ -951,6 +1096,9 @@ export default function TodoPage({
           setIsProfileOpen={setIsProfileOpen}
           setIsChangelogOpenedManually={setIsChangelogOpenedManually}
           handleExportData={handleExportData}
+          handleExportCompletionsCsv={handleExportCompletionsCsv}
+          smartQuickAddEnabled={smartQuickAddEnabled}
+          setSmartQuickAddEnabled={setSmartQuickAddEnabled}
         />
 
         {/* ── Owner Activity Log Modal ──────────────────────── */}
@@ -1053,7 +1201,7 @@ export default function TodoPage({
         )}
 
         {/* Toast Notification */}
-        <Toast message={toast.message} visible={toast.visible} />
+        <Toast message={toast.message} visible={toast.visible} actions={toast.actions} />
       </div>
     </GuestContext.Provider>
   );

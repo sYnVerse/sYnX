@@ -78,23 +78,12 @@ export function computeWebQuickAddState(input: ComputeWebQuickAddInput): WebQuic
     canSetReminders = true,
   } = input;
 
-  if (!smartEnabled) {
-    return {
-      effectiveTitle: text.trim(),
-      effectivePriority: manualPriority ?? defaultPriority,
-      effectiveRecurrence: "none",
-      effectiveDurationMinutes:
-        manualDuration !== undefined ? manualDuration : defaultDurationMinutes,
-      parsedReminderAt: null,
-      chips: [],
-    };
-  }
-
   const parsed = parseQuickAdd(text, {
     now,
     baseDay,
     timeZone: timeZone ?? getLocalTimeZone(),
     dismissed,
+    features: { enabled: smartEnabled },
   });
 
   const effectivePriority = manualPriority ?? parsed.priority ?? defaultPriority;

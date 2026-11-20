@@ -29,6 +29,7 @@ interface CreateTaskFormProps {
   showReminderPanel: boolean;
   setShowReminderPanel: (show: boolean | ((prev: boolean) => boolean)) => void;
   canSetReminders: boolean;
+  smartQuickAddEnabled?: boolean;
   handleGuestAction: (intent: string, payload?: GuestActionPayload) => void;
   showToast: (msg: string) => void;
 }
@@ -56,6 +57,7 @@ export function CreateTaskForm({
   showReminderPanel,
   setShowReminderPanel,
   canSetReminders,
+  smartQuickAddEnabled = true,
   handleGuestAction,
   showToast,
 }: CreateTaskFormProps) {
@@ -96,6 +98,7 @@ export function CreateTaskForm({
     chips,
   } = computeWebQuickAddState({
     text: rawText,
+    smartEnabled: smartQuickAddEnabled,
     now,
     dismissed: dismissedTokens,
     manualPriority: manualPrioritySet ? newPriority : null,
