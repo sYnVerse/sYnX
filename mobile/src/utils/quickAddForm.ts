@@ -80,35 +80,12 @@ export function computeQuickAddFormState(input: ComputeQuickAddFormInput): Quick
   const baseDurationText = initialDurationMinutes != null ? String(initialDurationMinutes) : "";
   const baseReminderSelection = initialReminderSelection(initialReminderAt);
 
-  if (isEditing || !smartEnabled) {
-    const effectiveReminderSelection = manualReminder ?? baseReminderSelection;
-    const reminderTouchedEffective = manualReminder !== null;
-    return {
-      effectiveTitle: text.trim(),
-      effectivePriority: manualPriority ?? initialPriority,
-      effectiveRecurrence: manualRecurrence ?? initialRecurrence,
-      effectiveDurationText: manualDurationText !== null ? manualDurationText : baseDurationText,
-      effectiveReminderSelection,
-      hasParsedReminder: false,
-      reminderTouchedEffective,
-      chips: [],
-      resolveEffectiveReminderAt: (at: number) =>
-        reminderTouchedEffective
-          ? resolveReminderAt({
-              selection: effectiveReminderSelection,
-              isEditing,
-              existingReminderAt: initialReminderAt,
-              now: at,
-            })
-          : initialReminderAt,
-    };
-  }
-
   const parsed = parseQuickAdd(text, {
     now,
     baseDay,
     timeZone: timeZone ?? getLocalTimeZone(),
     dismissed,
+    features: { enabled: smartEnabled && !isEditing },
   });
 
   const effectivePriority = manualPriority ?? parsed.priority ?? initialPriority;

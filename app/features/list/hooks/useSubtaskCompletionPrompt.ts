@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { useFetchers } from "react-router";
 import type { GuestActionPayload } from "~/guest-context";
-import type { Todo } from "~/to-do-manager";
+import type { CompletionSummary, Todo } from "~/to-do-manager";
 import {
   applySetCompletedWithSubtasksLocal,
   getIncompleteSubtasks,
@@ -20,6 +20,11 @@ interface UseSubtaskCompletionPromptOptions {
   isLoggedIn: boolean;
   handleGuestAction: (intent: string, payload?: GuestActionPayload) => void;
   onNotify?: (message: string) => void;
+  onTaskCompleted?: (payload: {
+    todo: Todo;
+    rescheduled: boolean;
+    completion?: CompletionSummary | null;
+  }) => void;
 }
 
 /**
@@ -31,17 +36,33 @@ export function useSubtaskCompletionPrompt({
   isLoggedIn,
   handleGuestAction,
   onNotify,
+  onTaskCompleted,
 }: UseSubtaskCompletionPromptOptions) {
   const [promptState, setPromptState] = useState<SubtaskPromptState | null>(null);
   const fetchers = useFetchers();
 
   const completionField = useOptimisticField<
     Todo[],
-    { success?: boolean; todo?: Todo; updatedSubtasks?: Todo[]; error?: string }
+    {
+      success?: boolean;
+      todo?: Todo;
+      updatedSubtasks?: Todo[];
+      completion?: CompletionSummary | null;
+      error?: string;
+    }
   >({
     serverValue: todos,
     fetcherKey: "todo-subtask-completion",
     onError: onNotify,
+    onSuccess: (data) => {
+      if (data.todo?.completed) {
+        onTaskCompleted?.({
+          todo: data.todo,
+          rescheduled: false,
+          completion: data.completion ?? null,
+        });
+      }
+    },
   });
 
   const optimisticTodos = completionField.value;

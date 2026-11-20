@@ -37,6 +37,7 @@ import { typography, spacing, MIN_TOUCH_TARGET, getSheetBottomPadding } from "..
 import { getErrorMessage } from "../utils/feedback";
 import { useToast } from "../context/ToastContext";
 import { usePushPrompt } from "../context/PushPromptContext";
+import { useQuickAddPreferences } from "../hooks/useQuickAddPreferences";
 import { computeQuickAddFormState } from "../utils/quickAddForm";
 
 interface TaskModalProps {
@@ -59,6 +60,7 @@ interface TaskModalProps {
   baseDay?: string | null;
   isEditing?: boolean;
   taskId?: string;
+  smartEnabled?: boolean;
 }
 
 export const TaskModal: React.FC<TaskModalProps> = ({
@@ -74,10 +76,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   baseDay = null,
   isEditing = false,
   taskId,
+  smartEnabled,
 }) => {
   const { theme, hapticsEnabled } = useTheme();
   const { showError } = useToast();
   const { maybeAskOnReminder } = usePushPrompt();
+  const prefSmartQuickAdd = useQuickAddPreferences();
+  const effectiveSmartEnabled = smartEnabled ?? prefSmartQuickAdd;
   const insets = useSafeAreaInsets();
   const [text, setText] = useState(initialText);
   const [dismissedTokens, setDismissedTokens] = useState<string[]>([]);
@@ -141,6 +146,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const quickState = computeQuickAddFormState({
     text,
     isEditing,
+    smartEnabled: effectiveSmartEnabled,
     now,
     baseDay,
     dismissed: dismissedTokens,

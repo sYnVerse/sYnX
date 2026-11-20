@@ -1,5 +1,6 @@
 import {
   nextReminderAt,
+  type CompletionExportRow,
   type CompletionSource,
   type TaskCompletionEntry,
   type TaskCompletionStats,
@@ -102,6 +103,139 @@ interface TaskCompletionRow {
   source: string;
   op_id: string | null;
   voided_at: number | null;
+}
+
+/**
+ * Resolves the `reminder_sent` flag when undoing a completion onto its prior `reminder_at`.
+ * Preserves recorded `previousReminderSent` (0 or 1); if absent, treats already-elapsed
+ * reminders (`<= now`) as already sent (1) so the cron never re-fires notifications.
+ */
+export function resolveRestoredReminderSent(
+  reminderAt: number | null,
+  previousReminderSent: number | null | undefined,
+  now: number = Date.now()
+): number {
+  if (previousReminderSent === 0 || previousReminderSent === 1) {
+    return previousReminderSent;
+  }
+  if (reminderAt !== null && Number.isFinite(reminderAt) && reminderAt <= now) {
+    return 1;
+  }
+  return 0;
+}
+
+/**
+ * Sets `duration_seconds` on an untimed, non-voided completion entry belonging to `userId`.
+ * Returns null when the row does not exist, belongs to someone else, is voided, or already has a duration.
+ */
+export async function setCompletionDuration(
+  db: D1Database,
+  completionId: string,
+  userId: string,
+  durationMinutes: number
+): Promise<{ id: string; todoId: string; listId: string; durationSeconds: number } | null> {
+  const maxMinutes = MAX_STAT_DURATION_SECONDS / 60;
+  if (
+    typeof durationMinutes !== "number" ||
+    !Number.isInteger(durationMinutes) ||
+    durationMinutes < 1 ||
+    durationMinutes > maxMinutes
+  ) {
+    throw new Error(`Invalid durationMinutes: must be an integer between 1 and ${maxMinutes}`);
+  }
+
+  const row = await db
+    .prepare(
+      `SELECT id, todo_id, list_id, user_id, started_by, duration_seconds, voided_at
+       FROM task_completions
+       WHERE id = ?`
+    )
+    .bind(completionId)
+    .first<{
+      id: string;
+      todo_id: string;
+      list_id: string;
+      user_id: string;
+      started_by: string | null;
+      duration_seconds: number | null;
+      voided_at: number | null;
+    }>();
+
+  if (!row || row.voided_at != null || row.duration_seconds != null) {
+    return null;
+  }
+  if ((row.started_by || row.user_id) !== userId) {
+    return null;
+  }
+
+  const durationSeconds = Math.round(durationMinutes * 60);
+  const res = await db
+    .prepare(
+      `UPDATE task_completions
+       SET duration_seconds = ?
+       WHERE id = ? AND voided_at IS NULL AND duration_seconds IS NULL`
+    )
+    .bind(durationSeconds, completionId)
+    .run();
+
+  if ((Number((res as { meta?: { changes?: number } })?.meta?.changes) || 0) === 0) {
+    return null;
+  }
+
+  return {
+    id: row.id,
+    todoId: row.todo_id,
+    listId: row.list_id,
+    durationSeconds,
+  };
+}
+
+/**
+ * Loads non-voided completion rows attributed to `userId` (newest first) for CSV export.
+ */
+export async function getUserCompletionsForExport(
+  db: D1Database,
+  userId: string
+): Promise<CompletionExportRow[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT tc.id, tc.todo_id, tc.list_id, l.name AS list_name, tc.task_text,
+              tc.started_at, tc.completed_at, tc.duration_seconds, tc.estimated_minutes,
+              tc.time_zone, tc.source
+       FROM task_completions tc
+       LEFT JOIN lists l ON l.id = tc.list_id
+       WHERE tc.voided_at IS NULL
+         AND COALESCE(tc.started_by, tc.user_id) = ?
+       ORDER BY tc.completed_at DESC`
+    )
+    .bind(userId)
+    .all<{
+      id: string;
+      todo_id: string;
+      list_id: string;
+      list_name: string | null;
+      task_text: string;
+      started_at: number | null;
+      completed_at: number;
+      duration_seconds: number | null;
+      estimated_minutes: number | null;
+      time_zone: string | null;
+      source: string;
+    }>();
+
+  return (results || []).map((r) => ({
+    id: r.id,
+    todoId: r.todo_id,
+    listId: r.list_id,
+    listName: r.list_name ?? null,
+    taskText: r.task_text,
+    startedAt: r.started_at != null ? Number(r.started_at) : null,
+    completedAt: Number(r.completed_at),
+    durationSeconds: r.duration_seconds != null ? Number(r.duration_seconds) : null,
+    estimatedMinutes: r.estimated_minutes != null ? Number(r.estimated_minutes) : null,
+    timeZone: r.time_zone ?? null,
+    source: r.source || "api",
+  }));
 }
 
 /**
@@ -796,6 +930,105 @@ export class TodoManager {
     return updatedSubtasks
       ? { todo: mapped, rescheduled: false, updatedSubtasks, completion: completionSummary }
       : { todo: mapped, rescheduled: false, completion: completionSummary };
+  }
+
+  /**
+   * Undoes the most recent (or specified) completion entry on a task—primarily
+   * repeating tasks—restoring `reminder_at` and `reminder_sent` (via
+   * `previous_reminder_sent` or elapsed fallback) and voiding the log row.
+   */
+  async undoRepeatCompletion(
+    id: string,
+    options: { completionId?: string; userId?: string; now?: number } = {}
+  ): Promise<{ todo: Todo; undone: boolean; voidedCompletionId: string | null }> {
+    const todo = await this.db
+      .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
+      .bind(id, this.listId)
+      .first<TodoRow>();
+    if (!todo) {
+      throw new Error(`Todo with id ${id} not found in this list`);
+    }
+
+    const row = options.completionId
+      ? await this.db
+          .prepare(
+            `SELECT id, started_at, started_by, reminder_at, previous_reminder_sent
+             FROM task_completions
+             WHERE id = ? AND todo_id = ? AND list_id = ? AND voided_at IS NULL`
+          )
+          .bind(options.completionId, id, this.listId)
+          .first<{
+            id: string;
+            started_at: number | null;
+            started_by: string | null;
+            reminder_at: number | null;
+            previous_reminder_sent: number | null;
+          }>()
+      : await this.db
+          .prepare(
+            `SELECT id, started_at, started_by, reminder_at, previous_reminder_sent
+             FROM task_completions
+             WHERE todo_id = ? AND list_id = ? AND voided_at IS NULL
+             ORDER BY completed_at DESC
+             LIMIT 1`
+          )
+          .bind(id, this.listId)
+          .first<{
+            id: string;
+            started_at: number | null;
+            started_by: string | null;
+            reminder_at: number | null;
+            previous_reminder_sent: number | null;
+          }>();
+
+    if (!row) {
+      return { todo: this.mapRow(todo), undone: false, voidedCompletionId: null };
+    }
+
+    const serverNow = options.now ?? Date.now();
+    const restoredReminderAt = row.reminder_at != null ? Number(row.reminder_at) : null;
+    const prevSentRaw =
+      row.previous_reminder_sent != null ? Number(row.previous_reminder_sent) : null;
+    const restoredReminderSent = resolveRestoredReminderSent(
+      restoredReminderAt,
+      prevSentRaw,
+      serverNow
+    );
+    const restoredStartedAt = row.started_at != null ? Number(row.started_at) : null;
+    const restoredStartedBy = restoredStartedAt !== null ? row.started_by : null;
+
+    await this.runBatch([
+      this.db
+        .prepare(
+          `UPDATE todos
+           SET completed = 0, reminder_at = ?, reminder_sent = ?, started_at = ?, started_by = ?
+           WHERE id = ? AND list_id = ?`
+        )
+        .bind(
+          restoredReminderAt,
+          restoredReminderSent,
+          restoredStartedAt,
+          restoredStartedBy,
+          id,
+          this.listId
+        ),
+      this.db
+        .prepare("UPDATE task_completions SET voided_at = ? WHERE id = ?")
+        .bind(serverNow, row.id),
+    ]);
+
+    const updated = await this.db
+      .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
+      .bind(id, this.listId)
+      .first<TodoRow>();
+    if (!updated) {
+      throw new Error(`Todo with id ${id} not found in this list`);
+    }
+    return {
+      todo: this.mapRow(updated),
+      undone: true,
+      voidedCompletionId: row.id,
+    };
   }
 
   /**

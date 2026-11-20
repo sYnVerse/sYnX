@@ -10,7 +10,7 @@ import {
   splitCompletedTasks,
   type TaskCompletionStats,
 } from "../../../../shared";
-import type { Todo } from "~/to-do-manager";
+import type { CompletionSummary, Todo } from "~/to-do-manager";
 import { useOptimisticField } from "../hooks/useOptimisticField";
 import { ReminderPicker } from "./ReminderPicker";
 import { DurationPicker, PriorityPicker, RecurrencePicker } from "./pickers";
@@ -52,6 +52,11 @@ export interface TodoItemProps {
   canEdit?: boolean;
   onNotify?: (message: string) => void;
   onBeforeSetCompleted?: (todo: Todo, nextCompleted: boolean) => boolean;
+  onTaskCompleted?: (payload: {
+    todo: Todo;
+    rescheduled: boolean;
+    completion?: CompletionSummary | null;
+  }) => void;
   completionStatsByTodoId?: Record<string, TaskCompletionStats>;
   timerNow?: number;
   onTimerTick?: (now: number) => void;
@@ -65,6 +70,7 @@ export function TodoItem({
   canEdit = true,
   onNotify,
   onBeforeSetCompleted,
+  onTaskCompleted,
   completionStatsByTodoId,
   timerNow = 0,
   onTimerTick,
@@ -118,22 +124,50 @@ export function TodoItem({
   const lastRescheduleToastKey = useRef<string | null>(null);
 
   const handleToggleSuccess = useCallback(
-    (data: { success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }) => {
+    (data: {
+      success?: boolean;
+      todo?: Todo;
+      rescheduled?: boolean;
+      completion?: CompletionSummary | null;
+      error?: string;
+    }) => {
+      const eventKey = data.completion?.id
+        ? `c:${data.completion.id}`
+        : data.todo
+        ? `${data.todo.id}:${data.todo.reminderAt ?? ""}:${data.todo.completed}:${Boolean(data.rescheduled)}`
+        : null;
+      if (eventKey && lastRescheduleToastKey.current === eventKey) return;
+      if (eventKey) lastRescheduleToastKey.current = eventKey;
+
       if (data.rescheduled && data.todo?.reminderAt) {
-        const key = `${data.todo.id}:${data.todo.reminderAt}`;
-        if (lastRescheduleToastKey.current === key) return;
-        lastRescheduleToastKey.current = key;
         setFlashComplete(true);
         setTimeout(() => setFlashComplete(false), 450);
-        onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+      }
+
+      if (data.todo && (data.rescheduled || data.todo.completed)) {
+        if (onTaskCompleted) {
+          onTaskCompleted({
+            todo: data.todo,
+            rescheduled: Boolean(data.rescheduled),
+            completion: data.completion ?? null,
+          });
+        } else if (data.rescheduled && data.todo.reminderAt) {
+          onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+        }
       }
     },
-    [onNotify]
+    [onNotify, onTaskCompleted]
   );
 
   const toggleField = useOptimisticField<
     boolean,
-    { success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }
+    {
+      success?: boolean;
+      todo?: Todo;
+      rescheduled?: boolean;
+      completion?: CompletionSummary | null;
+      error?: string;
+    }
   >({
     serverValue: todo.completed,
     fetcherKey: `todo-toggle-${todo.id}`,
@@ -552,6 +586,7 @@ export function TodoItem({
               isSubtask={true}
               canEdit={canEdit}
               onNotify={onNotify}
+              onTaskCompleted={onTaskCompleted}
               completionStatsByTodoId={completionStatsByTodoId}
               timerNow={timerNow}
               onTimerTick={onTimerTick}
@@ -577,6 +612,7 @@ export function TodoItem({
                 isSubtask={true}
                 canEdit={canEdit}
                 onNotify={onNotify}
+                onTaskCompleted={onTaskCompleted}
                 completionStatsByTodoId={completionStatsByTodoId}
                 timerNow={timerNow}
                 onTimerTick={onTimerTick}

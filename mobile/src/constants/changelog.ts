@@ -17,6 +17,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         type: "NEW",
         text: "Start timers right from any task row, see actual or average completion times in task details, and view running timer badges on home screen widgets with accurate check-off times.",
       },
+      {
+        type: "NEW",
+        text: "Toggle Smart Quick Add in Settings to keep typed task text literal, tap a duration quick pick (15m, 30m, 1h, Skip) in the toast after untimed check-offs, and Undo repeating completions cleanly (restoring reminders and moving your calendar event back).",
+      },
     ],
   },
   {

@@ -28,7 +28,8 @@
     "test/mobile-task-priority-drag.test.ts",
     "test/mobile-complete-subtasks-prompt.test.ts",
     "test/mobile-quick-add.test.ts",
-    "test/mobile-timer-and-widget-ops.test.ts"
+    "test/mobile-timer-and-widget-ops.test.ts",
+    "test/mobile-issue-104.test.ts"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],

@@ -275,6 +275,23 @@ export const RegisterDeviceTokenSchema = v.object({
 
 export type RegisterDeviceTokenInput = v.InferOutput<typeof RegisterDeviceTokenSchema>;
 
+export const SetCompletionDurationSchema = v.object({
+  durationMinutes: v.pipe(
+    v.number(),
+    v.integer("durationMinutes must be an integer"),
+    v.minValue(1, "durationMinutes must be at least 1"),
+    v.maxValue(720, "durationMinutes must be 720 or less")
+  ),
+});
+
+export type SetCompletionDurationInput = v.InferOutput<typeof SetCompletionDurationSchema>;
+
+export const UndoRepeatSchema = v.object({
+  completionId: v.optional(v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(128))),
+});
+
+export type UndoRepeatInput = v.InferOutput<typeof UndoRepeatSchema>;
+
 export * from "./categories";
 
 export * from "./changelog";

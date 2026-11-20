@@ -17,8 +17,10 @@ import {
   handleCreateTask,
   handleDeleteTask,
   handleSetCompleted,
+  handleSetCompletionDuration,
   handleStartTask,
   handleToggleTask,
+  handleUndoRepeatTask,
 } from "./tasks.server";
 import {
   handleMarkReminderSent,
@@ -47,6 +49,7 @@ export const ACCOUNT_INTENTS: Record<string, ListActionHandler> = {
   removeSharedList: handleRemoveSharedList,
   approveDeleteRequest: handleApproveDeleteRequest,
   declineDeleteRequest: handleDeclineDeleteRequest,
+  setCompletionDuration: handleSetCompletionDuration,
 };
 
 export const LIST_INTENTS: Record<string, ListActionHandler> = {
@@ -55,6 +58,7 @@ export const LIST_INTENTS: Record<string, ListActionHandler> = {
   setCompleted: handleSetCompleted,
   start: handleStartTask,
   cancelStart: handleCancelStartTask,
+  undoRepeat: handleUndoRepeatTask,
   delete: handleDeleteTask,
   clearCompleted: handleClearCompleted,
   updatePriority: handleUpdatePriority,

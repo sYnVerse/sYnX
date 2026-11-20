@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FetcherWithComponents } from "react-router";
+import { useStoredValue } from "~/client-storage";
 import { getLocalTimeZone, isValidTimeZone, listTimeZones } from "../../../../shared";
 
 interface SettingsData {
@@ -67,6 +68,11 @@ export function useProfileSettings({
   const [homeTimeZoneInput, setHomeTimeZoneInput] = useState(initialHomeTimeZone);
 
   const [deferredSuggestion, setDeferredSuggestion] = useState<string | null>(null);
+  const [savedSmartQuickAdd, setSavedSmartQuickAdd] = useStoredValue("synx_smart_quick_add");
+  const smartQuickAddEnabled = savedSmartQuickAdd !== "false";
+  const setSmartQuickAddEnabled = (enabled: boolean) => {
+    setSavedSmartQuickAdd(enabled ? "true" : "false");
+  };
 
   useEffect(() => {
     if (!providerProfile) return;
@@ -222,5 +228,7 @@ export function useProfileSettings({
     resetSettings,
     handleSaveSettings,
     requestCloseProfile,
+    smartQuickAddEnabled,
+    setSmartQuickAddEnabled,
   };
 }

@@ -12,10 +12,15 @@ import {
 export interface QuickAddTaskModalProps {
   date: Date;
   activeListId: string;
+  smartQuickAddEnabled?: boolean;
   onClose: () => void;
 }
 
-export function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
+export function QuickAddTaskModal({
+  date,
+  smartQuickAddEnabled = true,
+  onClose,
+}: QuickAddTaskModalProps) {
   const fetcher = useFetcher();
   const { isLoggedIn, canSetReminders, onGuestAction } = useContext(GuestContext);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -27,6 +32,7 @@ export function QuickAddTaskModal({ date, onClose }: QuickAddTaskModalProps) {
   const baseDay = formatLocalBaseDay(date);
   const quickState = computeWebQuickAddState({
     text,
+    smartEnabled: smartQuickAddEnabled,
     now: now || date.getTime(),
     baseDay,
     dismissed: dismissedTokens,
