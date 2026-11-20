@@ -62,6 +62,10 @@ jobs:
   comment_on_github:
     name: Post build or update link to GitHub
     after: [fingerprint, get_android_build, build_android_preview, publish_android_preview]
+    # EAS injects secrets configured for the `preview` environment automatically:
+    # - Preferred (posts as sYnVerse-Gemini[bot]): SYNX_GITHUB_APP_ID,
+    #   SYNX_GITHUB_APP_PRIVATE_KEY, and optional SYNX_GITHUB_APP_INSTALLATION_ID
+    # - Fallback: SYNX_GITHUB_COMMENT_TOKEN
     environment: preview
     env:
       BUILD_ID: ${{ after.build_android_preview.outputs.build_id || '' }}
