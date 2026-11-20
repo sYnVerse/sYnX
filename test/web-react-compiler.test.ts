@@ -13,7 +13,7 @@ describe("web React Compiler configuration (#171)", () => {
     expect(devDeps["babel-plugin-react-compiler"]).toBe("1.0.0");
     expect(devDeps["vite-plugin-babel"]).toBe("1.7.3");
     expect(devDeps["@babel/preset-typescript"]).toBe("7.29.7");
-    expect(devDeps.typescript).toBe("5.8.3");
+    expect(devDeps.typescript).toBe("6.0.3");
   });
 
   it("wires babel-plugin-react-compiler in vite.config.ts before reactRouter()", () => {
