@@ -388,5 +388,48 @@ describe("shared/quick-add parser (#98)", () => {
       expect(res.priority).toBe("high");
       expect(res.durationMinutes).toBe(30);
     });
+
+    it("never converts dismissed 'for <duration>' phrases into relative date reminders", () => {
+      const dismissedDuration = parseQuickAdd("Call Mom for 15m", {
+        now: baseNow,
+        timeZone: LA,
+        dismissed: ["duration:for 15m"],
+      });
+      expect(dismissedDuration).toEqual({
+        title: "Call Mom for 15m",
+        reminderAt: null,
+        recurrence: null,
+        priority: null,
+        durationMinutes: null,
+        matches: [],
+      });
+
+      const dismissedAll = parseQuickAdd("2pm standup weekly for 15m !med", {
+        now: baseNow,
+        baseDay: "2026-11-16",
+        timeZone: LA,
+        dismissed: ["priority:!med", "duration:for 15m", "recurrence:weekly", "date:2pm"],
+      });
+      expect(dismissedAll).toEqual({
+        title: "2pm standup weekly for 15m !med",
+        reminderAt: null,
+        recurrence: null,
+        priority: null,
+        durationMinutes: null,
+        matches: [],
+      });
+
+      // Relative "in 15m" and "for tomorrow" still parse reminders as expected.
+      const inRes = parseQuickAdd("Call Mom in 15m", { now: baseNow, timeZone: LA });
+      expect(inRes.reminderAt).toBe(baseNow + 15 * 60_000);
+      const forTomorrow = parseQuickAdd("Call Mom for tomorrow", { now: baseNow, timeZone: LA });
+      expect(wall(forTomorrow.reminderAt)).toEqual({
+        year: 2026,
+        month: 11,
+        day: 7,
+        hour: 9,
+        minute: 0,
+      });
+    });
   });
 });
