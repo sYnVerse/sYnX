@@ -5,15 +5,71 @@ import { canEditReminderText } from "~/reminder-ownership";
 import { MAX_TASK_TEXT_LENGTH } from "~/write-limits";
 import type { Todo } from "~/to-do-manager";
 import { priorityConfig } from "~/features/list/format";
+import { useOptimisticField } from "~/features/list/hooks/useOptimisticField";
+import {
+  formatElapsedTimerLabel,
+  formatTaskCompletionStatsLine,
+  type TaskCompletionStats,
+} from "../../../shared";
 
 export interface EditTaskModalProps {
   todo: Todo;
   onClose: () => void;
+  canEdit?: boolean;
+  completionStats?: TaskCompletionStats | null;
+  timerNow?: number;
+  onTimerTick?: (now: number) => void;
+  onNotify?: (message: string) => void;
 }
 
-export function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
+export function EditTaskModal({
+  todo,
+  onClose,
+  canEdit = true,
+  completionStats,
+  timerNow = 0,
+  onTimerTick,
+  onNotify,
+}: EditTaskModalProps) {
   const fetcher = useFetcher();
   const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
+  const startField = useOptimisticField<
+    number | null,
+    { success?: boolean; todo?: Todo; error?: string }
+  >({
+    serverValue: todo.startedAt ?? null,
+    fetcherKey: `todo-start-${todo.id}`,
+    onError: onNotify,
+  });
+  const { value: optimisticStartedAt, submit: submitStartField } = startField;
+  const isRecurring = Boolean(todo.recurrence && todo.recurrence !== "none");
+  const statsLine = formatTaskCompletionStatsLine(completionStats, {
+    isRecurring,
+    estimatedMinutes: todo.durationMinutes ?? null,
+  });
+
+  const handleToggleTimer = (nowMs: number) => {
+    if (!canEdit || todo.completed) return;
+    onTimerTick?.(nowMs);
+    if (optimisticStartedAt != null) {
+      if (!isLoggedIn) {
+        onGuestAction("cancelStart", { id: todo.id });
+      }
+      void submitStartField(null, {
+        intent: "cancelStart",
+        id: todo.id,
+      });
+    } else {
+      if (!isLoggedIn) {
+        onGuestAction("start", { id: todo.id, startedAt: nowMs });
+      }
+      void submitStartField(nowMs, {
+        intent: "start",
+        id: todo.id,
+        startedAt: String(nowMs),
+      });
+    }
+  };
   // Reminder text goes to the user who set the reminder, so guests or other
   // users on a shared list can't reword tasks with someone else's reminder.
   const canEditText =
@@ -180,6 +236,47 @@ export function EditTaskModal({ todo, onClose }: EditTaskModalProps) {
               <p className="text-[10px] text-slate-500">{GUEST_REMINDER_HINT} on shared lists.</p>
             )}
           </div>
+
+          {((canEdit && !todo.completed) || statsLine) && (
+            <div className="flex flex-col gap-2">
+              {canEdit && !todo.completed && (
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.02] border border-white/[0.06] px-3.5 py-2.5">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Task Timer
+                  </span>
+                  {optimisticStartedAt != null ? (
+                    <button
+                      type="button"
+                      data-testid="edit-modal-timer-running"
+                      onClick={() => handleToggleTimer(Date.now())}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 hover:bg-rose-500/15 hover:text-rose-300 hover:border-rose-400/30 transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>{formatElapsedTimerLabel(optimisticStartedAt, timerNow || optimisticStartedAt)}</span>
+                      <span className="text-[10px] opacity-80">• Stop</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid="edit-modal-timer-start"
+                      onClick={() => handleToggleTimer(Date.now())}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white/[0.04] hover:bg-emerald-500/15 text-slate-200 hover:text-emerald-300 border border-white/[0.08] hover:border-emerald-400/30 transition cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>▶ Start Timer</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {statsLine && (
+                <div
+                  data-testid="edit-modal-completion-stats"
+                  className="text-xs text-slate-300 rounded-xl bg-white/[0.02] border border-white/[0.06] px-3.5 py-2"
+                >
+                  📊 {statsLine}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-3 mt-2 pt-3 border-t border-white/[0.06]">
             <button

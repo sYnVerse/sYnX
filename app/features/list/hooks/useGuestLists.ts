@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo } from "react";
 import type { FetcherWithComponents } from "react-router";
 import { readStoredValue, useHydrated, useStoredValue, writeStoredValue } from "~/client-storage";
-import { applySetCompletedLocal, applySetCompletedWithSubtasksLocal } from "../../../../shared";
+import {
+  applySetCompletedLocal,
+  applySetCompletedWithSubtasksLocal,
+  applyStartTodoLocal,
+} from "../../../../shared";
 import type { Todo } from "~/to-do-manager";
 import type { GuestActionPayload } from "~/guest-context";
 import { GUEST_STORAGE_KEY, parseGuestLists, type GuestList } from "../guest-lists";
@@ -153,6 +157,34 @@ export function useGuestLists({
                 return applySetCompletedLocal(t, Boolean(payload.completed)).todo;
               });
           return { ...l, todos: updatedTodos };
+        });
+        break;
+      }
+      case "start": {
+        const startedAt =
+          typeof payload.startedAt === "number" && Number.isFinite(payload.startedAt)
+            ? payload.startedAt
+            : Date.now();
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          return {
+            ...l,
+            todos: l.todos.map((t) =>
+              t.id === payload.id ? applyStartTodoLocal(t, startedAt) : t
+            ),
+          };
+        });
+        break;
+      }
+      case "cancelStart": {
+        updatedLists = prevLists.map((l) => {
+          if (l.id !== targetListId) return l;
+          return {
+            ...l,
+            todos: l.todos.map((t) =>
+              t.id === payload.id ? applyStartTodoLocal(t, null) : t
+            ),
+          };
         });
         break;
       }

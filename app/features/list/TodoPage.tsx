@@ -52,6 +52,7 @@ export default function TodoPage({
     lists: serverLists,
     activeListId,
     stats,
+    completionStatsByTodoId = {},
     pendingDeleteRequests = [],
     ownedPendingDeleteRequests,
     providerProfile,
@@ -399,6 +400,24 @@ export default function TodoPage({
   } = useVisibleTodos({ todos: listTodosWithSubtaskAction, filter, searchQuery, sortBy });
 
   const completedSectionOpen = completedOpenListId === effectiveActiveListId;
+
+  const [timerNow, setTimerNow] = useState(0);
+  const hasRunningTimer = optimisticTodos.some(
+    (t) => t.startedAt != null && !t.completed
+  );
+  useEffect(() => {
+    if (!hasRunningTimer) return;
+    const initId = window.setTimeout(() => {
+      setTimerNow(Date.now());
+    }, 0);
+    const intervalId = window.setInterval(() => {
+      setTimerNow(Date.now());
+    }, 60_000);
+    return () => {
+      window.clearTimeout(initId);
+      window.clearInterval(intervalId);
+    };
+  }, [hasRunningTimer]);
 
   // Surface server-side rejections (too long, list full, rate limited) and pending-approval notices.
   useFetcherToast(createFetcher, showToast);
@@ -793,7 +812,15 @@ export default function TodoPage({
           {/* Todo List Area */}
           <div className="flex-1 min-h-0 mb-6 flex flex-col">
             {viewMode === "calendar" ? (
-              <CalendarView todos={optimisticTodos} activeListId={activeListId || ""} canEdit={canEdit} onNotify={showToast} />
+              <CalendarView
+                todos={optimisticTodos}
+                activeListId={activeListId || ""}
+                canEdit={canEdit}
+                onNotify={showToast}
+                completionStatsByTodoId={completionStatsByTodoId}
+                timerNow={timerNow}
+                onTimerTick={setTimerNow}
+              />
             ) : visibleParents.length === 0 && totalCount === 0 ? (
               <div className="flex-1 overflow-y-auto scrollbar-thin flex flex-col justify-center">
                 <EmptyState />
@@ -812,6 +839,9 @@ export default function TodoPage({
                     canEdit={canEdit}
                     onNotify={showToast}
                     onBeforeSetCompleted={maybePromptForCompletion}
+                    completionStatsByTodoId={completionStatsByTodoId}
+                    timerNow={timerNow}
+                    onTimerTick={setTimerNow}
                     searchQuery={searchQuery}
                   />
                 ))}
@@ -836,6 +866,9 @@ export default function TodoPage({
                       canEdit={canEdit}
                       onNotify={showToast}
                       onBeforeSetCompleted={maybePromptForCompletion}
+                      completionStatsByTodoId={completionStatsByTodoId}
+                      timerNow={timerNow}
+                      onTimerTick={setTimerNow}
                       searchQuery={searchQuery}
                     />
                   ))}

@@ -24,9 +24,10 @@ import {
   type ListActivityEntry,
   type PendingDeleteRequest,
   type ShareMode,
+  type TaskCompletionStats,
 } from "../../../shared";
 import type { ListRow } from "~/api-helpers.server";
-import type { Todo, TodoRow } from "~/to-do-manager";
+import { getListCompletionStats, type Todo, type TodoRow } from "~/to-do-manager";
 import type { GuestList } from "./guest-lists";
 
 type LoaderListRow = ListRow & { owner_display_name?: string };
@@ -266,6 +267,8 @@ export const loader = async ({ request, params, context }: { request: Request; p
         parentId: t.parent_id || undefined,
         recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
         durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : undefined,
+        startedAt: t.started_at !== null && t.started_at !== undefined ? Number(t.started_at) : undefined,
+        startedBy: t.started_by || undefined,
         pendingDelete: pendingTaskIds.has(t.id),
         createdBy: t.created_by || undefined,
         canDeleteDirectly: canDeleteTaskDirectly({
@@ -341,6 +344,15 @@ export const loader = async ({ request, params, context }: { request: Request; p
     }
   }
 
+  let completionStatsByTodoId: Record<string, TaskCompletionStats> = {};
+  if (isLoggedIn && activeListId) {
+    try {
+      completionStatsByTodoId = await getListCompletionStats(db, activeListId, userId);
+    } catch (e) {
+      console.error("Failed to load task completion stats:", e);
+    }
+  }
+
   const responsePayload = {
     userId,
     email,
@@ -349,6 +361,7 @@ export const loader = async ({ request, params, context }: { request: Request; p
     lists: listsWithTodos,
     activeListId: activeListId || userId,
     todos,
+    completionStatsByTodoId,
     pendingDeleteRequests,
     ownedPendingDeleteRequests,
     listActivity,
