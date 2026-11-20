@@ -312,6 +312,7 @@ export const CalendarScreen: React.FC<{ listId: string }> = ({ listId }) => {
       <TaskModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
+        baseDay={selectedDate}
         initialReminderAt={selectedDate9AMTimestamp}
         onSave={async (newTodo) => {
           if (!canEdit) return;

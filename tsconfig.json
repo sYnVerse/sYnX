@@ -26,7 +26,8 @@
     "test/mobile-resume-draft-preservation.test.ts",
     "test/mobile-reminder-notification-actions.test.ts",
     "test/mobile-task-priority-drag.test.ts",
-    "test/mobile-complete-subtasks-prompt.test.ts"
+    "test/mobile-complete-subtasks-prompt.test.ts",
+    "test/mobile-quick-add.test.ts"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],

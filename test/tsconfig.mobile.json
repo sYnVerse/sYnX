@@ -18,6 +18,7 @@
     "mobile-reminder-notification-actions.test.ts",
     "mobile-task-priority-drag.test.ts",
     "mobile-complete-subtasks-prompt.test.ts",
+    "mobile-quick-add.test.ts",
     "android-app-links.test.ts",
     "widget-pinned-toggle.test.ts",
     "widget-progress-ring.test.ts",
