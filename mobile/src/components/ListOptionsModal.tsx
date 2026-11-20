@@ -45,7 +45,6 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
   if (!visible || !list) return null;
 
   const isOwner = list.isOwner !== false;
-  const isPrivate = (list.shareMode || "private") === "private";
 
   const closeThen = (action?: () => void) => {
     onClose();
@@ -173,7 +172,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                   </TouchableOpacity>
                 ) : null}
 
-                {!isPrivate && onViewActivity ? (
+                {onViewActivity ? (
                   <TouchableOpacity
                     style={[
                       styles.actionItem,
@@ -185,7 +184,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                   >
                     <History size={18} color={theme.accent} />
                     <Text style={[styles.actionText, { color: theme.textPrimary }]}>
-                      View shared activity
+                      View activity
                     </Text>
                   </TouchableOpacity>
                 ) : null}

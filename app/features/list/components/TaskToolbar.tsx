@@ -220,7 +220,7 @@ export function TaskToolbar({
             </span>
           )}
 
-          {isOwner && isLoggedIn && activeListShareMode !== "private" && (
+          {isOwner && isLoggedIn && (
             <button
               type="button"
               onClick={() => {
