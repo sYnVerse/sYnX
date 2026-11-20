@@ -38,9 +38,18 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
   }
 
   const manager = new TodoManager(db, todoRow.list_id);
+  const reminderOwnerId = todoRow.reminder_user_id || user.userId;
   // Repeats keep their local clock time in the reminder owner's (or caller's) stored time zone.
-  const timeZone = await getUserTimeZone(db, todoRow.reminder_user_id || user.userId);
-  const updatedTodo = await manager.toggle(todoId, { timeZone });
+  const [timeZone, completerTimeZone] = await Promise.all([
+    getUserTimeZone(db, reminderOwnerId),
+    reminderOwnerId === user.userId ? undefined : getUserTimeZone(db, user.userId),
+  ]);
+  const updatedTodo = await manager.toggle(todoId, {
+    timeZone,
+    completerTimeZone: completerTimeZone ?? timeZone,
+    userId: user.userId,
+    source: "api",
+  });
 
   const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
   const logPromise = logListActivity(db, {

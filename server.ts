@@ -10,6 +10,7 @@ import { finalizeWorkerResponse, unexpectedErrorResponse } from "./app/worker-re
 import { getDueReminderRecipients, type DueReminderRow } from "./app/due-reminders.server";
 import { deleteExpiredGuestLists } from "./app/guest-access.server";
 import { pruneOldListActivity } from "./app/list-activity.server";
+import { pruneVoidedTaskCompletions } from "./app/to-do-manager";
 import { phoneCarrierGatewayDomain } from "./shared/phone-carriers";
 import {
   REMINDER_NOTIFICATION_CATEGORY,
@@ -62,6 +63,14 @@ export default {
         if (pruned > 0) console.log(`[Cron] Pruned ${pruned} list activity row(s) older than 90 days.`);
       } catch (e) {
         console.error("[Cron] Failed to prune list activity:", e);
+      }
+      try {
+        const prunedCompletions = await pruneVoidedTaskCompletions(db, now);
+        if (prunedCompletions > 0) {
+          console.log(`[Cron] Pruned ${prunedCompletions} voided task completion row(s) older than 30 days.`);
+        }
+      } catch (e) {
+        console.error("[Cron] Failed to prune voided task completions:", e);
       }
     }
 
