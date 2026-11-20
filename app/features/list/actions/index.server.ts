@@ -12,10 +12,12 @@ import {
   handleUpdateSettings,
 } from "./account.server";
 import {
+  handleCancelStartTask,
   handleClearCompleted,
   handleCreateTask,
   handleDeleteTask,
   handleSetCompleted,
+  handleStartTask,
   handleToggleTask,
 } from "./tasks.server";
 import {
@@ -51,6 +53,8 @@ export const LIST_INTENTS: Record<string, ListActionHandler> = {
   create: handleCreateTask,
   toggle: handleToggleTask,
   setCompleted: handleSetCompleted,
+  start: handleStartTask,
+  cancelStart: handleCancelStartTask,
   delete: handleDeleteTask,
   clearCompleted: handleClearCompleted,
   updatePriority: handleUpdatePriority,

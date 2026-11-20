@@ -85,8 +85,16 @@ export async function handleToggleTask(ctx: ListActionContext) {
     .bind(id, activeListId)
     .first<{ reminder_user_id: string | null }>();
   const tzUserId = reminderRow?.reminder_user_id || (isLoggedIn ? userId : "");
-  const timeZone = tzUserId ? await getUserTimeZone(db, tzUserId) : undefined;
-  const todo = await todoManager.toggle(id, { timeZone });
+  const [timeZone, completerTimeZone] = await Promise.all([
+    tzUserId ? getUserTimeZone(db, tzUserId) : undefined,
+    isLoggedIn && userId !== tzUserId ? getUserTimeZone(db, userId) : undefined,
+  ]);
+  const todo = await todoManager.toggle(id, {
+    timeZone,
+    completerTimeZone: completerTimeZone ?? timeZone,
+    userId: isLoggedIn ? userId : undefined,
+    source: "web",
+  });
   scheduleActivityLog({
     listId: activeListId,
     taskId: id,
@@ -138,10 +146,16 @@ export async function handleSetCompleted(ctx: ListActionContext) {
     .bind(id, activeListId)
     .first<{ reminder_user_id: string | null }>();
   const tzUserId = reminderRow?.reminder_user_id || (isLoggedIn ? userId : "");
-  const timeZone = tzUserId ? await getUserTimeZone(db, tzUserId) : undefined;
-  const { todo, rescheduled, updatedSubtasks } = await todoManager.setCompleted(id, completed, {
+  const [timeZone, completerTimeZone] = await Promise.all([
+    tzUserId ? getUserTimeZone(db, tzUserId) : undefined,
+    isLoggedIn && userId !== tzUserId ? getUserTimeZone(db, userId) : undefined,
+  ]);
+  const { todo, rescheduled, updatedSubtasks, completion } = await todoManager.setCompleted(id, completed, {
     timeZone,
+    completerTimeZone: completerTimeZone ?? timeZone,
     subtaskAction,
+    userId: isLoggedIn ? userId : undefined,
+    source: "web",
   });
   scheduleActivityLog({
     listId: activeListId,
@@ -152,7 +166,41 @@ export async function handleSetCompleted(ctx: ListActionContext) {
     shareMode: activeShareMode,
     summary: todo.text,
   });
-  return { success: true, todo, rescheduled, updatedSubtasks: updatedSubtasks ?? [] };
+  return {
+    success: true,
+    todo,
+    rescheduled,
+    updatedSubtasks: updatedSubtasks ?? [],
+    completion: completion ?? null,
+  };
+}
+
+export async function handleStartTask(ctx: ListActionContext) {
+  const { formData, userId, todoManager } = ctx;
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id) {
+    return Response.json({ error: "Invalid task id" }, { status: 400 });
+  }
+  const rawStartedAt = formData.get("startedAt");
+  const startedAt =
+    typeof rawStartedAt === "string" && rawStartedAt.trim() !== ""
+      ? Number(rawStartedAt)
+      : undefined;
+  if (startedAt !== undefined && !Number.isFinite(startedAt)) {
+    return Response.json({ error: "Invalid startedAt timestamp" }, { status: 400 });
+  }
+  const todo = await todoManager.startTodo(id, userId, startedAt);
+  return { success: true, todo };
+}
+
+export async function handleCancelStartTask(ctx: ListActionContext) {
+  const { formData, todoManager } = ctx;
+  const id = formData.get("id");
+  if (typeof id !== "string" || !id) {
+    return Response.json({ error: "Invalid task id" }, { status: 400 });
+  }
+  const todo = await todoManager.cancelStartTodo(id);
+  return { success: true, todo };
 }
 
 export async function handleDeleteTask(ctx: ListActionContext) {

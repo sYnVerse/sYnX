@@ -1,6 +1,17 @@
-import { describe, it, expect, afterEach, beforeEach } from "vitest";
-import { TodoManager } from "../app/to-do-manager";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
+import { RouterContextProvider } from "react-router";
+import {
+  TodoManager,
+  clampClientTimestamp,
+  getTodoCompletions,
+  pruneVoidedTaskCompletions,
+  MAX_STAT_DURATION_SECONDS,
+} from "../app/to-do-manager";
 import { getDueReminderRecipients } from "../app/due-reminders.server";
+import { cloudflareContext } from "../app/context.server";
+import { action as startTodoRouteAction } from "../app/routes/api.v1.todos.$id.start";
+import { loader as completionsRouteLoader } from "../app/routes/api.v1.todos.$id.completions";
+import { action as completedRouteAction } from "../app/routes/api.v1.todos.$id.completed";
 import { env } from "cloudflare:test";
 
 describe("TodoManager", () => {
@@ -20,6 +31,7 @@ describe("TodoManager", () => {
   });
 
   afterEach(async () => {
+    await db.exec("DELETE FROM task_completions");
     await db.exec("DELETE FROM todos");
     await db.exec("DELETE FROM lists");
   });
@@ -427,6 +439,219 @@ describe("TodoManager", () => {
   describe("durationMinutes cleanup", () => {
     it("confirms cleared duration is undefined", () => {
       expect(true).toBe(true);
+    });
+  });
+
+  describe("time tracking & task_completions log (#99)", () => {
+    const makeApiContext = () => {
+      const provider = new RouterContextProvider();
+      provider.set(cloudflareContext, {
+        env: { ...env, ALLOW_DEV_TEST_AUTH: "true" } as unknown as Env,
+        ctx: { waitUntil: vi.fn(), passThroughOnException: vi.fn() } as unknown as ExecutionContext,
+      });
+      return provider;
+    };
+
+    it("clamps client timestamps to [serverNow - 24h, serverNow]", () => {
+      const serverNow = 1_700_000_000_000;
+      const dayMs = 24 * 60 * 60 * 1000;
+      expect(clampClientTimestamp(serverNow + 60_000, serverNow)).toBe(serverNow);
+      expect(clampClientTimestamp(serverNow - 2 * dayMs, serverNow)).toBe(serverNow - dayMs);
+      expect(clampClientTimestamp(serverNow - 5_000, serverNow)).toBe(serverNow - 5_000);
+      expect(clampClientTimestamp(undefined, serverNow)).toBe(serverNow);
+    });
+
+    it("startTodo preserves an earlier running start and cancelStartTodo clears it", async () => {
+      const todo = await manager.create("Workout");
+      const firstStart = Date.now() - 120_000;
+      const started = await manager.startTodo(todo.id, "user-a", firstStart);
+      expect(started.startedAt).toBe(firstStart);
+      expect(started.startedBy).toBe("user-a");
+
+      // Starting again keeps earlier started_at and original started_by
+      const second = await manager.startTodo(todo.id, "user-b", Date.now());
+      expect(second.startedAt).toBe(firstStart);
+      expect(second.startedBy).toBe("user-a");
+
+      const cancelled = await manager.cancelStartTodo(todo.id);
+      expect(cancelled.startedAt).toBeUndefined();
+      expect(cancelled.startedBy).toBeUndefined();
+    });
+
+    it("records non-negative duration, starter vs completer attribution, and survives delete & clearCompleted", async () => {
+      const todo = await manager.create("Prepare slides", "high", null, undefined, "none", 20);
+      const startAt = Date.now() - 300_000;
+      await manager.startTodo(todo.id, "user-starter", startAt);
+
+      // Even if a client sends completedAt slightly earlier than startedAt, duration never goes negative.
+      const res = await manager.setCompleted(todo.id, true, {
+        userId: "user-completer",
+        completedAt: startAt - 5_000,
+        source: "widget",
+        opId: "op-nonneg-1",
+      });
+      expect(res.completion?.durationSeconds).toBe(0);
+
+      // Clear completed and delete must keep task_completions history intact.
+      await manager.clearCompleted();
+      await manager.delete(todo.id);
+
+      const row = await db
+        .prepare("SELECT * FROM task_completions WHERE todo_id = ?")
+        .bind(todo.id)
+        .first<{ user_id: string; started_by: string | null; duration_seconds: number; source: string }>();
+      expect(row?.user_id).toBe("user-completer");
+      expect(row?.started_by).toBe("user-starter");
+      expect(row?.duration_seconds).toBe(0);
+      expect(row?.source).toBe("widget");
+    });
+
+    it("prevents duplicate rows and double repeat advancement on opId replay", async () => {
+      const future = Date.now() + 3_600_000;
+      const repeat = await manager.create("Daily review", "none", future, undefined, "daily", 15, "user-1");
+
+      const first = await manager.setCompleted(repeat.id, true, {
+        userId: "user-1",
+        source: "app",
+        opId: "op-repeat-1",
+        timeZone: "UTC",
+      });
+      expect(first.rescheduled).toBe(true);
+      const afterFirstReminder = first.todo.reminderAt!;
+      expect(afterFirstReminder).toBeGreaterThan(future);
+
+      const second = await manager.setCompleted(repeat.id, true, {
+        userId: "user-1",
+        source: "app",
+        opId: "op-repeat-1",
+        timeZone: "UTC",
+      });
+      expect(second.rescheduled).toBe(false);
+      expect(second.todo.reminderAt).toBe(afterFirstReminder);
+      expect(second.completion?.id).toBe(first.completion?.id);
+
+      const rows = await db
+        .prepare("SELECT * FROM task_completions WHERE todo_id = ?")
+        .bind(repeat.id)
+        .all<{ reminder_at: number | null; previous_reminder_sent: number | null }>();
+      expect(rows.results).toHaveLength(1);
+      expect(rows.results[0].reminder_at).toBe(future);
+      expect(rows.results[0].previous_reminder_sent).toBe(0);
+    });
+
+    it("voids latest completion row and restores started_at/started_by on undo, plus 30-day pruning", async () => {
+      const todo = await manager.create("Write essay");
+      const startedAt = Date.now() - 600_000;
+      await manager.startTodo(todo.id, "user-1", startedAt);
+
+      await manager.setCompleted(todo.id, true, { userId: "user-1", source: "web" });
+      const undone = await manager.setCompleted(todo.id, false, { userId: "user-1", source: "web" });
+      expect(undone.todo.completed).toBe(false);
+      expect(undone.todo.startedAt).toBe(startedAt);
+      expect(undone.todo.startedBy).toBe("user-1");
+
+      // Mark voided row older than 30 days and verify prune deletes only old voided rows.
+      const now = Date.now();
+      const oldVoided = now - 31 * 24 * 60 * 60 * 1000;
+      await db.prepare("UPDATE task_completions SET voided_at = ? WHERE todo_id = ?").bind(oldVoided, todo.id).run();
+      await manager.setCompleted(todo.id, true, { userId: "user-1", source: "web" });
+
+      const pruned = await pruneVoidedTaskCompletions(db, now);
+      expect(pruned).toBe(1);
+      const remaining = await db
+        .prepare("SELECT * FROM task_completions WHERE todo_id = ?")
+        .bind(todo.id)
+        .all();
+      expect(remaining.results).toHaveLength(1);
+    });
+
+    it("computes averages/medians scoped to caller while excluding >12h outliers", async () => {
+      const repeat = await manager.create("Standup", "none", Date.now() + 3_600_000, undefined, "daily", 15);
+      const now = Date.now();
+
+      await db.batch([
+        db
+          .prepare(
+            `INSERT INTO task_completions (id, todo_id, list_id, task_text, user_id, started_by, started_at, completed_at, duration_seconds, estimated_minutes, source)
+             VALUES (?, ?, ?, 'Standup', 'user-1', 'user-1', ?, ?, 600, 15, 'app')`
+          )
+          .bind("c1", repeat.id, listId, now - 30_000, now - 20_000),
+        db
+          .prepare(
+            `INSERT INTO task_completions (id, todo_id, list_id, task_text, user_id, started_by, started_at, completed_at, duration_seconds, estimated_minutes, source)
+             VALUES (?, ?, ?, 'Standup', 'user-1', 'user-1', ?, ?, 1200, 15, 'app')`
+          )
+          .bind("c2", repeat.id, listId, now - 20_000, now - 10_000),
+        db
+          .prepare(
+            `INSERT INTO task_completions (id, todo_id, list_id, task_text, user_id, started_by, started_at, completed_at, duration_seconds, estimated_minutes, source)
+             VALUES (?, ?, ?, 'Standup', 'user-1', 'user-1', ?, ?, ?, 15, 'app')`
+          )
+          .bind("c3-outlier", repeat.id, listId, now - 10_000, now - 5_000, MAX_STAT_DURATION_SECONDS + 1),
+        db
+          .prepare(
+            `INSERT INTO task_completions (id, todo_id, list_id, task_text, user_id, started_by, started_at, completed_at, duration_seconds, estimated_minutes, source)
+             VALUES (?, ?, ?, 'Standup', 'user-other', 'user-other', ?, ?, 300, 15, 'app')`
+          )
+          .bind("c4-other", repeat.id, listId, now - 5_000, now),
+      ]);
+
+      const stats = await getTodoCompletions(db, repeat.id, listId, "user-1");
+      expect(stats.count).toBe(3); // excludes user-other, keeps >12h outlier in entries
+      expect(stats.timedCount).toBe(2); // excludes >12h outlier from stats
+      expect(stats.averageSeconds).toBe(900);
+      expect(stats.medianSeconds).toBe(900);
+      expect(stats.lastDurationSeconds).toBe(1200);
+      expect(stats.estimatedMinutes).toBe(15);
+    });
+
+    it("handles /start, /completed, and /completions API routes end-to-end", async () => {
+      const todo = await manager.create("API Timed Task", "medium", null, undefined, "none", 30);
+      const authHeader = { Authorization: "Bearer e2e_test_session:test-user:test@example.com" };
+
+      const startRes = await startTodoRouteAction({
+        request: new Request(`http://127.0.0.1:8787/api/v1/todos/${todo.id}/start`, {
+          method: "POST",
+          headers: { ...authHeader, "Content-Type": "application/json" },
+          body: JSON.stringify({ startedAt: Date.now() - 90_000 }),
+        }),
+        params: { id: todo.id },
+        context: makeApiContext(),
+        url: new URL(`http://127.0.0.1:8787/api/v1/todos/${todo.id}/start`),
+        pattern: "/api/v1/todos/:id/start",
+      });
+      expect(startRes.status).toBe(200);
+
+      const completedRes = await completedRouteAction({
+        request: new Request(`http://127.0.0.1:8787/api/v1/todos/${todo.id}/completed`, {
+          method: "POST",
+          headers: { ...authHeader, "Content-Type": "application/json" },
+          body: JSON.stringify({ completed: true, source: "app", opId: "api-op-1" }),
+        }),
+        params: { id: todo.id },
+        context: makeApiContext(),
+        url: new URL(`http://127.0.0.1:8787/api/v1/todos/${todo.id}/completed`),
+        pattern: "/api/v1/todos/:id/completed",
+      });
+      expect(completedRes.status).toBe(200);
+      const completedJson = (await completedRes.json()) as {
+        completion: { id: string; durationSeconds: number | null };
+      };
+      expect(completedJson.completion.durationSeconds).toBeGreaterThanOrEqual(89);
+
+      const statsRes = await completionsRouteLoader({
+        request: new Request(`http://127.0.0.1:8787/api/v1/todos/${todo.id}/completions`, {
+          headers: authHeader,
+        }),
+        params: { id: todo.id },
+        context: makeApiContext(),
+        url: new URL(`http://127.0.0.1:8787/api/v1/todos/${todo.id}/completions`),
+        pattern: "/api/v1/todos/:id/completions",
+      });
+      expect(statsRes.status).toBe(200);
+      const statsJson = (await statsRes.json()) as { stats: { count: number; entries: unknown[] } };
+      expect(statsJson.stats.count).toBe(1);
+      expect(statsJson.stats.entries).toHaveLength(1);
     });
   });
 });
