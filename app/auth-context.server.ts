@@ -32,7 +32,10 @@ export const webAuthContext = createContext<OptionalUserResult | null>(null);
  */
 export const apiAuthContext = createContext<ApiAuthContextValue | null>(null);
 
-const PUBLIC_API_PATHS = new Set(["/api/v1/mobile/version"]);
+const PUBLIC_API_PATHS = new Set([
+  "/api/v1/mobile/version",
+  "/api/v1/dev/test-login",
+]);
 
 const SKIP_WEB_AUTH_PREFIXES = [
   "/login",

@@ -12,8 +12,11 @@ import {
   shouldSignOutAfterRefreshFailure,
   type SessionTokenStore,
 } from "../shared/mobile-session";
+import { getRuntimeDevTestAuthConfig } from "./devTestAuth";
 
-export const API_BASE_URL = "https://synx.christran.io";
+const devTestAuthConfig = getRuntimeDevTestAuthConfig();
+export const DEV_TEST_AUTH_ENABLED = devTestAuthConfig.enabled;
+export const API_BASE_URL = devTestAuthConfig.apiBaseUrl;
 export const OPENAUTH_ISSUER = "https://auth.christran.io";
 export const OPENAUTH_CLIENT_ID = "synx";
 export const OPENAUTH_TOKEN_ENDPOINT = `${OPENAUTH_ISSUER}/token`;
