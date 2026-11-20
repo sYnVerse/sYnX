@@ -8,9 +8,10 @@ import {
   PanResponder,
   ActivityIndicator,
 } from "react-native";
-import { Check, Clock, ListTree, Repeat, Bell, Plus, GripVertical } from "lucide-react-native";
+import { Check, Clock, ListTree, Play, Repeat, Bell, Plus, GripVertical } from "lucide-react-native";
 import {
   PRIORITY_DROP_LABELS,
+  formatElapsedTimerLabel,
   resolvePriorityFromVerticalOffset,
   type PriorityLevel,
   type TodoItem,
@@ -35,6 +36,8 @@ export interface TaskRowProps {
   onPriorityDragEnd?: (item: TodoItem, nextPriority: PriorityLevel) => void;
   onPriorityDragCancel?: () => void;
   onToggleCompleted: (item: TodoItem) => void;
+  onToggleStart?: (item: TodoItem, at: number) => void;
+  now?: number;
   onEdit: (item: TodoItem) => void;
   onOpenSubtasks: (item: TodoItem) => void;
 }
@@ -53,6 +56,8 @@ export const TaskRow: React.FC<TaskRowProps> = ({
   onPriorityDragEnd,
   onPriorityDragCancel,
   onToggleCompleted,
+  onToggleStart,
+  now,
   onEdit,
   onOpenSubtasks,
 }) => {
@@ -179,6 +184,28 @@ export const TaskRow: React.FC<TaskRowProps> = ({
         </Text>
 
         <View style={styles.badgeRow}>
+          {item.startedAt && !item.completed ? (
+            canEdit && onToggleStart ? (
+              <TouchableOpacity
+                style={[styles.pillBadge, { backgroundColor: theme.accent }]}
+                onPress={() => onToggleStart(item, Date.now())}
+                accessibilityRole="button"
+                accessibilityLabel={`Stop timer for ${item.text}`}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Text style={[styles.pillBadgeText, { color: "#FFFFFF" }]}>
+                  {formatElapsedTimerLabel(item.startedAt, now ?? item.startedAt)}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
+                <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
+                  {formatElapsedTimerLabel(item.startedAt, now ?? item.startedAt)}
+                </Text>
+              </View>
+            )
+          ) : null}
+
           {item.reminderAt ? (
             <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
               <Bell size={11} color={theme.accent} />
@@ -267,6 +294,18 @@ export const TaskRow: React.FC<TaskRowProps> = ({
           ) : null}
         </View>
       </View>
+
+      {canEdit && !item.completed && !item.startedAt && onToggleStart ? (
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => onToggleStart(item, Date.now())}
+          accessibilityRole="button"
+          accessibilityLabel={`Start timer for ${item.text}`}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+        >
+          <Play size={16} color={theme.accent} />
+        </TouchableOpacity>
+      ) : null}
 
       {canEdit && (
         <TouchableOpacity

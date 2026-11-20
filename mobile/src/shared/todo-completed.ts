@@ -48,6 +48,8 @@ export type SetCompletedFields = {
   reminderAt?: number;
   reminderSent?: boolean;
   recurrence?: string | null;
+  startedAt?: number | null;
+  startedBy?: string | null;
 };
 
 export type SetCompletedLocalResult<T extends SetCompletedFields> = {
@@ -58,6 +60,7 @@ export type SetCompletedLocalResult<T extends SetCompletedFields> = {
 /**
  * Pure local/optimistic application of an explicit done state.
  * Recurring tasks requested as done advance the reminder and stay uncompleted.
+ * Completing a task also clears any active running timer.
  * Runs on the device/browser, so it defaults to the local time zone, matching
  * what the server does with the user's stored zone.
  */
@@ -74,16 +77,40 @@ export function applySetCompletedLocal<T extends SetCompletedFields>(
         completed: false,
         reminderAt: next,
         reminderSent: false,
+        startedAt: undefined,
+        startedBy: undefined,
       },
       rescheduled: true,
     };
   }
 
   if (Boolean(todo.completed) === Boolean(completed)) {
+    if (completed && (todo.startedAt != null || todo.startedBy != null)) {
+      return {
+        todo: {
+          ...todo,
+          startedAt: undefined,
+          startedBy: undefined,
+        },
+        rescheduled: false,
+      };
+    }
     return { todo, rescheduled: false };
   }
 
-  return { todo: { ...todo, completed: Boolean(completed) }, rescheduled: false };
+  if (completed) {
+    return {
+      todo: {
+        ...todo,
+        completed: true,
+        startedAt: undefined,
+        startedBy: undefined,
+      },
+      rescheduled: false,
+    };
+  }
+
+  return { todo: { ...todo, completed: false }, rescheduled: false };
 }
 
 export type SubtaskPromptCandidate = {

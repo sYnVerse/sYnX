@@ -18,6 +18,7 @@ export interface WidgetTaskItem {
   reminderAt?: number;
   reminderLabel?: string;
   isOverdue?: boolean;
+  isRunning?: boolean;
   subtaskProgress?: string;
 }
 
@@ -26,6 +27,7 @@ export interface WidgetPendingOp {
   listId: string;
   completed: boolean;
   at: number;
+  opId?: string;
 }
 
 export interface ListWidgetSnapshot {
@@ -144,6 +146,7 @@ export function buildListWidgetSnapshot(
       reminderAt: t.reminderAt,
       reminderLabel,
       isOverdue,
+      isRunning: t.startedAt ? true : undefined,
       subtaskProgress,
     };
   });
@@ -200,6 +203,7 @@ export function buildUpNextWidgetSnapshot(
           ? formatWidgetReminderLabel(t.reminderAt, now, options?.locale)
           : undefined,
         isOverdue,
+        isRunning: t.startedAt ? true : undefined,
       };
     });
 
@@ -279,12 +283,16 @@ export function extractPendingWidgetOps(rawProps: { pendingOps?: unknown } | Rec
       typeof item.completed === "boolean" &&
       typeof item.at === "number"
     ) {
-      ops.push({
+      const op: WidgetPendingOp = {
         todoId: item.todoId,
         listId: item.listId,
         completed: item.completed,
         at: item.at,
-      });
+      };
+      if (typeof item.opId === "string" && item.opId.trim().length > 0) {
+        op.opId = item.opId;
+      }
+      ops.push(op);
     }
   }
   return ops;
@@ -330,6 +338,7 @@ export function applyWidgetTaskCompletion(
         reminderLabel: res.todo.reminderAt
           ? formatWidgetReminderLabel(res.todo.reminderAt, now, locale)
           : undefined,
+        isRunning: undefined,
       });
     } else {
       nextTasks.push(t);
@@ -388,7 +397,13 @@ export function classifyWidgetReplayError(status: number | undefined | null): "r
 }
 
 function sameWidgetOp(a: WidgetPendingOp, b: WidgetPendingOp): boolean {
-  return a.todoId === b.todoId && a.listId === b.listId && a.completed === b.completed && a.at === b.at;
+  return (
+    a.todoId === b.todoId &&
+    a.listId === b.listId &&
+    a.completed === b.completed &&
+    a.at === b.at &&
+    (a.opId ?? undefined) === (b.opId ?? undefined)
+  );
 }
 
 /**

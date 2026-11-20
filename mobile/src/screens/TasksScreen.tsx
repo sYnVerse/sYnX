@@ -52,6 +52,7 @@ import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding, getSheetBottomPadding } from "../theme/theme";
 import { listOwnershipLabel, priorityColor } from "../utils/format";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
+import { useStartTodo } from "../hooks/useStartTodo";
 import { useTaskMutations } from "../hooks/useTaskMutations";
 import { syncActiveList, syncPinnedList } from "../services/widgetSync";
 import { getPinnedWidgetConfig, setPinnedWidgetConfig, type PinnedWidgetConfig } from "../services/widgetPreferences";
@@ -291,6 +292,31 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   }, [listId, hasListMeta, refetch]);
 
   const { setCompleted, isPendingId, isSlowPendingId } = useSetTodoCompleted(listId);
+  const {
+    toggleStartTodo,
+    isPendingId: isStartPendingId,
+    isSlowPendingId: isSlowStartPendingId,
+  } = useStartTodo(listId);
+  const [timerNow, setTimerNow] = useState(() => Date.now());
+  const hasRunningTimer = Boolean(rawTodos?.some((t) => Boolean(t.startedAt)));
+  React.useEffect(() => {
+    if (!hasRunningTimer) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setTimerNow(Date.now());
+      timer = setTimeout(tick, 60_000 - (Date.now() % 60_000) + 50);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [hasRunningTimer]);
+  const handleToggleStart = React.useCallback(
+    (task: TodoItem, at: number) => {
+      triggerImpactHaptic();
+      setTimerNow(at);
+      toggleStartTodo(task, at);
+    },
+    [toggleStartTodo, triggerImpactHaptic]
+  );
   const {
     createMutation,
     updateMutation,
@@ -769,8 +795,12 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 item={row.task}
                 canEdit={canEdit}
                 isOwner={isOwner}
-                isPending={isPendingId(row.task.id)}
-                isSlowPending={isSlowPendingId(row.task.id) || isSlowTaskUpdateId(row.task.id)}
+                isPending={isPendingId(row.task.id) || isStartPendingId(row.task.id)}
+                isSlowPending={
+                  isSlowPendingId(row.task.id) ||
+                  isSlowTaskUpdateId(row.task.id) ||
+                  isSlowStartPendingId(row.task.id)
+                }
                 canDragPriority={canDragTaskForPriority({
                   canEdit,
                   sortMode: taskSortMode,
@@ -785,6 +815,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 onPriorityDragEnd={handlePriorityDragEnd}
                 onPriorityDragCancel={handlePriorityDragCancel}
                 onToggleCompleted={(task) => setCompleted(task)}
+                onToggleStart={canEdit ? handleToggleStart : undefined}
+                now={timerNow}
                 onEdit={setEditingTask}
                 onOpenSubtasks={setSelectedTaskForBreakdown}
               />
@@ -820,6 +852,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       <TaskModal
         visible={!!editingTask}
         isEditing
+        taskId={editingTask?.id}
         initialText={editingTask?.text}
         initialPriority={editingTask?.priority}
         initialRecurrence={editingTask?.recurrence}

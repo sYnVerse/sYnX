@@ -291,6 +291,7 @@ export function useSetTodoCompleted(listId: string | undefined) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
       if (listId && data?.todo) {
+        queryClient.invalidateQueries({ queryKey: ["todo-completions", data.todo.id] }).catch(() => {});
         const updatedSubtasks = data.updatedSubtasks ?? [];
         if (updatedSubtasks.length > 0 || vars.subtaskAction) {
           const subtaskMap = new Map(updatedSubtasks.map((st) => [st.id, st]));

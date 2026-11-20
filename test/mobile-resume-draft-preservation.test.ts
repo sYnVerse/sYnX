@@ -508,6 +508,7 @@ const mocks = vi.hoisted(() => {
     ListTree: icon("ListTree"),
     Repeat: icon("Repeat"),
     Bell: icon("Bell"),
+    Play: icon("Play"),
     GripVertical: icon("GripVertical"),
   };
 
