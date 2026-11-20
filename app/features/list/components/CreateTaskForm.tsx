@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { FetcherWithComponents } from "react-router";
+import { href, type FetcherWithComponents } from "react-router";
 import { GUEST_REMINDER_HINT, type GuestActionPayload } from "~/guest-context";
 import { MAX_TASK_TEXT_LENGTH } from "~/write-limits";
 import { requestNotificationPermission } from "../format";
@@ -76,8 +76,8 @@ export function CreateTaskForm({
           <a
             href={
               activeListMeta?.id && !activeListMeta.id.startsWith("guest_")
-                ? `/login?redirectTo=/${encodeURIComponent(activeListMeta.id)}`
-                : "/login"
+                ? `${href("/login")}?redirectTo=${encodeURIComponent(href("/:id", { id: activeListMeta.id }))}`
+                : href("/login")
             }
             className="text-xs font-semibold text-indigo-300 hover:text-white underline ml-2 shrink-0"
           >

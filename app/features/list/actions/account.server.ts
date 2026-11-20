@@ -1,3 +1,4 @@
+import { href } from "react-router";
 import type { ListActionContext } from "./context";
 import { redirect } from "./context";
 import {
@@ -222,7 +223,7 @@ export async function handleRemoveSharedList(ctx: ListActionContext) {
     .bind(userId)
     .first<{ id: string }>();
   if (activeListId === listId) {
-    return redirect(remainingOwned?.id ? `/${remainingOwned.id}` : "/");
+    return redirect(remainingOwned?.id ? href("/:id", { id: remainingOwned.id }) : href("/"));
   }
   return Response.json({ success: true });
 }
@@ -277,7 +278,7 @@ export async function handleApproveDeleteRequest(ctx: ListActionContext) {
       .prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1")
       .bind(userId)
       .first<{ id: string }>();
-    return redirect(firstList ? `/${firstList.id}` : "/");
+    return redirect(firstList ? href("/:id", { id: firstList.id }) : href("/"));
   }
   return Response.json({ success: true, approved: true });
 }

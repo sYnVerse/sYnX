@@ -1,4 +1,4 @@
-import { isRouteErrorResponse } from "react-router";
+import { href, isRouteErrorResponse } from "react-router";
 
 export type RouteErrorPreset = "list" | "index" | "auth" | "mobileCallback" | "root";
 
@@ -21,34 +21,34 @@ const PRESET_COPY: Record<
     title: "Couldn't load this list",
     message:
       "We ran into a problem loading or saving this list. Try reloading, or return to your primary list.",
-    homeHref: "/",
+    homeHref: href("/"),
     homeLabel: "Go to my list",
   },
   index: {
     title: "Couldn't open your tasks",
     message:
       "We ran into a problem loading the workspace. Please try again in a moment.",
-    homeHref: "/",
+    homeHref: href("/"),
     homeLabel: "Reload home",
   },
   auth: {
     title: "Sign-in hit a snag",
     message:
       "We couldn't complete that authentication request. Please return and try signing in again.",
-    homeHref: "/",
+    homeHref: href("/"),
     homeLabel: "Go to home",
   },
   mobileCallback: {
     title: "Mobile sign-in handoff failed",
     message:
       "Return to the sYnX app and start sign-in again if the handoff did not complete.",
-    homeHref: "/",
+    homeHref: href("/"),
     homeLabel: "Open sYnX web",
   },
   root: {
     title: "Something went wrong",
     message: "An unexpected error occurred while rendering this page.",
-    homeHref: "/",
+    homeHref: href("/"),
     homeLabel: "Go to home",
   },
 };

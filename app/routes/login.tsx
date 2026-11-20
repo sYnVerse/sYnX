@@ -1,5 +1,5 @@
 import type { Route } from "./+types/login";
-import { redirect } from "react-router";
+import { href, redirect } from "react-router";
 import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 import { getAuthClient, parseSafeRedirectTo, parseTestLoginRequest } from "~/auth.server";
 import { serializeAuthSessionCookie, serializePkceCookie } from "~/auth-cookies.server";
@@ -54,7 +54,7 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
     }
   }
   const client = getAuthClient(request, env);
-  const callbackUrl = new URL(request.url).origin + "/callback";
+  const callbackUrl = new URL(request.url).origin + href("/callback");
 
   // PKCE S256 is required by sYnID (REQUIRE_PKCE). OpenAuth returns challenge.state + verifier.
   const { url, challenge } = await client.authorize(callbackUrl, "code", {
@@ -63,7 +63,7 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
 
   if (!challenge?.state || !challenge?.verifier) {
     console.error("OpenAuth authorize did not return a PKCE challenge");
-    return redirect("/");
+    return redirect(href("/"));
   }
 
   const urlObj = new URL(request.url);

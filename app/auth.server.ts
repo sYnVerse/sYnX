@@ -1,5 +1,6 @@
 import { createClient } from "@openauthjs/openauth/client";
 import { createSubjects } from "@openauthjs/openauth/subject";
+import { href } from "react-router";
 import { object, string } from "valibot";
 import {
   AUTH_SESSION_COOKIE,
@@ -416,7 +417,7 @@ export async function requireUser(request: Request, env: AuthEnv | null | undefi
   }
 
   // Both token verification and refresh failed: clear cookies and redirect to login
-  throw redirect("/login", {
+  throw redirect(href("/login"), {
     headers: buildAuthClearCookieHeaders(request.url),
   });
 }

@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import type { FetcherWithComponents } from "react-router";
+import { href, type FetcherWithComponents } from "react-router";
 import type { GuestActionPayload } from "~/guest-context";
 import { MAX_CATEGORY_LENGTH, MAX_LIST_NAME_LENGTH } from "~/write-limits";
 import { PRESET_CATEGORIES } from "../../../../shared";
@@ -237,9 +237,9 @@ export function ListDialogs({
                       handleGuestAction("deleteList", { listId: listToDelete.id });
                       const remaining = guestLists.filter((l) => l.id !== listToDelete.id);
                       if (remaining.length > 0) {
-                        navigate(`/${remaining[0].id}`);
+                        navigate(href("/:id", { id: remaining[0].id }));
                       } else {
-                        navigate(`/${userId}`);
+                        navigate(href("/:id", { id: userId }));
                       }
                       setListToDelete(null);
                     } else {
@@ -345,7 +345,7 @@ export function ListDialogs({
                       setNewListInput("");
                       setCustomCategoryInput("");
                       setIsCreateListOpen(false);
-                      navigate(`/${newId}`);
+                      navigate(href("/:id", { id: newId }));
                     } else {
                       listFetcher.submit(
                         { intent: "createList", listName: newListInput.trim(), category: finalCategory },
