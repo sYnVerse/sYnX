@@ -1,6 +1,7 @@
 import { data, redirect } from "react-router";
 import { getCloudflareContext } from "~/context.server";
-import { getAuthSettings, getOptionalUser } from "~/auth.server";
+import { getAuthSettings } from "~/auth.server";
+import { getRequestWebAuth } from "~/auth-context.server";
 import {
   DEFAULT_DISPLAY_NAME,
   getDisplayNamesForUsers,
@@ -32,7 +33,7 @@ type LoaderListRow = ListRow & { owner_display_name?: string };
 
 export const loader = async ({ request, params, context }: { request: Request; params: Record<string, string | undefined>; context: unknown }) => {
   const { env, ctx: execCtx } = getCloudflareContext(context);
-  const { userId, email, isLoggedIn, guestId, isNewGuest, accessToken } = await getOptionalUser(request, env);
+  const { userId, email, isLoggedIn, guestId, isNewGuest, accessToken } = await getRequestWebAuth(request, context);
   const db = env.DB;
 
   const headers = new Headers();

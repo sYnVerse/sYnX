@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.v1.lists.$id";
 import { getCloudflareContext } from "~/context.server";
-import { verifyBearerToken } from "../auth.server";
+import { getRequestApiAuth } from "~/auth-context.server";
 import * as v from "valibot";
 import { UpdateListSchema } from "../../shared";
 import { getListAccess, serializeListRow, type ListRow } from "../api-helpers.server";
@@ -15,7 +15,7 @@ import { categoryError, listNameError, normalizeOptionalCategory } from "../writ
 export async function loader({  request, params, context  }: Route.LoaderArgs) {
   const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
 
   const listId = params.id;
   if (!listId) {
@@ -60,7 +60,7 @@ export async function loader({  request, params, context  }: Route.LoaderArgs) {
 export async function action({  request, params, context  }: Route.ActionArgs) {
   const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

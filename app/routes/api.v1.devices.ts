@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.v1.devices";
 import { getCloudflareContext } from "~/context.server";
-import { verifyBearerToken } from "../auth.server";
+import { getRequestApiAuth } from "~/auth-context.server";
 import * as v from "valibot";
 import { RegisterDeviceTokenSchema } from "../../shared";
 
@@ -36,7 +36,7 @@ export async function action({  request, context  }: Route.ActionArgs) {
     const token = await readPushTokenForDelete(request);
     if (token) {
       try {
-        const user = await verifyBearerToken(request, env).catch(() => null);
+        const user = await getRequestApiAuth(request, context).catch(() => null);
         if (user) {
           await db
             .prepare("DELETE FROM device_tokens WHERE token = ? AND user_id = ?")
@@ -52,7 +52,7 @@ export async function action({  request, context  }: Route.ActionArgs) {
     return new Response(null, { status: 204 });
   }
 
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
