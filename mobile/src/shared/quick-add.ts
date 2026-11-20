@@ -382,6 +382,17 @@ function resolveChronoDateResult(
       continue;
     }
 
+    // Chrono's relative parser treats "for 15m" / "for 1h" as "in 15m",
+    // whereas sYnX treats "for <duration>" as duration (never a reminder offset).
+    // Skip these so dismissing a duration chip never turns it into a reminder.
+    const tags = res.tags();
+    if (
+      (tags.has("result/relativeDate") || tags.has("result/relativeDateAndTime")) &&
+      /^for\s+/i.test(rawCore.trim())
+    ) {
+      continue;
+    }
+
     const removalStart = stripLeadingPrepositionStart(workText, res.index);
     const removalEnd = res.index + rawCore.length;
     const matchedSlice = text.slice(removalStart, removalEnd);
@@ -418,7 +429,6 @@ function resolveChronoDateResult(
       };
     }
 
-    const tags = res.tags();
     const hasCasualKeywordTime =
       tags.has("casualReference/tonight") ||
       tags.has("casualReference/noon") ||

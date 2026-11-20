@@ -1,8 +1,23 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.7.0";
+export const WEB_VERSION = "v6.0.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v6.0.0",
+    date: "2026-11-20",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Smart quick add detects dates, times, repeats, priority, and duration as you type in the add-task form and calendar quick add, with dismissible chips (Esc dismisses the latest chip).",
+      },
+      {
+        type: "FIX",
+        text: "Checking off a repeating task now logs \"Completed a task\" instead of \"Marked a task incomplete\" in the shared-list activity log.",
+      },
+    ],
+  },
   {
     version: "v5.7.0",
     date: "2026-11-16",
