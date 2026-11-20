@@ -649,7 +649,7 @@ import { ToastProvider } from "../mobile/src/context/ToastContext";
 import { AuthProvider } from "../mobile/src/context/AuthContext";
 import { BottomTabNavigator } from "../mobile/src/navigation/BottomTabNavigator";
 import { STORAGE_KEY_LAST_ACTIVE_LIST_ID } from "../mobile/src/services/widgetPreferences";
-import type { TodoItem, TodoList } from "../shared";
+import { MOBILE_VERSION, type TodoItem, type TodoList } from "../shared";
 
 function makeJwt(sub: string, email: string) {
   const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }));
@@ -697,7 +697,7 @@ describe("mobile resume and cached startup (#198)", () => {
     mocks.linkingListeners.length = 0;
     vi.clearAllMocks();
 
-    mocks.storage.set("last_seen_changelog_version", "v3.9.0");
+    mocks.storage.set("last_seen_changelog_version", MOBILE_VERSION);
     queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false, staleTime: 1000 * 60 * 5 },

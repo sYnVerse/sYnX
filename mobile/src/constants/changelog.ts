@@ -6,6 +6,17 @@ export { MOBILE_APP_VERSION, MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-20",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Smart quick add detects dates, times, repeats, priority, and duration as you type new tasks, with one-tap chips to remove any parsed detail.",
+      },
+    ],
+  },
+  {
+    version: "v3.9.0",
     date: "2026-11-14",
     title: "What's new?",
     changes: [
