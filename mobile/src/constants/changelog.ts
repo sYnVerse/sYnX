@@ -13,6 +13,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         type: "NEW",
         text: "Smart quick add detects dates, times, repeats, priority, and duration as you type new tasks, with one-tap chips to remove any parsed detail.",
       },
+      {
+        type: "NEW",
+        text: "Start timers right from any task row, see actual or average completion times in task details, and view running timer badges on home screen widgets with accurate check-off times.",
+      },
     ],
   },
   {

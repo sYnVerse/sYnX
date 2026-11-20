@@ -200,6 +200,8 @@ export function CurrentListWidget(
                   colors={{ containerColor: 'transparent', contentColor: textPrimary }}
                   onClick={() => {
                     'worklet';
+                    const now = Date.now();
+                    const opId = `w_${task.id}_${now}_${Math.floor(Math.random() * 1e9).toString(36)}`;
                     const nextTasks = (props.tasks || []).filter((t) => t.id !== task.id);
                     const pendingOps = [
                       ...(props.pendingOps || []),
@@ -207,7 +209,8 @@ export function CurrentListWidget(
                         todoId: task.id,
                         listId: props.listId,
                         completed: true,
-                        at: Date.now(),
+                        at: now,
+                        opId,
                       },
                     ];
                     return {
@@ -255,8 +258,13 @@ export function CurrentListWidget(
                       >
                         {task.text}
                       </Text>
-                      {task.subtaskProgress || task.reminderLabel ? (
+                      {task.isRunning || task.subtaskProgress || task.reminderLabel ? (
                         <Row verticalAlignment="center">
+                          {task.isRunning ? (
+                            <Text style={{ fontSize: 10, fontWeight: 'bold' }} color={accent} maxLines={1}>
+                              {task.subtaskProgress || task.reminderLabel ? '⏱ · ' : '⏱'}
+                            </Text>
+                          ) : null}
                           {task.subtaskProgress ? (
                             <Text style={{ fontSize: 10 }} color={textMuted} maxLines={1}>
                               {task.reminderLabel ? `${task.subtaskProgress} · ` : task.subtaskProgress}
@@ -310,8 +318,13 @@ export function CurrentListWidget(
                   >
                     {task.text}
                   </Text>
-                  {task.subtaskProgress || task.reminderLabel ? (
+                  {task.isRunning || task.subtaskProgress || task.reminderLabel ? (
                     <Row verticalAlignment="center">
+                      {task.isRunning ? (
+                        <Text style={{ fontSize: 10, fontWeight: 'bold' }} color={accent} maxLines={1}>
+                          {task.subtaskProgress || task.reminderLabel ? '⏱ · ' : '⏱'}
+                        </Text>
+                      ) : null}
                       {task.subtaskProgress ? (
                         <Text style={{ fontSize: 10 }} color={textMuted} maxLines={1}>
                           {task.reminderLabel ? `${task.subtaskProgress} · ` : task.subtaskProgress}

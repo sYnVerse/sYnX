@@ -82,15 +82,28 @@ function clearHandledWidgetOps(widget: ListWidgetHandle, handled: WidgetPendingO
   widget.updateSnapshot(toNativeWidgetProps({ ...snap, pendingOps: remaining } as any));
 }
 
+/** Builds the API completion payload for a queued widget check-off op. */
+export function buildWidgetReplayPayload(op: WidgetPendingOp): {
+  completed: boolean;
+  completedAt: number;
+  source: 'widget';
+  opId?: string;
+} {
+  return op.opId
+    ? { completed: op.completed, completedAt: op.at, source: 'widget', opId: op.opId }
+    : { completed: op.completed, completedAt: op.at, source: 'widget' };
+}
+
 /**
  * Sends one queued widget checkoff to the API. The API resolves the task's own
  * list from its ID, so this works for any list (active, pinned, or shared).
  */
 async function replayWidgetOp(op: WidgetPendingOp): Promise<WidgetReplayOutcome> {
   try {
-    const res = await apiClient.post(`/api/v1/todos/${op.todoId}/completed`, {
-      completed: op.completed,
-    });
+    const res = await apiClient.post(
+      `/api/v1/todos/${op.todoId}/completed`,
+      buildWidgetReplayPayload(op)
+    );
     return { op, status: 'applied', todo: res.data?.todo as TodoItem | undefined };
   } catch (err: any) {
     const status = classifyWidgetReplayError(err?.response?.status);

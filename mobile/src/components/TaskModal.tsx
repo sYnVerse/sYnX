@@ -11,17 +11,21 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { DateTimePicker } from "@expo/ui/community/datetime-picker";
 import { CalendarClock, Trash2, X } from "lucide-react-native";
+import { apiClient } from "../api/client";
 import {
   PriorityLevel,
   RecurrencePattern,
   ReminderSelection,
+  TaskCompletionStats,
   combineDateAndTime,
   defaultPickerValue,
   formatReminderPillLabel,
   formatReminderPreview,
+  formatTaskCompletionStatsLine,
   initialReminderSelection,
   nextFullHour,
   prefers24HourClock,
@@ -54,6 +58,7 @@ interface TaskModalProps {
   initialDurationMinutes?: number | null;
   baseDay?: string | null;
   isEditing?: boolean;
+  taskId?: string;
 }
 
 export const TaskModal: React.FC<TaskModalProps> = ({
@@ -68,6 +73,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   initialDurationMinutes,
   baseDay = null,
   isEditing = false,
+  taskId,
 }) => {
   const { theme, hapticsEnabled } = useTheme();
   const { showError } = useToast();
@@ -153,6 +159,23 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const durationMinutes = quickState.effectiveDurationText;
   const reminder = quickState.effectiveReminderSelection;
   const reminderPreview = formatReminderPreview(quickState.resolveEffectiveReminderAt(now), now);
+
+  const statsQuery = useQuery<TaskCompletionStats | null>({
+    queryKey: ["todo-completions", taskId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/v1/todos/${taskId}/completions?limit=20`);
+      return (res.data?.stats as TaskCompletionStats | undefined) ?? null;
+    },
+    enabled: Boolean(visible && isEditing && taskId),
+  });
+  const parsedEst = parseInt(durationMinutes.trim().replace(/\D/g, ""), 10);
+  const statsLine = isEditing
+    ? formatTaskCompletionStatsLine(statsQuery.data, {
+        isRecurring: recurrence !== "none",
+        estimatedMinutes:
+          !isNaN(parsedEst) && parsedEst > 0 ? parsedEst : initialDurationMinutes ?? null,
+      })
+    : null;
 
   const triggerHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -328,6 +351,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               editable={!saving}
               accessibilityLabel="Estimated duration in minutes"
             />
+            {statsLine ? (
+              <Text
+                style={[styles.statsLine, { color: theme.textSecondary }]}
+                maxFontSizeMultiplier={1.3}
+              >
+                📊 {statsLine}
+              </Text>
+            ) : null}
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Priority Level</Text>
             <View style={styles.row} accessibilityRole="radiogroup">
@@ -665,6 +696,11 @@ const styles = StyleSheet.create({
   reminderPreview: {
     fontSize: typography.xs,
     marginTop: 8,
+  },
+  statsLine: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+    marginTop: 6,
   },
   pillWithIcon: {
     flexDirection: "row",

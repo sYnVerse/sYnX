@@ -3,9 +3,10 @@ import {
   buildListWidgetSnapshot,
   buildUpNextWidgetSnapshot,
   buildProgressWidgetSnapshot,
+  applyWidgetTaskCompletion,
   extractPendingWidgetOps,
   reconcileWidgetPendingOps,
-  applyWidgetTaskCompletion,
+  removeHandledWidgetOps,
   toNativeWidgetProps,
   type WidgetTaskItem,
 } from "../shared/widget-snapshot";
@@ -485,5 +486,54 @@ describe("widgets follow the list's task sort", () => {
       const snap = buildUpNextWidgetSnapshot(list, todos, { now, sortMode });
       expect(snap.tasks.map((t) => t.id)).toEqual(["c", "b"]);
     }
+  });
+
+  it("includes isRunning for tasks with startedAt and clears it on recurring widget completion", () => {
+    const runningTodos: TodoItem[] = [
+      task("run-1", { text: "Running one-time", startedAt: now - 120_000, startedBy: "user-1" }),
+      task("run-rec", {
+        text: "Running daily",
+        recurrence: "daily",
+        reminderAt: now + 3600_000,
+        startedAt: now - 60_000,
+        startedBy: "user-1",
+      }),
+    ];
+
+    const listSnap = buildListWidgetSnapshot(list, runningTodos, { now });
+    expect(listSnap.tasks.find((t) => t.id === "run-1")?.isRunning).toBe(true);
+    expect(listSnap.tasks.find((t) => t.id === "run-rec")?.isRunning).toBe(true);
+
+    const upNextSnap = buildUpNextWidgetSnapshot(list, runningTodos, { now });
+    expect(upNextSnap.tasks.find((t) => t.id === "run-rec")?.isRunning).toBe(true);
+
+    const res = applyWidgetTaskCompletion(listSnap.tasks, "run-rec", now);
+    expect(res.updatedTasks.find((t) => t.id === "run-rec")?.isRunning).toBeUndefined();
+  });
+
+  it("preserves opId across extractPendingWidgetOps, reconcileWidgetPendingOps, and removeHandledWidgetOps", () => {
+    const ops = extractPendingWidgetOps({
+      pendingOps: [
+        { todoId: "t-1", listId: "list-1", completed: true, at: 1000, opId: "op-1" },
+        { todoId: "t-1", listId: "list-1", completed: true, at: 2000, opId: "op-2" },
+        { todoId: "t-2", listId: "list-1", completed: true, at: 1500 },
+      ],
+    });
+    expect(ops).toEqual([
+      { todoId: "t-1", listId: "list-1", completed: true, at: 1000, opId: "op-1" },
+      { todoId: "t-1", listId: "list-1", completed: true, at: 2000, opId: "op-2" },
+      { todoId: "t-2", listId: "list-1", completed: true, at: 1500 },
+    ]);
+
+    const reconciled = reconcileWidgetPendingOps(ops);
+    expect(reconciled).toEqual([
+      { todoId: "t-1", listId: "list-1", completed: true, at: 2000, opId: "op-2" },
+      { todoId: "t-2", listId: "list-1", completed: true, at: 1500 },
+    ]);
+
+    const remaining = removeHandledWidgetOps(ops, [ops[1]]);
+    expect(remaining).toHaveLength(2);
+    expect(remaining.some((o) => o.opId === "op-1")).toBe(true);
+    expect(remaining.some((o) => o.opId === "op-2")).toBe(false);
   });
 });
