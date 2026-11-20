@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.v1.delete-requests";
 import { getCloudflareContext } from "~/context.server";
-import { verifyBearerToken } from "../auth.server";
+import { getRequestApiAuth } from "~/auth-context.server";
 import { getListAccess } from "../api-helpers.server";
 import {
   listPendingDeletesForList,
@@ -15,7 +15,7 @@ import {
 export async function loader({  request, context  }: Route.LoaderArgs) {
   const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

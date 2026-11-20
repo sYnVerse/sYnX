@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.v1.delete-requests.$id";
 import { getCloudflareContext } from "~/context.server";
-import { verifyBearerToken } from "../auth.server";
+import { getRequestApiAuth } from "~/auth-context.server";
 import {
   deleteRequestActivitySummary,
   logListActivity,
@@ -22,7 +22,7 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
 
   const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

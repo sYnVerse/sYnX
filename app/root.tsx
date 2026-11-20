@@ -6,9 +6,12 @@ import {
   ScrollRestoration,
 } from "react-router";
 import type { Route } from "./+types/root";
+import { authMiddleware } from "~/auth-context.server";
 import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 
 import "./tailwind.css";
+
+export const middleware: Route.MiddlewareFunction[] = [authMiddleware];
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },

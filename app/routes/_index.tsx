@@ -1,7 +1,8 @@
 import type { Route } from "./+types/_index";
 import { useEffect } from "react";
 import { useLoaderData, useNavigate } from "react-router";
-import { getOptionalUser, parseSafeRedirectTo } from "~/auth.server";
+import { parseSafeRedirectTo } from "~/auth.server";
+import { getRequestWebAuth } from "~/auth-context.server";
 import { getCloudflareContext } from "~/context.server";
 import { loader as listLoader } from "~/features/list/loader.server";
 import { action as listAction } from "~/features/list/action.server";
@@ -77,7 +78,7 @@ async function getPrimaryListId(db: D1Database | undefined, userId: string): Pro
 
 async function resolveActiveListIdForIndex(request: Request, context: unknown): Promise<string> {
   const { env } = getCloudflareContext(context);
-  const { userId, isLoggedIn } = await getOptionalUser(request, env);
+  const { userId, isLoggedIn } = await getRequestWebAuth(request, context);
 
   // 1. Check redirectTo query param, honoring it only if the user can access it
   const url = new URL(request.url);
@@ -102,7 +103,7 @@ async function resolveActiveListIdForIndex(request: Request, context: unknown): 
 
 export const loader = async ({ request, context }: Route.LoaderArgs) => {
   const { env } = getCloudflareContext(context);
-  const { userId, isLoggedIn } = await getOptionalUser(request, env);
+  const { userId, isLoggedIn } = await getRequestWebAuth(request, context);
   const db = env.DB;
 
   const url = new URL(request.url);
