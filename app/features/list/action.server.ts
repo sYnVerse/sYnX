@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { getOptionalUser } from "~/auth.server";
+import { getRequestWebAuth } from "~/auth-context.server";
 import { TodoManager } from "~/to-do-manager";
 import { logListActivity } from "~/list-activity.server";
 import type { ListActionContext } from "./actions/context";
@@ -9,7 +9,7 @@ import { getCloudflareContext } from "~/context.server";
 
 export async function action({ request, context, params }: ActionFunctionArgs) {
   const { env, ctx: execCtx } = getCloudflareContext(context);
-  const { userId, email, isLoggedIn } = await getOptionalUser(request, env);
+  const { userId, email, isLoggedIn } = await getRequestWebAuth(request, context);
   const db = env.DB;
   const activeListId = params.id as string;
   const waitUntil = execCtx?.waitUntil?.bind(execCtx);

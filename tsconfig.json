@@ -19,13 +19,17 @@
     "test/mobile-calendar-sync.test.ts",
     "test/mobile-calendar-soft-ask-context.test.ts",
     "test/mobile-calendar-reconcile.test.ts",
+    "test/mobile-dev-test-auth.test.ts",
     "test/mobile-optimistic-mutations.test.ts",
     "test/mobile-sign-out-cleanup.test.ts",
     "test/mobile-updates.test.ts",
     "test/mobile-resume-draft-preservation.test.ts",
     "test/mobile-reminder-notification-actions.test.ts",
     "test/mobile-task-priority-drag.test.ts",
-    "test/mobile-complete-subtasks-prompt.test.ts"
+    "test/mobile-complete-subtasks-prompt.test.ts",
+    "test/mobile-quick-add.test.ts",
+    "test/mobile-timer-and-widget-ops.test.ts",
+    "test/mobile-issue-104.test.ts"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
@@ -48,7 +52,6 @@
     "allowJs": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
     "paths": {
       "~/*": ["./app/*"]
     },

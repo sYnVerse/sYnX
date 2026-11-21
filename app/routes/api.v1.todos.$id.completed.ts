@@ -1,16 +1,16 @@
 import type { Route } from "./+types/api.v1.todos.$id.completed";
 import { getCloudflareContext } from "~/context.server";
-import { verifyBearerToken } from "../auth.server";
+import { getRequestApiAuth } from "~/auth-context.server";
 import { TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
 import { logListActivity } from "../list-activity.server";
 import { getUserTimeZone } from "../user-profile.server";
 import * as v from "valibot";
-import { SetTodoCompletedSchema } from "../../shared";
+import { SetTodoCompletedSchema, type CompletionSource } from "../../shared";
 
 /**
  * POST /api/v1/todos/:id/completed
- * Idempotent explicit done-state. Body: { completed: boolean }
+ * Idempotent explicit done-state. Body: { completed: boolean, completedAt?, source?, opId? }
  * Recurring tasks marked done are rescheduled and left uncompleted (rescheduled: true).
  */
 export async function action({  request, params, context  }: Route.ActionArgs) {
@@ -20,7 +20,7 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
 
   const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -46,11 +46,17 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
 
   let completed: boolean;
   let subtaskAction: "complete" | "promote" | undefined;
+  let completedAt: number | undefined;
+  let source: CompletionSource | undefined;
+  let opId: string | undefined;
   try {
     const body = await request.json();
     const parsed = v.parse(SetTodoCompletedSchema, body);
     completed = parsed.completed;
     subtaskAction = parsed.subtaskAction;
+    completedAt = parsed.completedAt;
+    source = parsed.source;
+    opId = parsed.opId;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "";
     return Response.json(
@@ -60,11 +66,21 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
   }
 
   const manager = new TodoManager(db, todoRow.list_id);
-  // Repeats keep their local clock time in the reminder owner's (or caller's) stored time zone.
-  const timeZone = await getUserTimeZone(db, todoRow.reminder_user_id || user.userId);
-  const { todo, rescheduled, updatedSubtasks } = await manager.setCompleted(todoId, completed, {
+  const reminderOwnerId = todoRow.reminder_user_id || user.userId;
+  // Repeats keep their local clock time in the reminder owner's (or caller's) stored time zone,
+  // while the completion row records the caller's own stored time zone.
+  const [timeZone, completerTimeZone] = await Promise.all([
+    getUserTimeZone(db, reminderOwnerId),
+    reminderOwnerId === user.userId ? undefined : getUserTimeZone(db, user.userId),
+  ]);
+  const { todo, rescheduled, updatedSubtasks, completion } = await manager.setCompleted(todoId, completed, {
     timeZone,
+    completerTimeZone: completerTimeZone ?? timeZone,
     subtaskAction,
+    userId: user.userId,
+    completedAt,
+    source: source ?? "app",
+    opId,
   });
 
   const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
@@ -85,5 +101,6 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
     todo,
     rescheduled,
     updatedSubtasks: updatedSubtasks ?? [],
+    completion: completion ?? null,
   });
 }

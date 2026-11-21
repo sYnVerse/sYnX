@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.v1.todos.$id.toggle";
 import { getCloudflareContext } from "~/context.server";
-import { verifyBearerToken } from "../auth.server";
+import { getRequestApiAuth } from "~/auth-context.server";
 import { TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
 import { logListActivity } from "../list-activity.server";
@@ -13,7 +13,7 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
 
   const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -38,9 +38,18 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
   }
 
   const manager = new TodoManager(db, todoRow.list_id);
+  const reminderOwnerId = todoRow.reminder_user_id || user.userId;
   // Repeats keep their local clock time in the reminder owner's (or caller's) stored time zone.
-  const timeZone = await getUserTimeZone(db, todoRow.reminder_user_id || user.userId);
-  const updatedTodo = await manager.toggle(todoId, { timeZone });
+  const [timeZone, completerTimeZone] = await Promise.all([
+    getUserTimeZone(db, reminderOwnerId),
+    reminderOwnerId === user.userId ? undefined : getUserTimeZone(db, user.userId),
+  ]);
+  const updatedTodo = await manager.toggle(todoId, {
+    timeZone,
+    completerTimeZone: completerTimeZone ?? timeZone,
+    userId: user.userId,
+    source: "api",
+  });
 
   const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
   const logPromise = logListActivity(db, {

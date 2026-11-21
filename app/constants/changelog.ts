@@ -1,8 +1,35 @@
 import type { ReleaseNote } from "../../shared/changelog";
 
-export const WEB_VERSION = "v5.7.0";
+export const WEB_VERSION = "v6.0.0";
 
 export const WEB_CHANGELOG: ReleaseNote[] = [
+  {
+    version: "v6.0.0",
+    date: "2026-11-20",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Smart quick add detects dates, times, repeats, priority, and duration as you type in the add-task form and calendar quick add, with dismissible chips (Esc dismisses the latest chip).",
+      },
+      {
+        type: "NEW",
+        text: "Start/Stop task timers (▶ / ⏱) in both the task list and calendar, with per-task completion timing stats (last duration or recurring average vs estimate).",
+      },
+      {
+        type: "NEW",
+        text: "Smart Quick Add toggle in Profile Settings to enter task titles literally when turned off, quick-pick duration buttons (15m, 30m, 1h, Skip) in the toast after untimed check-offs, Undo on repeating task completions, and CSV export of your completion log.",
+      },
+      {
+        type: "IMPR",
+        text: "Activity log is now available for all of your lists, including private lists.",
+      },
+      {
+        type: "FIX",
+        text: "Checking off a repeating task now logs \"Completed a task\" instead of \"Marked a task incomplete\" in the shared-list activity log.",
+      },
+    ],
+  },
   {
     version: "v5.7.0",
     date: "2026-11-16",

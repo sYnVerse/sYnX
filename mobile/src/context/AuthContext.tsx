@@ -20,6 +20,7 @@ import {
   sessionRefresh,
   setAuthFailureHandler,
 } from "../api/client";
+import { DEV_TEST_AUTH_ENABLED } from "../api/devTestAuth";
 import { shouldSignOutAfterRefreshFailure } from "../shared/mobile-session";
 import { checkHomeTimeZone, resetTimeZoneSync } from "../services/timeZoneSync";
 import {
@@ -43,6 +44,7 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   login: () => Promise<void>;
+  loginWithTestAccount: () => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -52,6 +54,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
   login: async () => {},
+  loginWithTestAccount: async () => {},
   logout: async () => {},
   refreshUser: async () => {},
 });
@@ -248,11 +251,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await clearSignedOutDeviceData();
 
-      const logoutUrl = `${OPENAUTH_ISSUER}/logout?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
-      try {
-        await WebBrowser.openAuthSessionAsync(logoutUrl, REDIRECT_URI);
-      } catch (browserErr) {
-        console.warn("Central OpenAuth logout browser session warning:", browserErr);
+      if (!DEV_TEST_AUTH_ENABLED) {
+        const logoutUrl = `${OPENAUTH_ISSUER}/logout?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}`;
+        try {
+          await WebBrowser.openAuthSessionAsync(logoutUrl, REDIRECT_URI);
+        } catch (browserErr) {
+          console.warn("Central OpenAuth logout browser session warning:", browserErr);
+        }
       }
 
       resetTimeZoneSync();
@@ -310,8 +315,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const loginWithTestAccount = useCallback(async () => {
+    if (!DEV_TEST_AUTH_ENABLED) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const res = await apiClient.post(
+        "/api/v1/dev/test-login",
+        {},
+        { skipAuthRefresh: true }
+      );
+      const testToken = res.data?.token;
+      if (typeof testToken !== "string" || !testToken) {
+        throw new Error("Test login did not return a session token.");
+      }
+      await SecureStore.setItemAsync(TOKEN_KEY, testToken);
+      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+      applyAccessToken(testToken);
+      setUser({
+        userId: String(res.data?.userId || "user_mobile_e2e"),
+        email: String(res.data?.email || "mobile-e2e@e2e.local"),
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [applyAccessToken]);
+
   return (
-    <AuthContext.Provider value={{ token, user, isLoading, login, logout, refreshUser }}>
+    <AuthContext.Provider
+      value={{ token, user, isLoading, login, loginWithTestAccount, logout, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   );

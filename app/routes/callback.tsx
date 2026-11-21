@@ -1,5 +1,5 @@
 import type { Route } from "./+types/callback";
-import { redirect } from "react-router";
+import { href, redirect } from "react-router";
 import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 import { getAuthClient, getAuthSettings, parseSafeRedirectTo, verifyAccessToken } from "~/auth.server";
 import { syncProviderProfile } from "~/provider-profile.server";
@@ -19,7 +19,7 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
   const clearPkce = clearPkceCookie(request.url);
 
   const reject = () =>
-    redirect("/login", {
+    redirect(href("/login"), {
       headers: {
         "Set-Cookie": clearPkce,
       },
@@ -36,7 +36,7 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
   }
 
   const client = getAuthClient(request, env);
-  const callbackUrl = url.origin + "/callback";
+  const callbackUrl = url.origin + href("/callback");
 
   try {
     const exchanged = await client.exchange(code, callbackUrl, challenge.verifier);
@@ -78,9 +78,9 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
     }
 
     const safeDestination = parseSafeRedirectTo(destination);
-    let targetLocation = "/";
-    if (safeDestination && safeDestination !== "/") {
-      targetLocation = `/?redirectTo=${encodeURIComponent(safeDestination)}`;
+    let targetLocation = href("/");
+    if (safeDestination && safeDestination !== href("/")) {
+      targetLocation = `${href("/")}?redirectTo=${encodeURIComponent(safeDestination)}`;
     }
 
     // Send the browser to / (which the mobile app has never claimed).

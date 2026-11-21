@@ -4,23 +4,138 @@
  * with details on whether an Over-The-Air (OTA) update was published or a fresh
  * Android preview APK was compiled.
  *
- * Needs SYNX_GITHUB_COMMENT_TOKEN as a secret EAS environment variable: a
- * fine-grained GitHub token for this repo with Pull requests and Contents
- * read/write. Skips (without failing the workflow) when it isn't set.
+ * Authentication (in priority order):
+ * 1. GitHub App (.pem private key + App ID) — mints an RS256 JWT via Node's
+ *    built-in `crypto` and exchanges it for a short-lived installation token so
+ *    comments are posted as `sYnVerse-Gemini[bot]` without an expiring PAT:
+ *      - `SYNX_GITHUB_APP_ID` (or `GITHUB_APP_ID`)
+ *      - `SYNX_GITHUB_APP_PRIVATE_KEY` (or `GITHUB_APP_PRIVATE_KEY`, PEM format)
+ *      - `SYNX_GITHUB_APP_INSTALLATION_ID` (optional; resolved dynamically via
+ *        `/repos/{owner}/{repo}/installation` when omitted)
+ * 2. `SYNX_GITHUB_COMMENT_TOKEN` — fallback fine-grained PAT for local runs or
+ *    environments without GitHub App keys.
+ *
+ * Skips (without failing the workflow) when no credentials are configured.
  */
+const crypto = require("node:crypto");
+
 const DEFAULT_REPO = "sYnVerse/sYnX";
 const EXPO_BUILDS = "https://expo.dev/accounts/chris-tran/projects/synx/builds";
+const GITHUB_API_BASE = "https://api.github.com";
 
-async function gh(path, init = {}, env = process.env) {
+function githubHeaders(token, extra = {}) {
+  return {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
+    "X-GitHub-Api-Version": "2022-11-28",
+    ...extra,
+  };
+}
+
+/** Normalizes a PEM private key from env vars (expanding escaped `\n` newlines). */
+function normalizePrivateKey(rawKey) {
+  return String(rawKey || "").replace(/\\n/g, "\n").trim();
+}
+
+function base64UrlEncode(input) {
+  return Buffer.from(input).toString("base64url");
+}
+
+/** Creates an RS256 GitHub App JWT valid for 9 minutes (with -60s clock skew). */
+function createAppJwt(appId, privateKeyPem, nowSec = Math.floor(Date.now() / 1000)) {
+  const normalizedId = String(appId || "").trim();
+  const normalizedKey = normalizePrivateKey(privateKeyPem);
+  if (!normalizedId) throw new Error("GitHub App ID is required to create JWT");
+  if (!normalizedKey) throw new Error("GitHub App private key is required to create JWT");
+
+  const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+  const payload = base64UrlEncode(
+    JSON.stringify({
+      iat: nowSec - 60,
+      exp: nowSec + 9 * 60,
+      iss: normalizedId,
+    })
+  );
+  const signingInput = `${header}.${payload}`;
+  const signer = crypto.createSign("RSA-SHA256");
+  signer.update(signingInput);
+  signer.end();
+  const signature = signer.sign(normalizedKey).toString("base64url");
+  return `${signingInput}.${signature}`;
+}
+
+async function resolveInstallationId(jwt, repo, env = process.env, fetchImpl = globalThis.fetch) {
+  const configured = (
+    env.SYNX_GITHUB_APP_INSTALLATION_ID ||
+    env.GITHUB_APP_INSTALLATION_ID ||
+    ""
+  ).trim();
+  if (configured) return configured;
+
+  const path = `/repos/${repo}/installation`;
+  const res = await fetchImpl(`${GITHUB_API_BASE}${path}`, {
+    method: "GET",
+    headers: githubHeaders(jwt),
+  });
+  if (!res.ok) {
+    throw new Error(`GitHub GET ${path}: ${res.status} ${await res.text()}`);
+  }
+  const data = await res.json();
+  if (!data || data.id == null) {
+    throw new Error(`GitHub GET ${path}: missing installation id in response`);
+  }
+  return String(data.id);
+}
+
+/**
+ * Resolves a GitHub token from App credentials (preferred) or PAT fallback.
+ * Returns `{ token, source }` or `null` when neither credential set is present.
+ */
+async function getInstallationToken(env = process.env, fetchImpl = globalThis.fetch) {
+  const appId = (env.SYNX_GITHUB_APP_ID || env.GITHUB_APP_ID || "").trim();
+  const privateKey = (env.SYNX_GITHUB_APP_PRIVATE_KEY || env.GITHUB_APP_PRIVATE_KEY || "").trim();
+
+  if (appId && privateKey) {
+    const repo = env.GITHUB_REPOSITORY || DEFAULT_REPO;
+    const jwt = createAppJwt(appId, privateKey);
+    const installationId = await resolveInstallationId(jwt, repo, env, fetchImpl);
+    const path = `/app/installations/${installationId}/access_tokens`;
+    const res = await fetchImpl(`${GITHUB_API_BASE}${path}`, {
+      method: "POST",
+      headers: githubHeaders(jwt),
+    });
+    if (!res.ok) {
+      throw new Error(`GitHub POST ${path}: ${res.status} ${await res.text()}`);
+    }
+    const data = await res.json();
+    if (!data || !data.token) {
+      throw new Error(`GitHub POST ${path}: missing installation token in response`);
+    }
+    return { token: data.token, source: "github-app" };
+  }
+
+  const pat = (env.SYNX_GITHUB_COMMENT_TOKEN || "").trim();
+  if (pat) {
+    return { token: pat, source: "pat" };
+  }
+
+  return null;
+}
+
+function hasAuthCredentials(env = process.env) {
+  const appId = (env.SYNX_GITHUB_APP_ID || env.GITHUB_APP_ID || "").trim();
+  const privateKey = (env.SYNX_GITHUB_APP_PRIVATE_KEY || env.GITHUB_APP_PRIVATE_KEY || "").trim();
+  const pat = (env.SYNX_GITHUB_COMMENT_TOKEN || "").trim();
+  return Boolean((appId && privateKey) || pat);
+}
+
+async function gh(path, init = {}, env = process.env, tokenOverride = null) {
   const repo = env.GITHUB_REPOSITORY || DEFAULT_REPO;
-  const token = env.SYNX_GITHUB_COMMENT_TOKEN;
-  const res = await fetch(`https://api.github.com/repos/${repo}${path}`, {
+  const token = tokenOverride || env.SYNX_GITHUB_COMMENT_TOKEN;
+  const res = await fetch(`${GITHUB_API_BASE}/repos/${repo}${path}`, {
     ...init,
     headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "X-GitHub-Api-Version": "2022-11-28",
-      "Content-Type": "application/json",
+      ...githubHeaders(token, { "Content-Type": "application/json" }),
       ...init.headers,
     },
   });
@@ -154,25 +269,42 @@ function body(env = process.env) {
 }
 
 async function main(env = process.env) {
-  const token = env.SYNX_GITHUB_COMMENT_TOKEN;
-  const commitSha = env.COMMIT_SHA;
-  if (!token) {
-    console.warn("SYNX_GITHUB_COMMENT_TOKEN not set; skipping GitHub comment.");
+  if (!hasAuthCredentials(env)) {
+    console.warn(
+      "Neither GitHub App credentials (SYNX_GITHUB_APP_ID / SYNX_GITHUB_APP_PRIVATE_KEY) nor SYNX_GITHUB_COMMENT_TOKEN not set; skipping GitHub comment."
+    );
     return;
   }
+  const commitSha = env.COMMIT_SHA;
   if (!commitSha) {
     console.warn("No commit SHA (manual run?); skipping GitHub comment.");
     return;
   }
-  const pulls = await gh(`/commits/${commitSha}/pulls`, {}, env);
+  const auth = await getInstallationToken(env);
+  if (!auth) {
+    console.warn("GitHub credentials unavailable; skipping GitHub comment.");
+    return;
+  }
+  const token = auth.token;
+  const pulls = await gh(`/commits/${commitSha}/pulls`, {}, env, token);
   const pr = pulls.find((p) => p.merged_at) || pulls[0];
   const commentBody = body(env);
   if (pr) {
-    const c = await gh(`/issues/${pr.number}/comments`, { method: "POST", body: JSON.stringify({ body: commentBody }) }, env);
-    console.log(`Commented on pull request: ${c.html_url}`);
+    const c = await gh(
+      `/issues/${pr.number}/comments`,
+      { method: "POST", body: JSON.stringify({ body: commentBody }) },
+      env,
+      token
+    );
+    console.log(`Commented on pull request (${auth.source}): ${c.html_url}`);
   } else {
-    const c = await gh(`/commits/${commitSha}/comments`, { method: "POST", body: JSON.stringify({ body: commentBody }) }, env);
-    console.log(`Commented on commit: ${c.html_url}`);
+    const c = await gh(
+      `/commits/${commitSha}/comments`,
+      { method: "POST", body: JSON.stringify({ body: commentBody }) },
+      env,
+      token
+    );
+    console.log(`Commented on commit (${auth.source}): ${c.html_url}`);
   }
 
   const publishedRuntime = parseUpdateRuntimeVersion(env.UPDATES_JSON);
@@ -193,4 +325,13 @@ if (require.main === module) {
   });
 }
 
-module.exports = { body, main, gh, parseUpdateRuntimeVersion };
+module.exports = {
+  body,
+  main,
+  gh,
+  parseUpdateRuntimeVersion,
+  normalizePrivateKey,
+  createAppJwt,
+  resolveInstallationId,
+  getInstallationToken,
+};

@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { Await } from "react-router";
+import { Await, href } from "react-router";
 import { ProfileAvatar } from "~/components/profile-avatar";
 import { WEB_VERSION } from "~/constants/changelog";
 import {
@@ -68,6 +68,9 @@ interface ProfileModalProps {
   setIsProfileOpen: (open: boolean) => void;
   setIsChangelogOpenedManually: (open: boolean) => void;
   handleExportData: () => void;
+  handleExportCompletionsCsv: () => void;
+  smartQuickAddEnabled: boolean;
+  setSmartQuickAddEnabled: (enabled: boolean) => void;
 }
 
 export function ProfileModal({
@@ -108,6 +111,9 @@ export function ProfileModal({
   setIsProfileOpen,
   setIsChangelogOpenedManually,
   handleExportData,
+  handleExportCompletionsCsv,
+  smartQuickAddEnabled,
+  setSmartQuickAddEnabled,
 }: ProfileModalProps) {
   if (!isProfileOpen) return null;
 
@@ -315,6 +321,32 @@ export function ProfileModal({
           ))}
         </div>
 
+        {/* Task Input */}
+        <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Task Input</h4>
+        <div className="bg-white/[0.02] border border-white/[0.04] rounded-xl p-4 mb-6 text-xs">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold text-slate-300">Smart Quick Add</p>
+              <p className="text-[10px] text-slate-500">
+                Detect dates, times, repeats, priority, and duration as you type
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={smartQuickAddEnabled}
+              aria-label="Smart Quick Add"
+              data-testid="smart-quick-add-toggle"
+              onClick={() => setSmartQuickAddEnabled(!smartQuickAddEnabled)}
+              className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none relative shrink-0
+                ${smartQuickAddEnabled ? "bg-themeAccentFrom" : "bg-slate-800"}`}
+            >
+              <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200
+                ${smartQuickAddEnabled ? "translate-x-4" : "translate-x-0"}`} />
+            </button>
+          </div>
+        </div>
+
         {/* Notification Settings */}
         <div className="mb-6">
           <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-2">Notification Channels</h4>
@@ -438,7 +470,7 @@ export function ProfileModal({
                 Sign in to configure Email, SMS, and Discord task notifications.
               </p>
               <a
-                href="/login"
+                href={href("/login")}
                 className="mt-1 inline-block text-xs font-semibold text-white bg-themeAccentFrom hover:bg-themeAccentTo rounded-xl px-4 py-2 transition-all shadow-md active:scale-[0.98]"
               >
                 Sign In
@@ -480,8 +512,25 @@ export function ProfileModal({
             <span className="text-[10px] text-slate-500">Download</span>
           </button>
 
+          {isLoggedIn && (
+            <button
+              type="button"
+              data-testid="export-completions-csv"
+              onClick={handleExportCompletionsCsv}
+              className="w-full flex items-center justify-between text-xs font-semibold text-slate-300 hover:text-white bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.05] rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-themeAccentText" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Export Completions (CSV)
+              </span>
+              <span className="text-[10px] text-slate-500">Download</span>
+            </button>
+          )}
+
           {isLoggedIn ? (
-            <form action="/logout" method="post" className="w-full">
+            <form action={href("/logout")} method="post" className="w-full">
               <button
                 type="submit"
                 className="w-full flex items-center justify-between text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-500/10 hover:bg-rose-500/15 border border-rose-500/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
@@ -497,7 +546,7 @@ export function ProfileModal({
             </form>
           ) : (
             <a
-              href="/login"
+              href={href("/login")}
               className="w-full flex items-center justify-between text-xs font-semibold text-themeAccentText hover:text-themeAccentText bg-themeAccentBg hover:bg-themeAccentBg/20 border border-themeAccentRing/20 rounded-xl px-4 py-3 transition-all duration-200 cursor-pointer"
             >
               <span className="flex items-center gap-2">

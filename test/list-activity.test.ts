@@ -93,7 +93,7 @@ describe("list activity log", () => {
     expect(entry.taskId).toBe(todoId);
   });
 
-  it("skips logging for private lists", async () => {
+  it("logs activity for private lists while omitting client_ip and user_agent", async () => {
     const listId = "list-activity-private";
     await seedSharedList(listId, "private");
 
@@ -103,12 +103,65 @@ describe("list activity log", () => {
       actorId: ownerId,
       isOwner: true,
       shareMode: "private",
-      summary: "Should not appear",
+      summary: "Private task added",
+      clientIp: "198.51.100.12",
+      userAgent: "TestBrowser/1.0",
+    });
+
+    const req = new Request("https://example.com/list", {
+      headers: {
+        "CF-Connecting-IP": "203.0.113.99",
+        "User-Agent": "PrivateAgent/2.0",
+      },
+    });
+    await logListActivity(db, {
+      listId,
+      action: "task_completed",
+      actorId: ownerId,
+      isOwner: true,
+      summary: "Private task completed without explicit shareMode",
+      request: req,
+    });
+
+    const { results } = await db
+      .prepare(
+        "SELECT action, summary, client_ip, user_agent FROM list_activity WHERE list_id = ? ORDER BY created_at ASC, id ASC"
+      )
+      .bind(listId)
+      .all<{
+        action: string;
+        summary: string;
+        client_ip: string | null;
+        user_agent: string | null;
+      }>();
+
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({
+      action: "task_created",
+      summary: "Private task added",
+      client_ip: null,
+      user_agent: null,
+    });
+    expect(results[1]).toMatchObject({
+      action: "task_completed",
+      summary: "Private task completed without explicit shareMode",
+      client_ip: null,
+      user_agent: null,
+    });
+  });
+
+  it("skips logging cleanly when list does not exist (e.g. guest lists)", async () => {
+    await logListActivity(db, {
+      listId: "guest-nonexistent-list",
+      action: "task_created",
+      actorId: ownerId,
+      isOwner: true,
+      summary: "Should be skipped cleanly",
     });
 
     const row = await db
       .prepare("SELECT COUNT(*) AS c FROM list_activity WHERE list_id = ?")
-      .bind(listId)
+      .bind("guest-nonexistent-list")
       .first<{ c: number }>();
     expect(Number(row?.c || 0)).toBe(0);
   });

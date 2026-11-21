@@ -182,7 +182,7 @@ test.describe("Shared Lists Suite", () => {
     await ownerPage.getByRole("button", { name: "Activity" }).click();
     await expect(ownerPage.getByRole("heading", { name: "Activity" })).toBeVisible();
     // Activity modal should contain log entries
-    const activityModal = ownerPage.locator("div.fixed.inset-0", { hasText: "Who changed this shared list" });
+    const activityModal = ownerPage.locator("div.fixed.inset-0", { hasText: "Recent changes to this list" });
     await expect(activityModal).toBeVisible();
     await ownerPage.getByRole("button", { name: "Close activity" }).click();
 

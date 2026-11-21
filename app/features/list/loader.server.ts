@@ -1,6 +1,7 @@
-import { data, redirect } from "react-router";
+import { data, href, redirect } from "react-router";
 import { getCloudflareContext } from "~/context.server";
-import { getAuthSettings, getOptionalUser } from "~/auth.server";
+import { getAuthSettings } from "~/auth.server";
+import { getRequestWebAuth } from "~/auth-context.server";
 import {
   DEFAULT_DISPLAY_NAME,
   getDisplayNamesForUsers,
@@ -23,16 +24,17 @@ import {
   type ListActivityEntry,
   type PendingDeleteRequest,
   type ShareMode,
+  type TaskCompletionStats,
 } from "../../../shared";
 import type { ListRow } from "~/api-helpers.server";
-import type { Todo, TodoRow } from "~/to-do-manager";
+import { getListCompletionStats, type Todo, type TodoRow } from "~/to-do-manager";
 import type { GuestList } from "./guest-lists";
 
 type LoaderListRow = ListRow & { owner_display_name?: string };
 
 export const loader = async ({ request, params, context }: { request: Request; params: Record<string, string | undefined>; context: unknown }) => {
   const { env, ctx: execCtx } = getCloudflareContext(context);
-  const { userId, email, isLoggedIn, guestId, isNewGuest, accessToken } = await getOptionalUser(request, env);
+  const { userId, email, isLoggedIn, guestId, isNewGuest, accessToken } = await getRequestWebAuth(request, context);
   const db = env.DB;
 
   const headers = new Headers();
@@ -141,11 +143,11 @@ export const loader = async ({ request, params, context }: { request: Request; p
       } catch (e) {
         console.error("Failed to create default list:", e);
       }
-      return redirect(`/${defaultListId}`);
+      return redirect(href("/:id", { id: defaultListId }));
     }
 
     if (!activeListExists && lists.length > 0) {
-      return redirect(`/${lists[0].id}`);
+      return redirect(href("/:id", { id: lists[0].id }));
     }
   } else {
     // Guest user (isLoggedIn === false): DO NOT touch D1 for personal guest lists!
@@ -223,17 +225,13 @@ export const loader = async ({ request, params, context }: { request: Request; p
         })
       : Promise.resolve([]);
 
-  // Owner-only activity for the active shared list (private lists have no log).
-  // Deferred so secondary log lookups do not block the task list paint.
+  // Owner-only activity for the active list (deferred so secondary log lookups
+  // do not block the task list paint).
   const listActivity: Promise<ListActivityEntry[]> = (async () => {
     try {
       if (isLoggedIn && activeListId) {
         const activeMeta = lists.find((l) => l.id === activeListId);
-        if (
-          activeMeta &&
-          activeMeta.owner_id === userId &&
-          (activeMeta.share_mode || "private") !== "private"
-        ) {
+        if (activeMeta && activeMeta.owner_id === userId) {
           const activity = await listActivityForOwner(db, activeListId, userId, { limit: 50 });
           if (activity.kind === "ok") return activity.entries;
         }
@@ -265,6 +263,8 @@ export const loader = async ({ request, params, context }: { request: Request; p
         parentId: t.parent_id || undefined,
         recurrence: (t.recurrence || "none") as "none" | "daily" | "weekly" | "monthly",
         durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : undefined,
+        startedAt: t.started_at !== null && t.started_at !== undefined ? Number(t.started_at) : undefined,
+        startedBy: t.started_by || undefined,
         pendingDelete: pendingTaskIds.has(t.id),
         createdBy: t.created_by || undefined,
         canDeleteDirectly: canDeleteTaskDirectly({
@@ -340,6 +340,15 @@ export const loader = async ({ request, params, context }: { request: Request; p
     }
   }
 
+  let completionStatsByTodoId: Record<string, TaskCompletionStats> = {};
+  if (isLoggedIn && activeListId) {
+    try {
+      completionStatsByTodoId = await getListCompletionStats(db, activeListId, userId);
+    } catch (e) {
+      console.error("Failed to load task completion stats:", e);
+    }
+  }
+
   const responsePayload = {
     userId,
     email,
@@ -348,6 +357,7 @@ export const loader = async ({ request, params, context }: { request: Request; p
     lists: listsWithTodos,
     activeListId: activeListId || userId,
     todos,
+    completionStatsByTodoId,
     pendingDeleteRequests,
     ownedPendingDeleteRequests,
     listActivity,

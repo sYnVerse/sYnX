@@ -51,7 +51,7 @@ export function getLocalTimeZone(): string | undefined {
   }
 }
 
-type WallClock = {
+export type WallClock = {
   year: number;
   month: number; // 1-12
   day: number;
@@ -61,7 +61,7 @@ type WallClock = {
   millisecond: number;
 };
 
-function toWallClock(epochMs: number, timeZone: string): WallClock {
+export function toWallClock(epochMs: number, timeZone: string): WallClock {
   const parts = getFormatter(timeZone).formatToParts(new Date(epochMs));
   const get = (type: Intl.DateTimeFormatPartTypes) =>
     Number(parts.find((p) => p.type === type)?.value ?? 0);
@@ -90,7 +90,7 @@ function zoneOffset(epochMs: number, timeZone: string): number {
  * resolve to the earlier instant; skipped times (clocks spring forward) move
  * forward by the gap, e.g. 2:30 AM → 3:30 AM. Same as Temporal "compatible".
  */
-function fromWallClock(w: WallClock, timeZone: string): number {
+export function fromWallClock(w: WallClock, timeZone: string): number {
   const local = wallClockAsUtc(w);
   const day = 24 * 60 * 60 * 1000;
   const before = zoneOffset(local - day, timeZone);

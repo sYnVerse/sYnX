@@ -58,6 +58,8 @@ import {
 import { useTheme } from "../context/ThemeContext";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { setAppTaskSortMode } from "../services/taskSortPreferences";
+import { useQuickAddPreferences } from "../hooks/useQuickAddPreferences";
+import { setSmartQuickAddEnabled } from "../services/quickAddPreferences";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../context/ToastContext";
 import { getCachedListName } from "../services/listNames";
@@ -137,6 +139,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const { logout, user } = useAuth();
   const { theme, themeMode, setThemeMode, hapticsEnabled, setHapticsEnabled } = useTheme();
   const { appDefault: taskSortMode } = useTaskSortPreferences();
+  const smartQuickAddEnabled = useQuickAddPreferences();
   const { showError, showSuccess } = useToast();
   const insets = useSafeAreaInsets();
 
@@ -961,6 +964,29 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             trackColor={{ false: theme.inputBg, true: theme.accentLight }}
             thumbColor={hapticsEnabled ? theme.accent : theme.textMuted}
             accessibilityLabel="Tactile haptic feedback"
+          />
+        </View>
+
+        <View style={styles.switchRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+            <Sparkles size={18} color={theme.textSecondary} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.label, { color: theme.textPrimary }]}>Smart Quick Add</Text>
+              <Text style={[styles.hint, { color: theme.textMuted }]}>
+                Detect dates, times, repeats, priority, and duration as you type
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={smartQuickAddEnabled}
+            onValueChange={(val) => {
+              triggerImpact();
+              void setSmartQuickAddEnabled(val);
+            }}
+            trackColor={{ false: theme.inputBg, true: theme.accentLight }}
+            thumbColor={smartQuickAddEnabled ? theme.accent : theme.textMuted}
+            accessibilityLabel="Smart quick add"
+            testID="settings-smart-quick-add-switch"
           />
         </View>
 

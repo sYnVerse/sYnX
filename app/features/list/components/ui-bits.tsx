@@ -64,22 +64,51 @@ export function ProgressRing({ percent }: { percent: number }) {
   );
 }
 
+export interface WebToastAction {
+  label: string;
+  onClick: () => void;
+  testId?: string;
+  variant?: "primary" | "ghost";
+}
+
 export function Toast({
   message,
   visible,
+  actions,
 }: {
   message: string;
   visible: boolean;
+  actions?: WebToastAction[];
 }) {
+  const hasActions = Boolean(visible && actions && actions.length > 0);
   return (
     <div
       role="status"
       aria-live="polite"
-      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-xl text-sm font-medium shadow-2xl transition-all duration-300 border
+      className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-medium shadow-2xl transition-all duration-300 border max-w-[calc(100vw-2rem)] flex flex-wrap items-center justify-center gap-2
         bg-slate-900/95 backdrop-blur-lg text-indigo-200 border-indigo-500/30
-        ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"}`}
+        ${visible ? "opacity-100 translate-y-0 pointer-events-auto" : "opacity-0 translate-y-4 pointer-events-none"}`}
     >
-      {message}
+      <span>{message}</span>
+      {hasActions && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {actions!.map((act) => (
+            <button
+              key={act.label}
+              type="button"
+              data-testid={act.testId}
+              onClick={act.onClick}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                act.variant === "ghost"
+                  ? "bg-white/[0.06] hover:bg-white/[0.12] text-slate-300 border border-white/10"
+                  : "bg-themeAccentFrom hover:bg-themeAccentTo text-white border border-themeAccentRing/40"
+              }`}
+            >
+              {act.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

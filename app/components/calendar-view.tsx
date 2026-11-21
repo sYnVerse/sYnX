@@ -1,8 +1,14 @@
 import { useState, useMemo, useEffect, useRef, useContext } from "react";
 import { useFetcher } from "react-router";
-import type { Todo } from "~/to-do-manager";
+import type { CompletionSummary, Todo } from "~/to-do-manager";
 import { GUEST_REMINDER_HINT, GuestContext } from "~/guest-context";
-import { applySetCompletedLocal, formatRescheduledToast } from "../../shared";
+import {
+  applySetCompletedLocal,
+  applyStartTodoLocal,
+  formatElapsedTimerLabel,
+  formatRescheduledToast,
+  type TaskCompletionStats,
+} from "../../shared";
 import { priorityConfig } from "~/features/list/format";
 import { QuickAddTaskModal } from "./calendar/QuickAddTaskModal";
 import { EditTaskModal } from "./calendar/EditTaskModal";
@@ -14,10 +20,36 @@ interface CalendarViewProps {
   activeListId: string;
   canEdit?: boolean;
   onNotify?: (message: string) => void;
+  onTaskCompleted?: (payload: {
+    todo: Todo;
+    rescheduled: boolean;
+    completion?: CompletionSummary | null;
+  }) => void;
+  completionStatsByTodoId?: Record<string, TaskCompletionStats>;
+  timerNow?: number;
+  onTimerTick?: (now: number) => void;
+  smartQuickAddEnabled?: boolean;
 }
 
-export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: CalendarViewProps) {
-  const fetcher = useFetcher<{ success?: boolean; todo?: Todo; rescheduled?: boolean; error?: string }>();
+export function CalendarView({
+  todos,
+  activeListId,
+  canEdit = true,
+  onNotify,
+  onTaskCompleted,
+  completionStatsByTodoId,
+  timerNow = 0,
+  onTimerTick,
+  smartQuickAddEnabled = true,
+}: CalendarViewProps) {
+  const fetcher = useFetcher<{
+    success?: boolean;
+    todo?: Todo;
+    rescheduled?: boolean;
+    completion?: CompletionSummary | null;
+    error?: string;
+  }>();
+  const timerFetcher = useFetcher<{ success?: boolean; todo?: Todo; error?: string }>();
   // Guests' own lists live in localStorage, so their changes go through
   // onGuestAction as well as the server (which ignores them). Guests on
   // someone else's shared list can't schedule tasks there.
@@ -30,7 +62,7 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
 
   // Dialog / Modal states
   const [quickAddDate, setQuickAddDate] = useState<Date | null>(null);
-  const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
 
   // Drag & drop visual states
   const [dragOverCell, setDragOverCell] = useState<string | null>(null);
@@ -49,13 +81,44 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
   const pendingCompleteId = isPendingSetCompleted ? String(fetcher.formData?.get("id") || "") : "";
   const pendingCompleted = isPendingSetCompleted && fetcher.formData?.get("completed") === "true";
 
+  const timerIntent =
+    timerFetcher.state !== "idle" ? String(timerFetcher.formData?.get("intent") || "") : "";
+  const pendingTimerId =
+    timerIntent === "start" || timerIntent === "cancelStart"
+      ? String(timerFetcher.formData?.get("id") || "")
+      : "";
+  const rawPendingStartedAt =
+    timerIntent === "start" ? Number(timerFetcher.formData?.get("startedAt") || 0) : null;
+
   const displayTodos = useMemo(() => {
-    if (!pendingCompleteId) return todos;
+    if (!pendingCompleteId && !pendingTimerId) return todos;
     return todos.map((t) => {
-      if (t.id !== pendingCompleteId) return t;
-      return applySetCompletedLocal(t, pendingCompleted).todo;
+      let next = t;
+      if (pendingCompleteId && t.id === pendingCompleteId) {
+        next = applySetCompletedLocal(next, pendingCompleted).todo;
+      }
+      if (pendingTimerId && next.id === pendingTimerId) {
+        next = applyStartTodoLocal(
+          next,
+          timerIntent === "start" && rawPendingStartedAt && Number.isFinite(rawPendingStartedAt)
+            ? rawPendingStartedAt
+            : null
+        );
+      }
+      return next;
     });
-  }, [todos, pendingCompleteId, pendingCompleted]);
+  }, [todos, pendingCompleteId, pendingCompleted, pendingTimerId, timerIntent, rawPendingStartedAt]);
+
+  const editingTodo = editingTodoId
+    ? displayTodos.find((t) => t.id === editingTodoId) ?? null
+    : null;
+
+  useEffect(() => {
+    if (timerFetcher.state !== "idle" || !timerFetcher.data) return;
+    if (timerFetcher.data.error) {
+      onNotify?.(timerFetcher.data.error);
+    }
+  }, [timerFetcher.state, timerFetcher.data, onNotify]);
 
   useEffect(() => {
     if (fetcher.state !== "idle") return;
@@ -65,15 +128,28 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
       onNotify?.(data.error);
       return;
     }
-    if (data.rescheduled && data.todo?.reminderAt) {
-      const key = `${data.todo.id}:${data.todo.reminderAt}`;
+    if (data.todo && (data.rescheduled || data.todo.completed)) {
+      const key = data.completion?.id
+        ? `c:${data.completion.id}`
+        : `${data.todo.id}:${data.todo.reminderAt ?? ""}:${data.todo.completed}:${Boolean(data.rescheduled)}`;
       if (lastRescheduleToastKey.current === key) return;
       lastRescheduleToastKey.current = key;
-      setFlashCompleteId(data.todo.id);
-      window.setTimeout(() => setFlashCompleteId(null), 450);
-      onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+      if (data.rescheduled && data.todo.reminderAt) {
+        const flashId = data.todo.id;
+        window.setTimeout(() => setFlashCompleteId(flashId), 0);
+        window.setTimeout(() => setFlashCompleteId(null), 450);
+      }
+      if (onTaskCompleted) {
+        onTaskCompleted({
+          todo: data.todo,
+          rescheduled: Boolean(data.rescheduled),
+          completion: data.completion ?? null,
+        });
+      } else if (data.rescheduled && data.todo.reminderAt) {
+        onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+      }
     }
-  }, [fetcher.state, fetcher.data, onNotify]);
+  }, [fetcher.state, fetcher.data, onNotify, onTaskCompleted]);
 
   // Month navigation helpers
   const handlePrevMonth = () => {
@@ -262,6 +338,35 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
     );
   };
 
+  const handleToggleTimer = (todo: Todo, nowMs: number) => {
+    if (!canEdit || todo.completed || pendingTimerId === todo.id) return;
+    onTimerTick?.(nowMs);
+    if (todo.startedAt != null) {
+      if (!isLoggedIn) {
+        onGuestAction("cancelStart", { id: todo.id });
+      }
+      timerFetcher.submit(
+        {
+          intent: "cancelStart",
+          id: todo.id,
+        },
+        { method: "post" }
+      );
+    } else {
+      if (!isLoggedIn) {
+        onGuestAction("start", { id: todo.id, startedAt: nowMs });
+      }
+      timerFetcher.submit(
+        {
+          intent: "start",
+          id: todo.id,
+          startedAt: String(nowMs),
+        },
+        { method: "post" }
+      );
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,260px)] gap-6 min-h-0 h-full overflow-hidden min-w-0">
       
@@ -315,7 +420,8 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
         </div>
 
         {/* Calendar Day Grid */}
-        <div className="flex-1 grid grid-cols-7 grid-rows-6 gap-px bg-themeBorder rounded-xl overflow-hidden mt-1.5">
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-xl bg-themeBorder mt-1.5 scrollbar-thin">
+          <div className="grid grid-cols-7 auto-rows-[minmax(84px,1fr)] gap-px min-h-full">
           {calendarCells.map(({ dayNum, isCurrentMonth, dateStr, isToday, date }) => {
             const dayTodos = scheduledMap[dateStr] || [];
             const isDragOver = dragOverCell === dateStr;
@@ -335,7 +441,7 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
                   const id = e.dataTransfer.getData("text/plain");
                   if (id) handleDropOnDate(id, dateStr);
                 }}
-                className={`bg-slate-900/[0.1] p-1 flex flex-col min-h-0 relative group transition-all duration-200
+                className={`bg-slate-900/[0.1] p-1 flex flex-col min-h-0 overflow-hidden relative group transition-all duration-200
                   ${isCurrentMonth ? "text-slate-200" : "text-slate-650 bg-slate-950/[0.3]"}
                   ${isToday ? "ring-1 ring-themeAccentRing/40 bg-themeAccentBg/5" : ""}
                   ${isDragOver ? "bg-themeAccentBg/15 ring-2 ring-themeAccentRing/60" : ""}
@@ -378,12 +484,12 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/plain", todo.id);
                         }}
-                        className={`group/task flex items-center justify-between gap-1.5 px-1.5 py-1 rounded bg-slate-900/60 border border-white/5 hover:border-white/10 truncate cursor-grab active:cursor-grabbing hover:bg-white/[0.02] transition-colors
+                        className={`group/task flex flex-col gap-1 px-1.5 py-1 rounded bg-slate-900/60 border border-white/5 hover:border-white/10 cursor-grab active:cursor-grabbing hover:bg-white/[0.02] transition-colors
                           ${todo.completed ? "opacity-60" : ""}
                         `}
                         title={todo.text}
                       >
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 min-w-0 w-full">
                           {/* Left priority border color strip */}
                           <span className={`w-1 h-3 rounded-full flex-shrink-0 ${cfg.dot}`} />
                           
@@ -408,13 +514,46 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
 
                           <button
                             type="button"
-                            onClick={() => canEdit && setEditingTodo(todo)}
-                            className={`text-left text-[10px] md:text-xs truncate text-slate-355 group-hover/task:text-white cursor-pointer
+                            onClick={() => canEdit && setEditingTodoId(todo.id)}
+                            className={`flex-1 min-w-0 text-left text-[10px] md:text-xs truncate text-slate-355 group-hover/task:text-white cursor-pointer
                               ${todo.completed ? "line-through text-slate-500 italic" : ""}`}
                           >
                             {todo.text}
                           </button>
+
+                          {canEdit && !todo.completed && todo.startedAt == null && (
+                            <button
+                              type="button"
+                              data-testid="calendar-task-timer-start"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleTimer(todo, Date.now());
+                              }}
+                              aria-label="Start task timer"
+                              title="Start task timer"
+                              className="md:opacity-0 md:group-hover/task:opacity-100 focus-visible:opacity-100 text-[9px] font-semibold px-1 py-0.5 rounded text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-all cursor-pointer flex-shrink-0"
+                            >
+                              ▶
+                            </button>
+                          )}
                         </div>
+                        {canEdit && !todo.completed && todo.startedAt != null && (
+                          <div className="flex items-center pl-4">
+                            <button
+                              type="button"
+                              data-testid="calendar-task-timer-running"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleTimer(todo, Date.now());
+                              }}
+                              aria-label="Stop task timer"
+                              title="Timer running — click to stop"
+                              className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 hover:bg-rose-500/15 hover:text-rose-300 hover:border-rose-400/30 transition-all cursor-pointer flex-shrink-0 whitespace-nowrap"
+                            >
+                              {formatElapsedTimerLabel(todo.startedAt, timerNow || todo.startedAt)}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -422,6 +561,7 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
               </div>
             );
           })}
+          </div>
         </div>
       </div>
 
@@ -512,13 +652,44 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
 
                         <button
                           type="button"
-                          onClick={() => setEditingTodo(todo)}
+                          onClick={() => canEdit && setEditingTodoId(todo.id)}
                           className={`text-left text-xs truncate text-slate-350 group-hover:text-white cursor-pointer
                             ${todo.completed ? "line-through text-slate-600 italic" : ""}`}
                         >
                           {todo.text}
                         </button>
                       </div>
+                      {canEdit && !todo.completed && (
+                        todo.startedAt != null ? (
+                          <button
+                            type="button"
+                            data-testid="calendar-task-timer-running"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTimer(todo, Date.now());
+                            }}
+                            aria-label="Stop task timer"
+                            title="Timer running — click to stop"
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 hover:bg-rose-500/15 hover:text-rose-300 hover:border-rose-400/30 transition-all cursor-pointer flex-shrink-0 whitespace-nowrap"
+                          >
+                            {formatElapsedTimerLabel(todo.startedAt, timerNow || todo.startedAt)}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            data-testid="calendar-task-timer-start"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTimer(todo, Date.now());
+                            }}
+                            aria-label="Start task timer"
+                            title="Start task timer"
+                            className="md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 text-[10px] font-semibold px-1.5 py-0.5 rounded text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-all cursor-pointer flex-shrink-0"
+                          >
+                            ▶
+                          </button>
+                        )
+                      )}
                     </div>
                   );
                 })
@@ -533,6 +704,7 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
         <QuickAddTaskModal
           date={quickAddDate}
           activeListId={activeListId}
+          smartQuickAddEnabled={smartQuickAddEnabled}
           onClose={() => setQuickAddDate(null)}
         />
       )}
@@ -541,7 +713,12 @@ export function CalendarView({ todos, activeListId, canEdit = true, onNotify }: 
       {editingTodo && (
         <EditTaskModal
           todo={editingTodo}
-          onClose={() => setEditingTodo(null)}
+          canEdit={canEdit}
+          completionStats={completionStatsByTodoId?.[editingTodo.id]}
+          timerNow={timerNow}
+          onTimerTick={onTimerTick}
+          onNotify={onNotify}
+          onClose={() => setEditingTodoId(null)}
         />
       )}
     </div>

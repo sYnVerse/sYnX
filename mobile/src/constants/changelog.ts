@@ -6,6 +6,29 @@ export { MOBILE_APP_VERSION, MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-20",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Smart quick add detects dates, times, repeats, priority, and duration as you type new tasks, with one-tap chips to remove any parsed detail.",
+      },
+      {
+        type: "NEW",
+        text: "Start timers right from any task row, see actual or average completion times in task details, and view running timer badges on home screen widgets with accurate check-off times.",
+      },
+      {
+        type: "NEW",
+        text: "Toggle Smart Quick Add in Settings to keep typed task text literal, tap a duration quick pick (15m, 30m, 1h, Skip) in the toast after untimed check-offs, and Undo repeating completions cleanly (restoring reminders and moving your calendar event back).",
+      },
+      {
+        type: "IMPR",
+        text: "View activity is now available for all of your lists, including private lists.",
+      },
+    ],
+  },
+  {
+    version: "v3.9.0",
     date: "2026-11-14",
     title: "What's new?",
     changes: [

@@ -29,6 +29,8 @@ export interface TodoItem {
   parentId?: string | null;
   recurrence: RecurrencePattern;
   durationMinutes?: number | null;
+  startedAt?: number | null;
+  startedBy?: string | null;
   subtasks?: TodoItem[];
   /** True when a collaborator has requested deleting this task (awaits owner). */
   pendingDelete?: boolean;
@@ -200,10 +202,48 @@ export const SubtaskCompletionActionSchema = v.picklist(["complete", "promote"])
 
 export type SubtaskCompletionAction = v.InferOutput<typeof SubtaskCompletionActionSchema>;
 
+export const CompletionSourceSchema = v.picklist(["app", "widget", "web", "api"]);
+
+export type CompletionSource = v.InferOutput<typeof CompletionSourceSchema>;
+
+export const StartTodoSchema = v.object({
+  startedAt: v.optional(v.number()),
+});
+
+export type StartTodoInput = v.InferOutput<typeof StartTodoSchema>;
+
+export interface TaskCompletionEntry {
+  id: string;
+  todoId: string;
+  listId: string;
+  taskText: string;
+  userId: string;
+  startedBy: string | null;
+  startedAt: number | null;
+  completedAt: number;
+  durationSeconds: number | null;
+  estimatedMinutes: number | null;
+  timeZone: string | null;
+  source: CompletionSource;
+}
+
+export interface TaskCompletionStats {
+  count: number;
+  timedCount: number;
+  averageSeconds: number | null;
+  medianSeconds: number | null;
+  lastDurationSeconds: number | null;
+  estimatedMinutes: number | null;
+  entries: TaskCompletionEntry[];
+}
+
 /** Explicit done-state payload for POST /api/v1/todos/:id/completed */
 export const SetTodoCompletedSchema = v.object({
   completed: v.boolean(),
   subtaskAction: v.optional(SubtaskCompletionActionSchema),
+  completedAt: v.optional(v.number()),
+  source: v.optional(CompletionSourceSchema),
+  opId: v.optional(v.string()),
 });
 
 export type SetTodoCompletedInput = v.InferOutput<typeof SetTodoCompletedSchema>;
@@ -235,6 +275,23 @@ export const RegisterDeviceTokenSchema = v.object({
 
 export type RegisterDeviceTokenInput = v.InferOutput<typeof RegisterDeviceTokenSchema>;
 
+export const SetCompletionDurationSchema = v.object({
+  durationMinutes: v.pipe(
+    v.number(),
+    v.integer("durationMinutes must be an integer"),
+    v.minValue(1, "durationMinutes must be at least 1"),
+    v.maxValue(720, "durationMinutes must be 720 or less")
+  ),
+});
+
+export type SetCompletionDurationInput = v.InferOutput<typeof SetCompletionDurationSchema>;
+
+export const UndoRepeatSchema = v.object({
+  completionId: v.optional(v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(128))),
+});
+
+export type UndoRepeatInput = v.InferOutput<typeof UndoRepeatSchema>;
+
 export * from "./categories";
 
 export * from "./changelog";
@@ -262,6 +319,8 @@ export * from "./task-progress";
 export * from "./task-sections";
 
 export * from "./time-zone";
+
+export * from "./time-tracking";
 
 export * from "./todo-completed";
 

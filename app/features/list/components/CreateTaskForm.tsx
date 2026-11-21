@@ -1,9 +1,10 @@
-import type { RefObject } from "react";
-import type { FetcherWithComponents } from "react-router";
+import { useEffect, useState, type RefObject } from "react";
+import { href, type FetcherWithComponents } from "react-router";
 import { GUEST_REMINDER_HINT, type GuestActionPayload } from "~/guest-context";
 import { MAX_TASK_TEXT_LENGTH } from "~/write-limits";
 import { requestNotificationPermission } from "../format";
 import type { GuestList } from "../guest-lists";
+import { computeWebQuickAddState } from "../quick-add-form";
 
 interface CreateTaskFormProps {
   canEdit: boolean;
@@ -28,6 +29,7 @@ interface CreateTaskFormProps {
   showReminderPanel: boolean;
   setShowReminderPanel: (show: boolean | ((prev: boolean) => boolean)) => void;
   canSetReminders: boolean;
+  smartQuickAddEnabled?: boolean;
   handleGuestAction: (intent: string, payload?: GuestActionPayload) => void;
   showToast: (msg: string) => void;
 }
@@ -55,9 +57,58 @@ export function CreateTaskForm({
   showReminderPanel,
   setShowReminderPanel,
   canSetReminders,
+  smartQuickAddEnabled = true,
   handleGuestAction,
   showToast,
 }: CreateTaskFormProps) {
+  const [rawText, setRawText] = useState("");
+  const [dismissedTokens, setDismissedTokens] = useState<string[]>([]);
+  const [manualPrioritySet, setManualPrioritySet] = useState(false);
+  const [manualDurationSet, setManualDurationSet] = useState(false);
+  const [now, setNow] = useState(0);
+
+  const [prevIsCreating, setPrevIsCreating] = useState(isCreating);
+  if (prevIsCreating !== isCreating) {
+    setPrevIsCreating(isCreating);
+    if (prevIsCreating && !isCreating) {
+      setRawText("");
+      setDismissedTokens([]);
+      setManualPrioritySet(false);
+      setManualDurationSet(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!canEdit) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setNow(Date.now());
+      timer = setTimeout(tick, 60_000 - (Date.now() % 60_000) + 50);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [canEdit]);
+
+  const {
+    effectiveTitle,
+    effectivePriority,
+    effectiveRecurrence,
+    effectiveDurationMinutes,
+    parsedReminderAt,
+    chips,
+  } = computeWebQuickAddState({
+    text: rawText,
+    smartEnabled: smartQuickAddEnabled,
+    now,
+    dismissed: dismissedTokens,
+    manualPriority: manualPrioritySet ? newPriority : null,
+    manualDuration: manualDurationSet ? newDurationMinutes : undefined,
+    manualReminderActive: reminderMode !== "none",
+    defaultPriority: newPriority,
+    defaultDurationMinutes: newDurationMinutes,
+    canSetReminders,
+  });
+
   if (!canEdit) {
     return (
       <div className="mb-6 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-3.5 flex items-center justify-between">
@@ -76,8 +127,8 @@ export function CreateTaskForm({
           <a
             href={
               activeListMeta?.id && !activeListMeta.id.startsWith("guest_")
-                ? `/login?redirectTo=/${encodeURIComponent(activeListMeta.id)}`
-                : "/login"
+                ? `${href("/login")}?redirectTo=${encodeURIComponent(href("/:id", { id: activeListMeta.id }))}`
+                : href("/login")
             }
             className="text-xs font-semibold text-indigo-300 hover:text-white underline ml-2 shrink-0"
           >
@@ -89,46 +140,80 @@ export function CreateTaskForm({
   }
 
   return (
-    <createFetcher.Form
+    <form
       method="post"
       className="mb-6"
       onSubmit={(e) => {
+        e.preventDefault();
+        const submitTitle = (effectiveTitle || rawText.trim()).trim();
+        if (!submitTitle || isCreating) return;
+
         let timeMs = 0;
-        if (reminderMode !== "none") {
-          if (reminderMode === "duration") {
-            timeMs = Date.now() + reminderDuration * 60 * 1000;
-          } else if (reminderMode === "specific" && reminderDateTime) {
-            timeMs = new Date(reminderDateTime).getTime();
-          }
-          if (timeMs > 0) {
-            const hiddenInput = e.currentTarget.querySelector('input[name="reminderAt"]') as HTMLInputElement;
-            if (hiddenInput) {
-              hiddenInput.value = timeMs.toString();
-            }
-          }
+        if (reminderMode === "duration" && now > 0) {
+          timeMs = now + reminderDuration * 60 * 1000;
+        } else if (reminderMode === "specific" && reminderDateTime) {
+          timeMs = new Date(reminderDateTime).getTime();
+        } else if (canSetReminders && parsedReminderAt !== null) {
+          timeMs = parsedReminderAt;
         }
-        const formEl = e.currentTarget;
-        const textInput = formEl.querySelector('input[name="text"]') as HTMLInputElement;
-        const textVal = textInput ? textInput.value : "";
-        if (!isLoggedIn && !isSharedServerList && textVal.trim()) {
+
+        if (canSetReminders && reminderMode === "none" && parsedReminderAt !== null) {
+          void requestNotificationPermission();
+        }
+
+        if (!isLoggedIn && !isSharedServerList) {
           handleGuestAction("create", {
-            text: textVal.trim(),
-            priority: newPriority,
+            text: submitTitle,
+            priority: effectivePriority,
             reminderAt: timeMs > 0 ? timeMs : undefined,
-            recurrence: "none",
-            durationMinutes: newDurationMinutes ?? undefined,
+            recurrence: effectiveRecurrence,
+            durationMinutes: effectiveDurationMinutes ?? undefined,
           });
         }
+
+        const submitData: Record<string, string> = {
+          intent: "create",
+          text: submitTitle,
+          priority: effectivePriority,
+          recurrence: effectiveRecurrence,
+        };
+        if (timeMs > 0) {
+          submitData.reminderAt = timeMs.toString();
+        }
+        if (effectiveDurationMinutes !== null) {
+          submitData.durationMinutes = effectiveDurationMinutes.toString();
+        }
+        createFetcher.submit(submitData, { method: "post" });
       }}
     >
-      <input type="hidden" name="reminderAt" value="" />
+      <input type="hidden" name="text" value={effectiveTitle || rawText.trim()} />
+      <input type="hidden" name="priority" value={effectivePriority} />
+      <input type="hidden" name="recurrence" value={effectiveRecurrence} />
+      <input
+        type="hidden"
+        name="durationMinutes"
+        value={effectiveDurationMinutes !== null ? String(effectiveDurationMinutes) : ""}
+      />
       <div className="flex flex-col lg:flex-row gap-2.5 min-w-0">
         <div className="flex-1 relative min-w-0">
           <input
             ref={inputRef}
             type="text"
-            name="text"
             required
+            value={rawText}
+            onChange={(e) => {
+              setNow(Date.now());
+              setRawText(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && chips.length > 0) {
+                e.preventDefault();
+                const lastChip = chips[chips.length - 1];
+                setDismissedTokens((prev) =>
+                  prev.includes(lastChip.dismissToken) ? prev : [...prev, lastChip.dismissToken]
+                );
+              }
+            }}
             maxLength={MAX_TASK_TEXT_LENGTH}
             className="w-full min-w-0 rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-200 placeholder-slate-500 shadow-inner px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 focus:border-themeAccentRing/50 transition-all duration-200"
             placeholder="What needs to be done?"
@@ -138,16 +223,11 @@ export function CreateTaskForm({
 
         <div className="flex flex-wrap gap-2 shrink-0">
           <div className="relative flex-1 sm:flex-initial min-w-[3rem]" title="Est. Duration in minutes">
-            <input
-              type="hidden"
-              name="durationMinutes"
-              value={newDurationMinutes !== null ? newDurationMinutes : ""}
-            />
             <button
               type="button"
               onClick={() => setShowDurationPicker(!showDurationPicker)}
               className={`h-full w-full rounded-xl border px-3.5 py-3 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer ${
-                newDurationMinutes !== null
+                effectiveDurationMinutes !== null
                   ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText"
                   : "bg-white/[0.04] border-white/[0.06] text-slate-400 hover:text-slate-200"
               }`}
@@ -155,16 +235,18 @@ export function CreateTaskForm({
             >
               <span>⏱️</span>
               <span className="hidden sm:inline">
-                {newDurationMinutes !== null ? `${newDurationMinutes}m` : "Duration"}
+                {effectiveDurationMinutes !== null ? `${effectiveDurationMinutes}m` : "Duration"}
               </span>
             </button>
           </div>
 
           <div className="relative flex-1 sm:flex-initial min-w-[8.5rem]">
             <select
-              name="priority"
-              value={newPriority}
-              onChange={(e) => setNewPriority(e.target.value as "low" | "medium" | "high" | "none")}
+              value={effectivePriority}
+              onChange={(e) => {
+                setManualPrioritySet(true);
+                setNewPriority(e.target.value as "low" | "medium" | "high" | "none");
+              }}
               className="h-full w-full max-w-full rounded-xl bg-white/[0.04] border border-white/[0.06] text-slate-350 text-xs px-3 py-3 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 transition-all duration-200 cursor-pointer appearance-none bg-slate-900 pr-6"
             >
               <option value="none" className="bg-slate-900 text-slate-100" style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}>⚪ No Priority</option>
@@ -188,7 +270,7 @@ export function CreateTaskForm({
               }
             }}
             className={`rounded-xl border px-3.5 py-3 text-xs font-semibold flex items-center gap-1.5 transition-all duration-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50
-              ${reminderMode !== "none"
+              ${reminderMode !== "none" || parsedReminderAt !== null
                 ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText"
                 : "bg-white/[0.04] border-white/[0.06] text-slate-400 hover:text-slate-200"
               }`}
@@ -206,6 +288,7 @@ export function CreateTaskForm({
             type="submit"
             name="intent"
             value="create"
+            onClick={() => setNow(Date.now())}
             disabled={isCreating}
             className="rounded-xl bg-gradient-to-r from-themeAccentFrom to-themeAccentTo hover:from-themeAccentFrom hover:to-themeAccentTo text-white font-semibold px-5 py-3 text-sm shadow-lg shadow-themeAccentFrom/10 hover:shadow-themeAccentFrom/25 transition-all duration-200 disabled:opacity-50 cursor-pointer active:scale-98 flex items-center justify-center min-w-[70px] grow sm:grow-0"
           >
@@ -221,6 +304,29 @@ export function CreateTaskForm({
         </div>
       </div>
 
+      {chips.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Detected task details">
+          {chips.map((chip) => (
+            <button
+              key={chip.key}
+              type="button"
+              data-testid="quick-add-chip"
+              data-chip-kind={chip.kind}
+              onClick={() =>
+                setDismissedTokens((prev) =>
+                  prev.includes(chip.dismissToken) ? prev : [...prev, chip.dismissToken]
+                )
+              }
+              aria-label={`Dismiss detected detail ${chip.label}`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-themeAccentBg border border-themeAccentRing text-themeAccentText px-2.5 py-1 text-xs font-semibold hover:opacity-85 transition cursor-pointer"
+            >
+              <span>{chip.label}</span>
+              <span aria-hidden="true" className="text-[11px] leading-none opacity-80">×</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {!canSetReminders && (
         <p className="mt-2 px-1 text-[10px] text-slate-500">
           {GUEST_REMINDER_HINT} on shared lists.
@@ -234,6 +340,7 @@ export function CreateTaskForm({
             <button
               type="button"
               onClick={() => {
+                setManualDurationSet(true);
                 setNewDurationMinutes(null);
                 setShowDurationPicker(false);
               }}
@@ -255,11 +362,12 @@ export function CreateTaskForm({
                 key={d.label}
                 type="button"
                 onClick={() => {
+                  setManualDurationSet(true);
                   setNewDurationMinutes(d.value);
                   setShowDurationPicker(false);
                 }}
                 className={`px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all ${
-                  newDurationMinutes === d.value
+                  effectiveDurationMinutes === d.value
                     ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText font-semibold"
                     : "bg-themeCard border-themeBorder text-slate-300 hover:bg-themeCardHover hover:text-white"
                 }`}
@@ -275,9 +383,14 @@ export function CreateTaskForm({
                 min={1}
                 max={480}
                 placeholder="Mins"
-                value={newDurationMinutes && ![5, 15, 30, 45, 60].includes(newDurationMinutes) ? newDurationMinutes : ""}
+                value={
+                  effectiveDurationMinutes && ![5, 15, 30, 45, 60].includes(effectiveDurationMinutes)
+                    ? effectiveDurationMinutes
+                    : ""
+                }
                 onChange={(e) => {
                   const val = e.target.value ? Number(e.target.value) : null;
+                  setManualDurationSet(true);
                   setNewDurationMinutes(val);
                 }}
                 className="w-16 px-2 py-1 rounded-lg bg-themeCard border border-themeBorder text-slate-200 text-xs focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 text-center"
@@ -309,6 +422,7 @@ export function CreateTaskForm({
                 key={mins}
                 type="button"
                 onClick={async () => {
+                  setNow(Date.now());
                   setReminderMode("duration");
                   setReminderDuration(mins);
                   await requestNotificationPermission();
@@ -353,6 +467,6 @@ export function CreateTaskForm({
           )}
         </div>
       )}
-    </createFetcher.Form>
+    </form>
   );
 }

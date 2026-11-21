@@ -1,5 +1,5 @@
 import { Suspense, type Dispatch, type SetStateAction } from "react";
-import { Await, Link, type FetcherWithComponents } from "react-router";
+import { Await, href, Link, type FetcherWithComponents } from "react-router";
 import { ProfileAvatar } from "~/components/profile-avatar";
 import type { PendingDeleteRequest } from "../../../../shared";
 import type { GuestList } from "../guest-lists";
@@ -75,7 +75,7 @@ export function Sidebar({
           }`}
       >
         <Link
-          to={`/${list.id}`}
+          to={href("/:id", { id: list.id })}
           prefetch={shouldPrefetch ? "intent" : "none"}
           onClick={() => setIsSidebarOpen(false)}
           className="flex items-center gap-2.5 flex-1 min-w-0"
@@ -321,7 +321,7 @@ export function Sidebar({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
                 </button>
-                <form action="/logout" method="post" className="inline">
+                <form action={href("/logout")} method="post" className="inline">
                   <button
                     type="submit"
                     className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 border border-transparent hover:border-rose-500/20 transition-all duration-200 cursor-pointer bg-transparent"
@@ -354,8 +354,8 @@ export function Sidebar({
               <a
                 href={
                   activeListId && !activeListId.startsWith("guest_")
-                    ? `/login?redirectTo=/${encodeURIComponent(activeListId)}`
-                    : "/login"
+                    ? `${href("/login")}?redirectTo=${encodeURIComponent(href("/:id", { id: activeListId }))}`
+                    : href("/login")
                 }
                 className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-white bg-gradient-to-r from-themeAccentFrom to-themeAccentTo hover:from-themeAccentFrom hover:to-themeAccentTo rounded-xl py-2.5 transition-all duration-200 cursor-pointer shadow-lg hover:shadow-themeAccentFrom/20 active:scale-98"
               >

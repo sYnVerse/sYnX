@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.v1.todos.$id";
 import { getCloudflareContext } from "~/context.server";
-import { verifyBearerToken } from "../auth.server";
+import { getRequestApiAuth } from "~/auth-context.server";
 import { TodoManager, type TodoRow } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
 import {
@@ -16,7 +16,7 @@ import { canEditReminderText } from "../reminder-ownership";
 export async function action({  request, params, context  }: Route.ActionArgs) {
   const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

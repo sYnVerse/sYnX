@@ -1,6 +1,6 @@
 import type { Route } from "./+types/api.v1.todos";
 import { getCloudflareContext } from "~/context.server";
-import { verifyBearerToken } from "../auth.server";
+import { getRequestApiAuth } from "~/auth-context.server";
 import { TodoManager } from "../to-do-manager";
 import * as v from "valibot";
 import { CreateTodoSchema, canDeleteTaskDirectly } from "../../shared";
@@ -17,7 +17,7 @@ import { TASK_LIMIT_ERROR, taskTextError } from "../write-limits";
 export async function loader({  request, context  }: Route.LoaderArgs) {
   const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -63,7 +63,7 @@ export async function action({  request, context  }: Route.ActionArgs) {
 
   const env = getCloudflareContext(context).env;
   const db = env.DB as D1Database;
-  const user = await verifyBearerToken(request, env);
+  const user = await getRequestApiAuth(request, context);
 
   if (!user) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

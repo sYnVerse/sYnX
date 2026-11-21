@@ -1,5 +1,5 @@
 import type { Dispatch, RefObject, SetStateAction } from "react";
-import type { FetcherWithComponents } from "react-router";
+import { href, type FetcherWithComponents } from "react-router";
 import type { GuestActionPayload } from "~/guest-context";
 import {
   DEFAULT_TASK_SORT_MODE,
@@ -220,7 +220,7 @@ export function TaskToolbar({
             </span>
           )}
 
-          {isOwner && isLoggedIn && activeListShareMode !== "private" && (
+          {isOwner && isLoggedIn && (
             <button
               type="button"
               onClick={() => {
@@ -306,7 +306,9 @@ export function TaskToolbar({
                   type="button"
                   disabled={activeListShareMode === "private" && !isOwner}
                   onClick={() => {
-                    const url = activeListId ? `${window.location.origin}/list/${activeListId}` : window.location.href;
+                    const url = activeListId
+                      ? `${window.location.origin}${href("/list/:id", { id: activeListId })}`
+                      : window.location.href;
                     navigator.clipboard.writeText(url).then(() => {
                       showToast("✓ Link copied to clipboard!");
                     });

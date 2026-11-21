@@ -17,12 +17,16 @@ describe("list action dispatch maps", () => {
     "removeSharedList",
     "approveDeleteRequest",
     "declineDeleteRequest",
+    "setCompletionDuration",
   ];
 
   const expectedListIntents = [
     "create",
     "toggle",
     "setCompleted",
+    "start",
+    "cancelStart",
+    "undoRepeat",
     "delete",
     "clearCompleted",
     "updatePriority",
@@ -235,5 +239,55 @@ describe("intent lookup ignores Object.prototype names", () => {
       expect(JSON.parse(text), name).toEqual({ error: "Invalid intent" });
       expect(text).not.toContain(SECRET);
     }
+  });
+});
+
+describe("time-tracking start/cancelStart web intents (#99)", () => {
+  it("dispatches start and cancelStart intents for a signed-in owner", async () => {
+    const listId = "list-intent-start";
+    const todoId = "todo-intent-start";
+    await env.DB.prepare("INSERT OR REPLACE INTO lists (id, name, owner_id, created_at) VALUES (?, ?, ?, ?)")
+      .bind(listId, "Intent List", "user-intent", Date.now())
+      .run();
+    await env.DB.prepare("INSERT OR REPLACE INTO todos (id, list_id, text, completed, created_at) VALUES (?, ?, ?, 0, ?)")
+      .bind(todoId, listId, "Timed Task", Date.now())
+      .run();
+
+    const startForm = new FormData();
+    startForm.set("intent", "start");
+    startForm.set("id", todoId);
+    const startRes = (await action({
+      request: new Request(`http://localhost/${listId}`, {
+        method: "POST",
+        headers: { Cookie: "synx_auth_session=e2e_test_session:user-intent:intent@example.com" },
+        body: startForm,
+      }),
+      params: { id: listId },
+      context: { cloudflare: { env: { ...env, ALLOW_DEV_TEST_AUTH: "true" } } },
+    } as unknown as ActionFunctionArgs)) as { success: boolean; todo: { startedAt?: number; startedBy?: string } };
+
+    expect(startRes.success).toBe(true);
+    expect(startRes.todo.startedAt).toEqual(expect.any(Number));
+    expect(startRes.todo.startedBy).toBe("user-intent");
+
+    const cancelForm = new FormData();
+    cancelForm.set("intent", "cancelStart");
+    cancelForm.set("id", todoId);
+    const cancelRes = (await action({
+      request: new Request(`http://localhost/${listId}`, {
+        method: "POST",
+        headers: { Cookie: "synx_auth_session=e2e_test_session:user-intent:intent@example.com" },
+        body: cancelForm,
+      }),
+      params: { id: listId },
+      context: { cloudflare: { env: { ...env, ALLOW_DEV_TEST_AUTH: "true" } } },
+    } as unknown as ActionFunctionArgs)) as { success: boolean; todo: { startedAt?: number; startedBy?: string } };
+
+    expect(cancelRes.success).toBe(true);
+    expect(cancelRes.todo.startedAt).toBeUndefined();
+    expect(cancelRes.todo.startedBy).toBeUndefined();
+
+    await env.DB.prepare("DELETE FROM todos WHERE list_id = ?").bind(listId).run();
+    await env.DB.prepare("DELETE FROM lists WHERE id = ?").bind(listId).run();
   });
 });

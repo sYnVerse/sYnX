@@ -345,7 +345,8 @@ describe("ListRow and ListsScreen component and accessibility source checks (#14
     expect(listsScreenSource).toContain("setActionSheetList");
     expect(listsScreenSource).toContain("Share list access");
     expect(listsScreenSource).toContain("Edit list details");
-    expect(listsScreenSource).toContain("View shared activity");
+    expect(listsScreenSource).toContain("View activity");
+    expect(listsScreenSource).not.toContain("View shared activity");
     expect(listsScreenSource).toContain("Delete list");
     expect(listsScreenSource).toContain("Request list deletion");
     expect(listsScreenSource).toContain("Remove from Shared with me");

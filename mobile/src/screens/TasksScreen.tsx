@@ -52,6 +52,7 @@ import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding, getSheetBottomPadding } from "../theme/theme";
 import { listOwnershipLabel, priorityColor } from "../utils/format";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
+import { useStartTodo } from "../hooks/useStartTodo";
 import { useTaskMutations } from "../hooks/useTaskMutations";
 import { syncActiveList, syncPinnedList } from "../services/widgetSync";
 import { getPinnedWidgetConfig, setPinnedWidgetConfig, type PinnedWidgetConfig } from "../services/widgetPreferences";
@@ -292,6 +293,31 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 
   const { setCompleted, isPendingId, isSlowPendingId } = useSetTodoCompleted(listId);
   const {
+    toggleStartTodo,
+    isPendingId: isStartPendingId,
+    isSlowPendingId: isSlowStartPendingId,
+  } = useStartTodo(listId);
+  const [timerNow, setTimerNow] = useState(() => Date.now());
+  const hasRunningTimer = Boolean(rawTodos?.some((t) => Boolean(t.startedAt)));
+  React.useEffect(() => {
+    if (!hasRunningTimer) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setTimerNow(Date.now());
+      timer = setTimeout(tick, 60_000 - (Date.now() % 60_000) + 50);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [hasRunningTimer]);
+  const handleToggleStart = React.useCallback(
+    (task: TodoItem, at: number) => {
+      triggerImpactHaptic();
+      setTimerNow(at);
+      toggleStartTodo(task, at);
+    },
+    [toggleStartTodo, triggerImpactHaptic]
+  );
+  const {
     createMutation,
     updateMutation,
     deleteMutation,
@@ -378,7 +404,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     [isOwner, pendingDeleteRequests]
   );
 
-  const canViewActivity = isOwner && shareMode !== "private";
+  const canViewActivity = isOwner;
   const [showActivity, setShowActivity] = useState(false);
   const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -769,8 +795,12 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 item={row.task}
                 canEdit={canEdit}
                 isOwner={isOwner}
-                isPending={isPendingId(row.task.id)}
-                isSlowPending={isSlowPendingId(row.task.id) || isSlowTaskUpdateId(row.task.id)}
+                isPending={isPendingId(row.task.id) || isStartPendingId(row.task.id)}
+                isSlowPending={
+                  isSlowPendingId(row.task.id) ||
+                  isSlowTaskUpdateId(row.task.id) ||
+                  isSlowStartPendingId(row.task.id)
+                }
                 canDragPriority={canDragTaskForPriority({
                   canEdit,
                   sortMode: taskSortMode,
@@ -785,6 +815,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 onPriorityDragEnd={handlePriorityDragEnd}
                 onPriorityDragCancel={handlePriorityDragCancel}
                 onToggleCompleted={(task) => setCompleted(task)}
+                onToggleStart={canEdit ? handleToggleStart : undefined}
+                now={timerNow}
                 onEdit={setEditingTask}
                 onOpenSubtasks={setSelectedTaskForBreakdown}
               />
@@ -820,6 +852,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       <TaskModal
         visible={!!editingTask}
         isEditing
+        taskId={editingTask?.id}
         initialText={editingTask?.text}
         initialPriority={editingTask?.priority}
         initialRecurrence={editingTask?.recurrence}
@@ -967,7 +1000,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
           >
             <Text style={[styles.activityTitle, { color: theme.textPrimary }]}>Activity</Text>
             <Text style={[styles.activitySubtitle, { color: theme.textMuted }]}>
-              Who changed this shared list, and from which IP. Only you can see this.
+              Recent changes to this list (last 90 days). Only you can see this.
             </Text>
             {activityLoading && activityEntries.length === 0 ? (
               <ActivityIndicator color={theme.accent} style={{ marginVertical: 24 }} />
@@ -984,7 +1017,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
               <ScrollView style={styles.activityScroll} contentContainerStyle={{ paddingBottom: 16 }}>
                 {activityEntries.length === 0 ? (
                   <Text style={[styles.activityEmpty, { color: theme.textMuted }]}>
-                    No activity yet on this shared list.
+                    No activity yet on this list.
                   </Text>
                 ) : (
                   activityEntries.map((entry) => (
