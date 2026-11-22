@@ -32,5 +32,12 @@ CREATE INDEX idx_task_completions_todo_completed
 CREATE INDEX idx_task_completions_user_completed
   ON task_completions (user_id, completed_at DESC);
 
+CREATE INDEX idx_task_completions_effective_user_completed
+  ON task_completions (COALESCE(started_by, user_id), completed_at DESC);
+
 CREATE INDEX idx_task_completions_list_completed
   ON task_completions (list_id, completed_at DESC);
+
+CREATE INDEX idx_task_completions_voided_at
+  ON task_completions (voided_at)
+  WHERE voided_at IS NOT NULL;

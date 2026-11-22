@@ -319,9 +319,7 @@ async function main(env = process.env) {
 if (require.main === module) {
   main().catch((err) => {
     console.error(err);
-    if (err.message && err.message.includes("OTA update runtime mismatch")) {
-      process.exit(1);
-    }
+    process.exit(1);
   });
 }
 

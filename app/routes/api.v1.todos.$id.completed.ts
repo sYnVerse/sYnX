@@ -75,7 +75,7 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
   ]);
   const { todo, rescheduled, updatedSubtasks, completion } = await manager.setCompleted(todoId, completed, {
     timeZone,
-    completerTimeZone: completerTimeZone ?? timeZone,
+    completerTimeZone: reminderOwnerId === user.userId ? timeZone : (completerTimeZone ?? null),
     subtaskAction,
     userId: user.userId,
     completedAt,

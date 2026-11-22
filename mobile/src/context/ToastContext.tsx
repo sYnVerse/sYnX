@@ -45,28 +45,37 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Created once and kept for the provider's lifetime (lazy state, not a ref read during render).
   const [opacity] = useState(() => new Animated.Value(0));
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastSeqRef = useRef(0);
 
   const dismissToast = useCallback(() => {
     if (hideTimer.current) {
       clearTimeout(hideTimer.current);
       hideTimer.current = null;
     }
+    const dismissSeq = ++toastSeqRef.current;
     Animated.timing(opacity, { toValue: 0, duration: 160, useNativeDriver: true }).start(() => {
-      setToast(null);
+      if (toastSeqRef.current === dismissSeq) {
+        setToast(null);
+      }
     });
   }, [opacity]);
 
   const showToast = useCallback(
     (message: string, tone: ToastTone = "info", options?: ToastOptions) => {
       if (hideTimer.current) clearTimeout(hideTimer.current);
+      const seq = ++toastSeqRef.current;
       setToast({ message, tone, actions: options?.actions });
       opacity.setValue(0);
       Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
       const timeoutMs =
         options?.durationMs ?? (options?.actions?.length ? 6500 : 3200);
       hideTimer.current = setTimeout(() => {
+        if (toastSeqRef.current !== seq) return;
+        const fadeSeq = ++toastSeqRef.current;
         Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => {
-          setToast(null);
+          if (toastSeqRef.current === fadeSeq) {
+            setToast(null);
+          }
         });
       }, timeoutMs);
     },

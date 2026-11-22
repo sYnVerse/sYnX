@@ -653,5 +653,46 @@ describe("TodoManager", () => {
       expect(statsJson.stats.count).toBe(1);
       expect(statsJson.stats.entries).toHaveLength(1);
     });
+
+    it("refuses to start a timer on an already-completed one-time task", async () => {
+      const todo = await manager.create("Already Done");
+      await manager.setCompleted(todo.id, true, { userId: "user-1" });
+      const afterStart = await manager.startTodo(todo.id, "user-1", Date.now() - 10_000);
+      expect(afterStart.completed).toBe(true);
+      expect(afterStart.startedAt).toBeUndefined();
+      expect(afterStart.startedBy).toBeUndefined();
+    });
+
+    it("clears running timers and records task_completions rows for bulk-completed open subtasks (subtaskAction: 'complete')", async () => {
+      const parent = await manager.create("Parent Project");
+      const subTimed = await manager.create("Timed Subtask", "none", null, parent.id, "none", 15);
+      const subUntimed = await manager.create("Untimed Subtask", "none", null, parent.id);
+
+      const now = Date.now();
+      await manager.startTodo(subTimed.id, "user-1", now - 120_000);
+
+      const res = await manager.setCompleted(parent.id, true, {
+        userId: "user-1",
+        completedAt: now,
+        subtaskAction: "complete",
+        source: "web",
+      });
+
+      expect(res.todo.completed).toBe(true);
+      expect(res.updatedSubtasks).toHaveLength(2);
+      for (const st of res.updatedSubtasks ?? []) {
+        expect(st.completed).toBe(true);
+        expect(st.startedAt).toBeUndefined();
+        expect(st.startedBy).toBeUndefined();
+      }
+
+      const timedStats = await getTodoCompletions(env.DB, subTimed.id, listId, "user-1");
+      expect(timedStats.count).toBe(1);
+      expect(timedStats.lastDurationSeconds).toBe(120);
+
+      const untimedStats = await getTodoCompletions(env.DB, subUntimed.id, listId, "user-1");
+      expect(untimedStats.count).toBe(1);
+      expect(untimedStats.timedCount).toBe(0);
+    });
   });
 });

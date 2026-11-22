@@ -298,7 +298,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     isSlowPendingId: isSlowStartPendingId,
   } = useStartTodo(listId);
   const [timerNow, setTimerNow] = useState(() => Date.now());
-  const hasRunningTimer = Boolean(rawTodos?.some((t) => Boolean(t.startedAt)));
+  const hasRunningTimer = Boolean(
+    rawTodos?.some((t) => Boolean(t.startedAt) && !t.completed)
+  );
   React.useEffect(() => {
     if (!hasRunningTimer) return;
     let timer: ReturnType<typeof setTimeout>;

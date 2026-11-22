@@ -174,6 +174,12 @@ export async function drainAndReplayPendingWidgetOps(queryClient?: QueryClient):
           // pinned list that isn't the active list.
           queryClient.invalidateQueries({ queryKey: ['todos', listId], refetchType: 'all' });
           queryClient.invalidateQueries({ queryKey: ['list_meta', listId], refetchType: 'all' });
+          for (const outcome of listOutcomes) {
+            queryClient.invalidateQueries({
+              queryKey: ['todo-completions', outcome.op.todoId],
+              refetchType: 'all',
+            });
+          }
         }
         if (outcomesByList.size > 0) {
           queryClient.invalidateQueries({ queryKey: ['lists'] });

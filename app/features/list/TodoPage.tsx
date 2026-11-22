@@ -522,15 +522,14 @@ export default function TodoPage({
   );
   useEffect(() => {
     if (!hasRunningTimer) return;
-    const initId = window.setTimeout(() => {
+    let timerId: number;
+    const tick = () => {
       setTimerNow(Date.now());
-    }, 0);
-    const intervalId = window.setInterval(() => {
-      setTimerNow(Date.now());
-    }, 60_000);
+      timerId = window.setTimeout(tick, 60_000 - (Date.now() % 60_000) + 50);
+    };
+    timerId = window.setTimeout(tick, 0);
     return () => {
-      window.clearTimeout(initId);
-      window.clearInterval(intervalId);
+      window.clearTimeout(timerId);
     };
   }, [hasRunningTimer]);
 

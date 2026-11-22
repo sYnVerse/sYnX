@@ -430,6 +430,39 @@ describe("shared/quick-add parser (#98)", () => {
         hour: 9,
         minute: 0,
       });
+
+      // Explicit relative day/week offsets and ISO dates are never snapped onto the "every <Weekday>" day,
+      // and trailing masked recurrence spaces are excluded from date match spans.
+      const inThreeWeeks = parseQuickAdd("Task in 3 weeks every Monday", {
+        now: Date.parse("2026-10-20T10:00:00Z"),
+        timeZone: "UTC",
+      });
+      expect(inThreeWeeks.reminderAt).toBe(Date.parse("2026-11-10T10:00:00Z"));
+      expect(inThreeWeeks.recurrence).toBe("weekly");
+
+      const inOneDay = parseQuickAdd("Task in 1 day every Monday", {
+        now: Date.parse("2026-11-06T10:00:00Z"),
+        timeZone: "UTC",
+      });
+      expect(inOneDay.reminderAt).toBe(Date.parse("2026-11-07T10:00:00Z"));
+      expect(inOneDay.recurrence).toBe("weekly");
+
+      const isoDate = parseQuickAdd("Task 2026-11-21 every Monday", {
+        now: Date.parse("2026-11-20T10:00:00Z"),
+        timeZone: "UTC",
+      });
+      expect(isoDate.reminderAt).toBe(Date.parse("2026-11-21T09:00:00Z"));
+      expect(isoDate.recurrence).toBe("weekly");
+
+      const monthDay = parseQuickAdd("Task Nov 25 every Monday", {
+        now: Date.parse("2026-11-20T10:00:00Z"),
+        timeZone: "UTC",
+      });
+      expect(monthDay.reminderAt).toBe(Date.parse("2026-11-25T09:00:00Z"));
+      expect(monthDay.matches).toEqual([
+        { kind: "date", text: "Nov 25", start: 5, end: 11 },
+        { kind: "recurrence", text: "every Monday", start: 12, end: 24 },
+      ]);
     });
   });
 });

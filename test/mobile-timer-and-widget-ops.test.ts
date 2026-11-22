@@ -120,4 +120,15 @@ describe("mobile timer & widget check-off ops (#102)", () => {
     expect(taskModalSource).toContain("/completions?limit=20");
     expect(taskModalSource).toContain("todo-completions");
   });
+
+  it("coordinates per-task completion epochs between useSetTodoCompleted and useStartTodo", async () => {
+    const useStartTodoSource = (await import("../mobile/src/hooks/useStartTodo.ts?raw")).default;
+    const useSetTodoCompletedSource = (
+      await import("../mobile/src/hooks/useSetTodoCompleted.ts?raw")
+    ).default;
+    expect(useSetTodoCompletedSource).toContain("export function bumpTaskCompletionEpoch");
+    expect(useSetTodoCompletedSource).toContain("export function getTaskCompletionEpoch");
+    expect(useStartTodoSource).toContain("getTaskCompletionEpoch(queryClient, listId, vars.id)");
+    expect(useStartTodoSource).toContain("context?.completionEpoch !== getTaskCompletionEpoch");
+  });
 });

@@ -28,6 +28,36 @@ export interface TaskBaselineSnapshot {
   itemSnapshot: TodoItem | undefined;
 }
 
+const completionEpochsByClient = new WeakMap<QueryClient, Map<string, number>>();
+
+function completionEpochKey(listId: string | undefined, todoId: string): string {
+  return `${listId ?? ""}::${todoId}`;
+}
+
+export function getTaskCompletionEpoch(
+  queryClient: QueryClient,
+  listId: string | undefined,
+  todoId: string
+): number {
+  return completionEpochsByClient.get(queryClient)?.get(completionEpochKey(listId, todoId)) ?? 0;
+}
+
+export function bumpTaskCompletionEpoch(
+  queryClient: QueryClient,
+  listId: string | undefined,
+  todoId: string
+): number {
+  let map = completionEpochsByClient.get(queryClient);
+  if (!map) {
+    map = new Map<string, number>();
+    completionEpochsByClient.set(queryClient, map);
+  }
+  const key = completionEpochKey(listId, todoId);
+  const next = (map.get(key) ?? 0) + 1;
+  map.set(key, next);
+  return next;
+}
+
 export function formatRollbackError(
   error: unknown,
   fallback = "Couldn't save, change undone"
@@ -261,6 +291,20 @@ export function useSetTodoCompleted(listId: string | undefined) {
       return res.data as SetCompletedResult;
     },
     onMutate: async ({ id, completed, subtaskAction }) => {
+      bumpTaskCompletionEpoch(queryClient, listId, id);
+      if (subtaskAction === "complete" && listId) {
+        const currentList = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
+        for (const item of currentList ?? []) {
+          if (item.parentId === id) {
+            bumpTaskCompletionEpoch(queryClient, listId, item.id);
+          }
+          if (item.id === id && item.subtasks) {
+            for (const sub of item.subtasks) {
+              bumpTaskCompletionEpoch(queryClient, listId, sub.id);
+            }
+          }
+        }
+      }
       const seq = (seqByIdRef.current.get(id) ?? 0) + 1;
       seqByIdRef.current.set(id, seq);
       inFlightDesiredByIdRef.current.set(id, completed);

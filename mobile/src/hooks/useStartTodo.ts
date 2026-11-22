@@ -11,6 +11,7 @@ import {
   advanceTaskBaseline,
   findTodoInCache,
   formatRollbackError,
+  getTaskCompletionEpoch,
   patchTodosCache,
   restoreTodoInCache,
   useSlowPendingTracker,
@@ -26,7 +27,7 @@ type StartTodoResult = {
   todo: TodoItem;
 };
 
-type StartTodoContext = { seq: number };
+type StartTodoContext = { seq: number; completionEpoch: number };
 
 /**
  * Starts or cancels a task timer with optimistic cache updates, per-task sequence
@@ -63,6 +64,7 @@ export function useStartTodo(listId: string | undefined) {
     onMutate: async (vars) => {
       const seq = (seqByIdRef.current.get(vars.id) ?? 0) + 1;
       seqByIdRef.current.set(vars.id, seq);
+      const completionEpoch = getTaskCompletionEpoch(queryClient, listId, vars.id);
 
       const prevCount = inFlightCountByIdRef.current.get(vars.id) ?? 0;
       if (!baselineByIdRef.current.has(vars.id) && listId) {
@@ -91,14 +93,20 @@ export function useStartTodo(listId: string | undefined) {
       applyOptimistic();
       if (listId) {
         await queryClient.cancelQueries({ queryKey: ["todos", listId] });
-        if (seqByIdRef.current.get(vars.id) === seq) {
+        if (
+          seqByIdRef.current.get(vars.id) === seq &&
+          getTaskCompletionEpoch(queryClient, listId, vars.id) === completionEpoch
+        ) {
           applyOptimistic();
         }
       }
-      return { seq };
+      return { seq, completionEpoch };
     },
     onError: (error, vars, context) => {
       if (context?.seq !== seqByIdRef.current.get(vars.id)) return;
+      if (context?.completionEpoch !== getTaskCompletionEpoch(queryClient, listId, vars.id)) {
+        return;
+      }
       const baseline = baselineByIdRef.current.get(vars.id);
       if (listId && baseline) {
         restoreTodoInCache(queryClient, listId, vars.id, baseline);
@@ -108,6 +116,9 @@ export function useStartTodo(listId: string | undefined) {
       showError(formatRollbackError(error));
     },
     onSuccess: (data, vars, context) => {
+      if (context?.completionEpoch !== getTaskCompletionEpoch(queryClient, listId, vars.id)) {
+        return;
+      }
       if (data?.todo) {
         advanceTaskBaseline(baselineByIdRef.current, vars.id, data.todo);
       }

@@ -490,11 +490,17 @@ export class TodoManager {
     if (todo.started_at !== null && todo.started_at !== undefined) {
       return this.mapRow(todo);
     }
+    const isRecurring = Boolean(todo.recurrence && todo.recurrence !== "none");
+    if (Boolean(todo.completed) && !isRecurring) {
+      return this.mapRow(todo);
+    }
 
     const effectiveStartedAt = clampClientTimestamp(startedAt, Date.now());
     this.assertRunSucceeded(
       await this.db
-        .prepare("UPDATE todos SET started_at = ?, started_by = ? WHERE id = ? AND list_id = ?")
+        .prepare(
+          "UPDATE todos SET started_at = ?, started_by = ? WHERE id = ? AND list_id = ? AND started_at IS NULL AND (completed = 0 OR (recurrence IS NOT NULL AND recurrence != 'none'))"
+        )
         .bind(effectiveStartedAt, userId, id, this.listId)
         .run()
     );
@@ -681,7 +687,7 @@ export class TodoManager {
     completed: boolean,
     options: {
       timeZone?: string;
-      completerTimeZone?: string;
+      completerTimeZone?: string | null;
       subtaskAction?: "complete" | "promote";
       userId?: string;
       completedAt?: number;
@@ -729,7 +735,10 @@ export class TodoManager {
     const recurrence = todo.recurrence as string | undefined;
     const isRecurring = Boolean(recurrence && recurrence !== "none");
     const effectiveCompletedAt = clampClientTimestamp(options.completedAt, serverNow);
-    const completionTimeZone = options.completerTimeZone ?? options.timeZone;
+    const completionTimeZone =
+      options.completerTimeZone !== undefined
+        ? (options.completerTimeZone ?? undefined)
+        : options.timeZone;
     const source: CompletionSource = options.source ?? "api";
 
     const executeBatchIdempotent = async (
@@ -861,11 +870,11 @@ export class TodoManager {
           .prepare(
             `SELECT id, started_at, started_by
              FROM task_completions
-             WHERE todo_id = ? AND voided_at IS NULL
+             WHERE todo_id = ? AND list_id = ? AND voided_at IS NULL
              ORDER BY completed_at DESC
              LIMIT 1`
           )
-          .bind(id)
+          .bind(id, this.listId)
           .first<{ id: string; started_at: number | null; started_by: string | null }>();
 
         const stmts: D1PreparedStatement[] = [
@@ -895,11 +904,33 @@ export class TodoManager {
 
       if (openRows.length > 0) {
         if (options.subtaskAction === "complete") {
-          await this.db
-            .prepare("UPDATE todos SET completed = 1 WHERE list_id = ? AND parent_id = ? AND completed = 0")
-            .bind(this.listId, id)
-            .run();
-          updatedSubtasks = openRows.map((row) => ({ ...this.mapRow(row), completed: true }));
+          const subStmts: D1PreparedStatement[] = [
+            this.db
+              .prepare(
+                "UPDATE todos SET completed = 1, started_at = NULL, started_by = NULL WHERE list_id = ? AND parent_id = ? AND completed = 0"
+              )
+              .bind(this.listId, id),
+          ];
+          if (canLog && options.userId) {
+            for (const subRow of openRows) {
+              const subPrepared = this.prepareCompletionInsert({
+                todo: subRow,
+                userId: options.userId,
+                completedAt: effectiveCompletedAt,
+                timeZone: completionTimeZone,
+                source,
+                opId: null,
+              });
+              subStmts.push(subPrepared.stmt);
+            }
+          }
+          await this.runBatch(subStmts);
+          updatedSubtasks = openRows.map((row) => ({
+            ...this.mapRow(row),
+            completed: true,
+            startedAt: undefined,
+            startedBy: undefined,
+          }));
         } else {
           await this.db
             .prepare("UPDATE todos SET parent_id = NULL WHERE list_id = ? AND parent_id = ? AND completed = 0")

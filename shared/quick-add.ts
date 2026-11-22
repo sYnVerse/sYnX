@@ -338,7 +338,7 @@ function resolveChronoDateResult(
   defaultHour: number,
   baseDayCal: { year: number; month: number; day: number } | null,
   dismissed: Set<string>
-): { reminderAt: number; match: QuickAddMatch } | null {
+): { reminderAt: number; match: QuickAddMatch; hasExplicitDate: boolean } | null {
   const refWc = toWallClock(now, zone);
   const refLocal = new Date(
     refWc.year,
@@ -393,11 +393,17 @@ function resolveChronoDateResult(
       continue;
     }
 
-    const removalStart = stripLeadingPrepositionStart(workText, res.index);
-    const removalEnd = res.index + rawCore.length;
+    const leadingWs = rawCore.length - rawCore.trimStart().length;
+    const trimmedCore = rawCore.trim();
+    if (!trimmedCore) {
+      continue;
+    }
+    const coreIndex = res.index + leadingWs;
+    const removalStart = stripLeadingPrepositionStart(workText, coreIndex);
+    const removalEnd = coreIndex + trimmedCore.length;
     const matchedSlice = text.slice(removalStart, removalEnd);
 
-    if (isMatchDismissed(dismissed, "date", matchedSlice, rawCore)) {
+    if (isMatchDismissed(dismissed, "date", matchedSlice, trimmedCore)) {
       continue;
     }
 
@@ -406,7 +412,7 @@ function resolveChronoDateResult(
     // - day/week/month offsets preserve wall-clock time across DST
     const relMatch =
       /^in\s+(\d+)\s+(minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|wks?|w|months?|mos?)$/i.exec(
-        rawCore.trim()
+        trimmedCore
       );
     if (relMatch) {
       const amount = parseInt(relMatch[1], 10);
@@ -426,6 +432,7 @@ function resolveChronoDateResult(
       return {
         reminderAt,
         match: { kind: "date", text: matchedSlice, start: removalStart, end: removalEnd },
+        hasExplicitDate: true,
       };
     }
 
@@ -570,6 +577,13 @@ function resolveChronoDateResult(
       }
     }
 
+    const hasRelativeDayOrOffsetTag =
+      tags.has("result/relativeDate") ||
+      tags.has("result/relativeDateAndTime") ||
+      tags.has("casualReference/today") ||
+      tags.has("casualReference/tomorrow") ||
+      tags.has("casualReference/yesterday");
+
     return {
       reminderAt: resolvedMs,
       match: {
@@ -578,6 +592,7 @@ function resolveChronoDateResult(
         start: removalStart,
         end: removalEnd,
       },
+      hasExplicitDate: hasExplicitCalendarDate || hasRelativeDayOrOffsetTag,
     };
   }
 
@@ -690,27 +705,17 @@ export function parseQuickAdd(
     if (found) {
       reminderAt = found.reminderAt;
       // If "every <Weekday>" supplied a weekday and the date parser only saw a
-      // time-of-day without a calendar day, align the reminder to that weekday.
-      if (recurrenceWeekday !== null && reminderAt !== null) {
+      // time-of-day without an explicit calendar date or relative offset, align
+      // the reminder to that weekday.
+      if (recurrenceWeekday !== null && reminderAt !== null && !found.hasExplicitDate) {
         const resWc = toWallClock(reminderAt, zone);
-        const todayWc = toWallClock(now, zone);
-        if (compareCalendarDates(resWc, todayWc) <= 1) {
-          // Only re-anchor if user didn't give an explicit calendar date (only time or default).
-          const loweredDate = found.match.text.toLowerCase();
-          const hadExplicitDayWord =
-            /\b(tomorrow|today|tonight|next|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|mon|tue|wed|thu|fri|sat|sun|\d{1,2}\/\d{1,2})\b/i.test(
-              loweredDate
-            );
-          if (!hadExplicitDayWord) {
-            reminderAt = nextWeekdayWallClock(
-              now,
-              recurrenceWeekday,
-              resWc.hour,
-              resWc.minute,
-              zone
-            );
-          }
-        }
+        reminderAt = nextWeekdayWallClock(
+          now,
+          recurrenceWeekday,
+          resWc.hour,
+          resWc.minute,
+          zone
+        );
       }
       matches.push(found.match);
     } else if (recurrenceWeekday !== null) {
