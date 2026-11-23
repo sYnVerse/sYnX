@@ -1,7 +1,7 @@
 import type { Route } from "./+types/api.v1.todos.$id.completed";
 import { getCloudflareContext } from "~/context.server";
 import { getRequestApiAuth } from "~/auth-context.server";
-import { TodoManager } from "../to-do-manager";
+import { CompletionAttributionError, TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
 import { logListActivity } from "../list-activity.server";
 import { getUserTimeZone } from "../user-profile.server";
@@ -73,15 +73,27 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
     getUserTimeZone(db, reminderOwnerId),
     reminderOwnerId === user.userId ? undefined : getUserTimeZone(db, user.userId),
   ]);
-  const { todo, rescheduled, updatedSubtasks, completion } = await manager.setCompleted(todoId, completed, {
-    timeZone,
-    completerTimeZone: reminderOwnerId === user.userId ? timeZone : (completerTimeZone ?? null),
-    subtaskAction,
-    userId: user.userId,
-    completedAt,
-    source: source ?? "app",
-    opId,
-  });
+  let todo: Awaited<ReturnType<TodoManager["setCompleted"]>>["todo"];
+  let rescheduled = false;
+  let updatedSubtasks: Awaited<ReturnType<TodoManager["setCompleted"]>>["updatedSubtasks"];
+  let completion: Awaited<ReturnType<TodoManager["setCompleted"]>>["completion"];
+  try {
+    ({ todo, rescheduled, updatedSubtasks, completion } = await manager.setCompleted(todoId, completed, {
+      timeZone,
+      completerTimeZone: reminderOwnerId === user.userId ? timeZone : (completerTimeZone ?? null),
+      subtaskAction,
+      userId: user.userId,
+      isOwner: access.isOwner,
+      completedAt,
+      source: source ?? "app",
+      opId,
+    }));
+  } catch (err) {
+    if (err instanceof CompletionAttributionError) {
+      return Response.json({ error: err.message }, { status: 403 });
+    }
+    throw err;
+  }
 
   const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
   const logPromise = logListActivity(db, {

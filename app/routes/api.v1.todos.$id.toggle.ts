@@ -1,7 +1,7 @@
 import type { Route } from "./+types/api.v1.todos.$id.toggle";
 import { getCloudflareContext } from "~/context.server";
 import { getRequestApiAuth } from "~/auth-context.server";
-import { TodoManager } from "../to-do-manager";
+import { CompletionAttributionError, TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
 import { logListActivity } from "../list-activity.server";
 import { getUserTimeZone } from "../user-profile.server";
@@ -44,12 +44,21 @@ export async function action({  request, params, context  }: Route.ActionArgs) {
     getUserTimeZone(db, reminderOwnerId),
     reminderOwnerId === user.userId ? undefined : getUserTimeZone(db, user.userId),
   ]);
-  const updatedTodo = await manager.toggle(todoId, {
-    timeZone,
-    completerTimeZone: completerTimeZone ?? timeZone,
-    userId: user.userId,
-    source: "api",
-  });
+  let updatedTodo: Awaited<ReturnType<TodoManager["toggle"]>>;
+  try {
+    updatedTodo = await manager.toggle(todoId, {
+      timeZone,
+      completerTimeZone: reminderOwnerId === user.userId ? timeZone : (completerTimeZone ?? null),
+      userId: user.userId,
+      isOwner: access.isOwner,
+      source: "api",
+    });
+  } catch (err) {
+    if (err instanceof CompletionAttributionError) {
+      return Response.json({ error: err.message }, { status: 403 });
+    }
+    throw err;
+  }
 
   const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
   const logPromise = logListActivity(db, {

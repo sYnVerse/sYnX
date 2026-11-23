@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs } from "react-router";
 import { getRequestWebAuth } from "~/auth-context.server";
-import { TodoManager } from "~/to-do-manager";
+import { CompletionAttributionError, TodoManager } from "~/to-do-manager";
 import { logListActivity } from "~/list-activity.server";
 import type { ListActionContext } from "./actions/context";
 import { getActiveListAccess, checkListAccessGate } from "./actions/access.server";
@@ -93,6 +93,9 @@ export async function action({ request, context, params }: ActionFunctionArgs) {
     return await listHandler(ctx);
   } catch (error) {
     console.error(`List action "${intent}" failed:`, error);
+    if (error instanceof CompletionAttributionError) {
+      return Response.json({ error: error.message }, { status: 403 });
+    }
     const isNotFound = error instanceof Error && /not found/i.test(error.message);
     return Response.json(
       { error: isNotFound ? error.message : "Couldn't save, change undone" },

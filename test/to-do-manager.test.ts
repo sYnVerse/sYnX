@@ -694,5 +694,39 @@ describe("TodoManager", () => {
       expect(untimedStats.count).toBe(1);
       expect(untimedStats.timedCount).toBe(0);
     });
+
+    it("prevents a collaborator from undoing another user's completion while allowing the attributed user and list owner", async () => {
+      const task = await manager.create("Collab Completion");
+      await manager.startTodo(task.id, "user-starter", Date.now() - 30_000);
+      await manager.setCompleted(task.id, true, { userId: "user-completer", source: "api" });
+
+      // Completer (non-starter) and unrelated collaborator cannot undo user-starter's attributed completion
+      await expect(
+        manager.setCompleted(task.id, false, { userId: "user-completer", isOwner: false })
+      ).rejects.toThrow(/Only the list owner or the user who completed/);
+      await expect(
+        manager.setCompleted(task.id, false, { userId: "user-other", isOwner: false })
+      ).rejects.toThrow(/Only the list owner or the user who completed/);
+
+      // List owner can undo anyone's completion and restore starter's timer
+      const ownerUndid = await manager.setCompleted(task.id, false, {
+        userId: "list-owner",
+        isOwner: true,
+      });
+      expect(ownerUndid.todo.completed).toBe(false);
+      expect(ownerUndid.todo.startedBy).toBe("user-starter");
+
+      // Attributed user can also undo their own completion on a repeat task
+      const repeatTask = await manager.create("Collab Repeat", "none", Date.now() + 3600_000, undefined, "daily");
+      await manager.setCompleted(repeatTask.id, true, { userId: "user-completer", source: "api" });
+      await expect(
+        manager.undoRepeatCompletion(repeatTask.id, { userId: "user-other", isOwner: false })
+      ).rejects.toThrow(/Only the list owner or the user who completed/);
+      const selfUndid = await manager.undoRepeatCompletion(repeatTask.id, {
+        userId: "user-completer",
+        isOwner: false,
+      });
+      expect(selfUndid.undone).toBe(true);
+    });
   });
 });

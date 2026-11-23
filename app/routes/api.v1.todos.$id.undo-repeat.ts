@@ -1,7 +1,7 @@
 import type { Route } from "./+types/api.v1.todos.$id.undo-repeat";
 import { getCloudflareContext } from "~/context.server";
 import { getRequestApiAuth } from "~/auth-context.server";
-import { TodoManager } from "../to-do-manager";
+import { CompletionAttributionError, TodoManager } from "../to-do-manager";
 import { getListAccess } from "../api-helpers.server";
 import { logListActivity } from "../list-activity.server";
 import * as v from "valibot";
@@ -57,10 +57,20 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   const manager = new TodoManager(db, todoRow.list_id);
-  const { todo, undone } = await manager.undoRepeatCompletion(todoId, {
-    completionId,
-    userId: user.userId,
-  });
+  let todo: Awaited<ReturnType<TodoManager["undoRepeatCompletion"]>>["todo"];
+  let undone = false;
+  try {
+    ({ todo, undone } = await manager.undoRepeatCompletion(todoId, {
+      completionId,
+      userId: user.userId,
+      isOwner: access.isOwner,
+    }));
+  } catch (err) {
+    if (err instanceof CompletionAttributionError) {
+      return Response.json({ error: err.message }, { status: 403 });
+    }
+    throw err;
+  }
 
   if (undone) {
     const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(

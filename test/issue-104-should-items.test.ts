@@ -223,6 +223,7 @@ describe("Issue #104 Should items — repeat undo, quick-pick duration, and CSV 
       .run();
     const pastFallback = await manager.undoRepeatCompletion(created.id, {
       completionId: "c-legacy-past",
+      userId: USER_A.userId,
       now,
     });
     expect(pastFallback.todo.reminderSent).toBe(true);
@@ -237,6 +238,7 @@ describe("Issue #104 Should items — repeat undo, quick-pick duration, and CSV 
       .run();
     const futureFallback = await manager.undoRepeatCompletion(futureTask.id, {
       completionId: "c-legacy-future",
+      userId: USER_A.userId,
       now,
     });
     expect(futureFallback.todo.reminderAt).toBe(futureReminder);

@@ -98,6 +98,37 @@ describe("time tracking shared helpers (#102)", () => {
 
     expect(
       formatTaskCompletionStatsLine(
+        { ...baseStats, timedCount: 1, averageSeconds: 45, lastDurationSeconds: 45, estimatedMinutes: null },
+        { isRecurring: true, estimatedMinutes: null }
+      )
+    ).toBe("Avg <1 min over last 1");
+    expect(
+      formatTaskCompletionStatsLine(
+        { ...baseStats, timedCount: 1, averageSeconds: 60, lastDurationSeconds: 60, estimatedMinutes: null },
+        { isRecurring: true, estimatedMinutes: null }
+      )
+    ).toBe("Avg 1 min over last 1");
+    expect(
+      formatTaskCompletionStatsLine(
+        { ...baseStats, lastDurationSeconds: 59, estimatedMinutes: null },
+        { isRecurring: false, estimatedMinutes: null }
+      )
+    ).toBe("Took <1 min");
+    expect(
+      formatTaskCompletionStatsLine(
+        { ...baseStats, lastDurationSeconds: 45, estimatedMinutes: 5 },
+        { isRecurring: false, estimatedMinutes: 5 }
+      )
+    ).toBe("Took <1 min • est 5 (-5)");
+    expect(
+      formatTaskCompletionStatsLine(
+        { ...baseStats, lastDurationSeconds: 60, estimatedMinutes: null },
+        { isRecurring: false, estimatedMinutes: null }
+      )
+    ).toBe("Took 1 min");
+
+    expect(
+      formatTaskCompletionStatsLine(
         { ...baseStats, timedCount: 0, averageSeconds: null, lastDurationSeconds: null },
         { isRecurring: false }
       )

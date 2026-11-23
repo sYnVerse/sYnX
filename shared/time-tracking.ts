@@ -25,19 +25,26 @@ export function formatTaskCompletionStatsLine(
 
   if (options.isRecurring) {
     if (stats.averageSeconds == null) return null;
-    const avgMin = Math.max(1, Math.round(stats.averageSeconds / 60));
-    const base = `Avg ${avgMin} min over last ${stats.timedCount}`;
+    const avgLabel =
+      stats.averageSeconds < 60
+        ? "<1"
+        : String(Math.max(1, Math.round(stats.averageSeconds / 60)));
+    const base = `Avg ${avgLabel} min over last ${stats.timedCount}`;
     return est != null && est > 0 ? `${base} • est ${est}` : base;
   }
 
   if (stats.lastDurationSeconds == null) return null;
-  const tookMin = Math.max(1, Math.round(stats.lastDurationSeconds / 60));
+  const isUnderOneMin = stats.lastDurationSeconds < 60;
+  const tookMin = isUnderOneMin
+    ? 0
+    : Math.max(1, Math.round(stats.lastDurationSeconds / 60));
+  const tookLabel = isUnderOneMin ? "<1" : String(tookMin);
   if (est != null && est > 0) {
     const delta = tookMin - est;
     const deltaStr = delta > 0 ? `+${delta}` : `${delta}`;
-    return `Took ${tookMin} min • est ${est} (${deltaStr})`;
+    return `Took ${tookLabel} min • est ${est} (${deltaStr})`;
   }
-  return `Took ${tookMin} min`;
+  return `Took ${tookLabel} min`;
 }
 
 /**

@@ -416,6 +416,13 @@ export interface PendingReminder {
   discordWebhookUrl?: string;
 }
 
+export class CompletionAttributionError extends Error {
+  constructor(message = "Only the list owner or the user who completed this task can undo it.") {
+    super(message);
+    this.name = "CompletionAttributionError";
+  }
+}
+
 export class TodoManager {
   private db: D1Database;
   private listId: string;
@@ -690,6 +697,7 @@ export class TodoManager {
       completerTimeZone?: string | null;
       subtaskAction?: "complete" | "promote";
       userId?: string;
+      isOwner?: boolean;
       completedAt?: number;
       source?: CompletionSource;
       opId?: string;
@@ -868,14 +876,21 @@ export class TodoManager {
         // Undo of a completed one-time task: void latest completion row and restore timer.
         const latest = await this.db
           .prepare(
-            `SELECT id, started_at, started_by
+            `SELECT id, user_id, started_at, started_by
              FROM task_completions
              WHERE todo_id = ? AND list_id = ? AND voided_at IS NULL
              ORDER BY completed_at DESC
              LIMIT 1`
           )
           .bind(id, this.listId)
-          .first<{ id: string; started_at: number | null; started_by: string | null }>();
+          .first<{ id: string; user_id: string; started_at: number | null; started_by: string | null }>();
+
+        if (latest) {
+          const attributedUserId = latest.started_by || latest.user_id;
+          if (!options.isOwner && (!options.userId || attributedUserId !== options.userId)) {
+            throw new CompletionAttributionError();
+          }
+        }
 
         const stmts: D1PreparedStatement[] = [
           this.db
@@ -970,7 +985,7 @@ export class TodoManager {
    */
   async undoRepeatCompletion(
     id: string,
-    options: { completionId?: string; userId?: string; now?: number } = {}
+    options: { completionId?: string; userId?: string; isOwner?: boolean; now?: number } = {}
   ): Promise<{ todo: Todo; undone: boolean; voidedCompletionId: string | null }> {
     const todo = await this.db
       .prepare("SELECT * FROM todos WHERE id = ? AND list_id = ?")
@@ -983,13 +998,14 @@ export class TodoManager {
     const row = options.completionId
       ? await this.db
           .prepare(
-            `SELECT id, started_at, started_by, reminder_at, previous_reminder_sent
+            `SELECT id, user_id, started_at, started_by, reminder_at, previous_reminder_sent
              FROM task_completions
              WHERE id = ? AND todo_id = ? AND list_id = ? AND voided_at IS NULL`
           )
           .bind(options.completionId, id, this.listId)
           .first<{
             id: string;
+            user_id: string;
             started_at: number | null;
             started_by: string | null;
             reminder_at: number | null;
@@ -997,7 +1013,7 @@ export class TodoManager {
           }>()
       : await this.db
           .prepare(
-            `SELECT id, started_at, started_by, reminder_at, previous_reminder_sent
+            `SELECT id, user_id, started_at, started_by, reminder_at, previous_reminder_sent
              FROM task_completions
              WHERE todo_id = ? AND list_id = ? AND voided_at IS NULL
              ORDER BY completed_at DESC
@@ -1006,6 +1022,7 @@ export class TodoManager {
           .bind(id, this.listId)
           .first<{
             id: string;
+            user_id: string;
             started_at: number | null;
             started_by: string | null;
             reminder_at: number | null;
@@ -1014,6 +1031,11 @@ export class TodoManager {
 
     if (!row) {
       return { todo: this.mapRow(todo), undone: false, voidedCompletionId: null };
+    }
+
+    const attributedUserId = row.started_by || row.user_id;
+    if (!options.isOwner && (!options.userId || attributedUserId !== options.userId)) {
+      throw new CompletionAttributionError();
     }
 
     const serverNow = options.now ?? Date.now();
@@ -1070,8 +1092,9 @@ export class TodoManager {
     id: string,
     options: {
       timeZone?: string;
-      completerTimeZone?: string;
+      completerTimeZone?: string | null;
       userId?: string;
+      isOwner?: boolean;
       source?: CompletionSource;
     } = {}
   ): Promise<Todo & { rescheduled: boolean }> {

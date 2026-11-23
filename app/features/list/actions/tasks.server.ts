@@ -92,8 +92,9 @@ export async function handleToggleTask(ctx: ListActionContext) {
   ]);
   const todo = await todoManager.toggle(id, {
     timeZone,
-    completerTimeZone: completerTimeZone ?? timeZone,
+    completerTimeZone: isLoggedIn && userId !== tzUserId ? (completerTimeZone ?? null) : timeZone,
     userId: isLoggedIn ? userId : undefined,
+    isOwner: hasOwnership,
     source: "web",
   });
   scheduleActivityLog({
@@ -153,9 +154,10 @@ export async function handleSetCompleted(ctx: ListActionContext) {
   ]);
   const { todo, rescheduled, updatedSubtasks, completion } = await todoManager.setCompleted(id, completed, {
     timeZone,
-    completerTimeZone: completerTimeZone ?? timeZone,
+    completerTimeZone: isLoggedIn && userId !== tzUserId ? (completerTimeZone ?? null) : timeZone,
     subtaskAction,
     userId: isLoggedIn ? userId : undefined,
+    isOwner: hasOwnership,
     source: "web",
   });
   scheduleActivityLog({
@@ -228,6 +230,7 @@ export async function handleUndoRepeatTask(ctx: ListActionContext) {
   const { todo, undone } = await todoManager.undoRepeatCompletion(id, {
     completionId,
     userId: isLoggedIn ? userId : undefined,
+    isOwner: hasOwnership,
   });
 
   if (undone) {
