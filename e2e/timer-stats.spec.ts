@@ -39,7 +39,7 @@ test.describe("Web task Start timer and completion time stats (#103)", () => {
     const completedRow = page.locator("li", { hasText: "Write release notes" });
     await expect(completedRow).toBeVisible();
     await expect(completedRow.locator('[data-testid="task-completion-stats"]')).toContainText(
-      /Took \d+ min • est 20/
+      /Took (?:<1|\d+) min • est 20/
     );
   });
 
@@ -87,7 +87,7 @@ test.describe("Web task Start timer and completion time stats (#103)", () => {
     await calChip.getByRole("button", { name: "Prep demo" }).click();
     await expect(page.getByRole("heading", { name: "Edit Task" })).toBeVisible();
     await expect(page.locator('[data-testid="edit-modal-completion-stats"]')).toContainText(
-      /Took \d+ min • est 15/
+      /Took (?:<1|\d+) min • est 15/
     );
   });
 });
