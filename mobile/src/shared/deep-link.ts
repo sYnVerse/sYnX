@@ -1,5 +1,7 @@
 export interface ParsedDeepLink {
   listId: string | null;
+  /** Optional task ID to open inside the list (e.g. `synx://list/<listId>?task=<taskId>`). */
+  taskId?: string | null;
   /**
    * - `newTask`: open the new task form.
    * - `pickPinnedList`: open the Lists tab to choose the Pinned List widget's list.
@@ -16,12 +18,14 @@ const RESERVED_PATHS = new Set(["login", "logout", "mobile", "callback", "api"])
  * Parses deep links from custom scheme (`synx://...`) and web URLs (`https://synx.christran.io/...`).
  * Supports:
  * - `synx://list/<listId>`
+ * - `synx://list/<listId>?task=<taskId>`
  * - `synx://list/<listId>?action=newTask`
  * - `synx://quick-add?listId=<listId>`
  * - `synx://quick-add`
  * - `synx://<uuid>`
  * - `https://synx.christran.io/<listId>?action=newTask`
  * - `https://synx.christran.io/list/<listId>`
+ * - `https://synx.christran.io/list/<listId>?task=<taskId>`
  * - `synx://pick-pinned-list` (choose the Pinned List widget's list)
  */
 export function parseDeepLinkUrl(rawUrl: string | null | undefined): ParsedDeepLink {
@@ -40,6 +44,7 @@ export function parseDeepLinkUrl(rawUrl: string | null | undefined): ParsedDeepL
   }
 
   let listId: string | null = null;
+  let taskId: string | null = null;
   let action: ParsedDeepLink["action"] = null;
 
   try {
@@ -51,6 +56,11 @@ export function parseDeepLinkUrl(rawUrl: string | null | undefined): ParsedDeepL
     const actionParam = parsed.searchParams.get("action");
     if (actionParam === "newTask" || host === "quick-add") {
       action = "newTask";
+    }
+
+    const taskParam = parsed.searchParams.get("task")?.trim() || null;
+    if (taskParam) {
+      taskId = taskParam;
     }
 
     const idParam = parsed.searchParams.get("id") || parsed.searchParams.get("listId");
@@ -83,10 +93,20 @@ export function parseDeepLinkUrl(rawUrl: string | null | undefined): ParsedDeepL
         listId = matchPath[1];
       }
     }
+    const taskMatch = trimmed.match(/[?&]task=([^&#]+)/);
+    if (taskMatch?.[1]) {
+      try {
+        const decoded = decodeURIComponent(taskMatch[1]).trim();
+        if (decoded) taskId = decoded;
+      } catch {
+        const raw = taskMatch[1].trim();
+        if (raw) taskId = raw;
+      }
+    }
     if (trimmed.includes("action=newTask") || trimmed.includes("quick-add")) {
       action = "newTask";
     }
   }
 
-  return { listId, action };
+  return taskId ? { listId, taskId, action } : { listId, action };
 }

@@ -54,6 +54,13 @@ const MainAppContent: React.FC = () => {
    */
   const [newTaskRequest, setNewTaskRequest] = useState<{ id: number; listId: string | null } | null>(null);
   const clearNewTaskRequest = useCallback(() => setNewTaskRequest(null), []);
+  /** One-shot request from a widget task row tap (`synx://list/<listId>?task=<taskId>`). */
+  const [openTaskRequest, setOpenTaskRequest] = useState<{
+    id: number;
+    listId: string;
+    taskId: string;
+  } | null>(null);
+  const clearOpenTaskRequest = useCallback(() => setOpenTaskRequest(null), []);
   /** One-shot request from the Pinned List widget's switch button to choose its list. */
   const [pickPinnedListRequest, setPickPinnedListRequest] = useState<number | null>(null);
   const clearPickPinnedListRequest = useCallback(() => setPickPinnedListRequest(null), []);
@@ -97,7 +104,12 @@ const MainAppContent: React.FC = () => {
       }
       if (parsed.action === "newTask") {
         setActiveTab("tasks");
+        setOpenTaskRequest(null);
         setNewTaskRequest({ id: Date.now(), listId: parsed.listId ?? null });
+      } else if (parsed.listId && parsed.taskId) {
+        setActiveTab("tasks");
+        setNewTaskRequest(null);
+        setOpenTaskRequest({ id: Date.now(), listId: parsed.listId, taskId: parsed.taskId });
       }
     },
     [applyDeepLinkedList]
@@ -440,6 +452,12 @@ const MainAppContent: React.FC = () => {
                   : undefined
               }
               onNewTaskRequestHandled={clearNewTaskRequest}
+              openTaskRequest={
+                openTaskRequest && openTaskRequest.listId === activeListId
+                  ? { id: openTaskRequest.id, taskId: openTaskRequest.taskId }
+                  : undefined
+              }
+              onOpenTaskRequestHandled={clearOpenTaskRequest}
               onGoToMyLists={goToMyLists}
               onSwitchLists={() => handleTabSwitch("lists")}
             />

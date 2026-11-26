@@ -1,0 +1,85 @@
+appId: io.christran.synx
+---
+# Seeds a list with 3 tasks, pins it to PinnedListWidget, and backgrounds the app
+# so CI can fire an ACTION_WIDGET_INTERACTION broadcast for the middle task.
+- launchApp:
+    clearState: true
+
+- extendedWaitUntil:
+    visible: "Test Sign In"
+    timeout: 30000
+- tapOn: "Test Sign In"
+
+- extendedWaitUntil:
+    visible: "Got it!"
+    timeout: 30000
+- tapOn: "Got it!"
+
+- waitForAnimationToEnd:
+    timeout: 2000
+- tapOn:
+    text: "Not now"
+    optional: true
+- tapOn:
+    text: "Not now"
+    optional: true
+
+- extendedWaitUntil:
+    visible: "Lists"
+    timeout: 20000
+- tapOn: "Lists"
+
+- extendedWaitUntil:
+    visible: "Create list"
+    timeout: 15000
+- tapOn: "Create list"
+
+- tapOn: "e.g. Supermarket, French HW, Big Movies..."
+- inputText: "Widget Checkoff List"
+- hideKeyboard
+- tapOn: "Create List"
+
+- extendedWaitUntil:
+    visible: "Widget Checkoff List"
+    timeout: 15000
+- tapOn: "Widget Checkoff List"
+
+- extendedWaitUntil:
+    visible: "Add task"
+    timeout: 15000
+- tapOn: "Add task"
+- tapOn: "What needs to be done?"
+- inputText: "Widget Task One"
+- hideKeyboard
+- tapOn: "Create task"
+- extendedWaitUntil:
+    visible: "Widget Task One"
+    timeout: 15000
+
+- tapOn: "Add task"
+- tapOn: "What needs to be done?"
+- inputText: "Widget Task Two"
+- hideKeyboard
+- tapOn: "Create task"
+- extendedWaitUntil:
+    visible: "Widget Task Two"
+    timeout: 15000
+
+- tapOn: "Add task"
+- tapOn: "What needs to be done?"
+- inputText: "Widget Task Three"
+- hideKeyboard
+- tapOn: "Create task"
+- extendedWaitUntil:
+    visible: "Widget Task Three"
+    timeout: 15000
+
+- tapOn: "List options for Widget Checkoff List"
+- extendedWaitUntil:
+    visible: "Pin to widget"
+    timeout: 10000
+- tapOn: "Pin to widget"
+- waitForAnimationToEnd:
+    timeout: 3000
+
+- pressKey: Home

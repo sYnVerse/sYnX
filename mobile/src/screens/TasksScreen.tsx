@@ -65,6 +65,10 @@ export interface TasksScreenProps {
   newTaskRequestId?: number;
   /** Called once the request has been handled so it isn't replayed on the next list open. */
   onNewTaskRequestHandled?: () => void;
+  /** Set when a widget or deep link asked to open a specific task in this list. */
+  openTaskRequest?: { id: number; taskId: string };
+  /** Called once the open-task request has been handled so it isn't replayed later. */
+  onOpenTaskRequestHandled?: () => void;
   onGoToMyLists?: () => void;
   onSwitchLists?: () => void;
 }
@@ -105,6 +109,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   listId,
   newTaskRequestId,
   onNewTaskRequestHandled,
+  openTaskRequest,
+  onOpenTaskRequestHandled,
   onGoToMyLists,
   onSwitchLists,
 }) => {
@@ -277,6 +283,30 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 
     return sortTasks(Object.values(parentMap), taskSortMode);
   }, [rawTodos, taskSortMode]);
+
+  // Open a specific task requested via widget deep link once list and todos settle.
+  const [handledOpenTaskId, setHandledOpenTaskId] = useState<number | null>(null);
+  const todosSettled = !isLoading && (rawTodos !== undefined || todosIsError);
+  if (
+    openTaskRequest &&
+    openTaskRequest.id !== handledOpenTaskId &&
+    listMetaSettled &&
+    (listMetaIsError || todosSettled)
+  ) {
+    setHandledOpenTaskId(openTaskRequest.id);
+    if (listMeta && canEdit) {
+      const targetTask =
+        structuredTodos.find((t) => t.id === openTaskRequest.taskId) ??
+        rawTodos?.find((t) => t.id === openTaskRequest.taskId);
+      if (targetTask) {
+        setModalVisible(false);
+        setEditingTask(targetTask);
+      }
+    }
+  }
+  React.useEffect(() => {
+    if (handledOpenTaskId !== null) onOpenTaskRequestHandled?.();
+  }, [handledOpenTaskId, onOpenTaskRequestHandled]);
 
   const triggerImpactHaptic = React.useCallback(() => {
     if (hapticsEnabled && Platform.OS !== "web") {
