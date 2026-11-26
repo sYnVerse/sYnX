@@ -44,6 +44,8 @@ export function CurrentListWidget(
     60,
     widgetWidth - 24 - 12 - (props.canEdit ? 40 : 0) - 6 - 8
   );
+  const undoButtonWidth = 52;
+  const pendingTextWidth = Math.max(48, taskTextWidth - undoButtonWidth - 6);
   const bg = isDark ? '#18181B' : '#FFFFFF';
   const cardBg = isDark ? '#27272A' : '#F4F4F5';
   const textPrimary = isDark ? '#F4F4F5' : '#18181B';
@@ -191,49 +193,209 @@ export function CurrentListWidget(
                 : task.priority === 'low'
                 ? '#3B82F6'
                 : 'transparent';
+            const isPendingComplete = Boolean(task.pendingCompletedAt != null || task.completed);
+
+            if (props.canEdit && isPendingComplete) {
+              const handleUndo = () => {
+                'worklet';
+                const now = Date.now();
+                const existingTasks = props.tasks || [];
+                const currentTask = existingTasks.find((t) => t.id === task.id);
+                if (
+                  !currentTask ||
+                  (currentTask.pendingCompletedAt == null && !currentTask.completed)
+                ) {
+                  return undefined;
+                }
+                const opId = `w_${task.id}_${now}_${Math.floor(Math.random() * 1e9).toString(36)}`;
+                const isRecurring = Boolean(
+                  currentTask.recurrence && currentTask.recurrence !== 'none'
+                );
+                const nextTasks = existingTasks.map((t) => {
+                  if (t.id !== task.id) return t;
+                  const restored: WidgetTaskItem = {
+                    id: t.id,
+                    text: t.text,
+                    completed: false,
+                    priority: t.priority,
+                    recurrence: t.recurrence,
+                  };
+                  if (t.reminderAt != null) restored.reminderAt = t.reminderAt;
+                  if (t.reminderLabel != null) restored.reminderLabel = t.reminderLabel;
+                  if (t.isOverdue != null) restored.isOverdue = t.isOverdue;
+                  if (t.isRunning != null) restored.isRunning = t.isRunning;
+                  if (t.subtaskProgress != null) restored.subtaskProgress = t.subtaskProgress;
+                  return restored;
+                });
+                const nextDone = isRecurring
+                  ? props.doneCount || 0
+                  : Math.max(0, (props.doneCount || 0) - 1);
+                const pendingOps = [
+                  ...(props.pendingOps || []),
+                  {
+                    todoId: task.id,
+                    listId: props.listId,
+                    completed: false,
+                    at: now,
+                    opId,
+                  },
+                ];
+                return {
+                  ...props,
+                  tasks: nextTasks,
+                  doneCount: nextDone,
+                  pendingOps,
+                  lastTapAt: 0,
+                };
+              };
+
+              return (
+                <Row
+                  key={task.id}
+                  modifiers={[
+                    fillMaxWidth(),
+                    padding(6, 4, 6, 4),
+                    background(cardBg),
+                    cornerRadius(8),
+                  ]}
+                  verticalAlignment="center"
+                >
+                  <Button
+                    target={`undo:${task.id}`}
+                    colors={{ containerColor: 'transparent', contentColor: '#FFFFFF' }}
+                    modifiers={[size(40, 32)]}
+                    onClick={handleUndo}
+                  >
+                    <Box modifiers={[size(40, 32)]} contentAlignment="center">
+                      <Box
+                        modifiers={[size(18, 18), background(accent), cornerRadius(4)]}
+                        contentAlignment="center"
+                      >
+                        <Text style={{ fontSize: 12, fontWeight: 'bold' }} color="#FFFFFF">
+                          ✓
+                        </Text>
+                      </Box>
+                    </Box>
+                  </Button>
+                  {priorityDotColor !== 'transparent' ? (
+                    <Box
+                      modifiers={[
+                        size(6, 6),
+                        background(textMuted),
+                        cornerRadius(3),
+                      ]}
+                    />
+                  ) : null}
+                  <Column modifiers={[width(pendingTextWidth), padding(6, 0, 4, 0)]}>
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: '500',
+                        textDecoration: 'lineThrough',
+                      }}
+                      color={textMuted}
+                      maxLines={1}
+                    >
+                      {task.text}
+                    </Text>
+                    {task.isRunning || task.subtaskProgress || task.reminderLabel ? (
+                      <Text style={{ fontSize: 10 }} color={textMuted} maxLines={1}>
+                        Done
+                      </Text>
+                    ) : null}
+                  </Column>
+                  <Row
+                    modifiers={[fillMaxWidth()]}
+                    verticalAlignment="center"
+                    horizontalArrangement="end"
+                  >
+                    <Button
+                      target={`undo:${task.id}`}
+                      colors={{ containerColor: accentLight, contentColor: accent }}
+                      modifiers={[width(undoButtonWidth), padding(4, 5, 4, 5), cornerRadius(6)]}
+                      onClick={handleUndo}
+                    >
+                      <Box modifiers={[fillMaxWidth()]} contentAlignment="center">
+                        <Text style={{ fontSize: 11, fontWeight: 'bold' }} color={accent} maxLines={1}>
+                          Undo
+                        </Text>
+                      </Box>
+                    </Button>
+                  </Row>
+                </Row>
+              );
+            }
 
             if (props.canEdit) {
               return (
-                <Button
+                <Row
                   key={task.id}
-                  target={`complete:${task.id}`}
-                  colors={{ containerColor: 'transparent', contentColor: textPrimary }}
-                  onClick={() => {
-                    'worklet';
-                    const now = Date.now();
-                    const opId = `w_${task.id}_${now}_${Math.floor(Math.random() * 1e9).toString(36)}`;
-                    const nextTasks = (props.tasks || []).filter((t) => t.id !== task.id);
-                    const pendingOps = [
-                      ...(props.pendingOps || []),
-                      {
-                        todoId: task.id,
-                        listId: props.listId,
-                        completed: true,
-                        at: now,
-                        opId,
-                      },
-                    ];
-                    return {
-                      ...props,
-                      tasks: nextTasks,
-                      doneCount: (props.doneCount || 0) + 1,
-                      pendingOps,
-                    };
-                  }}
+                  modifiers={[
+                    fillMaxWidth(),
+                    padding(6, 4, 6, 4),
+                    background(cardBg),
+                    cornerRadius(8),
+                  ]}
+                  verticalAlignment="center"
                 >
-                  <Row
-                    modifiers={[
-                      fillMaxWidth(),
-                      padding(6, 4, 6, 4),
-                      background(cardBg),
-                      cornerRadius(8),
-                    ]}
-                    verticalAlignment="center"
+                  {/* Only tapping the checkbox marks a task done; the rest of the row opens the task.
+                      Drawn as a Box instead of a native CheckBox so our onClick worklet runs reliably. */}
+                  <Button
+                    target={`complete:${task.id}`}
+                    colors={{ containerColor: 'transparent', contentColor: textPrimary }}
+                    modifiers={[size(40, 32)]}
+                    onClick={() => {
+                      'worklet';
+                      const now = Date.now();
+                      const existingTasks = props.tasks || [];
+                      const currentTask = existingTasks.find((t) => t.id === task.id);
+                      if (
+                        !currentTask ||
+                        currentTask.pendingCompletedAt != null ||
+                        currentTask.completed
+                      ) {
+                        return undefined;
+                      }
+                      if (
+                        typeof props.lastTapAt === 'number' &&
+                        now >= props.lastTapAt &&
+                        now - props.lastTapAt < 800
+                      ) {
+                        return undefined;
+                      }
+                      const opId = `w_${task.id}_${now}_${Math.floor(Math.random() * 1e9).toString(36)}`;
+                      const isRecurring = Boolean(
+                        currentTask.recurrence && currentTask.recurrence !== 'none'
+                      );
+                      const nextTasks = existingTasks.map((t) =>
+                        t.id === task.id
+                          ? { ...t, completed: true, pendingCompletedAt: now }
+                          : t
+                      );
+                      const nextDone = isRecurring
+                        ? props.doneCount || 0
+                        : props.totalCount > 0
+                        ? Math.min((props.doneCount || 0) + 1, props.totalCount)
+                        : (props.doneCount || 0) + 1;
+                      const pendingOps = [
+                        ...(props.pendingOps || []),
+                        {
+                          todoId: task.id,
+                          listId: props.listId,
+                          completed: true,
+                          at: now,
+                          opId,
+                        },
+                      ];
+                      return {
+                        ...props,
+                        tasks: nextTasks,
+                        doneCount: nextDone,
+                        pendingOps,
+                        lastTapAt: now,
+                      };
+                    }}
                   >
-                    {/* Drawn checkbox. A real Checkbox becomes a native Android CheckBox,
-                        which takes the tap itself: it ticks on screen but never runs the
-                        row's click, so the task was never queued or completed. This box
-                        isn't clickable, so taps anywhere on the row go to the row. */}
                     <Box modifiers={[size(40, 32)]} contentAlignment="center">
                       <Box
                         modifiers={[size(18, 18), background(textMuted), cornerRadius(4), paddingAll(2)]}
@@ -241,111 +403,124 @@ export function CurrentListWidget(
                         <Box modifiers={[fillMaxSize(), background(cardBg), cornerRadius(3)]} />
                       </Box>
                     </Box>
-                    {priorityDotColor !== 'transparent' ? (
-                      <Box
-                        modifiers={[
-                          size(6, 6),
-                          background(priorityDotColor),
-                          cornerRadius(3),
-                        ]}
-                      />
-                    ) : null}
-                    <Column modifiers={[width(taskTextWidth), padding(6, 0, 6, 0)]}>
-                      <Text
-                        style={{ fontSize: 13, fontWeight: '500' }}
-                        color={textPrimary}
-                        maxLines={1}
-                      >
-                        {task.text}
-                      </Text>
-                      {task.isRunning || task.subtaskProgress || task.reminderLabel ? (
-                        <Row verticalAlignment="center">
-                          {task.isRunning ? (
-                            <Text style={{ fontSize: 10, fontWeight: 'bold' }} color={accent} maxLines={1}>
-                              {task.subtaskProgress || task.reminderLabel ? '⏱ · ' : '⏱'}
-                            </Text>
-                          ) : null}
-                          {task.subtaskProgress ? (
-                            <Text style={{ fontSize: 10 }} color={textMuted} maxLines={1}>
-                              {task.reminderLabel ? `${task.subtaskProgress} · ` : task.subtaskProgress}
-                            </Text>
-                          ) : null}
-                          {task.reminderLabel ? (
-                            <Text
-                              style={{
-                                fontSize: 10,
-                                fontWeight: task.isOverdue ? 'bold' : 'normal',
-                              }}
-                              color={task.isOverdue ? '#EF4444' : textMuted}
-                              maxLines={1}
-                            >
-                              {task.reminderLabel}
-                            </Text>
-                          ) : null}
-                        </Row>
+                  </Button>
+                  <Button
+                    target={`open:synx://list/${props.listId}?task=${task.id}`}
+                    colors={{ containerColor: 'transparent', contentColor: textPrimary }}
+                    modifiers={[fillMaxWidth()]}
+                  >
+                    <Row modifiers={[fillMaxWidth()]} verticalAlignment="center">
+                      {priorityDotColor !== 'transparent' ? (
+                        <Box
+                          modifiers={[
+                            size(6, 6),
+                            background(priorityDotColor),
+                            cornerRadius(3),
+                          ]}
+                        />
                       ) : null}
-                    </Column>
-                  </Row>
-                </Button>
+                      <Column modifiers={[width(taskTextWidth), padding(6, 0, 6, 0)]}>
+                        <Text
+                          style={{ fontSize: 13, fontWeight: '500' }}
+                          color={textPrimary}
+                          maxLines={1}
+                        >
+                          {task.text}
+                        </Text>
+                        {task.isRunning || task.subtaskProgress || task.reminderLabel ? (
+                          <Row verticalAlignment="center">
+                            {task.isRunning ? (
+                              <Text style={{ fontSize: 10, fontWeight: 'bold' }} color={accent} maxLines={1}>
+                                {task.subtaskProgress || task.reminderLabel ? '⏱ · ' : '⏱'}
+                              </Text>
+                            ) : null}
+                            {task.subtaskProgress ? (
+                              <Text style={{ fontSize: 10 }} color={textMuted} maxLines={1}>
+                                {task.reminderLabel ? `${task.subtaskProgress} · ` : task.subtaskProgress}
+                              </Text>
+                            ) : null}
+                            {task.reminderLabel ? (
+                              <Text
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: task.isOverdue ? 'bold' : 'normal',
+                                }}
+                                color={task.isOverdue ? '#EF4444' : textMuted}
+                                maxLines={1}
+                              >
+                                {task.reminderLabel}
+                              </Text>
+                            ) : null}
+                          </Row>
+                        ) : null}
+                      </Column>
+                    </Row>
+                  </Button>
+                </Row>
               );
             }
 
             return (
-              <Row
+              <Button
                 key={task.id}
-                modifiers={[
-                  fillMaxWidth(),
-                  padding(6, 4, 6, 4),
-                  background(cardBg),
-                  cornerRadius(8),
-                ]}
-                verticalAlignment="center"
+                target={`open:synx://list/${props.listId}?task=${task.id}`}
+                colors={{ containerColor: 'transparent', contentColor: textPrimary }}
               >
-                {priorityDotColor !== 'transparent' ? (
-                  <Box
-                    modifiers={[
-                      size(6, 6),
-                      background(priorityDotColor),
-                      cornerRadius(3),
-                    ]}
-                  />
-                ) : null}
-                <Column modifiers={[width(taskTextWidth), padding(6, 0, 6, 0)]}>
-                  <Text
-                    style={{ fontSize: 13, fontWeight: '500' }}
-                    color={textPrimary}
-                    maxLines={1}
-                  >
-                    {task.text}
-                  </Text>
-                  {task.isRunning || task.subtaskProgress || task.reminderLabel ? (
-                    <Row verticalAlignment="center">
-                      {task.isRunning ? (
-                        <Text style={{ fontSize: 10, fontWeight: 'bold' }} color={accent} maxLines={1}>
-                          {task.subtaskProgress || task.reminderLabel ? '⏱ · ' : '⏱'}
-                        </Text>
-                      ) : null}
-                      {task.subtaskProgress ? (
-                        <Text style={{ fontSize: 10 }} color={textMuted} maxLines={1}>
-                          {task.reminderLabel ? `${task.subtaskProgress} · ` : task.subtaskProgress}
-                        </Text>
-                      ) : null}
-                      {task.reminderLabel ? (
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontWeight: task.isOverdue ? 'bold' : 'normal',
-                          }}
-                          color={task.isOverdue ? '#EF4444' : textMuted}
-                          maxLines={1}
-                        >
-                          {task.reminderLabel}
-                        </Text>
-                      ) : null}
-                    </Row>
+                <Row
+                  modifiers={[
+                    fillMaxWidth(),
+                    padding(6, 4, 6, 4),
+                    background(cardBg),
+                    cornerRadius(8),
+                  ]}
+                  verticalAlignment="center"
+                >
+                  {priorityDotColor !== 'transparent' ? (
+                    <Box
+                      modifiers={[
+                        size(6, 6),
+                        background(priorityDotColor),
+                        cornerRadius(3),
+                      ]}
+                    />
                   ) : null}
-                </Column>
-              </Row>
+                  <Column modifiers={[width(taskTextWidth), padding(6, 0, 6, 0)]}>
+                    <Text
+                      style={{ fontSize: 13, fontWeight: '500' }}
+                      color={textPrimary}
+                      maxLines={1}
+                    >
+                      {task.text}
+                    </Text>
+                    {task.isRunning || task.subtaskProgress || task.reminderLabel ? (
+                      <Row verticalAlignment="center">
+                        {task.isRunning ? (
+                          <Text style={{ fontSize: 10, fontWeight: 'bold' }} color={accent} maxLines={1}>
+                            {task.subtaskProgress || task.reminderLabel ? '⏱ · ' : '⏱'}
+                          </Text>
+                        ) : null}
+                        {task.subtaskProgress ? (
+                          <Text style={{ fontSize: 10 }} color={textMuted} maxLines={1}>
+                            {task.reminderLabel ? `${task.subtaskProgress} · ` : task.subtaskProgress}
+                          </Text>
+                        ) : null}
+                        {task.reminderLabel ? (
+                          <Text
+                            style={{
+                              fontSize: 10,
+                              fontWeight: task.isOverdue ? 'bold' : 'normal',
+                            }}
+                            color={task.isOverdue ? '#EF4444' : textMuted}
+                            maxLines={1}
+                          >
+                            {task.reminderLabel}
+                          </Text>
+                        ) : null}
+                      </Row>
+                    ) : null}
+                  </Column>
+                </Row>
+              </Button>
             );
           })}
         </LazyColumn>

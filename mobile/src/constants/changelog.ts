@@ -25,6 +25,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         type: "IMPR",
         text: "View activity is now available for all of your lists, including private lists.",
       },
+      {
+        type: "FIX",
+        text: "Fixed home screen list widgets so only tapping the checkbox completes a task (tapping the task opens it), checked tasks stay in place with an Undo button for about 10 seconds without shifting other rows, and accidental quick double taps are ignored.",
+      },
     ],
   },
   {

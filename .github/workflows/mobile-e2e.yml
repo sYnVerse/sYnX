@@ -165,12 +165,7 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            export PATH="$HOME/.maestro/bin:$PATH"
-            export MAESTRO_CLI_NO_ANALYTICS=1
-            export MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED=true
-            adb reverse tcp:8787 tcp:8787
-            adb install -r mobile/android/app/build/outputs/apk/debug/app-debug.apk
-            maestro test .maestro/smoke.yaml --debug-output /tmp/maestro-debug
+            bash .maestro/run-android-e2e.sh
 
       - name: Upload Maestro & Wrangler debug logs
         if: failure()
