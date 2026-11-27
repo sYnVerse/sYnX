@@ -66,6 +66,11 @@ import {
   updateArchiveSuggestionsPreference,
   useArchivePreferences,
 } from "../services/archivePreferences";
+import {
+  setSnoozeMinutesLocal,
+  updateSnoozeMinutesPreference,
+  useSnoozePreferences,
+} from "../services/snoozePreferences";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../context/ToastContext";
 import { getCachedListName } from "../services/listNames";
@@ -73,8 +78,12 @@ import type { TodoItem } from "../shared";
 import {
   describeTimeZone,
   findPhoneCarrier,
+  formatReminderSnoozeLabel,
   getLocalTimeZone,
   NO_PHONE_CARRIER_LABEL,
+  parseCustomSnoozeMinutesInput,
+  REMINDER_SNOOZE_PRESET_MINUTES,
+  resolveReminderSnoozeMinutes,
   TASK_SORT_OPTIONS,
   derivePushSettingsState,
   deriveCalendarSettingsState,
@@ -147,6 +156,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const { appDefault: taskSortMode } = useTaskSortPreferences();
   const smartQuickAddEnabled = useQuickAddPreferences();
   const { archiveSuggestionsEnabled } = useArchivePreferences();
+  const { snoozeMinutes } = useSnoozePreferences();
+  const [customSnoozeInput, setCustomSnoozeInput] = useState("");
+  const [customSnoozeError, setCustomSnoozeError] = useState<string | null>(null);
+  const [snoozeBusy, setSnoozeBusy] = useState(false);
   const { showError, showSuccess } = useToast();
   const insets = useSafeAreaInsets();
 
@@ -273,6 +286,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             void setArchiveSuggestionsEnabledLocal(
               res.data.settings.archiveSuggestionsEnabled
             );
+          }
+          if (typeof res.data.settings.snoozeMinutes === "number") {
+            const resolvedSnooze = resolveReminderSnoozeMinutes(
+              res.data.settings.snoozeMinutes
+            );
+            void setSnoozeMinutesLocal(resolvedSnooze);
+            if (
+              !(REMINDER_SNOOZE_PRESET_MINUTES as readonly number[]).includes(
+                resolvedSnooze
+              )
+            ) {
+              setCustomSnoozeInput(String(resolvedSnooze));
+            }
           }
           markLoadedClean();
         }
@@ -560,6 +586,47 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
     } finally {
       setPushBusy(false);
       await refreshPushState();
+    }
+  };
+
+  const handleSelectSnoozePreset = async (minutes: number) => {
+    if (snoozeBusy) return;
+    triggerImpact();
+    setCustomSnoozeError(null);
+    setCustomSnoozeInput("");
+    setSnoozeBusy(true);
+    try {
+      await updateSnoozeMinutesPreference(minutes);
+      showSuccess(`Default snooze set to ${formatReminderSnoozeLabel(minutes)}`);
+    } catch (e: unknown) {
+      showError(getErrorMessage(e, "Couldn't update snooze duration"));
+    } finally {
+      setSnoozeBusy(false);
+    }
+  };
+
+  const handleApplyCustomSnooze = async () => {
+    if (snoozeBusy) return;
+    triggerImpact();
+    const parsed = parseCustomSnoozeMinutesInput(customSnoozeInput);
+    if (!parsed.ok) {
+      setCustomSnoozeError(parsed.error);
+      return;
+    }
+    setCustomSnoozeError(null);
+    setSnoozeBusy(true);
+    try {
+      const saved = await updateSnoozeMinutesPreference(parsed.minutes);
+      setCustomSnoozeInput(
+        (REMINDER_SNOOZE_PRESET_MINUTES as readonly number[]).includes(saved)
+          ? ""
+          : String(saved)
+      );
+      showSuccess(`Default snooze set to ${formatReminderSnoozeLabel(saved)}`);
+    } catch (e: unknown) {
+      showError(getErrorMessage(e, "Couldn't update snooze duration"));
+    } finally {
+      setSnoozeBusy(false);
     }
   };
 
@@ -1272,6 +1339,115 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             </TouchableOpacity>
           </View>
         )}
+
+        <View style={[styles.aboutDivider, { backgroundColor: theme.cardBorder }]} />
+
+        <View style={styles.snoozeHeaderRow}>
+          <Text style={[styles.subLabel, { color: theme.textMuted }]}>DEFAULT SNOOZE DURATION</Text>
+          {snoozeBusy ? <ActivityIndicator size="small" color={theme.accent} /> : null}
+        </View>
+        <Text style={[styles.hint, { color: theme.textMuted, marginBottom: 10 }]}>
+          Delay reminder notifications by {formatReminderSnoozeLabel(snoozeMinutes)} when you tap Snooze.
+        </Text>
+
+        <View
+          style={styles.snoozePresetRow}
+          accessibilityRole="radiogroup"
+          accessibilityLabel="Default snooze duration"
+        >
+          {REMINDER_SNOOZE_PRESET_MINUTES.map((mins) => {
+            const selected = snoozeMinutes === mins;
+            return (
+              <TouchableOpacity
+                key={mins}
+                disabled={snoozeBusy}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`Snooze for ${mins} minutes`}
+                testID={`settings-snooze-preset-${mins}`}
+                style={[
+                  styles.snoozePresetChip,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                  selected && {
+                    backgroundColor: theme.accentLight,
+                    borderColor: theme.accent,
+                    borderWidth: 2,
+                  },
+                ]}
+                onPress={() => {
+                  void handleSelectSnoozePreset(mins);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.snoozePresetText,
+                    { color: selected ? theme.accent : theme.textPrimary },
+                  ]}
+                >
+                  {formatReminderSnoozeLabel(mins)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Text style={[styles.subLabel, { color: theme.textMuted, marginTop: 12 }]}>
+          Custom (1–1,440 min)
+        </Text>
+        <View style={styles.snoozeCustomRow}>
+          <TextInput
+            style={[
+              styles.input,
+              styles.snoozeCustomInput,
+              {
+                color: theme.textPrimary,
+                backgroundColor: theme.inputBg,
+                borderColor: customSnoozeError ? theme.danger : theme.inputBorder,
+              },
+            ]}
+            placeholder="Minutes (1–1440)"
+            placeholderTextColor={theme.inputPlaceholder}
+            keyboardType="number-pad"
+            maxLength={4}
+            value={customSnoozeInput}
+            onChangeText={(val) => {
+              setCustomSnoozeInput(val);
+              if (customSnoozeError) setCustomSnoozeError(null);
+            }}
+            onSubmitEditing={() => {
+              void handleApplyCustomSnooze();
+            }}
+            returnKeyType="done"
+            accessibilityLabel="Custom snooze minutes"
+            testID="settings-snooze-custom-input"
+          />
+          <TouchableOpacity
+            disabled={snoozeBusy}
+            style={[
+              styles.snoozeApplyBtn,
+              {
+                backgroundColor: theme.accent,
+                opacity: snoozeBusy ? 0.7 : 1,
+              },
+            ]}
+            onPress={() => {
+              void handleApplyCustomSnooze();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Apply custom snooze duration"
+            testID="settings-snooze-custom-apply"
+          >
+            <Text style={styles.snoozeApplyBtnText}>Apply</Text>
+          </TouchableOpacity>
+        </View>
+        {customSnoozeError ? (
+          <Text
+            style={[styles.snoozeErrorText, { color: theme.danger }]}
+            testID="settings-snooze-error"
+          >
+            {customSnoozeError}
+          </Text>
+        ) : null}
       </View>
 
       {/* Reminder channels */}
@@ -1902,6 +2078,58 @@ const styles = StyleSheet.create({
   aboutDivider: {
     height: 1,
     marginVertical: 12,
+  },
+  snoozeHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  snoozePresetRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  snoozePresetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: MIN_TOUCH_TARGET,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  snoozePresetText: {
+    fontSize: typography.sm,
+    fontWeight: "600",
+  },
+  snoozeCustomRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 6,
+  },
+  snoozeCustomInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  snoozeApplyBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    minHeight: MIN_TOUCH_TARGET,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  snoozeApplyBtnText: {
+    color: "#FFFFFF",
+    fontSize: typography.sm,
+    fontWeight: "700",
+  },
+  snoozeErrorText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+    marginTop: 6,
   },
   diagContainer: {
     borderRadius: 12,

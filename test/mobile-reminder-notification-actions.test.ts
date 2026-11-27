@@ -594,4 +594,125 @@ describe("mobile reminder notification Complete & Snooze actions (#110)", () => 
     expect(bgTaskSource).toContain("drainAndReplayPendingNotificationOps");
     expect(serverSource).toContain("REMINDER_NOTIFICATION_CATEGORY");
   });
+
+  it("uses the configured snooze duration from storage for one-time and repeating snoozes and falls back to 10m (#211)", async () => {
+    const baseTime = Date.UTC(2026, 10, 15, 10, 0, 0);
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(baseTime);
+
+    // 1. One-time task snoozes using 30-minute preset cached in AsyncStorage
+    mocks.storage.set("SYNX_REMINDER_SNOOZE_MINUTES", "30");
+    const expected30 = computeSnoozedReminderAt(baseTime, 30 * 60 * 1000);
+    mocks.client.apiClient.put.mockResolvedValueOnce({
+      data: {
+        success: true,
+        todo: {
+          id: "todo-30m",
+          listId: "list-1",
+          text: "Preset snooze",
+          completed: false,
+          createdAt: 1000,
+          priority: "none",
+          reminderAt: expected30,
+          reminderSent: false,
+          recurrence: "none",
+        },
+      },
+    });
+
+    await handleReminderNotificationAction({
+      actionIdentifier: REMINDER_ACTION_SNOOZE,
+      notification: {
+        date: baseTime,
+        request: {
+          identifier: "reminder_todo-30m",
+          content: {
+            title: "Work",
+            body: "Preset snooze",
+            data: { todoId: "todo-30m", listId: "list-1" },
+          },
+        },
+      },
+    });
+
+    expect(mocks.notifications.scheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        identifier: "reminder_todo-30m",
+        trigger: expect.objectContaining({ date: new Date(expected30) }),
+      })
+    );
+    expect(mocks.client.apiClient.put).toHaveBeenCalledWith("/api/v1/todos/todo-30m", {
+      reminderAt: expected30,
+    });
+
+    // 2. Repeating task uses custom 45-minute snooze locally without updating server reminderAt
+    resetNotificationActionDedupForTests();
+    nowSpy.mockReturnValue(baseTime + 1000);
+    mocks.client.apiClient.put.mockClear();
+    mocks.storage.set("SYNX_REMINDER_SNOOZE_MINUTES", "45");
+    const expected45 = computeSnoozedReminderAt(baseTime + 1000, 45 * 60 * 1000);
+
+    await handleReminderNotificationAction({
+      actionIdentifier: REMINDER_ACTION_SNOOZE,
+      notification: {
+        date: baseTime + 1000,
+        request: {
+          identifier: "reminder_todo-45m-repeat",
+          content: {
+            title: "Health",
+            body: "Stretch",
+            data: { todoId: "todo-45m-repeat", listId: "list-1", recurrence: "daily" },
+          },
+        },
+      },
+    });
+
+    expect(mocks.notifications.scheduleNotificationAsync).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        identifier: "reminder_todo-45m-repeat",
+        trigger: expect.objectContaining({ date: new Date(expected45) }),
+      })
+    );
+    expect(mocks.client.apiClient.put).not.toHaveBeenCalled();
+
+    // 3. Invalid cached duration falls back safely to default 10 minutes
+    resetNotificationActionDedupForTests();
+    nowSpy.mockReturnValue(baseTime + 2000);
+    mocks.storage.set("SYNX_REMINDER_SNOOZE_MINUTES", "9999");
+    const expectedFallback10 = computeSnoozedReminderAt(baseTime + 2000, DEFAULT_REMINDER_SNOOZE_MS);
+    mocks.client.apiClient.put.mockResolvedValueOnce({
+      data: {
+        success: true,
+        todo: {
+          id: "todo-fallback",
+          listId: "list-1",
+          text: "Fallback",
+          completed: false,
+          createdAt: 1000,
+          priority: "none",
+          reminderAt: expectedFallback10,
+          reminderSent: false,
+          recurrence: "none",
+        },
+      },
+    });
+
+    await handleReminderNotificationAction({
+      actionIdentifier: REMINDER_ACTION_SNOOZE,
+      notification: {
+        date: baseTime + 2000,
+        request: {
+          identifier: "reminder_todo-fallback",
+          content: {
+            title: "Work",
+            body: "Fallback",
+            data: { todoId: "todo-fallback", listId: "list-1" },
+          },
+        },
+      },
+    });
+
+    expect(mocks.client.apiClient.put).toHaveBeenCalledWith("/api/v1/todos/todo-fallback", {
+      reminderAt: expectedFallback10,
+    });
+  });
 });

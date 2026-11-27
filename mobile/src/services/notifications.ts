@@ -13,6 +13,7 @@ import {
   REMINDER_ACTION_COMPLETE,
   REMINDER_ACTION_SNOOZE,
   computeSnoozedReminderAt,
+  reminderSnoozeDurationMs,
   reminderNotificationIdentifier,
   extractReminderNotificationActionPayload,
   extractPendingNotificationOps,
@@ -27,6 +28,7 @@ import {
 } from "../shared";
 import { reconcileTasksWithNativeCalendar, syncTaskToNativeCalendar } from "./calendar";
 import { getCachedListName } from "./listNames";
+import { readSnoozeMinutesForNotification } from "./snoozePreferences";
 import { syncAllWidgets } from "./widgetSync";
 
 export { SOFT_ASK_REASK_MS };
@@ -537,7 +539,8 @@ export async function handleReminderNotificationAction(
     const cachedTodo = findTodoInQueryCaches(queryClient, payload.listId, payload.todoId);
     const effectiveRecurrence = payload.recurrence ?? cachedTodo?.recurrence;
     const isRepeating = isRepeatingTaskRecurrence(effectiveRecurrence);
-    const reminderAt = computeSnoozedReminderAt(now);
+    const snoozeMinutes = await readSnoozeMinutesForNotification();
+    const reminderAt = computeSnoozedReminderAt(now, reminderSnoozeDurationMs(snoozeMinutes));
     const localId = reminderNotificationIdentifier(payload.todoId);
     await scheduleLocalNotification(
       localId,

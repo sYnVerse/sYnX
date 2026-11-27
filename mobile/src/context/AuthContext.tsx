@@ -28,6 +28,7 @@ import {
   maybePromptDisplayNameSuggestion,
   resetDisplayNameSuggestion,
 } from "../services/displayNameSuggestion";
+import { setSnoozeMinutesLocal } from "../services/snoozePreferences";
 import { clearSignedOutDeviceData } from "../services/signOutCleanup";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -92,6 +93,9 @@ async function fetchSessionUser(): Promise<AuthUser | null> {
     if (settings) checkHomeTimeZone(settings.timeZone ?? null).catch(() => {});
     // One-time offer of the sign-in provider's name as the display name.
     if (settings) maybePromptDisplayNameSuggestion(settings.suggestedDisplayName);
+    if (settings && typeof settings.snoozeMinutes === "number") {
+      setSnoozeMinutesLocal(settings.snoozeMinutes).catch(() => {});
+    }
     if (settings?.userId || settings?.email) {
       return {
         userId: settings.userId || "",

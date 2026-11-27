@@ -35,6 +35,7 @@
     "test/mobile-issue-104.test.ts",
     "test/mobile-widget-sync-replay.test.ts",
     "test/mobile-list-archives.test.ts",
+    "test/mobile-snooze-preferences.test.ts",
     "test/widget-pinned-toggle.test.ts"
   ],
   "compilerOptions": {

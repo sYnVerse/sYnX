@@ -4,8 +4,76 @@ export const REMINDER_ACTION_SNOOZE = "snooze_task";
 
 export const DEFAULT_REMINDER_SNOOZE_MINUTES = 10;
 export const DEFAULT_REMINDER_SNOOZE_MS = DEFAULT_REMINDER_SNOOZE_MINUTES * 60 * 1000;
+export const MIN_REMINDER_SNOOZE_MINUTES = 1;
+export const MAX_REMINDER_SNOOZE_MINUTES = 1440;
+export const REMINDER_SNOOZE_PRESET_MINUTES = [5, 10, 15, 30, 60] as const;
 
 export const REMINDER_NOTIFICATION_ID_PREFIX = "reminder_";
+
+export function isValidReminderSnoozeMinutes(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= MIN_REMINDER_SNOOZE_MINUTES &&
+    value <= MAX_REMINDER_SNOOZE_MINUTES
+  );
+}
+
+export function resolveReminderSnoozeMinutes(value: unknown): number {
+  if (isValidReminderSnoozeMinutes(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (/^\d+$/.test(trimmed)) {
+      const parsed = Number(trimmed);
+      if (isValidReminderSnoozeMinutes(parsed)) {
+        return parsed;
+      }
+    }
+  }
+  return DEFAULT_REMINDER_SNOOZE_MINUTES;
+}
+
+export function parseReminderSnoozeMinutesInput(
+  value: unknown
+): { ok: true; minutes: number | null } | { ok: false; error: string } {
+  if (value === null) {
+    return { ok: true, minutes: null };
+  }
+  if (isValidReminderSnoozeMinutes(value)) {
+    return { ok: true, minutes: value };
+  }
+  return {
+    ok: false,
+    error: "Snooze duration must be a whole number of minutes between 1 and 1,440",
+  };
+}
+
+export function parseCustomSnoozeMinutesInput(
+  raw: string
+): { ok: true; minutes: number } | { ok: false; error: string } {
+  const trimmed = raw.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const parsed = Number(trimmed);
+    if (isValidReminderSnoozeMinutes(parsed)) {
+      return { ok: true, minutes: parsed };
+    }
+  }
+  return {
+    ok: false,
+    error: "Enter a whole number between 1 and 1,440 minutes",
+  };
+}
+
+export function reminderSnoozeDurationMs(minutes?: number | null): number {
+  return resolveReminderSnoozeMinutes(minutes) * 60 * 1000;
+}
+
+export function formatReminderSnoozeLabel(minutes?: number | null): string {
+  const m = resolveReminderSnoozeMinutes(minutes);
+  return m === 1 ? "1 min" : `${m} min`;
+}
 
 export function reminderNotificationIdentifier(todoId: string): string {
   return `${REMINDER_NOTIFICATION_ID_PREFIX}${todoId}`;
