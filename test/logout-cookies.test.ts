@@ -2,12 +2,14 @@ import { describe, it, expect } from "vitest";
 import {
   AUTH_REFRESH_COOKIE,
   AUTH_SESSION_COOKIE,
+  AUTH_SESSION_ID_COOKIE,
   PKCE_COOKIE_NAME,
   clearAuthRefreshCookie,
   clearAuthSessionCookie,
+  clearAuthSessionIdCookie,
   clearPkceCookie,
-} from "../app/auth-cookies.server";
-import { planLogoutAction, planLogoutLoader } from "../app/logout-policy.server";
+} from "../backend/services/auth-cookies.server";
+import { planLogoutAction, planLogoutLoader } from "../backend/services/logout-policy.server";
 
 function setCookieValues(headers: Headers | null): string[] {
   if (!headers) return [];
@@ -19,7 +21,7 @@ function setCookieValues(headers: Headers | null): string[] {
 }
 
 describe("logout cookie clearing policy", () => {
-  it("non-local POST clears PKCE only, keeps session/refresh cookies, redirects to central logout", () => {
+  it("non-local POST clears PKCE only, keeps session/refresh/session-id cookies, redirects to central logout", () => {
     const plan = planLogoutAction("https://synx.christran.io/logout", {
       clientID: "synx",
       issuer: "https://auth.christran.io",
@@ -35,6 +37,7 @@ describe("logout cookie clearing policy", () => {
     expect(cookies.some((c) => c.startsWith(`${PKCE_COOKIE_NAME}=;`))).toBe(true);
     expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_COOKIE}=`))).toBe(false);
     expect(cookies.some((c) => c.startsWith(`${AUTH_REFRESH_COOKIE}=`))).toBe(false);
+    expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_ID_COOKIE}=`))).toBe(false);
 
     const pkce = cookies.find((c) => c.startsWith(`${PKCE_COOKIE_NAME}=;`))!;
     expect(pkce).toContain("Path=/");
@@ -44,7 +47,7 @@ describe("logout cookie clearing policy", () => {
     expect(pkce).not.toContain("Domain=");
   });
 
-  it("local=true POST clears session, refresh, and PKCE with Domain=.christran.io", () => {
+  it("local=true POST clears session, refresh, session id, and PKCE with expected domains", () => {
     const plan = planLogoutAction("https://synx.christran.io/logout?local=true", {
       clientID: "synx",
       issuer: "https://auth.christran.io",
@@ -54,6 +57,7 @@ describe("logout cookie clearing policy", () => {
     const cookies = setCookieValues(plan.headers);
     expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_COOKIE}=;`))).toBe(true);
     expect(cookies.some((c) => c.startsWith(`${AUTH_REFRESH_COOKIE}=;`))).toBe(true);
+    expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_ID_COOKIE}=;`))).toBe(true);
     expect(cookies.some((c) => c.startsWith(`${PKCE_COOKIE_NAME}=;`))).toBe(true);
 
     const session = cookies.find((c) => c.startsWith(`${AUTH_SESSION_COOKIE}=;`))!;
@@ -68,18 +72,25 @@ describe("logout cookie clearing policy", () => {
     expect(refresh).toContain("Domain=.christran.io");
     expect(refresh).toContain("Max-Age=0");
 
+    const sessionId = cookies.find((c) => c.startsWith(`${AUTH_SESSION_ID_COOKIE}=;`))!;
+    expect(sessionId).not.toContain("Domain=");
+    expect(sessionId).toContain("Secure");
+    expect(sessionId).toContain("Max-Age=0");
+
     // Explicit attribute helpers stay aligned with what sYnID clears.
     expect(clearAuthSessionCookie("https://synx.christran.io/")).toContain("Domain=.christran.io");
     expect(clearAuthRefreshCookie("https://synx.christran.io/")).toContain("Domain=.christran.io");
+    expect(clearAuthSessionIdCookie("https://synx.christran.io/")).not.toContain("Domain=");
     expect(clearPkceCookie("https://synx.christran.io/")).not.toContain("Domain=");
   });
 
-  it("local=true GET loader clears session, refresh, and PKCE and redirects home", () => {
+  it("local=true GET loader clears session, refresh, session id, and PKCE and redirects home", () => {
     const plan = planLogoutLoader("https://synx.christran.io/logout?local=true");
     expect(plan.location).toBe("/");
     const cookies = setCookieValues(plan.headers);
     expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_COOKIE}=;`))).toBe(true);
     expect(cookies.some((c) => c.startsWith(`${AUTH_REFRESH_COOKIE}=;`))).toBe(true);
+    expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_ID_COOKIE}=;`))).toBe(true);
     expect(cookies.some((c) => c.startsWith(`${PKCE_COOKIE_NAME}=;`))).toBe(true);
     const session = cookies.find((c) => c.startsWith(`${AUTH_SESSION_COOKIE}=;`))!;
     expect(session).toContain("Domain=.christran.io");
@@ -91,12 +102,13 @@ describe("logout cookie clearing policy", () => {
     expect(plan.headers).toBeNull();
   });
 
-  it("forceLocal=true GET loader clears session, refresh, and PKCE even without local=true in URL", () => {
+  it("forceLocal=true GET loader clears session, refresh, session id, and PKCE even without local=true in URL", () => {
     const plan = planLogoutLoader("http://localhost:5173/logout", { forceLocal: true });
     expect(plan.location).toBe("/");
     const cookies = setCookieValues(plan.headers);
     expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_COOKIE}=;`))).toBe(true);
     expect(cookies.some((c) => c.startsWith(`${AUTH_REFRESH_COOKIE}=;`))).toBe(true);
+    expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_ID_COOKIE}=;`))).toBe(true);
     expect(cookies.some((c) => c.startsWith(`${PKCE_COOKIE_NAME}=;`))).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { env } from "cloudflare:test";
-import { TodoManager } from "../app/to-do-manager";
-import { getUserTimeZone, setUserTimeZone } from "../app/user-profile.server";
+import { TodoManager } from "../backend/services/to-do-manager";
+import { getUserTimeZone, setUserTimeZone } from "../backend/services/user-profile.server";
 import { nextReminderAt } from "../shared";
 
 const LA = "America/Los_Angeles";

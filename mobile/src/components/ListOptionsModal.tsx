@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { Pin, Share2, Pencil, History, Trash2 } from "lucide-react-native";
+import { Pin, Share2, Pencil, History, Trash2, Archive, ArchiveRestore } from "lucide-react-native";
 import { TodoList, formatListRowMeta } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,6 +21,7 @@ export interface ListOptionsModalProps {
   isPinned?: boolean;
   onClose: () => void;
   onTogglePin?: () => void;
+  onToggleArchive?: () => void;
   onShareAccess?: () => void;
   onEditDetails?: () => void;
   onViewActivity?: () => void;
@@ -34,6 +35,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
   isPinned = false,
   onClose,
   onTogglePin,
+  onToggleArchive,
   onShareAccess,
   onEditDetails,
   onViewActivity,
@@ -45,7 +47,6 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
   if (!visible || !list) return null;
 
   const isOwner = list.isOwner !== false;
-  const isPrivate = (list.shareMode || "private") === "private";
 
   const closeThen = (action?: () => void) => {
     onClose();
@@ -109,7 +110,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
           </Text>
 
           <View style={styles.actionsList}>
-            {onTogglePin ? (
+            {onTogglePin && (!list.isArchived || isPinned) ? (
               <TouchableOpacity
                 style={[
                   styles.actionItem,
@@ -133,6 +134,34 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                   ]}
                 >
                   {isPinned ? "Unpin from widget" : "Pin to widget"}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {onToggleArchive ? (
+              <TouchableOpacity
+                style={[
+                  styles.actionItem,
+                  { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+                ]}
+                onPress={() => closeThen(onToggleArchive)}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  list.isArchived ? `Unarchive ${list.name}` : `Archive ${list.name}`
+                }
+              >
+                {list.isArchived ? (
+                  <ArchiveRestore size={18} color={theme.accent} />
+                ) : (
+                  <Archive size={18} color={theme.textPrimary} />
+                )}
+                <Text
+                  style={[
+                    styles.actionText,
+                    { color: list.isArchived ? theme.accent : theme.textPrimary },
+                  ]}
+                >
+                  {list.isArchived ? "Unarchive list" : "Archive list"}
                 </Text>
               </TouchableOpacity>
             ) : null}
@@ -173,7 +202,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                   </TouchableOpacity>
                 ) : null}
 
-                {!isPrivate && onViewActivity ? (
+                {onViewActivity ? (
                   <TouchableOpacity
                     style={[
                       styles.actionItem,
@@ -185,7 +214,7 @@ export const ListOptionsModal: React.FC<ListOptionsModalProps> = ({
                   >
                     <History size={18} color={theme.accent} />
                     <Text style={[styles.actionText, { color: theme.textPrimary }]}>
-                      View shared activity
+                      View activity
                     </Text>
                   </TouchableOpacity>
                 ) : null}

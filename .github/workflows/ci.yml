@@ -3,14 +3,15 @@ name: CI
 # Lint, tests and typechecks on every pull request.
 # Runs on GitHub Actions only; it never starts an EAS build.
 #
-# Three jobs run in parallel, each only when its files change:
-#   Web    - root lint, root tests, and web typecheck.
-#   E2E    - Playwright smoke tests for the web list page against local wrangler dev.
-#   Mobile - shared/ copy and version sync check, mobile typecheck, mobile
-#            lint, Expo doctor, mobile unit tests, and mobile test typecheck.
+# Four jobs run in parallel, each only when its files change:
+#   Backend - backend typecheck, local D1 migrations check, Worker build, and wrangler dry-run.
+#   Web     - root lint, React Compiler transform check, root tests, and workspace typechecks.
+#   E2E     - Playwright smoke tests against local wrangler dev and local D1.
+#   Mobile  - shared/ copy and version sync check, mobile typecheck, mobile
+#             lint, Expo doctor, mobile unit tests, and mobile test typecheck.
 # Changes that only touch docs, graphify-out/, or other workflow files run
-# none. If you add branch protection, require the "Web", "E2E", and "Mobile" checks;
-# a job skipped by its `if` counts as passing.
+# none. If you add branch protection, require the "Backend", "Web", "E2E", and
+# "Mobile" checks; a job skipped by its `if` counts as passing.
 
 on:
   pull_request:
@@ -31,6 +32,7 @@ jobs:
       contents: read
       pull-requests: read # dorny/paths-filter lists PR files through the API
     outputs:
+      backend: ${{ steps.filter.outputs.backend }}
       web: ${{ steps.filter.outputs.web }}
       e2e: ${{ steps.filter.outputs.e2e }}
       mobile: ${{ steps.filter.outputs.mobile }}
@@ -41,46 +43,42 @@ jobs:
         id: filter
         with:
           filters: |
-            web:
-              - 'app/**'
-              - 'e2e/**'
+            backend:
+              - 'backend/**'
               - 'shared/**'
               - 'test/**'
-              - 'migrations/**'
-              - 'public/**'
-              - 'scripts/**'
-              - 'server.ts'
-              - 'load-context.ts'
-              - 'worker-configuration.d.ts'
               - 'package.json'
               - 'package-lock.json'
               - '.npmrc'
               - '.nvmrc'
-              - 'playwright.config.ts'
-              - 'tsconfig*.json'
-              - 'vite.config.ts'
+              - 'tsconfig.json'
               - 'vitest.config.ts'
               - 'eslint.config.js'
-              - 'postcss.config.js'
-              - 'tailwind.config.ts'
-              - 'wrangler.jsonc'
               - '.github/workflows/ci.yml'
-            e2e:
-              - 'app/**'
-              - 'e2e/**'
-              - 'public/**'
+            web:
+              - 'web/**'
               - 'shared/**'
-              - 'migrations/**'
-              - 'server.ts'
-              - 'load-context.ts'
-              - 'worker-configuration.d.ts'
+              - 'test/**'
+              - 'e2e/**'
+              - 'scripts/**'
               - 'package.json'
               - 'package-lock.json'
               - '.npmrc'
               - '.nvmrc'
-              - 'playwright.config.ts'
-              - 'vite.config.ts'
-              - 'wrangler.jsonc'
+              - 'tsconfig*.json'
+              - 'vitest.config.ts'
+              - 'eslint.config.js'
+              - '.github/workflows/ci.yml'
+            e2e:
+              - 'web/**'
+              - 'backend/**'
+              - 'e2e/**'
+              - 'shared/**'
+              - 'scripts/verify-react-compiler-bundle.mjs'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.npmrc'
+              - '.nvmrc'
               - '.github/workflows/ci.yml'
             mobile:
               - 'mobile/**'
@@ -90,12 +88,14 @@ jobs:
               - 'test/widget-*.ts'
               - 'test/post-build-comment.test.ts'
               - 'test/tsconfig.mobile.json'
+              - 'package.json'
+              - 'package-lock.json'
               - '.github/workflows/ci.yml'
 
-  web:
-    name: Web
+  backend:
+    name: Backend
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -104,15 +104,35 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            mobile/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-      # Root tests import mobile code, so the mobile deps are needed too.
+      - name: Backend typecheck
+        run: npm --workspace=backend run typecheck
+      - name: Apply D1 migrations locally
+        run: npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state
+      - name: Build Worker bundle
+        run: npm run build
+      - name: Wrangler deploy dry-run
+        run: npx wrangler deploy --dry-run --config web/build/server/wrangler.json
+
+  web:
+    name: Web
+    needs: changes
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
       - run: npm ci
-        working-directory: mobile
       - name: Lint
         run: npm run lint
+      - name: Verify React Compiler transform
+        run: node scripts/verify-react-compiler-bundle.mjs --transform-only
       - name: Tests
         run: npm test -- --run --maxWorkers=2
       - name: Web typecheck
@@ -135,9 +155,11 @@ jobs:
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
       - name: Apply D1 migrations locally
-        run: npx wrangler d1 migrations apply synx-db --local
+        run: npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state
       - name: Build web
         run: npm run build
+      - name: Verify React Compiler bundle
+        run: node scripts/verify-react-compiler-bundle.mjs
       - name: Run E2E tests
         run: npm run test:e2e
       - name: Upload test results
@@ -160,12 +182,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            mobile/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: npm ci
-        working-directory: mobile
       - name: shared/ copy and mobile version are in sync
         working-directory: mobile
         run: |
@@ -173,16 +191,13 @@ jobs:
           node scripts/sync-version.js
           git diff --exit-code
       - name: Mobile typecheck
-        working-directory: mobile
-        run: npm run typecheck
+        run: npm --workspace=mobile run typecheck
       # Expo's ESLint setup (mobile/eslint.config.js). The lint script uses
       # --max-warnings 0, so any error or warning fails the job.
       - name: Mobile lint
-        working-directory: mobile
-        run: npm run lint
+        run: npm --workspace=mobile run lint
       - name: Expo doctor
-        working-directory: mobile
-        run: npm run doctor
+        run: npm --workspace=mobile run doctor
       - name: Typecheck tests that import mobile code
         run: npm run typecheck:mobile-tests
       - name: Mobile tests

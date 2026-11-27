@@ -4,6 +4,7 @@ import * as Haptics from "expo-haptics";
 import { Alert, Platform } from "react-native";
 import { apiClient } from "../api/client";
 import {
+  QUICK_PICK_DURATION_MINUTES,
   SubtaskCompletionAction,
   TodoItem,
   applySetCompletedLocal,
@@ -14,7 +15,7 @@ import {
   isRecurring,
   shouldPromptSubtaskCompletion,
 } from "../shared";
-import { useToast } from "../context/ToastContext";
+import { type ToastAction, useToast } from "../context/ToastContext";
 import { useTheme } from "../context/ThemeContext";
 import { syncTaskToNativeCalendar } from "../services/calendar";
 import { getCachedListName } from "../services/listNames";
@@ -25,6 +26,36 @@ export const SLOW_MUTATION_THRESHOLD_MS = 10_000;
 export interface TaskBaselineSnapshot {
   listSnapshot: TodoItem[] | undefined;
   itemSnapshot: TodoItem | undefined;
+}
+
+const completionEpochsByClient = new WeakMap<QueryClient, Map<string, number>>();
+
+function completionEpochKey(listId: string | undefined, todoId: string): string {
+  return `${listId ?? ""}::${todoId}`;
+}
+
+export function getTaskCompletionEpoch(
+  queryClient: QueryClient,
+  listId: string | undefined,
+  todoId: string
+): number {
+  return completionEpochsByClient.get(queryClient)?.get(completionEpochKey(listId, todoId)) ?? 0;
+}
+
+export function bumpTaskCompletionEpoch(
+  queryClient: QueryClient,
+  listId: string | undefined,
+  todoId: string
+): number {
+  let map = completionEpochsByClient.get(queryClient);
+  if (!map) {
+    map = new Map<string, number>();
+    completionEpochsByClient.set(queryClient, map);
+  }
+  const key = completionEpochKey(listId, todoId);
+  const next = (map.get(key) ?? 0) + 1;
+  map.set(key, next);
+  return next;
 }
 
 export function formatRollbackError(
@@ -179,6 +210,7 @@ type SetCompletedResult = {
   todo: TodoItem;
   rescheduled: boolean;
   updatedSubtasks?: TodoItem[];
+  completion?: { id: string; durationSeconds: number | null } | null;
 };
 type SetCompletedContext = { seq: number };
 
@@ -191,7 +223,7 @@ type SetCompletedContext = { seq: number };
  */
 export function useSetTodoCompleted(listId: string | undefined) {
   const queryClient = useQueryClient();
-  const { showError, showSuccess } = useToast();
+  const { showError, showSuccess, showToast } = useToast();
   const { hapticsEnabled } = useTheme();
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const seqByIdRef = useRef<Map<string, number>>(new Map());
@@ -202,6 +234,50 @@ export function useSetTodoCompleted(listId: string | undefined) {
   const baselineByIdRef = useRef<Map<string, TaskBaselineSnapshot>>(new Map());
   const { slowPendingIds, isSlowPendingId, startSlowTimer, finishSlowTracking } =
     useSlowPendingTracker();
+
+  const recordQuickPickDuration = useCallback(
+    async (todoId: string, completionId: string, durationMinutes: number) => {
+      try {
+        await apiClient.post(`/api/v1/completions/${completionId}/duration`, {
+          durationMinutes,
+        });
+        await queryClient.invalidateQueries({ queryKey: ["todo-completions", todoId] });
+        const label = durationMinutes === 60 ? "1h" : `${durationMinutes}m`;
+        showSuccess(`Logged ${label}`);
+      } catch (err) {
+        showError(formatRollbackError(err));
+      }
+    },
+    [queryClient, showError, showSuccess]
+  );
+
+  const undoRepeat = useCallback(
+    async (todoId: string, completionId?: string) => {
+      try {
+        const res = await apiClient.post(`/api/v1/todos/${todoId}/undo-repeat`, completionId ? { completionId } : {});
+        const data = res.data as { todo?: TodoItem; undone?: boolean } | undefined;
+        const restored = data?.todo;
+        if (listId && restored) {
+          queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+            patchTodosCache(old, restored.id, (item) => ({
+              ...item,
+              ...restored,
+              subtasks: item.subtasks ?? restored.subtasks,
+            }))
+          );
+          await queryClient.invalidateQueries({ queryKey: ["todo-completions", restored.id] });
+          const listName = getCachedListName(queryClient, restored.listId);
+          syncTaskToNativeCalendar(restored, { listName }).catch(() => {});
+        }
+        if (data?.undone !== false) {
+          showSuccess("Undid repeat completion");
+        }
+      } catch (err) {
+        showError(formatRollbackError(err));
+      }
+    },
+    [listId, queryClient, showError, showSuccess]
+  );
 
   const mutation = useMutation<
     SetCompletedResult,
@@ -215,6 +291,20 @@ export function useSetTodoCompleted(listId: string | undefined) {
       return res.data as SetCompletedResult;
     },
     onMutate: async ({ id, completed, subtaskAction }) => {
+      bumpTaskCompletionEpoch(queryClient, listId, id);
+      if (subtaskAction === "complete" && listId) {
+        const currentList = queryClient.getQueryData<TodoItem[]>(["todos", listId]);
+        for (const item of currentList ?? []) {
+          if (item.parentId === id) {
+            bumpTaskCompletionEpoch(queryClient, listId, item.id);
+          }
+          if (item.id === id && item.subtasks) {
+            for (const sub of item.subtasks) {
+              bumpTaskCompletionEpoch(queryClient, listId, sub.id);
+            }
+          }
+        }
+      }
       const seq = (seqByIdRef.current.get(id) ?? 0) + 1;
       seqByIdRef.current.set(id, seq);
       inFlightDesiredByIdRef.current.set(id, completed);
@@ -291,6 +381,7 @@ export function useSetTodoCompleted(listId: string | undefined) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
       if (listId && data?.todo) {
+        queryClient.invalidateQueries({ queryKey: ["todo-completions", data.todo.id] }).catch(() => {});
         const updatedSubtasks = data.updatedSubtasks ?? [];
         if (updatedSubtasks.length > 0 || vars.subtaskAction) {
           const subtaskMap = new Map(updatedSubtasks.map((st) => [st.id, st]));
@@ -340,8 +431,54 @@ export function useSetTodoCompleted(listId: string | undefined) {
           syncTaskToNativeCalendar(st, { listName }).catch(() => {});
         }
       }
+      const completion = data?.completion;
+      const quickPickActions: ToastAction[] = [];
+      if (vars.completed && completion && completion.durationSeconds === null) {
+        for (const mins of QUICK_PICK_DURATION_MINUTES) {
+          const label = mins === 60 ? "1h" : `${mins}m`;
+          quickPickActions.push({
+            label,
+            testID: `toast-duration-${mins}`,
+            variant: "primary",
+            onPress: () => {
+              void recordQuickPickDuration(data.todo.id, completion.id, mins);
+            },
+          });
+        }
+        quickPickActions.push({
+          label: "Skip",
+          testID: "toast-duration-skip",
+          variant: "ghost",
+          onPress: () => {},
+        });
+      }
+
       if (data?.rescheduled && data.todo?.reminderAt) {
-        showSuccess(formatRescheduledToast(data.todo.reminderAt));
+        const actions: ToastAction[] = [...quickPickActions];
+        if (completion) {
+          actions.push({
+            label: "Undo",
+            testID: "toast-undo-repeat",
+            variant: "ghost",
+            onPress: () => {
+              void undoRepeat(data.todo.id, completion.id);
+            },
+          });
+        }
+        const baseMessage = formatRescheduledToast(data.todo.reminderAt);
+        const message =
+          quickPickActions.length > 0
+            ? `${baseMessage} · How long did it take?`
+            : baseMessage;
+        showSuccess(
+          message,
+          actions.length > 0 ? { actions, durationMs: 6500 } : undefined
+        );
+      } else if (quickPickActions.length > 0) {
+        showToast?.("How long did it take?", "info", {
+          actions: quickPickActions,
+          durationMs: 6500,
+        });
       }
       // Intentionally skip invalidateQueries so a refetch cannot undo an in-flight sibling toggle.
     },
@@ -435,5 +572,12 @@ export function useSetTodoCompleted(listId: string | undefined) {
 
   const isPendingId = useCallback((id: string) => pendingIds.has(id), [pendingIds]);
 
-  return { setCompleted, isPendingId, pendingIds, isSlowPendingId, slowPendingIds };
+  return {
+    setCompleted,
+    isPendingId,
+    pendingIds,
+    isSlowPendingId,
+    slowPendingIds,
+    undoRepeat,
+  };
 }

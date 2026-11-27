@@ -4,9 +4,9 @@ import {
   serializePkceCookie,
   parsePkceCookie,
   PKCE_COOKIE_NAME,
-} from "../app/auth-cookies.server";
-import { loader as callbackLoader } from "../app/routes/callback";
-import { loader as indexLoader, action as indexAction } from "../app/routes/_index";
+} from "../backend/services/auth-cookies.server";
+import { loader as callbackLoader } from "../web/app/routes/callback";
+import { loader as indexLoader, action as indexAction } from "../web/app/routes/_index";
 import { opensApp } from "./android-app-links.test";
 
 async function unwrapLoaderData(res: unknown) {
@@ -128,8 +128,8 @@ describe("app/routes/callback loader behavior (#196)", () => {
   });
 
   it("completes sign-in and returns HTTP 302 redirect to / without landing screen", async () => {
-    const authModule = await import("../app/auth.server");
-    const providerModule = await import("../app/provider-profile.server");
+    const authModule = await import("../backend/services/auth.server");
+    const providerModule = await import("../backend/services/provider-profile.server");
 
     vi.spyOn(authModule, "getAuthClient").mockReturnValue({
       exchange: vi.fn().mockResolvedValue({
@@ -179,8 +179,8 @@ describe("app/routes/callback loader behavior (#196)", () => {
   });
 
   it("passes safe redirectTo as query param on / redirect", async () => {
-    const authModule = await import("../app/auth.server");
-    const providerModule = await import("../app/provider-profile.server");
+    const authModule = await import("../backend/services/auth.server");
+    const providerModule = await import("../backend/services/provider-profile.server");
 
     vi.spyOn(authModule, "getAuthClient").mockReturnValue({
       exchange: vi.fn().mockResolvedValue({
@@ -229,7 +229,7 @@ describe("app/routes/_index loader behavior (#196)", () => {
     const firstListId = "3f2b8c1e-9a4d-4f6b-8e2a-1c5d7e9f0a3b";
     const mockDb = {
       prepare: vi.fn((sql: string) => {
-        if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+        if (sql.includes("SELECT id FROM lists WHERE owner_id = ?") || (sql.includes("FROM lists l") && sql.includes("list_archives"))) {
           return {
             bind: vi.fn().mockReturnValue({
               first: vi.fn().mockResolvedValue({ id: firstListId }),
@@ -306,7 +306,7 @@ describe("app/routes/_index loader behavior (#196)", () => {
     const firstListId = "3f2b8c1e-9a4d-4f6b-8e2a-1c5d7e9f0a3b";
     const mockDb = {
       prepare: vi.fn((sql: string) => {
-        if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+        if (sql.includes("SELECT id FROM lists WHERE owner_id = ?") || (sql.includes("FROM lists l") && sql.includes("list_archives"))) {
           return {
             bind: vi.fn().mockReturnValue({
               first: vi.fn().mockResolvedValue({ id: firstListId }),
@@ -427,7 +427,7 @@ describe("app/routes/_index loader behavior (#196)", () => {
     const listId = "3f2b8c1e-9a4d-4f6b-8e2a-1c5d7e9f0a3b";
     const mockDb = {
       prepare: vi.fn((sql: string) => {
-        if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+        if (sql.includes("SELECT id FROM lists WHERE owner_id = ?") || (sql.includes("FROM lists l") && sql.includes("list_archives"))) {
           // Simulate query failure in _index loader
           throw new Error("D1 query failure in _index");
         }
@@ -519,7 +519,7 @@ describe("app/routes/_index loader behavior (#196)", () => {
             }
             return {
               first: vi.fn().mockImplementation(() => {
-                if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+                if (sql.includes("SELECT id FROM lists WHERE owner_id = ?") || (sql.includes("FROM lists l") && sql.includes("list_archives"))) {
                   return Promise.resolve({ id: listId });
                 }
                 if (sql.includes("FROM lists WHERE id = ?")) {
@@ -591,7 +591,7 @@ describe("app/routes/_index loader behavior (#196)", () => {
           }
           return {
             first: vi.fn().mockImplementation(() => {
-              if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+              if (sql.includes("SELECT id FROM lists WHERE owner_id = ?") || (sql.includes("FROM lists l") && sql.includes("list_archives"))) {
                 return Promise.resolve({ id: primaryListId });
               }
               if (sql.includes("FROM lists WHERE id = ?")) {
@@ -672,7 +672,7 @@ describe("app/routes/_index loader behavior (#196)", () => {
           }
           return {
             first: vi.fn().mockImplementation(() => {
-              if (sql.includes("SELECT id FROM lists WHERE owner_id = ?")) {
+              if (sql.includes("SELECT id FROM lists WHERE owner_id = ?") || (sql.includes("FROM lists l") && sql.includes("list_archives"))) {
                 return Promise.resolve({ id: primaryListId });
               }
               if (sql.includes("FROM lists WHERE id = ?")) {

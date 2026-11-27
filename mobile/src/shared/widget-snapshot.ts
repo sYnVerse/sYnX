@@ -9,6 +9,11 @@ import { DEFAULT_TASK_SORT_MODE, sortTasks, type TaskSortMode } from "./task-sor
 import { countTaskProgress } from "./task-progress";
 import { getCategoryEmoji } from "./categories";
 
+/** How long checked-off tasks remain in place on a list widget with an Undo control (~10s). */
+export const WIDGET_UNDO_WINDOW_MS = 10_000;
+/** Minimum gap between two accepted complete taps on the same widget (~800ms). */
+export const WIDGET_DOUBLE_TAP_GUARD_MS = 800;
+
 export interface WidgetTaskItem {
   id: string;
   text: string;
@@ -18,7 +23,10 @@ export interface WidgetTaskItem {
   reminderAt?: number;
   reminderLabel?: string;
   isOverdue?: boolean;
+  isRunning?: boolean;
   subtaskProgress?: string;
+  /** Set while checked off on the widget and held in place for the undo window. */
+  pendingCompletedAt?: number;
 }
 
 export interface WidgetPendingOp {
@@ -26,6 +34,7 @@ export interface WidgetPendingOp {
   listId: string;
   completed: boolean;
   at: number;
+  opId?: string;
 }
 
 export interface ListWidgetSnapshot {
@@ -41,6 +50,8 @@ export interface ListWidgetSnapshot {
   pendingOps: WidgetPendingOp[];
   isLoggedIn: boolean;
   lastUpdated: number;
+  /** Epoch ms of the last accepted complete tap on this widget (800ms double-tap guard). */
+  lastTapAt?: number;
 }
 
 export interface ProgressWidgetSnapshot {
@@ -144,6 +155,7 @@ export function buildListWidgetSnapshot(
       reminderAt: t.reminderAt,
       reminderLabel,
       isOverdue,
+      isRunning: t.startedAt ? true : undefined,
       subtaskProgress,
     };
   });
@@ -200,6 +212,7 @@ export function buildUpNextWidgetSnapshot(
           ? formatWidgetReminderLabel(t.reminderAt, now, options?.locale)
           : undefined,
         isOverdue,
+        isRunning: t.startedAt ? true : undefined,
       };
     });
 
@@ -279,12 +292,16 @@ export function extractPendingWidgetOps(rawProps: { pendingOps?: unknown } | Rec
       typeof item.completed === "boolean" &&
       typeof item.at === "number"
     ) {
-      ops.push({
+      const op: WidgetPendingOp = {
         todoId: item.todoId,
         listId: item.listId,
         completed: item.completed,
         at: item.at,
-      });
+      };
+      if (typeof item.opId === "string" && item.opId.trim().length > 0) {
+        op.opId = item.opId;
+      }
+      ops.push(op);
     }
   }
   return ops;
@@ -330,6 +347,7 @@ export function applyWidgetTaskCompletion(
         reminderLabel: res.todo.reminderAt
           ? formatWidgetReminderLabel(res.todo.reminderAt, now, locale)
           : undefined,
+        isRunning: undefined,
       });
     } else {
       nextTasks.push(t);
@@ -388,7 +406,13 @@ export function classifyWidgetReplayError(status: number | undefined | null): "r
 }
 
 function sameWidgetOp(a: WidgetPendingOp, b: WidgetPendingOp): boolean {
-  return a.todoId === b.todoId && a.listId === b.listId && a.completed === b.completed && a.at === b.at;
+  return (
+    a.todoId === b.todoId &&
+    a.listId === b.listId &&
+    a.completed === b.completed &&
+    a.at === b.at &&
+    (a.opId ?? undefined) === (b.opId ?? undefined)
+  );
 }
 
 /**
@@ -404,40 +428,191 @@ export function removeHandledWidgetOps(
   return pendingOps.filter((op) => !handled.some((h) => sameWidgetOp(op, h)));
 }
 
+export interface MergePendingOpsOptions {
+  /**
+   * Currently displayed widget snapshot, used to keep recently checked rows in place,
+   * preserve row order while check-offs are pending, and retain `lastTapAt`.
+   */
+  previousSnapshot?: Partial<ListWidgetSnapshot> | null;
+  /** Current wall-clock timestamp (ms). Defaults to `Date.now()`. */
+  now?: number;
+  /**
+   * How long recently checked tasks remain in place with Undo.
+   * Defaults to `WIDGET_UNDO_WINDOW_MS` (10s). Pass `0` to flush immediately (e.g. when opening the app).
+   */
+  undoWindowMs?: number;
+}
+
+function omitPendingCompletedAt(task: WidgetTaskItem): WidgetTaskItem {
+  if (!("pendingCompletedAt" in task)) return task;
+  const clean = { ...task };
+  delete clean.pendingCompletedAt;
+  return clean;
+}
+
 /**
- * Carries a widget's still-queued checkoffs into a freshly built snapshot.
+ * Carries a widget's still-queued checkoffs and in-place undo rows into a freshly
+ * built snapshot.
  *
  * Rebuilding a widget from server or cache data must not erase taps that have
- * not reached the server yet. Every queued op is kept (including ops for a
- * different list, for example after the active list changed), and tasks with a
- * queued checkoff in this list stay hidden and counted as done, so the widget
- * doesn't flash the task back as open before the replay finishes.
+ * not reached the server yet, nor jump rows out from under the user's finger
+ * during the ~10-second undo window.
  */
 export function mergePendingOpsIntoSnapshot(
   snapshot: ListWidgetSnapshot,
-  pendingOps: WidgetPendingOp[]
+  pendingOps: WidgetPendingOp[],
+  options?: MergePendingOpsOptions
 ): ListWidgetSnapshot {
   if (!snapshot.isLoggedIn || !snapshot.listId) {
     return { ...snapshot, pendingOps: [] };
   }
+
+  const now = options?.now ?? Date.now();
+  const undoWindowMs = options?.undoWindowMs ?? WIDGET_UNDO_WINDOW_MS;
+  const prevSnap =
+    options?.previousSnapshot && options.previousSnapshot.listId === snapshot.listId
+      ? options.previousSnapshot
+      : null;
+  const prevTasks: WidgetTaskItem[] = Array.isArray(prevSnap?.tasks) ? prevSnap.tasks : [];
 
   const latest = new Map<string, WidgetPendingOp>();
   for (const op of reconcileWidgetPendingOps(pendingOps)) {
     if (op.listId === snapshot.listId) latest.set(op.todoId, op);
   }
 
+  const pendingCompleteAtById = new Map<string, number>();
+  for (const [todoId, op] of latest) {
+    if (op.completed) {
+      pendingCompleteAtById.set(todoId, op.at);
+    }
+  }
+  for (const prevTask of prevTasks) {
+    if (typeof prevTask.pendingCompletedAt === "number") {
+      const op = latest.get(prevTask.id);
+      if (op && !op.completed) continue;
+      const existing = pendingCompleteAtById.get(prevTask.id);
+      pendingCompleteAtById.set(
+        prevTask.id,
+        existing !== undefined ? Math.max(existing, prevTask.pendingCompletedAt) : prevTask.pendingCompletedAt
+      );
+    }
+  }
+
+  let latestPendingCompleteAt: number | null = null;
+  for (const at of pendingCompleteAtById.values()) {
+    if (latestPendingCompleteAt === null || at > latestPendingCompleteAt) {
+      latestPendingCompleteAt = at;
+    }
+  }
+
+  const insideUndoWindow =
+    undoWindowMs > 0 &&
+    latestPendingCompleteAt !== null &&
+    latestPendingCompleteAt + undoWindowMs > now;
+
+  const freshById = new Map<string, WidgetTaskItem>();
+  for (const t of snapshot.tasks) {
+    freshById.set(t.id, t);
+  }
+  const prevById = new Map<string, WidgetTaskItem>();
+  for (const t of prevTasks) {
+    prevById.set(t.id, t);
+  }
+
   let doneCount = snapshot.doneCount;
-  const tasks = snapshot.tasks.filter((task) => {
+  for (const task of snapshot.tasks) {
     const op = latest.get(task.id);
-    if (!op || !op.completed) return true;
-    if (!isRecurringWidgetTask(task)) doneCount += 1;
-    return false;
-  });
+    if (op?.completed && !isRecurringWidgetTask(task)) {
+      doneCount += 1;
+    }
+  }
+  for (const [todoId, op] of latest) {
+    if (!op.completed && !freshById.has(todoId)) {
+      const prev = prevById.get(todoId);
+      if (prev && !isRecurringWidgetTask(prev)) {
+        doneCount = Math.max(0, doneCount - 1);
+      }
+    }
+  }
+
+  const hasUnreplayedComplete = Array.from(latest.values()).some((o) => o.completed);
+  const preserveOrder = prevTasks.length > 0 && (insideUndoWindow || hasUnreplayedComplete);
+
+  const materializeTask = (id: string): WidgetTaskItem | null => {
+    const fresh = freshById.get(id);
+    const prev = prevById.get(id);
+    const op = latest.get(id);
+    const pendingAt = pendingCompleteAtById.get(id);
+
+    if (op && !op.completed) {
+      const base = fresh ?? prev;
+      if (!base) return null;
+      return omitPendingCompletedAt({ ...base, completed: false });
+    }
+
+    if (pendingAt !== undefined) {
+      if (insideUndoWindow) {
+        const base = prev ?? fresh;
+        if (!base) return null;
+        return { ...base, completed: true, pendingCompletedAt: pendingAt };
+      }
+      if (op?.completed) {
+        return null;
+      }
+      return fresh ? omitPendingCompletedAt({ ...fresh, completed: false }) : null;
+    }
+
+    return fresh ? omitPendingCompletedAt(fresh) : null;
+  };
+
+  const mergedTasks: WidgetTaskItem[] = [];
+  const seenIds = new Set<string>();
+  const maxRows = 20;
+
+  if (preserveOrder) {
+    for (const prev of prevTasks) {
+      const item = materializeTask(prev.id);
+      if (item) {
+        mergedTasks.push(item);
+        seenIds.add(prev.id);
+      }
+    }
+    for (const fresh of snapshot.tasks) {
+      if (seenIds.has(fresh.id) || mergedTasks.length >= maxRows) continue;
+      const item = materializeTask(fresh.id);
+      if (item) {
+        mergedTasks.push(item);
+        seenIds.add(fresh.id);
+      }
+    }
+  } else {
+    for (const fresh of snapshot.tasks) {
+      const item = materializeTask(fresh.id);
+      if (item) {
+        mergedTasks.push(item);
+        seenIds.add(fresh.id);
+      }
+    }
+    for (const [todoId, op] of latest) {
+      if (seenIds.has(todoId) || op.completed || mergedTasks.length >= maxRows) continue;
+      const item = materializeTask(todoId);
+      if (item) {
+        mergedTasks.push(item);
+        seenIds.add(todoId);
+      }
+    }
+  }
+
+  const lastTapAt =
+    typeof prevSnap?.lastTapAt === "number" && prevSnap.lastTapAt > 0
+      ? prevSnap.lastTapAt
+      : undefined;
 
   return {
     ...snapshot,
-    tasks,
-    doneCount: Math.min(doneCount, snapshot.totalCount),
+    ...(lastTapAt !== undefined ? { lastTapAt } : {}),
+    tasks: mergedTasks,
+    doneCount: Math.min(Math.max(0, doneCount), snapshot.totalCount),
     pendingOps: [...pendingOps],
   };
 }

@@ -16,7 +16,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { Search, Plus, FolderKanban, Pencil, X } from "lucide-react-native";
+import { Search, Plus, FolderKanban, Pencil, X, Archive } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import {
   TodoItem,
@@ -24,9 +24,14 @@ import {
   PRIORITY_LEVELS_DESC,
   PRIORITY_DROP_LABELS,
   canDragTaskForPriority,
+  canDragTaskToReorder,
   applyOptimisticTaskPriority,
   describeListActivityAction,
+  isListCompleted,
+  resolveListReorderDragOutcome,
+  resolvePriorityModeDragOutcome,
   resolveTaskSortMode,
+  shouldSuggestArchivingList,
   sortTasks,
   splitCompletedTasks,
   type ListAccessDenialCode,
@@ -34,6 +39,11 @@ import {
   type PendingDeleteRequest,
   type PriorityLevel,
 } from "../shared";
+import {
+  clearDismissedArchivePromptForList,
+  dismissArchivePromptForList,
+  useArchivePreferences,
+} from "../services/archivePreferences";
 import { TaskModal } from "../components/TaskModal";
 import { TaskRow } from "../components/TaskRow";
 import { CompletedSectionHeader } from "../components/CompletedSectionHeader";
@@ -52,6 +62,7 @@ import { MOBILE_VERSION } from "../constants/changelog";
 import { typography, spacing, MIN_TOUCH_TARGET, getFabBottomOffset, getListBottomPadding, getSheetBottomPadding } from "../theme/theme";
 import { listOwnershipLabel, priorityColor } from "../utils/format";
 import { useSetTodoCompleted } from "../hooks/useSetTodoCompleted";
+import { useStartTodo } from "../hooks/useStartTodo";
 import { useTaskMutations } from "../hooks/useTaskMutations";
 import { syncActiveList, syncPinnedList } from "../services/widgetSync";
 import { getPinnedWidgetConfig, setPinnedWidgetConfig, type PinnedWidgetConfig } from "../services/widgetPreferences";
@@ -64,6 +75,10 @@ export interface TasksScreenProps {
   newTaskRequestId?: number;
   /** Called once the request has been handled so it isn't replayed on the next list open. */
   onNewTaskRequestHandled?: () => void;
+  /** Set when a widget or deep link asked to open a specific task in this list. */
+  openTaskRequest?: { id: number; taskId: string };
+  /** Called once the open-task request has been handled so it isn't replayed later. */
+  onOpenTaskRequestHandled?: () => void;
   onGoToMyLists?: () => void;
   onSwitchLists?: () => void;
 }
@@ -104,6 +119,8 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   listId,
   newTaskRequestId,
   onNewTaskRequestHandled,
+  openTaskRequest,
+  onOpenTaskRequestHandled,
   onGoToMyLists,
   onSwitchLists,
 }) => {
@@ -124,7 +141,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const [showChangelog, setShowChangelog] = useState(false);
   const [draggingTask, setDraggingTask] = useState<TodoItem | null>(null);
   const [dragPreviewPriority, setDragPreviewPriority] = useState<PriorityLevel | null>(null);
+  const [dragPreviewLabel, setDragPreviewLabel] = useState<string | null>(null);
   const lastPreviewPriorityRef = React.useRef<PriorityLevel | null>(null);
+  const lastReorderTargetRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     getPinnedWidgetConfig().then(setPinnedConfig).catch(() => {});
@@ -277,6 +296,142 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     return sortTasks(Object.values(parentMap), taskSortMode);
   }, [rawTodos, taskSortMode]);
 
+  // Open a specific task requested via widget deep link once list and todos settle.
+  const [handledOpenTaskId, setHandledOpenTaskId] = useState<number | null>(null);
+  const todosSettled = !isLoading && (rawTodos !== undefined || todosIsError);
+
+  const { archiveSuggestionsEnabled, dismissedListIds } = useArchivePreferences();
+  const isListNowCompleted = useMemo(() => isListCompleted(rawTodos), [rawTodos]);
+  const archiveStateSettled = Boolean(listMeta && todosSettled);
+  const [archivePromptListId, setArchivePromptListId] = useState<string | null>(null);
+  const [archivePending, setArchivePending] = useState(false);
+  const [prevArchiveCheck, setPrevArchiveCheck] = useState<{
+    listId: string;
+    completed: boolean;
+    settled: boolean;
+  }>({
+    listId,
+    completed: isListNowCompleted,
+    settled: archiveStateSettled,
+  });
+
+  if (
+    prevArchiveCheck.listId !== listId ||
+    prevArchiveCheck.completed !== isListNowCompleted ||
+    prevArchiveCheck.settled !== archiveStateSettled
+  ) {
+    const wasSettledSameList =
+      archiveStateSettled &&
+      prevArchiveCheck.settled &&
+      prevArchiveCheck.listId === listId;
+    const wasCompleted = prevArchiveCheck.completed;
+
+    setPrevArchiveCheck({
+      listId,
+      completed: isListNowCompleted,
+      settled: archiveStateSettled,
+    });
+
+    if (!wasSettledSameList || !isListNowCompleted) {
+      if (archivePromptListId !== null) {
+        setArchivePromptListId(null);
+      }
+    } else if (
+      shouldSuggestArchivingList({
+        wasCompleted,
+        isNowCompleted: isListNowCompleted,
+        isArchived: Boolean(listMeta?.isArchived),
+        canArchive: true,
+        suggestionsEnabled: archiveSuggestionsEnabled,
+        dismissedForCycle: dismissedListIds.has(listId),
+      })
+    ) {
+      setArchivePromptListId(listId);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!archiveStateSettled || isListNowCompleted) return;
+    if (dismissedListIds.has(listId)) {
+      void clearDismissedArchivePromptForList(listId);
+    }
+  }, [archiveStateSettled, isListNowCompleted, dismissedListIds, listId]);
+
+  const handleArchiveOrUnarchiveActiveList = async () => {
+    if (!listMeta || archivePending) return;
+    setArchivePending(true);
+    triggerImpactHaptic();
+    const currentlyArchived = Boolean(listMeta.isArchived);
+    try {
+      if (currentlyArchived) {
+        await apiClient.delete(`/api/v1/lists/${listId}/archive`);
+        queryClient.setQueryData<TodoList>(["list_meta", listId], (old) =>
+          old ? { ...old, isArchived: false, archivedAt: null } : old
+        );
+        queryClient.invalidateQueries({ queryKey: ["lists"] });
+        queryClient.invalidateQueries({ queryKey: ["list_meta", listId] });
+        showToast("List unarchived", "success");
+      } else {
+        await apiClient.post(`/api/v1/lists/${listId}/archive`);
+        setArchivePromptListId(null);
+        await clearDismissedArchivePromptForList(listId);
+        if (pinnedConfig?.listId === listId) {
+          await setPinnedWidgetConfig(null);
+          setPinnedConfig(null);
+          await syncPinnedList(null);
+        }
+        queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) =>
+          old ? old.filter((l) => l.id !== listId) : []
+        );
+        queryClient.setQueryData<TodoList>(["list_meta", listId], (old) =>
+          old ? { ...old, isArchived: true, archivedAt: Date.now() } : old
+        );
+        queryClient.invalidateQueries({ queryKey: ["lists"] });
+        queryClient.invalidateQueries({ queryKey: ["list_meta", listId] });
+        showToast("List archived", "info");
+        onGoToMyLists?.() ?? onSwitchLists?.();
+      }
+    } catch (e) {
+      triggerErrorHaptic(hapticsEnabled);
+      showError(
+        getErrorMessage(
+          e,
+          currentlyArchived ? "Couldn't unarchive list" : "Couldn't archive list"
+        )
+      );
+    } finally {
+      setArchivePending(false);
+    }
+  };
+
+  const showArchivePrompt =
+    archivePromptListId === listId &&
+    isListNowCompleted &&
+    Boolean(listMeta) &&
+    !listMeta?.isArchived &&
+    archiveSuggestionsEnabled &&
+    !dismissedListIds.has(listId);
+  if (
+    openTaskRequest &&
+    openTaskRequest.id !== handledOpenTaskId &&
+    listMetaSettled &&
+    (listMetaIsError || todosSettled)
+  ) {
+    setHandledOpenTaskId(openTaskRequest.id);
+    if (listMeta && canEdit) {
+      const targetTask =
+        structuredTodos.find((t) => t.id === openTaskRequest.taskId) ??
+        rawTodos?.find((t) => t.id === openTaskRequest.taskId);
+      if (targetTask) {
+        setModalVisible(false);
+        setEditingTask(targetTask);
+      }
+    }
+  }
+  React.useEffect(() => {
+    if (handledOpenTaskId !== null) onOpenTaskRequestHandled?.();
+  }, [handledOpenTaskId, onOpenTaskRequestHandled]);
+
   const triggerImpactHaptic = React.useCallback(() => {
     if (hapticsEnabled && Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -292,40 +447,48 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
 
   const { setCompleted, isPendingId, isSlowPendingId } = useSetTodoCompleted(listId);
   const {
+    toggleStartTodo,
+    isPendingId: isStartPendingId,
+    isSlowPendingId: isSlowStartPendingId,
+  } = useStartTodo(listId);
+  const [timerNow, setTimerNow] = useState(() => Date.now());
+  const hasRunningTimer = Boolean(
+    rawTodos?.some((t) => Boolean(t.startedAt) && !t.completed)
+  );
+  React.useEffect(() => {
+    if (!hasRunningTimer) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      setTimerNow(Date.now());
+      timer = setTimeout(tick, 60_000 - (Date.now() % 60_000) + 50);
+    };
+    tick();
+    return () => clearTimeout(timer);
+  }, [hasRunningTimer]);
+  const handleToggleStart = React.useCallback(
+    (task: TodoItem, at: number) => {
+      triggerImpactHaptic();
+      setTimerNow(at);
+      toggleStartTodo(task, at);
+    },
+    [toggleStartTodo, triggerImpactHaptic]
+  );
+  const {
     createMutation,
     updateMutation,
+    reorderMutation,
     deleteMutation,
     reviewDeleteMutation,
     isSlowPendingId: isSlowTaskUpdateId,
   } = useTaskMutations(listId);
 
-  const handlePriorityDragStart = React.useCallback(
-    (task: TodoItem) => {
-      triggerImpactHaptic();
-      const initial = (task.priority || "none") as PriorityLevel;
-      lastPreviewPriorityRef.current = initial;
-      setDraggingTask(task);
-      setDragPreviewPriority(initial);
-    },
-    [triggerImpactHaptic]
+  const activeTopLevelTasks = useMemo(
+    () => structuredTodos.filter((t) => !t.completed),
+    [structuredTodos]
   );
 
-  const handlePriorityDragHover = React.useCallback(
-    (_task: TodoItem, preview: PriorityLevel) => {
-      if (lastPreviewPriorityRef.current !== preview) {
-        lastPreviewPriorityRef.current = preview;
-        triggerImpactHaptic();
-        setDragPreviewPriority(preview);
-      }
-    },
-    [triggerImpactHaptic]
-  );
-
-  const handlePriorityDragEnd = React.useCallback(
+  const commitPriorityChange = React.useCallback(
     (task: TodoItem, nextPriority: PriorityLevel) => {
-      lastPreviewPriorityRef.current = null;
-      setDraggingTask(null);
-      setDragPreviewPriority(null);
       const currentPriority = (task.priority || "none") as PriorityLevel;
       if (currentPriority === nextPriority) return;
       triggerImpactHaptic();
@@ -348,10 +511,105 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     [listId, queryClient, triggerImpactHaptic, updateMutation]
   );
 
-  const handlePriorityDragCancel = React.useCallback(() => {
+  const handleReorderDragStart = React.useCallback(
+    (task: TodoItem) => {
+      triggerImpactHaptic();
+      lastPreviewPriorityRef.current =
+        taskSortMode === "priority" ? ((task.priority || "none") as PriorityLevel) : null;
+      lastReorderTargetRef.current = null;
+      setDraggingTask(task);
+      setDragPreviewPriority(null);
+      setDragPreviewLabel(null);
+    },
+    [taskSortMode, triggerImpactHaptic]
+  );
+
+  const handleReorderDragMove = React.useCallback(
+    (task: TodoItem, dy: number) => {
+      if (taskSortMode === "priority") {
+        const outcome = resolvePriorityModeDragOutcome(activeTopLevelTasks, task.id, dy);
+        if (outcome.kind === "priority") {
+          if (lastPreviewPriorityRef.current !== outcome.nextPriority) {
+            lastPreviewPriorityRef.current = outcome.nextPriority;
+            triggerImpactHaptic();
+          }
+          lastReorderTargetRef.current = null;
+          setDragPreviewPriority(outcome.nextPriority);
+          setDragPreviewLabel(null);
+        } else if (outcome.kind === "reorder") {
+          lastPreviewPriorityRef.current = (task.priority || "none") as PriorityLevel;
+          if (lastReorderTargetRef.current !== outcome.targetIndex) {
+            lastReorderTargetRef.current = outcome.targetIndex;
+            triggerImpactHaptic();
+          }
+          setDragPreviewPriority(null);
+          setDragPreviewLabel(`Position ${outcome.positionInGroup} of ${outcome.groupSize}`);
+        } else {
+          lastPreviewPriorityRef.current = (task.priority || "none") as PriorityLevel;
+          lastReorderTargetRef.current = null;
+          setDragPreviewPriority(null);
+          setDragPreviewLabel(null);
+        }
+        return;
+      }
+
+      const outcome = resolveListReorderDragOutcome(
+        activeTopLevelTasks,
+        task.id,
+        dy,
+        taskSortMode
+      );
+      if (outcome.kind === "reorder") {
+        if (lastReorderTargetRef.current !== outcome.targetIndex) {
+          lastReorderTargetRef.current = outcome.targetIndex;
+          triggerImpactHaptic();
+        }
+        setDragPreviewLabel(`Position ${outcome.positionInGroup} of ${outcome.groupSize}`);
+      } else {
+        lastReorderTargetRef.current = null;
+        setDragPreviewLabel(null);
+      }
+    },
+    [activeTopLevelTasks, taskSortMode, triggerImpactHaptic]
+  );
+
+  const handleReorderDragEnd = React.useCallback(
+    (task: TodoItem, dy: number) => {
+      lastPreviewPriorityRef.current = null;
+      lastReorderTargetRef.current = null;
+      setDraggingTask(null);
+      setDragPreviewPriority(null);
+      setDragPreviewLabel(null);
+
+      if (taskSortMode === "priority") {
+        const outcome = resolvePriorityModeDragOutcome(activeTopLevelTasks, task.id, dy);
+        if (outcome.kind === "priority") {
+          commitPriorityChange(task, outcome.nextPriority);
+        } else if (outcome.kind === "reorder") {
+          reorderMutation.mutate({ orderedIds: outcome.orderedGroupIds, parentId: null });
+        }
+        return;
+      }
+
+      const outcome = resolveListReorderDragOutcome(
+        activeTopLevelTasks,
+        task.id,
+        dy,
+        taskSortMode
+      );
+      if (outcome.kind === "reorder") {
+        reorderMutation.mutate({ orderedIds: outcome.orderedIds, parentId: null });
+      }
+    },
+    [activeTopLevelTasks, commitPriorityChange, reorderMutation, taskSortMode]
+  );
+
+  const handleReorderDragCancel = React.useCallback(() => {
     lastPreviewPriorityRef.current = null;
+    lastReorderTargetRef.current = null;
     setDraggingTask(null);
     setDragPreviewPriority(null);
+    setDragPreviewLabel(null);
   }, []);
 
   const handleDeleteTask = (task: TodoItem) => {
@@ -378,7 +636,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     [isOwner, pendingDeleteRequests]
   );
 
-  const canViewActivity = isOwner && shareMode !== "private";
+  const canViewActivity = isOwner;
   const [showActivity, setShowActivity] = useState(false);
   const [activityEntries, setActivityEntries] = useState<ListActivityEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -587,6 +845,77 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         />
       ) : null}
 
+      {listMeta?.isArchived ? (
+        <View
+          style={[
+            styles.archiveBanner,
+            { backgroundColor: theme.accentLight, borderColor: theme.accent },
+          ]}
+          accessibilityRole="summary"
+        >
+          <Archive size={16} color={theme.accent} />
+          <Text
+            style={[styles.archiveBannerText, { color: theme.textPrimary }]}
+            maxFontSizeMultiplier={1.3}
+          >
+            This list is archived — adding a task unarchives it for you.
+          </Text>
+          <TouchableOpacity
+            style={[styles.archiveBannerBtn, { backgroundColor: theme.accent }]}
+            onPress={() => void handleArchiveOrUnarchiveActiveList()}
+            disabled={archivePending}
+            accessibilityRole="button"
+            accessibilityLabel={`Unarchive ${listMeta.name}`}
+          >
+            <Text style={styles.archiveBannerBtnText}>Unarchive</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {showArchivePrompt && listMeta ? (
+        <View
+          style={[
+            styles.archiveBanner,
+            {
+              backgroundColor: theme.badgeSuccessBg,
+              borderColor: theme.badgeSuccessBorder,
+            },
+          ]}
+          accessibilityRole="summary"
+        >
+          <Text
+            style={[styles.archiveBannerText, { color: theme.textPrimary }]}
+            maxFontSizeMultiplier={1.3}
+          >
+            All tasks done! Archive this list?
+          </Text>
+          <View style={styles.archiveBannerActions}>
+            <TouchableOpacity
+              style={[styles.archiveBannerBtn, { backgroundColor: theme.accent }]}
+              onPress={() => void handleArchiveOrUnarchiveActiveList()}
+              disabled={archivePending}
+              accessibilityRole="button"
+              accessibilityLabel={`Archive ${listMeta.name}`}
+            >
+              <Text style={styles.archiveBannerBtnText}>Archive</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.archiveBannerDismissBtn, { backgroundColor: theme.inputBg }]}
+              onPress={() => {
+                setArchivePromptListId(null);
+                void dismissArchivePromptForList(listId);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Not now"
+            >
+              <Text style={[styles.archiveBannerDismissText, { color: theme.textSecondary }]}>
+                Not now
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       {ownerPendingRequests.length > 0 ? (
         <View
           style={[
@@ -665,40 +994,55 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             styles.priorityDropBar,
             { backgroundColor: theme.cardBg, borderColor: theme.accent },
           ]}
-          accessibilityLabel="Priority drop targets"
+          accessibilityLabel={
+            taskSortMode === "priority" ? "Priority drop targets" : "Task reorder status"
+          }
         >
-          <Text style={[styles.priorityDropLabel, { color: theme.textSecondary }]}>
-            Release to set priority for &ldquo;{draggingTask.text}&rdquo;:
-          </Text>
-          <View style={styles.priorityDropChips}>
-            {PRIORITY_LEVELS_DESC.map((level) => {
-              const isSelected = dragPreviewPriority === level;
-              const chipTint =
-                level === "none" ? theme.textSecondary : priorityColor(level, theme);
-              return (
-                <View
-                  key={level}
-                  style={[
-                    styles.priorityDropChip,
-                    {
-                      borderColor: isSelected ? chipTint : theme.cardBorder,
-                      backgroundColor: isSelected ? `${chipTint}22` : theme.inputBg,
-                    },
-                  ]}
-                  accessibilityLabel={PRIORITY_DROP_LABELS[level]}
-                >
-                  <Text
-                    style={[
-                      styles.priorityDropChipText,
-                      { color: isSelected ? chipTint : theme.textPrimary },
-                    ]}
-                  >
-                    {PRIORITY_DROP_LABELS[level]}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+          {taskSortMode === "priority" ? (
+            <>
+              <Text style={[styles.priorityDropLabel, { color: theme.textSecondary }]}>
+                Release to set priority for &ldquo;{draggingTask.text}&rdquo;:
+              </Text>
+              <View style={styles.priorityDropChips}>
+                {PRIORITY_LEVELS_DESC.map((level) => {
+                  const isSelected = dragPreviewPriority === level;
+                  const chipTint =
+                    level === "none" ? theme.textSecondary : priorityColor(level, theme);
+                  return (
+                    <View
+                      key={level}
+                      style={[
+                        styles.priorityDropChip,
+                        {
+                          borderColor: isSelected ? chipTint : theme.cardBorder,
+                          backgroundColor: isSelected ? `${chipTint}22` : theme.inputBg,
+                        },
+                      ]}
+                      accessibilityLabel={PRIORITY_DROP_LABELS[level]}
+                    >
+                      <Text
+                        style={[
+                          styles.priorityDropChipText,
+                          { color: isSelected ? chipTint : theme.textPrimary },
+                        ]}
+                      >
+                        {PRIORITY_DROP_LABELS[level]}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <Text style={[styles.reorderHintText, { color: theme.textMuted }]}>
+                Drag within a priority tier to reorder, across tiers to change priority, or switch to Manual in List Details to order freely.
+              </Text>
+            </>
+          ) : (
+            <Text style={[styles.priorityDropLabel, { color: theme.textSecondary }]}>
+              {taskSortMode === "manual"
+                ? `Release to place "${draggingTask.text}" in your custom order.`
+                : `Moving "${draggingTask.text}" among tied tasks — switch to Manual in List Details to order freely.`}
+            </Text>
+          )}
         </View>
       ) : null}
 
@@ -769,22 +1113,42 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                 item={row.task}
                 canEdit={canEdit}
                 isOwner={isOwner}
-                isPending={isPendingId(row.task.id)}
-                isSlowPending={isSlowPendingId(row.task.id) || isSlowTaskUpdateId(row.task.id)}
+                isPending={isPendingId(row.task.id) || isStartPendingId(row.task.id)}
+                isSlowPending={
+                  isSlowPendingId(row.task.id) ||
+                  isSlowTaskUpdateId(row.task.id) ||
+                  isSlowStartPendingId(row.task.id)
+                }
                 canDragPriority={canDragTaskForPriority({
                   canEdit,
                   sortMode: taskSortMode,
                   task: row.task,
                 })}
-                isDraggingPriority={draggingTask?.id === row.task.id}
+                isDraggingPriority={
+                  draggingTask?.id === row.task.id && dragPreviewPriority !== null
+                }
                 dragPreviewPriority={
                   draggingTask?.id === row.task.id ? dragPreviewPriority : null
                 }
-                onPriorityDragStart={handlePriorityDragStart}
-                onPriorityDragHover={handlePriorityDragHover}
-                onPriorityDragEnd={handlePriorityDragEnd}
-                onPriorityDragCancel={handlePriorityDragCancel}
+                canDragReorder={canDragTaskToReorder({
+                  canEdit,
+                  sortMode: taskSortMode,
+                  task: row.task,
+                  activeSiblings: activeTopLevelTasks,
+                })}
+                isDraggingReorder={
+                  draggingTask?.id === row.task.id && dragPreviewPriority === null
+                }
+                dragPreviewLabel={
+                  draggingTask?.id === row.task.id ? dragPreviewLabel : null
+                }
+                onReorderDragStart={handleReorderDragStart}
+                onReorderDragMove={handleReorderDragMove}
+                onReorderDragEnd={handleReorderDragEnd}
+                onReorderDragCancel={handleReorderDragCancel}
                 onToggleCompleted={(task) => setCompleted(task)}
+                onToggleStart={canEdit ? handleToggleStart : undefined}
+                now={timerNow}
                 onEdit={setEditingTask}
                 onOpenSubtasks={setSelectedTaskForBreakdown}
               />
@@ -820,6 +1184,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
       <TaskModal
         visible={!!editingTask}
         isEditing
+        taskId={editingTask?.id}
         initialText={editingTask?.text}
         initialPriority={editingTask?.priority}
         initialRecurrence={editingTask?.recurrence}
@@ -869,6 +1234,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             showToast(`Pinned "${listMeta.name}" to widget`, "success");
           }
         }}
+        onToggleArchive={() => void handleArchiveOrUnarchiveActiveList()}
         onShareAccess={() => setShowShareListModal(true)}
         onEditDetails={() => setShowEditListModal(true)}
         onViewActivity={canViewActivity ? openActivity : undefined}
@@ -967,7 +1333,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
           >
             <Text style={[styles.activityTitle, { color: theme.textPrimary }]}>Activity</Text>
             <Text style={[styles.activitySubtitle, { color: theme.textMuted }]}>
-              Who changed this shared list, and from which IP. Only you can see this.
+              Recent changes to this list (last 90 days). Only you can see this.
             </Text>
             {activityLoading && activityEntries.length === 0 ? (
               <ActivityIndicator color={theme.accent} style={{ marginVertical: 24 }} />
@@ -984,7 +1350,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
               <ScrollView style={styles.activityScroll} contentContainerStyle={{ paddingBottom: 16 }}>
                 {activityEntries.length === 0 ? (
                   <Text style={[styles.activityEmpty, { color: theme.textMuted }]}>
-                    No activity yet on this shared list.
+                    No activity yet on this list.
                   </Text>
                 ) : (
                   activityEntries.map((entry) => (
@@ -1265,6 +1631,10 @@ const styles = StyleSheet.create({
     fontSize: typography.xs,
     fontWeight: "700",
   },
+  reorderHintText: {
+    fontSize: typography.xs,
+    lineHeight: 16,
+  },
   searchInputWrapper: {
     flex: 1,
     flexDirection: "row",
@@ -1370,5 +1740,52 @@ const styles = StyleSheet.create({
   pendingActionDeclineText: {
     fontSize: typography.sm,
     fontWeight: "700",
+  },
+  archiveBanner: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  archiveBannerText: {
+    flex: 1,
+    minWidth: 160,
+    fontSize: typography.sm,
+    fontWeight: "600",
+  },
+  archiveBannerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  archiveBannerBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minHeight: MIN_TOUCH_TARGET - 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  archiveBannerBtnText: {
+    color: "#FFFFFF",
+    fontSize: typography.sm,
+    fontWeight: "700",
+  },
+  archiveBannerDismissBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minHeight: MIN_TOUCH_TARGET - 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  archiveBannerDismissText: {
+    fontSize: typography.sm,
+    fontWeight: "600",
   },
 });

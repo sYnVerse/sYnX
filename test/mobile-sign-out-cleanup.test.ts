@@ -23,13 +23,16 @@ const mocks = vi.hoisted(() => {
   return {
     storage,
     asyncStorage,
-    client: { secureSessionStore: { clearSessionTokens: vi.fn(async () => {}) } },
+    client: {
+      revokeMobileSession: vi.fn(async () => {}),
+      secureSessionStore: { clearSessionTokens: vi.fn(async () => {}) },
+    },
     notifications: { releasePushTokenForSignOut: vi.fn(async () => {}) },
     widgetSync: { resetWidgetsLoggedOut: vi.fn(() => {}) },
   };
 });
 vi.mock("@react-native-async-storage/async-storage", () => mocks.asyncStorage);
-vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
+vi.mock("../node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
 vi.mock("../mobile/src/api/client", () => mocks.client);
 vi.mock("../mobile/src/services/notifications", () => mocks.notifications);
 vi.mock("../mobile/src/services/widgetSync", () => mocks.widgetSync);
@@ -81,8 +84,14 @@ describe("mobile sign-out cleanup", () => {
     expect(mocks.storage.has(STORAGE_KEY_PINNED_WIDGET_CONFIG)).toBe(false);
     expect(mocks.storage.get("unrelated_key")).toBe("kept");
     expect(mocks.widgetSync.resetWidgetsLoggedOut).toHaveBeenCalledTimes(1);
-    expect(mocks.client.secureSessionStore.clearSessionTokens).toHaveBeenCalledTimes(1);
     expect(mocks.notifications.releasePushTokenForSignOut).toHaveBeenCalledTimes(1);
+    expect(mocks.client.revokeMobileSession).toHaveBeenCalledTimes(1);
+    expect(mocks.client.secureSessionStore.clearSessionTokens).toHaveBeenCalledTimes(1);
+    const pushOrder = mocks.notifications.releasePushTokenForSignOut.mock.invocationCallOrder[0];
+    const revokeOrder = mocks.client.revokeMobileSession.mock.invocationCallOrder[0];
+    const clearOrder = mocks.client.secureSessionStore.clearSessionTokens.mock.invocationCallOrder[0];
+    expect(pushOrder).toBeLessThan(revokeOrder);
+    expect(revokeOrder).toBeLessThan(clearOrder);
   });
 
   it("logs and removes the cache key directly when the persister cleanup fails", async () => {

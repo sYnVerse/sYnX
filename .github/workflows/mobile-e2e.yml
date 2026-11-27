@@ -1,0 +1,225 @@
+name: Mobile E2E (Maestro)
+
+# Informational (non-required) Android E2E smoke test running on standard hosted
+# ubuntu-latest runners with KVM enabled, against a local Wrangler + local D1
+# backend (zero EAS build credits consumed, never touches production or remote D1).
+#
+# Settled implementation notes (#200):
+# - Triggered via path-filtered PRs touching mobile/shared/Maestro/test-login
+#   files and manual workflow_dispatch.
+# - Uses an env-gated "Test Sign In" button compiled only when BOTH
+#   EXPO_PUBLIC_ALLOW_DEV_TEST_AUTH=true and a loopback http:// API URL are set.
+# - Android first; iOS E2E is deferred to a later slice (either hosted macOS or
+#   a self-hosted Mac runner).
+# - Future pivot: self-hosted runners on Chris's server remain an option if
+#   builds/emulators need more speed, the repo goes private, or iOS hardware is
+#   added. Never attach self-hosted runners to untrusted fork PR workflows.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "shared/**"
+      - ".maestro/**"
+      - "backend/api/v1/dev.test-login.ts"
+      - "backend/api/router.ts"
+      - "backend/server.ts"
+      - "backend/services/auth.server.ts"
+      - "backend/services/auth-context.server.ts"
+      - ".github/workflows/mobile-e2e.yml"
+      - "!**/*.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  maestro-android:
+    name: Mobile E2E (Maestro)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MAESTRO_VERSION: "2.12.1"
+      # Published in checksums_sha256.txt for mobile-dev-inc/Maestro release cli-2.12.1
+      MAESTRO_ZIP_SHA256: "54dbb0716425626604973cbb374c585ca30272375d9ce15177a1152765ddd9d7"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sync shared modules and version
+        working-directory: mobile
+        run: |
+          node scripts/sync-shared.js
+          node scripts/sync-version.js
+
+      - name: Prepare local backend (D1 migrations + web build)
+        run: |
+          npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state
+          npm run build
+
+      - name: Ensure dummy google-services.json for prebuild
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const p = "mobile/google-services.json";
+            if (!fs.existsSync(p)) {
+              const dummy = {
+                project_info: {
+                  project_number: "000000000000",
+                  project_id: "synx-e2e-local",
+                  storage_bucket: "synx-e2e-local.firebasestorage.app"
+                },
+                client: [{
+                  client_info: {
+                    mobilesdk_app_id: "1:000000000000:android:0000000000000000000000",
+                    android_client_info: { package_name: "io.christran.synx" }
+                  },
+                  oauth_client: [],
+                  api_key: [{ current_key: "AIzaSyDummyLocalE2eKey000000000000000000" }],
+                  services: { appinvite_service: { other_platform_oauth_client: [] } }
+                }],
+                configuration_version: "1"
+              };
+              fs.writeFileSync(p, JSON.stringify(dummy, null, 2));
+            }
+          '
+
+      - name: Prebuild Android project
+        working-directory: mobile
+        env:
+          EXPO_PUBLIC_ALLOW_DEV_TEST_AUTH: "true"
+          EXPO_PUBLIC_API_URL: "http://127.0.0.1:8787"
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Embed JS bundle in debug APK
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const p = "mobile/android/app/build.gradle";
+            let src = fs.readFileSync(p, "utf8");
+            const target = "// debuggableVariants = [\"liteDebug\", \"prodDebug\"]";
+            if (!src.includes(target)) {
+              throw new Error("Could not find debuggableVariants placeholder in " + p);
+            }
+            src = src.replace(target, "debuggableVariants = []");
+            fs.writeFileSync(p, src, "utf8");
+          '
+
+      - name: Build Android debug APK (x86_64)
+        working-directory: mobile/android
+        env:
+          EXPO_PUBLIC_ALLOW_DEV_TEST_AUTH: "true"
+          EXPO_PUBLIC_API_URL: "http://127.0.0.1:8787"
+        run: ./gradlew assembleDebug -PreactNativeArchitectures=x86_64 --no-daemon
+
+      - name: Start local Wrangler backend
+        run: |
+          npx wrangler dev --config web/build/server/wrangler.json --persist-to backend/.wrangler/state --ip 127.0.0.1 --port 8787 --var ALLOW_DEV_TEST_AUTH:true --var MOBILE_MIN_BUILD_VERSION:1 > /tmp/wrangler.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8787/api/v1/mobile/version >/dev/null 2>&1; then
+              echo "Local Wrangler backend ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/wrangler.log || true
+          exit 1
+
+      - name: Enable KVM on hosted runner
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Cache Maestro CLI archive
+        id: maestro-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/maestro
+          key: maestro-${{ env.MAESTRO_VERSION }}-${{ env.MAESTRO_ZIP_SHA256 }}
+
+      - name: Install Maestro CLI
+        shell: bash
+        env:
+          CACHE_HIT: ${{ steps.maestro-cache.outputs.cache-hit }}
+          MAESTRO_CLI_NO_ANALYTICS: "1"
+          MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: "true"
+        run: |
+          set -euo pipefail
+          for cmd in java curl sha256sum; do
+            if ! command -v "$cmd" > /dev/null; then
+              echo "Missing required prerequisite: $cmd" >&2
+              exit 1
+            fi
+          done
+          if ! command -v unzip > /dev/null; then
+            sudo apt-get update && sudo apt-get install -y unzip
+          fi
+
+          CACHE_DIR="$HOME/.cache/maestro"
+          ZIP_PATH="$CACHE_DIR/maestro.zip"
+          mkdir -p "$CACHE_DIR"
+
+          if [ "${CACHE_HIT:-}" != "true" ] || [ ! -f "$ZIP_PATH" ]; then
+            TMP_ZIP="$(mktemp "$CACHE_DIR/maestro.zip.XXXXXX")"
+            curl -fsSL "https://github.com/mobile-dev-inc/maestro/releases/download/cli-${MAESTRO_VERSION}/maestro.zip" -o "$TMP_ZIP"
+            mv "$TMP_ZIP" "$ZIP_PATH"
+          fi
+
+          # Always verify SHA-256 on both fresh downloads and restored cache entries
+          echo "${MAESTRO_ZIP_SHA256}  ${ZIP_PATH}" | sha256sum -c -
+
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+          unzip -qo "$ZIP_PATH" -d "$TMP_DIR"
+
+          MAESTRO_DIR="$HOME/.maestro"
+          mkdir -p "$MAESTRO_DIR"
+          rm -rf "${MAESTRO_DIR}/bin" "${MAESTRO_DIR}/lib"
+          cp -rf "$TMP_DIR"/maestro/* "$MAESTRO_DIR/"
+
+          "$MAESTRO_DIR/bin/maestro" --version
+          echo "$MAESTRO_DIR/bin" >> "$GITHUB_PATH"
+
+      - name: Run Maestro smoke flow on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            bash .maestro/run-android-e2e.sh
+
+      - name: Upload Maestro & Wrangler debug logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-e2e-logs
+          include-hidden-files: true
+          path: |
+            /tmp/maestro-debug
+            /tmp/wrangler.log
+          if-no-files-found: ignore
+          retention-days: 7

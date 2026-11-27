@@ -204,6 +204,31 @@ describe("Regression Tests: Reminder Validation, Subtask Search, and Deep Link P
         });
       });
 
+      it("parses synx://list/<id>?task=<taskId> and web task links", () => {
+        expect(
+          parseDeepLinkUrl("synx://list/26f59db4-3add-4d77-8778-18629c01938e?task=task-abc-123")
+        ).toEqual({
+          listId: "26f59db4-3add-4d77-8778-18629c01938e",
+          taskId: "task-abc-123",
+          action: null,
+        });
+
+        expect(
+          parseDeepLinkUrl("https://synx.christran.io/list/26f59db4-3add-4d77-8778-18629c01938e?task=task-xyz")
+        ).toEqual({
+          listId: "26f59db4-3add-4d77-8778-18629c01938e",
+          taskId: "task-xyz",
+          action: null,
+        });
+
+        expect(
+          parseDeepLinkUrl("synx://list/26f59db4-3add-4d77-8778-18629c01938e?task=")
+        ).toEqual({
+          listId: "26f59db4-3add-4d77-8778-18629c01938e",
+          action: null,
+        });
+      });
+
       it("parses synx://quick-add?listId=<id>", () => {
         expect(parseDeepLinkUrl("synx://quick-add?listId=26f59db4-3add-4d77-8778-18629c01938e")).toEqual({
           listId: "26f59db4-3add-4d77-8778-18629c01938e",

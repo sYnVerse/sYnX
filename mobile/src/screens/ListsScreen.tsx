@@ -27,6 +27,10 @@ import {
   History,
   List,
   ListTree,
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react-native";
 import {
   getPinnedWidgetConfig,
@@ -38,6 +42,10 @@ import {
   setListsViewMode,
   type ListsViewMode,
 } from "../services/listViewPreferences";
+import {
+  clearDismissedArchivePromptForList,
+  useArchivePreferences,
+} from "../services/archivePreferences";
 import { syncPinnedList } from "../services/widgetSync";
 import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { apiClient } from "../api/client";
@@ -45,6 +53,7 @@ import {
   TodoList,
   TodoItem,
   describeListActivityAction,
+  isListSummaryCompleted,
   resolveTaskSortMode,
   PRESET_CATEGORIES,
   type CategoryOption,
@@ -132,10 +141,21 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
   const taskSortPrefs = useTaskSortPreferences();
 
+  const { archiveSuggestionsEnabled } = useArchivePreferences();
+  const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
+
   const { data: lists, isLoading, isRefetching, refetch, isError, error } = useQuery({
     queryKey: ["lists", "all"],
     queryFn: async () => {
       const res = await apiClient.get("/api/v1/lists?scope=all");
+      return res.data.lists as TodoList[];
+    },
+  });
+
+  const { data: archivedListsData = [], refetch: refetchArchivedLists } = useQuery({
+    queryKey: ["lists", "archived"],
+    queryFn: async () => {
+      const res = await apiClient.get("/api/v1/lists?scope=all&archived=only");
       return res.data.lists as TodoList[];
     },
   });
@@ -148,13 +168,31 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
     () => (lists || []).filter((l) => l.isOwner === false),
     [lists]
   );
+  const completedActiveLists = useMemo(
+    () => (lists || []).filter((l) => !l.isArchived && isListSummaryCompleted(l)),
+    [lists]
+  );
+  const totalOwnedCount = useMemo(
+    () => ownedLists.length + archivedListsData.filter((l) => l.isOwner !== false).length,
+    [ownedLists, archivedListsData]
+  );
 
   const listSections = useMemo(
     () => [
-      { title: "My lists", data: ownedLists, shared: false },
-      { title: "Shared with me", data: sharedLists, shared: true },
+      { title: "My lists", data: ownedLists, shared: false, archived: false },
+      { title: "Shared with me", data: sharedLists, shared: true, archived: false },
+      ...(!pickingPinnedList && archivedListsData.length > 0
+        ? [
+            {
+              title: `Archived (${archivedListsData.length})`,
+              data: isArchivedExpanded ? archivedListsData : [],
+              shared: false,
+              archived: true,
+            },
+          ]
+        : []),
     ],
-    [ownedLists, sharedLists]
+    [ownedLists, sharedLists, pickingPinnedList, archivedListsData, isArchivedExpanded]
   );
 
   const { data: activeListTodos, refetch: refetchPreview } = useQuery({
@@ -186,6 +224,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
   const handleRefresh = () => {
     refetch();
+    void refetchArchivedLists();
     if (activeListId) {
       refetchPreview();
     }
@@ -295,6 +334,58 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
       showSuccess("Removed from Shared with me");
     },
     onError: (e) => onMutationError(e, "Couldn't remove shared list"),
+  });
+
+  const archiveListMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiClient.post(`/api/v1/lists/${id}/archive`);
+      return { id, archivedAt: (res.data?.archivedAt as number | undefined) ?? Date.now() };
+    },
+    onSuccess: ({ id: archivedId, archivedAt }) => {
+      triggerImpactHaptic();
+      let nextActiveId: string | null = null;
+      queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) => {
+        const remaining = old ? old.filter((l) => l.id !== archivedId) : [];
+        if (archivedId === activeListId) {
+          const nextOwned = remaining.find((l) => l.isOwner !== false);
+          nextActiveId = nextOwned?.id ?? remaining[0]?.id ?? null;
+        }
+        return remaining;
+      });
+      if (nextActiveId) {
+        onSelectList(nextActiveId, { stayOnListsTab: true });
+      }
+      queryClient.setQueryData<TodoList>(["list_meta", archivedId], (old) =>
+        old ? { ...old, isArchived: true, archivedAt } : old
+      );
+      if (pinnedConfig?.listId === archivedId) {
+        setPinnedWidgetConfig(null).catch(() => {});
+        setPinnedConfig(null);
+        syncPinnedList(null).catch(() => {});
+      }
+      void clearDismissedArchivePromptForList(archivedId);
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+      queryClient.invalidateQueries({ queryKey: ["list_meta", archivedId] });
+      showSuccess("List archived");
+    },
+    onError: (e) => onMutationError(e, "Couldn't archive list"),
+  });
+
+  const unarchiveListMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiClient.delete(`/api/v1/lists/${id}/archive`);
+      return id;
+    },
+    onSuccess: (unarchivedId) => {
+      triggerImpactHaptic();
+      queryClient.setQueryData<TodoList>(["list_meta", unarchivedId], (old) =>
+        old ? { ...old, isArchived: false, archivedAt: null } : old
+      );
+      queryClient.invalidateQueries({ queryKey: ["lists"] });
+      queryClient.invalidateQueries({ queryKey: ["list_meta", unarchivedId] });
+      showSuccess("List unarchived");
+    },
+    onError: (e) => onMutationError(e, "Couldn't unarchive list"),
   });
 
   const handleCreateList = () => {
@@ -479,6 +570,46 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
         </View>
       ) : null}
 
+      {archiveSuggestionsEnabled && !pickingPinnedList && completedActiveLists.length > 0 ? (
+        <View
+          style={[
+            styles.completedSuggestionsCard,
+            { backgroundColor: theme.badgeSuccessBg, borderColor: theme.badgeSuccessBorder },
+          ]}
+          accessibilityRole="summary"
+        >
+          <View style={styles.completedSuggestionsHeader}>
+            <Archive size={15} color={theme.badgeSuccessFg} />
+            <Text
+              style={[styles.completedSuggestionsTitle, { color: theme.badgeSuccessFg }]}
+              maxFontSizeMultiplier={1.25}
+            >
+              Completed lists ready to archive
+            </Text>
+          </View>
+          {completedActiveLists.map((completedList) => (
+            <View key={completedList.id} style={styles.completedSuggestionRow}>
+              <Text
+                style={[styles.completedSuggestionName, { color: theme.textPrimary }]}
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.25}
+              >
+                {completedList.name}
+              </Text>
+              <TouchableOpacity
+                style={[styles.completedSuggestionBtn, { backgroundColor: theme.accent }]}
+                onPress={() => archiveListMutation.mutate(completedList.id)}
+                disabled={archiveListMutation.isPending}
+                accessibilityRole="button"
+                accessibilityLabel={`Archive ${completedList.name}`}
+              >
+                <Text style={styles.completedSuggestionBtnText}>Archive</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       {isLoading ? (
         <View style={{ gap: 8 }}>
           <ListCardSkeleton />
@@ -516,26 +647,54 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
               colors={[theme.accent]}
             />
           }
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeaderRow}>
-              <Text style={[styles.sectionHeaderText, { color: theme.textMuted }]}>
-                {section.title}
-              </Text>
-              {section.shared && section.data.length === 0 ? (
-                <Text style={[styles.sectionEmptyHint, { color: theme.textMuted }]}>
-                  Open a shared link to add lists here
+          renderSectionHeader={({ section }) =>
+            section.archived ? (
+              <TouchableOpacity
+                style={[styles.sectionHeaderRow, styles.archivedSectionToggle]}
+                onPress={() => {
+                  triggerImpactHaptic();
+                  setIsArchivedExpanded((prev) => !prev);
+                }}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: isArchivedExpanded }}
+                accessibilityLabel={`${section.title}, ${isArchivedExpanded ? "expanded" : "collapsed"}`}
+              >
+                <Text style={[styles.sectionHeaderText, { color: theme.textMuted }]}>
+                  {section.title}
                 </Text>
-              ) : null}
-            </View>
-          )}
+                {isArchivedExpanded ? (
+                  <ChevronUp size={16} color={theme.textMuted} />
+                ) : (
+                  <ChevronDown size={16} color={theme.textMuted} />
+                )}
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.sectionHeaderRow}>
+                <Text style={[styles.sectionHeaderText, { color: theme.textMuted }]}>
+                  {section.title}
+                </Text>
+                {section.shared && section.data.length === 0 ? (
+                  <Text style={[styles.sectionEmptyHint, { color: theme.textMuted }]}>
+                    Open a shared link to add lists here
+                  </Text>
+                ) : null}
+              </View>
+            )
+          }
           renderItem={({ item, section }) => {
             const isActive = item.id === activeListId;
             const isPinned = pinnedConfig?.listId === item.id;
-            const isShared = section.shared;
+            const isShared = section.shared || item.isOwner === false;
             const ownerName = item.owner?.displayName;
             const effectiveItem =
               isActive && activeListPreview
-                ? { ...item, openTaskCount: activeListPreview.openTasks.length }
+                ? {
+                    ...item,
+                    openTaskCount: activeListPreview.openTasks.length,
+                    allTasksCompleted:
+                      activeListPreview.totalMainCount > 0 &&
+                      activeListPreview.openTasks.length === 0,
+                  }
                 : item;
 
             return (
@@ -547,6 +706,11 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
                 ownerName={ownerName}
                 viewMode={viewMode}
                 pickingPinnedList={pickingPinnedList}
+                showCompletedHint={
+                  archiveSuggestionsEnabled &&
+                  !section.archived &&
+                  isListSummaryCompleted(effectiveItem)
+                }
                 previewData={isActive ? activeListPreview : null}
                 onPress={(item) => {
                   if (pickingPinnedList) {
@@ -592,42 +756,78 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
 
             <View style={styles.sheetActionsList}>
               {/* Pin / unpin to widget */}
+              {(!actionSheetList.isArchived || pinnedConfig?.listId === actionSheetList.id) && (
+                <TouchableOpacity
+                  style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                  onPress={async () => {
+                    const target = actionSheetList;
+                    setActionSheetList(null);
+                    triggerImpactHaptic();
+                    const isPinned = pinnedConfig?.listId === target.id;
+                    if (isPinned) {
+                      await setPinnedWidgetConfig(null);
+                      setPinnedConfig(null);
+                      await syncPinnedList(null);
+                      showSuccess("Unpinned from widget");
+                    } else {
+                      await pinListToWidget(target, "list");
+                      showSuccess(`Pinned "${target.name}" to widget`);
+                    }
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    pinnedConfig?.listId === actionSheetList.id
+                      ? `Unpin ${actionSheetList.name} from widget`
+                      : `Pin ${actionSheetList.name} to widget`
+                  }
+                >
+                  <Pin
+                    size={18}
+                    color={pinnedConfig?.listId === actionSheetList.id ? theme.accent : theme.textPrimary}
+                    fill={pinnedConfig?.listId === actionSheetList.id ? theme.accent : "none"}
+                  />
+                  <Text
+                    style={[
+                      styles.sheetActionItemText,
+                      { color: pinnedConfig?.listId === actionSheetList.id ? theme.accent : theme.textPrimary },
+                    ]}
+                  >
+                    {pinnedConfig?.listId === actionSheetList.id ? "Unpin from widget" : "Pin to widget"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               <TouchableOpacity
                 style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
-                onPress={async () => {
+                onPress={() => {
                   const target = actionSheetList;
                   setActionSheetList(null);
                   triggerImpactHaptic();
-                  const isPinned = pinnedConfig?.listId === target.id;
-                  if (isPinned) {
-                    await setPinnedWidgetConfig(null);
-                    setPinnedConfig(null);
-                    await syncPinnedList(null);
-                    showSuccess("Unpinned from widget");
+                  if (target.isArchived) {
+                    unarchiveListMutation.mutate(target.id);
                   } else {
-                    await pinListToWidget(target, "list");
-                    showSuccess(`Pinned "${target.name}" to widget`);
+                    archiveListMutation.mutate(target.id);
                   }
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={
-                  pinnedConfig?.listId === actionSheetList.id
-                    ? `Unpin ${actionSheetList.name} from widget`
-                    : `Pin ${actionSheetList.name} to widget`
+                  actionSheetList.isArchived
+                    ? `Unarchive ${actionSheetList.name}`
+                    : `Archive ${actionSheetList.name}`
                 }
               >
-                <Pin
-                  size={18}
-                  color={pinnedConfig?.listId === actionSheetList.id ? theme.accent : theme.textPrimary}
-                  fill={pinnedConfig?.listId === actionSheetList.id ? theme.accent : "none"}
-                />
+                {actionSheetList.isArchived ? (
+                  <ArchiveRestore size={18} color={theme.accent} />
+                ) : (
+                  <Archive size={18} color={theme.textPrimary} />
+                )}
                 <Text
                   style={[
                     styles.sheetActionItemText,
-                    { color: pinnedConfig?.listId === actionSheetList.id ? theme.accent : theme.textPrimary },
+                    { color: actionSheetList.isArchived ? theme.accent : theme.textPrimary },
                   ]}
                 >
-                  {pinnedConfig?.listId === actionSheetList.id ? "Unpin from widget" : "Pin to widget"}
+                  {actionSheetList.isArchived ? "Unarchive list" : "Archive list"}
                 </Text>
               </TouchableOpacity>
 
@@ -663,23 +863,21 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
                     <Text style={[styles.sheetActionItemText, { color: theme.textPrimary }]}>Edit list details</Text>
                   </TouchableOpacity>
 
-                  {(actionSheetList.shareMode || "private") !== "private" && (
-                    <TouchableOpacity
-                      style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
-                      onPress={() => {
-                        const target = actionSheetList;
-                        setActionSheetList(null);
-                        openActivity(target);
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Activity for ${actionSheetList.name}`}
-                    >
-                      <History size={18} color={theme.accent} />
-                      <Text style={[styles.sheetActionItemText, { color: theme.textPrimary }]}>View shared activity</Text>
-                    </TouchableOpacity>
-                  )}
+                  <TouchableOpacity
+                    style={[styles.sheetActionItem, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder }]}
+                    onPress={() => {
+                      const target = actionSheetList;
+                      setActionSheetList(null);
+                      openActivity(target);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Activity for ${actionSheetList.name}`}
+                  >
+                    <History size={18} color={theme.accent} />
+                    <Text style={[styles.sheetActionItemText, { color: theme.textPrimary }]}>View activity</Text>
+                  </TouchableOpacity>
 
-                  {ownedLists.length > 1 && (
+                  {totalOwnedCount > 1 && (
                     <TouchableOpacity
                       style={[
                         styles.sheetActionItem,
@@ -910,7 +1108,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
             <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Activity</Text>
             <Text style={[styles.label, { color: theme.textMuted }]}>{activityList.name}</Text>
             <Text style={[styles.hintText, { color: theme.textMuted, marginBottom: 8 }]}>
-              Who changed this shared list, and from which IP. Only you can see this.
+              Recent changes to this list (last 90 days). Only you can see this.
             </Text>
             {activityLoading && activityEntries.length === 0 ? (
               <ActivityIndicator color={theme.accent} style={{ marginVertical: 24 }} />
@@ -927,7 +1125,7 @@ export const ListsScreen: React.FC<ListsScreenProps> = ({
               <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ paddingBottom: 8 }}>
                 {activityEntries.length === 0 ? (
                   <Text style={[styles.hintText, { color: theme.textMuted, textAlign: "center", paddingVertical: 24 }]}>
-                    No activity yet on this shared list.
+                    No activity yet on this list.
                   </Text>
                 ) : (
                   activityEntries.map((entry) => (
@@ -1081,6 +1279,55 @@ const styles = StyleSheet.create({
   pickBannerCancel: {
     fontSize: typography.sm,
     fontWeight: "700",
+  },
+  completedSuggestionsCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+    gap: 8,
+  },
+  completedSuggestionsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  completedSuggestionsTitle: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  completedSuggestionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  completedSuggestionName: {
+    flex: 1,
+    fontSize: typography.sm,
+    fontWeight: "600",
+  },
+  completedSuggestionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    minHeight: MIN_TOUCH_TARGET - 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  completedSuggestionBtnText: {
+    color: "#FFFFFF",
+    fontSize: typography.xs,
+    fontWeight: "700",
+  },
+  archivedSectionToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: MIN_TOUCH_TARGET - 8,
   },
   sectionHeaderRow: {
     marginTop: spacing.sm,

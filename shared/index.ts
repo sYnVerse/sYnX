@@ -29,6 +29,9 @@ export interface TodoItem {
   parentId?: string | null;
   recurrence: RecurrencePattern;
   durationMinutes?: number | null;
+  startedAt?: number | null;
+  startedBy?: string | null;
+  sortOrder?: number | null;
   subtasks?: TodoItem[];
   /** True when a collaborator has requested deleting this task (awaits owner). */
   pendingDelete?: boolean;
@@ -80,6 +83,8 @@ export type ListActivityAction =
   | "clear_completed"
   | "list_renamed"
   | "list_settings_changed"
+  | "list_archived"
+  | "list_unarchived"
   | "list_deleted"
   | "delete_requested"
   | "delete_approved"
@@ -122,6 +127,10 @@ export function describeListActivityAction(action: ListActivityAction): string {
       return "Renamed the list";
     case "list_settings_changed":
       return "Changed list settings";
+    case "list_archived":
+      return "Archived the list";
+    case "list_unarchived":
+      return "Unarchived the list";
     case "list_deleted":
       return "Deleted the list";
     case "delete_requested":
@@ -157,6 +166,14 @@ export interface TodoList {
   owner?: ListOwner;
   /** Additive: count of open top-level tasks in this list */
   openTaskCount?: number;
+  /** Additive: timestamp when the caller archived this list (null/undefined if active) */
+  archivedAt?: number | null;
+  /** Additive: true when archived for the current signed-in user */
+  isArchived?: boolean;
+  /** Additive: count of all tasks and subtasks in this list */
+  totalTaskCount?: number;
+  /** Additive: true when totalTaskCount > 0 and every task and subtask is completed */
+  allTasksCompleted?: boolean;
 }
 
 // User settings data structure
@@ -200,10 +217,48 @@ export const SubtaskCompletionActionSchema = v.picklist(["complete", "promote"])
 
 export type SubtaskCompletionAction = v.InferOutput<typeof SubtaskCompletionActionSchema>;
 
+export const CompletionSourceSchema = v.picklist(["app", "widget", "web", "api"]);
+
+export type CompletionSource = v.InferOutput<typeof CompletionSourceSchema>;
+
+export const StartTodoSchema = v.object({
+  startedAt: v.optional(v.number()),
+});
+
+export type StartTodoInput = v.InferOutput<typeof StartTodoSchema>;
+
+export interface TaskCompletionEntry {
+  id: string;
+  todoId: string;
+  listId: string;
+  taskText: string;
+  userId: string;
+  startedBy: string | null;
+  startedAt: number | null;
+  completedAt: number;
+  durationSeconds: number | null;
+  estimatedMinutes: number | null;
+  timeZone: string | null;
+  source: CompletionSource;
+}
+
+export interface TaskCompletionStats {
+  count: number;
+  timedCount: number;
+  averageSeconds: number | null;
+  medianSeconds: number | null;
+  lastDurationSeconds: number | null;
+  estimatedMinutes: number | null;
+  entries: TaskCompletionEntry[];
+}
+
 /** Explicit done-state payload for POST /api/v1/todos/:id/completed */
 export const SetTodoCompletedSchema = v.object({
   completed: v.boolean(),
   subtaskAction: v.optional(SubtaskCompletionActionSchema),
+  completedAt: v.optional(v.number()),
+  source: v.optional(CompletionSourceSchema),
+  opId: v.optional(v.string()),
 });
 
 export type SetTodoCompletedInput = v.InferOutput<typeof SetTodoCompletedSchema>;
@@ -235,11 +290,41 @@ export const RegisterDeviceTokenSchema = v.object({
 
 export type RegisterDeviceTokenInput = v.InferOutput<typeof RegisterDeviceTokenSchema>;
 
+export const SetCompletionDurationSchema = v.object({
+  durationMinutes: v.pipe(
+    v.number(),
+    v.integer("durationMinutes must be an integer"),
+    v.minValue(1, "durationMinutes must be at least 1"),
+    v.maxValue(720, "durationMinutes must be 720 or less")
+  ),
+});
+
+export type SetCompletionDurationInput = v.InferOutput<typeof SetCompletionDurationSchema>;
+
+export const UndoRepeatSchema = v.object({
+  completionId: v.optional(v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(128))),
+});
+
+export type UndoRepeatInput = v.InferOutput<typeof UndoRepeatSchema>;
+
+export const ReorderTodosSchema = v.object({
+  listId: v.pipe(v.string(), v.trim(), v.minLength(1, "List ID is required")),
+  parentId: v.optional(v.nullable(v.string())),
+  orderedIds: v.pipe(
+    v.array(v.pipe(v.string(), v.trim(), v.minLength(1))),
+    v.minLength(1, "At least one task ID is required")
+  ),
+});
+
+export type ReorderTodosInput = v.InferOutput<typeof ReorderTodosSchema>;
+
 export * from "./categories";
 
 export * from "./changelog";
 
 export * from "./deep-link";
+
+export * from "./list-archive";
 
 export * from "./list-permissions";
 
@@ -262,6 +347,8 @@ export * from "./task-progress";
 export * from "./task-sections";
 
 export * from "./time-zone";
+
+export * from "./time-tracking";
 
 export * from "./todo-completed";
 

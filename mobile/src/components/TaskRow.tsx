@@ -8,9 +8,10 @@ import {
   PanResponder,
   ActivityIndicator,
 } from "react-native";
-import { Check, Clock, ListTree, Repeat, Bell, Plus, GripVertical } from "lucide-react-native";
+import { Check, Clock, ListTree, Play, Repeat, Bell, Plus, GripVertical } from "lucide-react-native";
 import {
   PRIORITY_DROP_LABELS,
+  formatElapsedTimerLabel,
   resolvePriorityFromVerticalOffset,
   type PriorityLevel,
   type TodoItem,
@@ -34,7 +35,16 @@ export interface TaskRowProps {
   onPriorityDragHover?: (item: TodoItem, previewPriority: PriorityLevel) => void;
   onPriorityDragEnd?: (item: TodoItem, nextPriority: PriorityLevel) => void;
   onPriorityDragCancel?: () => void;
+  canDragReorder?: boolean;
+  isDraggingReorder?: boolean;
+  dragPreviewLabel?: string | null;
+  onReorderDragStart?: (item: TodoItem) => void;
+  onReorderDragMove?: (item: TodoItem, dy: number) => void;
+  onReorderDragEnd?: (item: TodoItem, dy: number) => void;
+  onReorderDragCancel?: () => void;
   onToggleCompleted: (item: TodoItem) => void;
+  onToggleStart?: (item: TodoItem, at: number) => void;
+  now?: number;
   onEdit: (item: TodoItem) => void;
   onOpenSubtasks: (item: TodoItem) => void;
 }
@@ -52,54 +62,86 @@ export const TaskRow: React.FC<TaskRowProps> = ({
   onPriorityDragHover,
   onPriorityDragEnd,
   onPriorityDragCancel,
+  canDragReorder = false,
+  isDraggingReorder = false,
+  dragPreviewLabel = null,
+  onReorderDragStart,
+  onReorderDragMove,
+  onReorderDragEnd,
+  onReorderDragCancel,
   onToggleCompleted,
+  onToggleStart,
+  now,
   onEdit,
   onOpenSubtasks,
 }) => {
   const { theme } = useTheme();
   const [translateY] = useState(() => new Animated.Value(0));
+  const isDragEnabled = canDragReorder || canDragPriority;
+  const activeDragging = isDraggingReorder || isDraggingPriority;
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponder: (_evt, gestureState) =>
-          canDragPriority && Math.abs(gestureState.dy) > 4,
+          isDragEnabled && Math.abs(gestureState.dy) > 4,
         onMoveShouldSetPanResponderCapture: (_evt, gestureState) =>
-          canDragPriority && Math.abs(gestureState.dy) > 4,
+          isDragEnabled && Math.abs(gestureState.dy) > 4,
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: () => {
-          onPriorityDragStart?.(item);
+          if (canDragReorder && onReorderDragStart) {
+            onReorderDragStart(item);
+          } else {
+            onPriorityDragStart?.(item);
+          }
         },
         onPanResponderMove: (_evt, gestureState) => {
-          const clampedDy = Math.max(-96, Math.min(96, gestureState.dy * 0.35));
+          const clampedDy = Math.max(-140, Math.min(140, gestureState.dy * 0.45));
           translateY.setValue(clampedDy);
-          const preview = resolvePriorityFromVerticalOffset(item.priority, gestureState.dy);
-          onPriorityDragHover?.(item, preview);
+          if (canDragReorder && onReorderDragMove) {
+            onReorderDragMove(item, gestureState.dy);
+          } else {
+            const preview = resolvePriorityFromVerticalOffset(item.priority, gestureState.dy);
+            onPriorityDragHover?.(item, preview);
+          }
         },
         onPanResponderRelease: (_evt, gestureState) => {
           Animated.spring(translateY, {
             toValue: 0,
             useNativeDriver: true,
           }).start();
-          const next = resolvePriorityFromVerticalOffset(item.priority, gestureState.dy);
-          onPriorityDragEnd?.(item, next);
+          if (canDragReorder && onReorderDragEnd) {
+            onReorderDragEnd(item, gestureState.dy);
+          } else {
+            const next = resolvePriorityFromVerticalOffset(item.priority, gestureState.dy);
+            onPriorityDragEnd?.(item, next);
+          }
         },
         onPanResponderTerminate: () => {
           Animated.spring(translateY, {
             toValue: 0,
             useNativeDriver: true,
           }).start();
-          onPriorityDragCancel?.();
+          if (canDragReorder && onReorderDragCancel) {
+            onReorderDragCancel();
+          } else {
+            onPriorityDragCancel?.();
+          }
         },
       }),
     [
-      canDragPriority,
+      isDragEnabled,
+      canDragReorder,
       item,
       onPriorityDragCancel,
       onPriorityDragEnd,
       onPriorityDragHover,
       onPriorityDragStart,
+      onReorderDragCancel,
+      onReorderDragEnd,
+      onReorderDragMove,
+      onReorderDragStart,
       translateY,
     ]
   );
@@ -117,17 +159,17 @@ export const TaskRow: React.FC<TaskRowProps> = ({
     <Animated.View
       style={{
         transform: [{ translateY }],
-        zIndex: isDraggingPriority ? 10 : 0,
+        zIndex: activeDragging ? 10 : 0,
       }}
     >
       <TouchableOpacity
         activeOpacity={0.8}
-        disabled={isDraggingPriority}
+        disabled={activeDragging}
         style={[
           styles.todoCard,
           {
             backgroundColor: theme.cardBg,
-            borderColor: isDraggingPriority ? theme.accent : theme.cardBorder,
+            borderColor: activeDragging ? theme.accent : theme.cardBorder,
             shadowColor: theme.shadowColor,
             borderLeftWidth: hasPriorityStripe ? 4 : 1,
             borderLeftColor: hasPriorityStripe ? priorityColor(prio, theme) : theme.cardBorder,
@@ -179,6 +221,28 @@ export const TaskRow: React.FC<TaskRowProps> = ({
         </Text>
 
         <View style={styles.badgeRow}>
+          {item.startedAt && !item.completed ? (
+            canEdit && onToggleStart ? (
+              <TouchableOpacity
+                style={[styles.pillBadge, { backgroundColor: theme.accent }]}
+                onPress={() => onToggleStart(item, Date.now())}
+                accessibilityRole="button"
+                accessibilityLabel={`Stop timer for ${item.text}`}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Text style={[styles.pillBadgeText, { color: "#FFFFFF" }]}>
+                  {formatElapsedTimerLabel(item.startedAt, now ?? item.startedAt)}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
+                <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
+                  {formatElapsedTimerLabel(item.startedAt, now ?? item.startedAt)}
+                </Text>
+              </View>
+            )
+          ) : null}
+
           {item.reminderAt ? (
             <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
               <Bell size={11} color={theme.accent} />
@@ -265,8 +329,28 @@ export const TaskRow: React.FC<TaskRowProps> = ({
               </Text>
             </View>
           ) : null}
+
+          {isDraggingReorder && dragPreviewLabel ? (
+            <View style={[styles.pillBadge, { backgroundColor: theme.accentLight }]}>
+              <Text style={[styles.pillBadgeText, { color: theme.accent }]}>
+                {dragPreviewLabel}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </View>
+
+      {canEdit && !item.completed && !item.startedAt && onToggleStart ? (
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => onToggleStart(item, Date.now())}
+          accessibilityRole="button"
+          accessibilityLabel={`Start timer for ${item.text}`}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+        >
+          <Play size={16} color={theme.accent} />
+        </TouchableOpacity>
+      ) : null}
 
       {canEdit && (
         <TouchableOpacity
@@ -280,16 +364,20 @@ export const TaskRow: React.FC<TaskRowProps> = ({
         </TouchableOpacity>
       )}
 
-      {canDragPriority && (
+      {isDragEnabled && (
         <View
           style={styles.actionBtn}
           {...panResponder.panHandlers}
           accessibilityRole="adjustable"
-          accessibilityLabel={`Drag to change priority for ${item.text}`}
+          accessibilityLabel={
+            canDragReorder
+              ? `Drag to reorder ${item.text}`
+              : `Drag to change priority for ${item.text}`
+          }
         >
           <GripVertical
             size={18}
-            color={isDraggingPriority ? theme.accent : theme.textMuted}
+            color={activeDragging ? theme.accent : theme.textMuted}
           />
         </View>
       )}

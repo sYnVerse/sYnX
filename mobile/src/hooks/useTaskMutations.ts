@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
-import type { TodoItem } from "../shared";
+import { applyOptimisticReorder, type TodoItem } from "../shared";
 import { useTheme } from "../context/ThemeContext";
 import { useToast } from "../context/ToastContext";
 import { syncTaskToNativeCalendar, removeTaskFromNativeCalendar } from "../services/calendar";
@@ -112,9 +112,12 @@ export function useTaskMutations(listId: string) {
   const createMutation = useMutation({
     mutationFn: async (newTodo: any) => {
       const res = await apiClient.post("/api/v1/todos", { ...newTodo, listId });
-      return res.data.todo as TodoItem;
+      return {
+        todo: res.data.todo as TodoItem,
+        unarchivedList: Boolean(res.data?.unarchivedList),
+      };
     },
-    onSuccess: (createdTodo) => {
+    onSuccess: ({ todo: createdTodo, unarchivedList }) => {
       triggerSuccessHaptic(hapticsEnabled);
       if (createdTodo) {
         queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
@@ -123,6 +126,15 @@ export function useTaskMutations(listId: string) {
         syncTaskToNativeCalendar(createdTodo, {
           listName: getCachedListName(queryClient, createdTodo.listId),
         }).catch(() => {});
+      }
+      if (unarchivedList) {
+        queryClient.setQueryData<{ isArchived?: boolean; archivedAt?: number | null } & Record<string, any>>(
+          ["list_meta", listId],
+          (old) => (old ? { ...old, isArchived: false, archivedAt: null } : old)
+        );
+        queryClient.invalidateQueries({ queryKey: ["lists"] });
+        queryClient.invalidateQueries({ queryKey: ["list_meta", listId] });
+        showSuccess("List unarchived");
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },
@@ -236,9 +248,70 @@ export function useTaskMutations(listId: string) {
     },
   });
 
+  type ReorderTasksVars = { orderedIds: string[]; parentId?: string | null };
+  type ReorderTasksContext = { previousTodos?: TodoItem[]; seq: number };
+  const reorderSeqRef = useRef(0);
+
+  const reorderMutation = useMutation<
+    TodoItem[] | undefined,
+    unknown,
+    ReorderTasksVars,
+    ReorderTasksContext
+  >({
+    mutationFn: async ({ orderedIds, parentId = null }: ReorderTasksVars) => {
+      const res = await apiClient.post("/api/v1/todos/reorder", {
+        listId,
+        parentId,
+        orderedIds,
+      });
+      return res.data?.todos as TodoItem[] | undefined;
+    },
+    onMutate: async ({ orderedIds, parentId = null }) => {
+      reorderSeqRef.current += 1;
+      const seq = reorderSeqRef.current;
+      const previousTodos = listId
+        ? queryClient.getQueryData<TodoItem[]>(["todos", listId])
+        : undefined;
+      if (listId) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          applyOptimisticReorder(old, orderedIds, parentId)
+        );
+        await queryClient.cancelQueries({ queryKey: ["todos", listId] });
+        if (reorderSeqRef.current === seq) {
+          queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+            applyOptimisticReorder(old, orderedIds, parentId)
+          );
+        }
+      }
+      return { previousTodos, seq };
+    },
+    onSuccess: (todos, _vars, context) => {
+      if (context?.seq !== reorderSeqRef.current) return;
+      triggerSuccessHaptic(hapticsEnabled);
+      if (listId && todos) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], todos);
+      }
+      if (listId) {
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+        queryClient.invalidateQueries({ queryKey: ["active_list_todos_preview", listId] });
+      }
+    },
+    onError: (e, _vars, context) => {
+      if (context?.seq !== reorderSeqRef.current) return;
+      if (listId && context.previousTodos !== undefined) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], context.previousTodos);
+      }
+      if (listId) {
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      }
+      onMutationError(e, "Couldn't reorder tasks");
+    },
+  });
+
   return {
     createMutation,
     updateMutation,
+    reorderMutation,
     deleteMutation,
     reviewDeleteMutation,
     slowPendingIds,

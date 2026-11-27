@@ -2,8 +2,11 @@ import { describe, it, expect, vi } from "vitest";
 import {
   applyOptimisticTaskPriority,
   canDragTaskForPriority,
+  canDragTaskToReorder,
   PRIORITY_LEVELS_DESC,
+  resolveListReorderDragOutcome,
   resolvePriorityFromVerticalOffset,
+  resolvePriorityModeDragOutcome,
   sortTasks,
   type TodoItem,
 } from "../shared";
@@ -188,29 +191,26 @@ describe("mobile drag-and-drop task priority helpers (#109)", () => {
 
     const reactPaths = [
       "react",
-      "../mobile/node_modules/react",
-      "../mobile/node_modules/react/index.js",
+      "../node_modules/react",
       "../node_modules/react/index.js",
     ];
     const jsxPaths = [
       "react/jsx-runtime",
-      "../mobile/node_modules/react/jsx-runtime",
-      "../mobile/node_modules/react/jsx-runtime.js",
+      "../node_modules/react/jsx-runtime",
       "../node_modules/react/jsx-runtime.js",
       "react/jsx-dev-runtime",
-      "../mobile/node_modules/react/jsx-dev-runtime",
-      "../mobile/node_modules/react/jsx-dev-runtime.js",
+      "../node_modules/react/jsx-dev-runtime",
       "../node_modules/react/jsx-dev-runtime.js",
     ];
     const rnPaths = [
       "react-native",
-      "../mobile/node_modules/react-native",
-      "../mobile/node_modules/react-native/index.js",
+      "../node_modules/react-native",
+      "../node_modules/react-native/index.js",
     ];
     const iconPaths = [
       "lucide-react-native",
-      "../mobile/node_modules/lucide-react-native",
-      "../mobile/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js",
+      "../node_modules/lucide-react-native",
+      "../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js",
     ];
 
     for (const p of reactPaths) vi.doMock(p, () => reactStub);
@@ -300,5 +300,123 @@ describe("mobile drag-and-drop task priority helpers (#109)", () => {
     vi.doUnmock("../mobile/src/context/ThemeContext");
     vi.doUnmock("../mobile/src/theme/theme");
     vi.doUnmock("../mobile/src/utils/format");
+  });
+
+  it("evaluates canDragTaskToReorder across manual, priority, and tied/untied non-manual modes (#212)", () => {
+    const tiedA = makeTask({ id: "a", priority: "high", createdAt: 100 });
+    const tiedB = makeTask({ id: "b", priority: "high", createdAt: 200 });
+    const soloMed = makeTask({ id: "c", priority: "medium", createdAt: 300 });
+    const siblings = [tiedA, tiedB, soloMed];
+
+    expect(
+      canDragTaskToReorder({ canEdit: true, sortMode: "manual", task: soloMed, activeSiblings: siblings })
+    ).toBe(true);
+    expect(
+      canDragTaskToReorder({ canEdit: true, sortMode: "manual", task: soloMed, activeSiblings: [soloMed] })
+    ).toBe(false);
+
+    // Priority mode enables drag on top-level tasks regardless of ties, but not untied subtasks
+    expect(
+      canDragTaskToReorder({ canEdit: true, sortMode: "priority", task: soloMed, activeSiblings: siblings })
+    ).toBe(true);
+    const soloSub = makeTask({ id: "s1", parentId: "a", priority: "medium" });
+    expect(
+      canDragTaskToReorder({ canEdit: true, sortMode: "priority", task: soloSub, activeSiblings: [soloSub] })
+    ).toBe(false);
+
+    // Reminder mode enables drag only for tasks that share primary sort key with an adjacent sibling
+    expect(
+      canDragTaskToReorder({ canEdit: true, sortMode: "reminder", task: tiedA, activeSiblings: siblings })
+    ).toBe(true);
+    expect(
+      canDragTaskToReorder({ canEdit: true, sortMode: "reminder", task: soloMed, activeSiblings: siblings })
+    ).toBe(false);
+
+    // Disabled when read-only, completed, or pending delete
+    expect(
+      canDragTaskToReorder({ canEdit: false, sortMode: "manual", task: tiedA, activeSiblings: siblings })
+    ).toBe(false);
+    expect(
+      canDragTaskToReorder({
+        canEdit: true,
+        sortMode: "manual",
+        task: { ...tiedA, completed: true },
+        activeSiblings: siblings,
+      })
+    ).toBe(false);
+    expect(
+      canDragTaskToReorder({
+        canEdit: true,
+        sortMode: "manual",
+        task: { ...tiedA, pendingDelete: true },
+        activeSiblings: siblings,
+      })
+    ).toBe(false);
+  });
+
+  it("resolvePriorityModeDragOutcome reorders within a priority tier and changes priority across boundaries (#212)", () => {
+    const active = [
+      makeTask({ id: "h1", priority: "high" }),
+      makeTask({ id: "h2", priority: "high" }),
+      makeTask({ id: "h3", priority: "high" }),
+      makeTask({ id: "l1", priority: "low" }),
+    ];
+
+    // Drag h1 down 1 row (within High group) -> reorders inside High group
+    expect(resolvePriorityModeDragOutcome(active, "h1", 64, 64, 44)).toEqual({
+      kind: "reorder",
+      targetIndex: 1,
+      orderedGroupIds: ["h2", "h1", "h3"],
+      positionInGroup: 2,
+      groupSize: 3,
+    });
+
+    // Drag h3 past the bottom of High group by 44px -> demotes to Medium (skipping empty medium tier)
+    expect(resolvePriorityModeDragOutcome(active, "h3", 44, 64, 44)).toEqual({
+      kind: "priority",
+      nextPriority: "medium",
+    });
+
+    // Single-task tier l1 dragged upward 44px -> promotes directly to Medium
+    expect(resolvePriorityModeDragOutcome(active, "l1", -44, 64, 44)).toEqual({
+      kind: "priority",
+      nextPriority: "medium",
+    });
+
+    // Small jitter stays none
+    expect(resolvePriorityModeDragOutcome(active, "h1", 10, 64, 44)).toEqual({
+      kind: "none",
+    });
+  });
+
+  it("resolveListReorderDragOutcome moves freely in manual mode and clamps to tied siblings otherwise (#212)", () => {
+    const siblings = [
+      makeTask({ id: "r1", reminderAt: 1000, createdAt: 10 }),
+      makeTask({ id: "r2", reminderAt: 1000, createdAt: 20 }),
+      makeTask({ id: "r3", reminderAt: 2000, createdAt: 30 }),
+    ];
+
+    // Manual mode allows dragging across non-tied boundaries
+    expect(resolveListReorderDragOutcome(siblings, "r1", 128, "manual", 64)).toEqual({
+      kind: "reorder",
+      targetIndex: 2,
+      orderedIds: ["r2", "r3", "r1"],
+      positionInGroup: 3,
+      groupSize: 3,
+    });
+
+    // Reminder mode clamps r1 within its tied [r1, r2] group even with a huge dy
+    expect(resolveListReorderDragOutcome(siblings, "r1", 300, "reminder", 64)).toEqual({
+      kind: "reorder",
+      targetIndex: 1,
+      orderedIds: ["r2", "r1", "r3"],
+      positionInGroup: 2,
+      groupSize: 2,
+    });
+
+    // r3 has no tied neighbor in reminder mode -> none
+    expect(resolveListReorderDragOutcome(siblings, "r3", -128, "reminder", 64)).toEqual({
+      kind: "none",
+    });
   });
 });

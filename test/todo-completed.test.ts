@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach } from "vitest";
-import { TodoManager } from "../app/to-do-manager";
+import { TodoManager } from "../backend/services/to-do-manager";
 import { applySetCompletedLocal, formatRescheduledToast } from "../shared";
 import { env } from "cloudflare:test";
 

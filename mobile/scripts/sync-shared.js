@@ -10,6 +10,7 @@ if (fs.existsSync(rootSharedDir)) {
   }
   const files = fs.readdirSync(rootSharedDir);
   for (const file of files) {
+    if (!file.endsWith(".ts")) continue;
     const src = path.join(rootSharedDir, file);
     const dest = path.join(mobileSharedDir, file);
     if (fs.statSync(src).isFile()) {

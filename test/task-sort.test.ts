@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TASK_SORT_MODE,
   TASK_SORT_OPTIONS,
+  applyOptimisticReorder,
+  areTasksTiedInSortMode,
+  canMoveTaskInDirection,
+  hasTiedNeighborInSortMode,
   isTaskSortMode,
   resolveTaskSortMode,
   sortTasks,
@@ -15,6 +19,8 @@ interface T {
   priority: PriorityLevel;
   createdAt: number;
   reminderAt?: number | null;
+  sortOrder?: number | null;
+  parentId?: string | null;
   subtasks?: T[];
 }
 
@@ -28,12 +34,13 @@ function task(id: string, opts: Partial<Omit<T, "id">> = {}): T {
 const ids = (list: { id: string }[]) => list.map((t) => t.id);
 
 describe("task sort options", () => {
-  it("offers the same four options on web and mobile, with Reminder Time as the default", () => {
+  it("offers the same five options on web and mobile, with Reminder Time as the default", () => {
     expect(TASK_SORT_OPTIONS.map((o) => [o.value, o.label])).toEqual([
       ["created", "Date Created"],
       ["priority", "Priority"],
       ["reminder", "Reminder Time"],
       ["alphabetical", "Alphabetical"],
+      ["manual", "Manual"],
     ]);
     expect(DEFAULT_TASK_SORT_MODE).toBe("reminder");
   });
@@ -137,20 +144,21 @@ describe("sortTasks: Alphabetical", () => {
 
 describe("subtasks", () => {
   const subs = () => [
-    task("s-old", { text: "z", priority: "none", createdAt: 100 }),
-    task("s-mid", { text: "m", priority: "low", reminderAt: 5000, createdAt: 200 }),
-    task("s-new", { text: "a", priority: "high", createdAt: 300 }),
+    task("s-old", { text: "z", priority: "none", createdAt: 100, sortOrder: 1 }),
+    task("s-mid", { text: "m", priority: "low", reminderAt: 5000, createdAt: 200, sortOrder: 2 }),
+    task("s-new", { text: "a", priority: "high", createdAt: 300, sortOrder: 0 }),
   ];
 
   it("stay under their parent and follow the list's sort", () => {
     const tasks = [task("b-parent", { text: "B", subtasks: subs() }), task("a-parent", { text: "A" })];
-    const subIds = (mode: "created" | "priority" | "reminder" | "alphabetical") =>
+    const subIds = (mode: "created" | "priority" | "reminder" | "alphabetical" | "manual") =>
       ids(sortTasks(tasks, mode).find((t) => t.id === "b-parent")?.subtasks ?? []);
 
     expect(subIds("created")).toEqual(["s-new", "s-mid", "s-old"]);
     expect(subIds("priority")).toEqual(["s-new", "s-mid", "s-old"]);
     expect(subIds("reminder")).toEqual(["s-mid", "s-new", "s-old"]);
     expect(subIds("alphabetical")).toEqual(["s-new", "s-mid", "s-old"]);
+    expect(subIds("manual")).toEqual(["s-new", "s-old", "s-mid"]);
     expect(ids(sortTasks(tasks, "alphabetical"))).toEqual(["a-parent", "b-parent"]);
   });
 
@@ -170,9 +178,10 @@ describe("subtasks", () => {
 });
 
 describe("resolveTaskSortMode", () => {
-  it("uses the list's choice when it is one of the four sorts", () => {
+  it("uses the list's choice when it is one of the five sorts", () => {
     expect(resolveTaskSortMode("reminder", "alphabetical")).toBe("alphabetical");
     expect(resolveTaskSortMode("reminder", "created")).toBe("created");
+    expect(resolveTaskSortMode("reminder", "manual")).toBe("manual");
   });
 
   it("falls back for App default, nothing saved, or an unknown value", () => {
@@ -182,13 +191,154 @@ describe("resolveTaskSortMode", () => {
     expect(resolveTaskSortMode("reminder", "due_time")).toBe("reminder");
   });
 
-  it("recognizes only the four sorts", () => {
-    expect(["created", "priority", "reminder", "alphabetical"].every(isTaskSortMode)).toBe(true);
+  it("recognizes only the five sorts", () => {
+    expect(["created", "priority", "reminder", "alphabetical", "manual"].every(isTaskSortMode)).toBe(true);
     expect(isTaskSortMode("app_default")).toBe(false);
     expect(isTaskSortMode(undefined)).toBe(false);
   });
 
   it("uses one localStorage key per list on web", () => {
     expect(taskSortStorageKey("abc")).toBe("synx_task_sort:abc");
+  });
+});
+
+describe("custom sortOrder, tie-breaking, and reorder helpers (#212)", () => {
+  it("sortTasks('manual') orders by sortOrder ascending with nulls last and createdAt DESC fallback", () => {
+    const tasks = [
+      task("null-old", { createdAt: 100, sortOrder: null }),
+      task("ord-2", { createdAt: 500, priority: "high", sortOrder: 2 }),
+      task("ord-0", { createdAt: 10, priority: "none", sortOrder: 0 }),
+      task("null-new", { createdAt: 900, sortOrder: undefined }),
+      task("ord-1", { createdAt: 200, sortOrder: 1 }),
+    ];
+    expect(ids(sortTasks(tasks, "manual"))).toEqual([
+      "ord-0",
+      "ord-1",
+      "ord-2",
+      "null-new",
+      "null-old",
+    ]);
+  });
+
+  it("breaks primary ties with sortOrder across priority, reminder, alphabetical, and equal-timestamp created", () => {
+    expect(
+      ids(
+        sortTasks(
+          [
+            task("p1", { priority: "high", createdAt: 200, sortOrder: 1 }),
+            task("p0", { priority: "high", createdAt: 100, sortOrder: 0 }),
+            task("low", { priority: "low", createdAt: 999, sortOrder: 0 }),
+          ],
+          "priority"
+        )
+      )
+    ).toEqual(["p0", "p1", "low"]);
+
+    expect(
+      ids(
+        sortTasks(
+          [
+            task("r1", { reminderAt: 5000, createdAt: 200, sortOrder: 2 }),
+            task("r0", { reminderAt: 5000, createdAt: 100, sortOrder: 1 }),
+            task("later", { reminderAt: 9000, sortOrder: 0 }),
+          ],
+          "reminder"
+        )
+      )
+    ).toEqual(["r0", "r1", "later"]);
+
+    expect(
+      ids(
+        sortTasks(
+          [
+            task("a1", { text: "Milk", createdAt: 300, sortOrder: 5 }),
+            task("a0", { text: "milk", createdAt: 100, sortOrder: 2 }),
+          ],
+          "alphabetical"
+        )
+      )
+    ).toEqual(["a0", "a1"]);
+
+    // Date Created still primarily orders by createdAt DESC when timestamps differ
+    expect(
+      ids(
+        sortTasks(
+          [
+            task("older-ord0", { createdAt: 1000, sortOrder: 0 }),
+            task("newer-ord2", { createdAt: 2000, sortOrder: 2 }),
+            task("tie-b", { createdAt: 1500, sortOrder: 1 }),
+            task("tie-a", { createdAt: 1500, sortOrder: 0 }),
+          ],
+          "created"
+        )
+      )
+    ).toEqual(["newer-ord2", "tie-a", "tie-b", "older-ord0"]);
+  });
+
+  it("checks tied neighbors and directional moves accurately", () => {
+    const ordered = [
+      task("h1", { priority: "high", sortOrder: 0 }),
+      task("h2", { priority: "high", sortOrder: 1 }),
+      task("m1", { priority: "medium", sortOrder: 2 }),
+    ];
+    expect(areTasksTiedInSortMode("priority", ordered[0], ordered[1])).toBe(true);
+    expect(areTasksTiedInSortMode("priority", ordered[1], ordered[2])).toBe(false);
+    expect(areTasksTiedInSortMode("manual", ordered[1], ordered[2])).toBe(true);
+
+    expect(canMoveTaskInDirection(ordered, "h1", "up", "priority")).toEqual({
+      canMove: false,
+      swapWithId: null,
+      orderedIds: null,
+    });
+    expect(canMoveTaskInDirection(ordered, "h1", "down", "priority")).toEqual({
+      canMove: true,
+      swapWithId: "h2",
+      orderedIds: ["h2", "h1", "m1"],
+    });
+    expect(canMoveTaskInDirection(ordered, "h2", "down", "priority").canMove).toBe(false);
+    expect(canMoveTaskInDirection(ordered, "h2", "down", "manual")).toEqual({
+      canMove: true,
+      swapWithId: "m1",
+      orderedIds: ["h1", "m1", "h2"],
+    });
+
+    expect(hasTiedNeighborInSortMode(ordered, "m1", "priority")).toBe(false);
+    expect(hasTiedNeighborInSortMode(ordered, "m1", "manual")).toBe(true);
+  });
+
+  it("applyOptimisticReorder preserves untargeted sibling slots and scopes to parentId", () => {
+    const todos = [
+      { id: "a", parentId: null, sortOrder: 0, createdAt: 10 },
+      { id: "b", parentId: null, sortOrder: 1, createdAt: 20 },
+      { id: "c", parentId: null, sortOrder: 2, createdAt: 30 },
+      { id: "d", parentId: null, sortOrder: 3, createdAt: 40 },
+      { id: "sub-1", parentId: "a", sortOrder: 0, createdAt: 50 },
+      { id: "sub-2", parentId: "a", sortOrder: 1, createdAt: 60 },
+    ];
+
+    // Subset reorder of b and c swaps their slots without moving a (0) or d (3) or subtasks
+    const reorderedSubset = applyOptimisticReorder(todos, ["c", "b"], null)!;
+    expect(
+      reorderedSubset.filter((t) => !t.parentId).map((t) => [t.id, t.sortOrder])
+    ).toEqual([
+      ["a", 0],
+      ["b", 2],
+      ["c", 1],
+      ["d", 3],
+      ]);
+    expect(
+      reorderedSubset.filter((t) => t.parentId === "a").map((t) => [t.id, t.sortOrder])
+    ).toEqual([
+      ["sub-1", 0],
+      ["sub-2", 1],
+    ]);
+
+    const reorderedSubs = applyOptimisticReorder(todos, ["sub-2", "sub-1"], "a")!;
+    expect(
+      reorderedSubs.filter((t) => t.parentId === "a").map((t) => [t.id, t.sortOrder])
+    ).toEqual([
+      ["sub-1", 1],
+      ["sub-2", 0],
+    ]);
   });
 });

@@ -2,30 +2,34 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   AUTH_REFRESH_COOKIE,
   AUTH_SESSION_COOKIE,
+  AUTH_SESSION_ID_COOKIE,
   ACCESS_TOKEN_MAX_AGE_SECONDS,
   REFRESH_TOKEN_MAX_AGE_SECONDS,
   serializeAuthSessionCookie,
   serializeAuthRefreshCookie,
   buildAuthClearCookieHeaders,
   parseRefreshCookie,
-} from "../app/auth-cookies.server";
+} from "../backend/services/auth-cookies.server";
 import {
   getOptionalUser,
   getRefreshedCookies,
   requireUser,
   trySilentRefresh,
   verifyBearerToken,
-} from "../app/auth.server";
+} from "../backend/services/auth.server";
 
-// Mock @openauthjs/openauth/client
+// Mock @openauthjs/openauth/client (token exchange/refresh) and the ES256 JWKS verifier
 const mockRefresh = vi.fn();
 const mockVerify = vi.fn();
 
 vi.mock("@openauthjs/openauth/client", () => ({
   createClient: vi.fn(() => ({
     refresh: (...args: any[]) => mockRefresh(...args),
-    verify: (...args: any[]) => mockVerify(...args),
   })),
+}));
+
+vi.mock("../backend/services/jwks-verifier.server", () => ({
+  verifyAccessJwtWithJwks: (...args: any[]) => mockVerify(...args),
 }));
 
 describe("web session cookie helpers", () => {
@@ -53,11 +57,12 @@ describe("web session cookie helpers", () => {
     expect(cookie).toContain("Secure");
   });
 
-  it("buildAuthClearCookieHeaders emits Max-Age=0 for session, refresh, and PKCE", () => {
+  it("buildAuthClearCookieHeaders emits Max-Age=0 for session, refresh, session id, and PKCE", () => {
     const headers = buildAuthClearCookieHeaders("https://synx.christran.io/");
     const cookies = headers.getSetCookie?.() ?? [];
     expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_COOKIE}=;`) && c.includes("Max-Age=0"))).toBe(true);
     expect(cookies.some((c) => c.startsWith(`${AUTH_REFRESH_COOKIE}=;`) && c.includes("Max-Age=0"))).toBe(true);
+    expect(cookies.some((c) => c.startsWith(`${AUTH_SESSION_ID_COOKIE}=;`) && c.includes("Max-Age=0"))).toBe(true);
     expect(cookies.some((c) => c.startsWith("synx_oauth_pkce=;") && c.includes("Max-Age=0"))).toBe(true);
   });
 
@@ -95,7 +100,6 @@ describe("web silent refresh flow", () => {
     });
 
     mockVerify.mockResolvedValueOnce({
-      err: false,
       aud: "synx",
       subject: {
         type: "user",
@@ -123,7 +127,7 @@ describe("web silent refresh flow", () => {
     });
 
     // 1. Initial verify fails because access token expired
-    mockVerify.mockResolvedValueOnce({ err: true });
+    mockVerify.mockResolvedValueOnce(null);
 
     // 2. Refresh succeeds
     mockRefresh.mockResolvedValueOnce({
@@ -133,7 +137,6 @@ describe("web silent refresh flow", () => {
 
     // 3. Verify newly minted token succeeds
     mockVerify.mockResolvedValueOnce({
-      err: false,
       aud: "synx",
       subject: {
         type: "user",
@@ -153,7 +156,7 @@ describe("web silent refresh flow", () => {
       },
     });
 
-    mockVerify.mockResolvedValueOnce({ err: true });
+    mockVerify.mockResolvedValueOnce(null);
     mockRefresh.mockResolvedValueOnce({ err: true });
 
     await expect(requireUser(req, {})).rejects.toThrow();
@@ -166,13 +169,12 @@ describe("web silent refresh flow", () => {
       },
     });
 
-    mockVerify.mockResolvedValueOnce({ err: true });
+    mockVerify.mockResolvedValueOnce(null);
     mockRefresh.mockResolvedValueOnce({
       err: false,
       tokens: { access: "fresh-access" },
     });
     mockVerify.mockResolvedValueOnce({
-      err: false,
       aud: "synx",
       subject: {
         type: "user",
@@ -192,13 +194,12 @@ describe("web silent refresh flow", () => {
       },
     });
 
-    mockVerify.mockResolvedValueOnce({ err: true });
+    mockVerify.mockResolvedValueOnce(null);
     mockRefresh.mockResolvedValueOnce({
       err: false,
       tokens: { access: "api-refreshed-token" },
     });
     mockVerify.mockResolvedValueOnce({
-      err: false,
       aud: "synx",
       subject: {
         type: "user",

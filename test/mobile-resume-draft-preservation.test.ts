@@ -462,6 +462,8 @@ const mocks = vi.hoisted(() => {
     OPENAUTH_CLIENT_ID: "synx",
     OPENAUTH_TOKEN_ENDPOINT: "https://auth.christran.io/token",
     sessionRefresh,
+    registerMobileSession: vi.fn(async () => null),
+    revokeMobileSession: vi.fn(async () => {}),
     setAuthFailureHandler: vi.fn((fn: (() => Promise<void>) | null) => {
       authFailureHandler = fn;
     }),
@@ -508,6 +510,7 @@ const mocks = vi.hoisted(() => {
     ListTree: icon("ListTree"),
     Repeat: icon("Repeat"),
     Bell: icon("Bell"),
+    Play: icon("Play"),
     GripVertical: icon("GripVertical"),
   };
 
@@ -535,50 +538,47 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("react", () => harness.reactMock);
-vi.mock("../mobile/node_modules/react", () => harness.reactMock);
-vi.mock("../mobile/node_modules/react/index.js", () => harness.reactMock);
+vi.mock("../node_modules/react", () => harness.reactMock);
 vi.mock("../node_modules/react/index.js", () => harness.reactMock);
 vi.mock("react/jsx-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-runtime.js", () => harness.jsxRuntimeMock);
+vi.mock("../node_modules/react/jsx-runtime", () => harness.jsxRuntimeMock);
 vi.mock("../node_modules/react/jsx-runtime.js", () => harness.jsxRuntimeMock);
 vi.mock("react/jsx-dev-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-dev-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-dev-runtime.js", () => harness.jsxRuntimeMock);
+vi.mock("../node_modules/react/jsx-dev-runtime", () => harness.jsxRuntimeMock);
 vi.mock("../node_modules/react/jsx-dev-runtime.js", () => harness.jsxRuntimeMock);
 vi.mock("react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native/index.js", () => mocks.reactNative);
+vi.mock("../node_modules/react-native", () => mocks.reactNative);
+vi.mock("../node_modules/react-native/index.js", () => mocks.reactNative);
 vi.mock("@react-native-async-storage/async-storage", () => mocks.asyncStorage);
-vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
-vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage/lib/commonjs/index.js", () => mocks.asyncStorage);
+vi.mock("../node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
+vi.mock("../node_modules/@react-native-async-storage/async-storage/lib/commonjs/index.js", () => mocks.asyncStorage);
 vi.mock("expo-secure-store", () => mocks.secureStoreMod);
-vi.mock("../mobile/node_modules/expo-secure-store", () => mocks.secureStoreMod);
-vi.mock("../mobile/node_modules/expo-secure-store/build/SecureStore.js", () => mocks.secureStoreMod);
+vi.mock("../node_modules/expo-secure-store", () => mocks.secureStoreMod);
+vi.mock("../node_modules/expo-secure-store/build/SecureStore.js", () => mocks.secureStoreMod);
 vi.mock("expo-web-browser", () => ({ maybeCompleteAuthSession: vi.fn(), openAuthSessionAsync: vi.fn() }));
-vi.mock("../mobile/node_modules/expo-web-browser", () => ({ maybeCompleteAuthSession: vi.fn(), openAuthSessionAsync: vi.fn() }));
-vi.mock("../mobile/node_modules/expo-web-browser/build/WebBrowser.js", () => ({ maybeCompleteAuthSession: vi.fn(), openAuthSessionAsync: vi.fn() }));
+vi.mock("../node_modules/expo-web-browser", () => ({ maybeCompleteAuthSession: vi.fn(), openAuthSessionAsync: vi.fn() }));
+vi.mock("../node_modules/expo-web-browser/build/WebBrowser.js", () => ({ maybeCompleteAuthSession: vi.fn(), openAuthSessionAsync: vi.fn() }));
 vi.mock("expo-auth-session", () => ({ useAuthRequest: () => [null, null, vi.fn(async () => ({ type: "cancel" }))] }));
-vi.mock("../mobile/node_modules/expo-auth-session", () => ({ useAuthRequest: () => [null, null, vi.fn(async () => ({ type: "cancel" }))] }));
-vi.mock("../mobile/node_modules/expo-auth-session/build/index.js", () => ({ useAuthRequest: () => [null, null, vi.fn(async () => ({ type: "cancel" }))] }));
+vi.mock("../node_modules/expo-auth-session", () => ({ useAuthRequest: () => [null, null, vi.fn(async () => ({ type: "cancel" }))] }));
+vi.mock("../node_modules/expo-auth-session/build/index.js", () => ({ useAuthRequest: () => [null, null, vi.fn(async () => ({ type: "cancel" }))] }));
 vi.mock("expo-linking", () => mocks.linkingMod);
-vi.mock("../mobile/node_modules/expo-linking", () => mocks.linkingMod);
-vi.mock("../mobile/node_modules/expo-linking/build/Linking.js", () => mocks.linkingMod);
+vi.mock("../node_modules/expo-linking", () => mocks.linkingMod);
+vi.mock("../node_modules/expo-linking/build/Linking.js", () => mocks.linkingMod);
 vi.mock("expo-haptics", () => mocks.hapticsMod);
-vi.mock("../mobile/node_modules/expo-haptics", () => mocks.hapticsMod);
-vi.mock("../mobile/node_modules/expo-haptics/build/Haptics.js", () => mocks.hapticsMod);
+vi.mock("../node_modules/expo-haptics", () => mocks.hapticsMod);
+vi.mock("../node_modules/expo-haptics/build/Haptics.js", () => mocks.hapticsMod);
 vi.mock("expo-status-bar", () => ({ StatusBar: () => null }));
-vi.mock("../mobile/node_modules/expo-status-bar", () => ({ StatusBar: () => null }));
-vi.mock("../mobile/node_modules/expo-status-bar/build/StatusBar.js", () => ({ StatusBar: () => null }));
+vi.mock("../node_modules/expo-status-bar", () => ({ StatusBar: () => null }));
+vi.mock("../node_modules/expo-status-bar/build/StatusBar.js", () => ({ StatusBar: () => null }));
 vi.mock("@expo/ui/community/datetime-picker", () => ({ DateTimePicker: () => null }));
-vi.mock("../mobile/node_modules/@expo/ui/community/datetime-picker", () => ({ DateTimePicker: () => null }));
-vi.mock("../mobile/node_modules/@expo/ui/build/community/datetime-picker/index.js", () => ({ DateTimePicker: () => null }));
+vi.mock("../node_modules/@expo/ui/community/datetime-picker", () => ({ DateTimePicker: () => null }));
+vi.mock("../node_modules/@expo/ui/build/community/datetime-picker/index.js", () => ({ DateTimePicker: () => null }));
 vi.mock("react-native-safe-area-context", () => mocks.safeAreaMod);
-vi.mock("../mobile/node_modules/react-native-safe-area-context", () => mocks.safeAreaMod);
-vi.mock("../mobile/node_modules/react-native-safe-area-context/lib/commonjs/index.js", () => mocks.safeAreaMod);
+vi.mock("../node_modules/react-native-safe-area-context", () => mocks.safeAreaMod);
+vi.mock("../node_modules/react-native-safe-area-context/lib/commonjs/index.js", () => mocks.safeAreaMod);
 vi.mock("lucide-react-native", () => mocks.iconsMod);
-vi.mock("../mobile/node_modules/lucide-react-native", () => mocks.iconsMod);
-vi.mock("../mobile/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js", () => mocks.iconsMod);
+vi.mock("../node_modules/lucide-react-native", () => mocks.iconsMod);
+vi.mock("../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js", () => mocks.iconsMod);
 vi.mock("../mobile/src/api/client", () => mocks.clientModule);
 vi.mock("../mobile/src/services/timeZoneSync", () => ({
   checkHomeTimeZone: vi.fn(async () => {}),
@@ -643,13 +643,13 @@ vi.mock("../mobile/src/screens/SettingsScreen", () => ({
   SettingsScreen: () => null,
 }));
 
-import { QueryClient, QueryClientProvider } from "../mobile/node_modules/@tanstack/react-query/build/modern/index.js";
+import { QueryClient, QueryClientProvider } from "../node_modules/@tanstack/react-query/build/modern/index.js";
 import { ThemeProvider } from "../mobile/src/context/ThemeContext";
 import { ToastProvider } from "../mobile/src/context/ToastContext";
 import { AuthProvider } from "../mobile/src/context/AuthContext";
 import { BottomTabNavigator } from "../mobile/src/navigation/BottomTabNavigator";
 import { STORAGE_KEY_LAST_ACTIVE_LIST_ID } from "../mobile/src/services/widgetPreferences";
-import type { TodoItem, TodoList } from "../shared";
+import { MOBILE_VERSION, type TodoItem, type TodoList } from "../shared";
 
 function makeJwt(sub: string, email: string) {
   const header = btoa(JSON.stringify({ alg: "none", typ: "JWT" }));
@@ -697,7 +697,7 @@ describe("mobile resume and cached startup (#198)", () => {
     mocks.linkingListeners.length = 0;
     vi.clearAllMocks();
 
-    mocks.storage.set("last_seen_changelog_version", "v3.9.0");
+    mocks.storage.set("last_seen_changelog_version", MOBILE_VERSION);
     queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false, staleTime: 1000 * 60 * 5 },

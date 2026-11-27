@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import todoPageSource from "../app/features/list/TodoPage.tsx?raw";
+import todoPageSource from "../web/app/features/list/TodoPage.tsx?raw";
 
 // Touch screens have no hover, so header controls that only appear on hover
 // are invisible on phones until tapped. They must stay visible there.

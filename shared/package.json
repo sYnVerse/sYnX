@@ -1,0 +1,15 @@
+{
+  "name": "@synx/shared",
+  "version": "1.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts",
+    "./*": "./*.ts"
+  },
+  "dependencies": {
+    "chrono-node": "2.10.3",
+    "valibot": "^1.5.0"
+  }
+}

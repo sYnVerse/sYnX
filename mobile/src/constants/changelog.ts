@@ -6,6 +6,41 @@ export { MOBILE_APP_VERSION, MOBILE_VERSION };
 export const MOBILE_CHANGELOG: ReleaseNote[] = [
   {
     version: MOBILE_VERSION,
+    date: "2026-11-26",
+    title: "What's new?",
+    changes: [
+      {
+        type: "NEW",
+        text: "Smart quick add detects dates, times, repeats, priority, and duration as you type new tasks, with one-tap chips to remove any parsed detail.",
+      },
+      {
+        type: "NEW",
+        text: "Start timers right from any task row, see actual or average completion times in task details, and view running timer badges on home screen widgets with accurate check-off times.",
+      },
+      {
+        type: "NEW",
+        text: "Toggle Smart Quick Add in Settings to keep typed task text literal, tap a duration quick pick (15m, 30m, 1h, Skip) in the toast after untimed check-offs, and Undo repeating completions cleanly (restoring reminders and moving your calendar event back).",
+      },
+      {
+        type: "NEW",
+        text: "Archive finished lists to hide them from your active lists and home screen widgets without deleting them (with a collapsible Archived section, completion archive suggestions you can toggle in Settings, and automatic unarchiving when you add a new task).",
+      },
+      {
+        type: "NEW",
+        text: "Custom Manual sort mode and drag-to-reorder handles for active tasks and subtasks, including dragging within a Priority tier to reorder or across tiers to change priority, synced with web.",
+      },
+      {
+        type: "IMPR",
+        text: "View activity is now available for all of your lists, including private lists.",
+      },
+      {
+        type: "FIX",
+        text: "Fixed home screen list widgets so only tapping the checkbox completes a task (tapping the task opens it), checked tasks stay in place with an Undo button for about 10 seconds without shifting other rows, and accidental quick double taps are ignored.",
+      },
+    ],
+  },
+  {
+    version: "v3.9.0",
     date: "2026-11-14",
     title: "What's new?",
     changes: [

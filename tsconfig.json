@@ -1,31 +1,41 @@
 {
   "include": [
-    ".react-router/types/**/*",
-    "worker-configuration.d.ts",
+    "web/.react-router/types/**/*",
+    "backend/worker-configuration.d.ts",
     "env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    "**/.server/**/*.ts",
-    "**/.server/**/*.tsx",
-    "**/.client/**/*.ts",
-    "**/.client/**/*.tsx"
+    "web/app/**/*.ts",
+    "web/app/**/*.tsx",
+    "backend/**/*.ts",
+    "shared/**/*.ts",
+    "test/**/*.ts",
+    "e2e/**/*.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
   ],
   "exclude": [
     "mobile/**/*",
     "node_modules/**/*",
+    "web/build/**/*",
     // These tests import mobile code that pulls in React Native, whose global
     // types (e.g. FormData) clash with the web DOM types. They are type-checked
     // with the mobile types by test/tsconfig.mobile.json instead.
     "test/mobile-calendar-sync.test.ts",
     "test/mobile-calendar-soft-ask-context.test.ts",
     "test/mobile-calendar-reconcile.test.ts",
+    "test/mobile-dev-test-auth.test.ts",
     "test/mobile-optimistic-mutations.test.ts",
     "test/mobile-sign-out-cleanup.test.ts",
     "test/mobile-updates.test.ts",
     "test/mobile-resume-draft-preservation.test.ts",
     "test/mobile-reminder-notification-actions.test.ts",
     "test/mobile-task-priority-drag.test.ts",
-    "test/mobile-complete-subtasks-prompt.test.ts"
+    "test/mobile-complete-subtasks-prompt.test.ts",
+    "test/mobile-quick-add.test.ts",
+    "test/mobile-timer-and-widget-ops.test.ts",
+    "test/mobile-issue-104.test.ts",
+    "test/mobile-widget-sync-replay.test.ts",
+    "test/mobile-list-archives.test.ts",
+    "test/widget-pinned-toggle.test.ts"
   ],
   "compilerOptions": {
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
@@ -36,7 +46,7 @@
       "@cloudflare/vitest-pool-workers",
       "node"
     ],
-    "rootDirs": [".", "./.react-router/types"],
+    "rootDirs": [".", "./web", "./web/.react-router/types"],
     "isolatedModules": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
@@ -48,9 +58,11 @@
     "allowJs": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
     "paths": {
-      "~/*": ["./app/*"]
+      "~/*": ["./web/app/*"],
+      "@synx/shared": ["./shared/index.ts"],
+      "@synx/shared/*": ["./shared/*.ts"],
+      "@synx/backend/*": ["./backend/*.ts"]
     },
     "noEmit": true
   }

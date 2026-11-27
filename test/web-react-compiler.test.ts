@@ -1,25 +1,31 @@
 import { describe, expect, it } from "vitest";
 import pkgJson from "../package.json";
+import webPkgJson from "../web/package.json";
 import eslintConfigRaw from "../eslint.config.js?raw";
-import viteConfigRaw from "../vite.config.ts?raw";
-import todoPageRaw from "../app/features/list/TodoPage.tsx?raw";
-import useGuestListsRaw from "../app/features/list/hooks/useGuestLists.ts?raw";
-import useOptimisticFieldRaw from "../app/features/list/hooks/useOptimisticField.ts?raw";
-import useFetcherToastRaw from "../app/features/list/hooks/useFetcherToast.ts?raw";
+import viteConfigRaw from "../web/vite.config.ts?raw";
+import todoPageRaw from "../web/app/features/list/TodoPage.tsx?raw";
+import useGuestListsRaw from "../web/app/features/list/hooks/useGuestLists.ts?raw";
+import useOptimisticFieldRaw from "../web/app/features/list/hooks/useOptimisticField.ts?raw";
+import useFetcherToastRaw from "../web/app/features/list/hooks/useFetcherToast.ts?raw";
+import {
+  COMPILER_RUNTIME_MARKER,
+  verifyReactCompilerAssets,
+} from "../scripts/verify-react-compiler-bundle.mjs";
 
-describe("web React Compiler configuration (#171)", () => {
+describe("web React Compiler configuration (#171, #227)", () => {
   it("pins React Compiler 1.0 and its Vite/Babel toolchain to exact versions", () => {
-    const devDeps = pkgJson.devDependencies as Record<string, string>;
-    expect(devDeps["babel-plugin-react-compiler"]).toBe("1.0.0");
-    expect(devDeps["vite-plugin-babel"]).toBe("1.7.3");
-    expect(devDeps["@babel/preset-typescript"]).toBe("7.29.7");
-    expect(devDeps.typescript).toBe("5.8.3");
+    const rootDevDeps = pkgJson.devDependencies as Record<string, string>;
+    const webDevDeps = webPkgJson.devDependencies as Record<string, string>;
+    expect(webDevDeps["babel-plugin-react-compiler"]).toBe("1.0.0");
+    expect(webDevDeps["vite-plugin-babel"]).toBe("1.7.3");
+    expect(webDevDeps["@babel/preset-typescript"]).toBe("7.29.7");
+    expect(rootDevDeps.typescript).toBe("6.0.3");
   });
 
-  it("wires babel-plugin-react-compiler in vite.config.ts before reactRouter()", () => {
+  it("wires babel-plugin-react-compiler in vite.config.ts before reactRouter() using default target", () => {
     expect(viteConfigRaw).toContain("babel-plugin-react-compiler");
     expect(viteConfigRaw).toContain("@babel/preset-typescript");
-    expect(viteConfigRaw).toContain('target: "19"');
+    expect(viteConfigRaw).not.toContain('target: "19"');
 
     const babelIndex = viteConfigRaw.indexOf("babel(");
     const reactRouterIndex = viteConfigRaw.indexOf("reactRouter(");
@@ -28,7 +34,7 @@ describe("web React Compiler configuration (#171)", () => {
   });
 
   it("enables strict React Compiler ESLint rules as errors", () => {
-    expect(eslintConfigRaw).toContain('recommended-latest');
+    expect(eslintConfigRaw).toContain("recommended-latest");
     expect(eslintConfigRaw).toContain('"react-hooks/incompatible-library": "error"');
     expect(eslintConfigRaw).toContain('"react-hooks/unsupported-syntax": "error"');
   });
@@ -50,5 +56,25 @@ describe("web React Compiler configuration (#171)", () => {
     expect(todoPageRaw).toContain("useFetcherToast(");
     // Confirm useOptimisticField avoids try/finally which blocks compiler optimization
     expect(useOptimisticFieldRaw).not.toMatch(/\bfinally\s*\{/);
+  });
+
+  it("verifies compiled TodoPage assets contain React Compiler runtime and rejects uncompiled bundles", () => {
+    expect(() =>
+      verifyReactCompilerAssets({ "TodoPage-abc.js": "console.log('plain');" })
+    ).toThrow(/react\.memo_cache_sentinel/);
+
+    expect(() => verifyReactCompilerAssets({ "other-abc.js": "console.log(1);" })).toThrow(
+      /TodoPage-\*\.js/
+    );
+
+    expect(
+      verifyReactCompilerAssets({
+        "TodoPage-abc.js": `const x = Symbol.for("${COMPILER_RUNTIME_MARKER}");`,
+        "root-xyz.js": "console.log('ok');",
+      })
+    ).toEqual({
+      checkedFiles: ["TodoPage-abc.js", "root-xyz.js"],
+      todoPageFile: "TodoPage-abc.js",
+    });
   });
 });

@@ -1,0 +1,20 @@
+appId: io.christran.synx
+---
+# Re-opens sYnX after CI broadcasts complete:<middle task id> to PinnedListWidgetProvider,
+# verifying only the middle task completed while neighboring tasks remain open.
+- launchApp:
+    clearState: false
+    stopApp: false
+
+- extendedWaitUntil:
+    visible: "Completed (1)"
+    timeout: 25000
+- assertVisible: "Widget Task One"
+- assertVisible: "Widget Task Three"
+- assertNotVisible: "Widget Task Two"
+
+- tapOn: "Completed (1)"
+- extendedWaitUntil:
+    visible: "Widget Task Two"
+    timeout: 10000
+- assertVisible: "Widget Task Two"

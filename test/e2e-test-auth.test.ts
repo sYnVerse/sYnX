@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
-import wranglerRaw from "../wrangler.jsonc?raw";
-import previewRaw from "../wrangler.preview-migrations.jsonc?raw";
+import { describe, expect, it, vi } from "vitest";
+import { RouterContextProvider } from "react-router";
+import { env as workerEnv } from "cloudflare:test";
+import wranglerRaw from "../backend/wrangler.jsonc?raw";
+import previewRaw from "../backend/wrangler.preview-migrations.jsonc?raw";
+import { cloudflareContext } from "../backend/services/context.server";
+import { shouldResolveApiAuth } from "../backend/services/auth-context.server";
 import {
   isLocalTestAuthAllowed,
   mintLocalTestToken,
@@ -8,8 +12,28 @@ import {
   parseLocalTestToken,
   parseTestLoginRequest,
   verifyAccessToken,
+  verifyBearerToken,
   type AuthEnv,
-} from "../app/auth.server";
+} from "../backend/services/auth.server";
+import {
+  loader as devTestLoginLoader,
+  action as devTestLoginAction,
+} from "../backend/api/v1/dev.test-login";
+
+function makeTestLoginArgs(request: Request, envOverrides: Record<string, unknown> = {}) {
+  const provider = new RouterContextProvider();
+  provider.set(cloudflareContext, {
+    env: { ...workerEnv, ...envOverrides } as unknown as Env,
+    ctx: { waitUntil: vi.fn(), passThroughOnException: vi.fn() } as unknown as ExecutionContext,
+  });
+  return {
+    request,
+    params: {},
+    context: provider,
+    url: new URL(request.url),
+    pattern: "/api/v1/dev/test-login",
+  };
+}
 
 describe("E2E Test Auth Guard & Tokens", () => {
   const loopbackUrl = "http://127.0.0.1:8787/login";
@@ -211,6 +235,114 @@ describe("E2E Test Auth Guard & Tokens", () => {
     it("ensures wrangler.preview-migrations.jsonc does not define dev test flags", () => {
       expect(previewRaw).not.toContain("ALLOW_DEV_TEST_AUTH");
       expect(previewRaw).not.toContain("ALLOW_DEV_REDIRECTS");
+    });
+  });
+
+  describe("/api/v1/dev/test-login mobile E2E route (#200)", () => {
+    it("treats /api/v1/dev/test-login as public in authMiddleware", () => {
+      expect(shouldResolveApiAuth("/api/v1/dev/test-login")).toBe(false);
+    });
+
+    it("returns 404 on GET loader regardless of environment", () => {
+      const res = devTestLoginLoader();
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 on POST when ALLOW_DEV_TEST_AUTH is unset or false or URL is non-loopback / https", async () => {
+      const noFlag = await devTestLoginAction(
+        makeTestLoginArgs(new Request("http://127.0.0.1:8787/api/v1/dev/test-login", { method: "POST" }))
+      );
+      expect(noFlag.status).toBe(404);
+
+      const falseFlag = await devTestLoginAction(
+        makeTestLoginArgs(
+          new Request("http://127.0.0.1:8787/api/v1/dev/test-login", { method: "POST" }),
+          { ALLOW_DEV_TEST_AUTH: "false" }
+        )
+      );
+      expect(falseFlag.status).toBe(404);
+
+      const remote = await devTestLoginAction(
+        makeTestLoginArgs(
+          new Request("https://synx.christran.io/api/v1/dev/test-login", { method: "POST" }),
+          { ALLOW_DEV_TEST_AUTH: "true" }
+        )
+      );
+      expect(remote.status).toBe(404);
+
+      const httpsLoopback = await devTestLoginAction(
+        makeTestLoginArgs(
+          new Request("https://127.0.0.1:8787/api/v1/dev/test-login", { method: "POST" }),
+          { ALLOW_DEV_TEST_AUTH: "true" }
+        )
+      );
+      expect(httpsLoopback.status).toBe(404);
+    });
+
+    it("rejects guest IDs and invalid emails with 400", async () => {
+      for (const userId of ["guest", "guest_abc", ""]) {
+        const res = await devTestLoginAction(
+          makeTestLoginArgs(
+            new Request("http://127.0.0.1:8787/api/v1/dev/test-login", {
+              method: "POST",
+              body: JSON.stringify({ userId }),
+              headers: { "Content-Type": "application/json" },
+            }),
+            { ALLOW_DEV_TEST_AUTH: "true" }
+          )
+        );
+        expect(res.status).toBe(400);
+      }
+
+      const badEmail = await devTestLoginAction(
+        makeTestLoginArgs(
+          new Request("http://127.0.0.1:8787/api/v1/dev/test-login", {
+            method: "POST",
+            body: JSON.stringify({ email: "not-an-email" }),
+            headers: { "Content-Type": "application/json" },
+          }),
+          { ALLOW_DEV_TEST_AUTH: "true" }
+        )
+      );
+      expect(badEmail.status).toBe(400);
+    });
+
+    it("mints a bearer test token on loopback http when enabled and verifies only on loopback", async () => {
+      const res = await devTestLoginAction(
+        makeTestLoginArgs(
+          new Request("http://127.0.0.1:8787/api/v1/dev/test-login", {
+            method: "POST",
+            body: JSON.stringify({}),
+            headers: { "Content-Type": "application/json" },
+          }),
+          { ALLOW_DEV_TEST_AUTH: "true" }
+        )
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { token: string; userId: string; email: string };
+      expect(data.userId).toBe("user_mobile_e2e");
+      expect(data.email).toBe("user_mobile_e2e@e2e.local");
+      expect(isLocalTestToken(data.token)).toBe(true);
+
+      const loopbackVerified = await verifyBearerToken(
+        new Request("http://127.0.0.1:8787/api/v1/lists", {
+          headers: { Authorization: `Bearer ${data.token}` },
+        }),
+        { ALLOW_DEV_TEST_AUTH: "true" }
+      );
+      expect(loopbackVerified).toEqual({
+        userId: "user_mobile_e2e",
+        email: "user_mobile_e2e@e2e.local",
+        token: data.token,
+      });
+
+      const remoteRejected = await verifyBearerToken(
+        new Request("https://synx.christran.io/api/v1/lists", {
+          headers: { Authorization: `Bearer ${data.token}` },
+        }),
+        { ALLOW_DEV_TEST_AUTH: "true" }
+      );
+      expect(remoteRejected).toBeNull();
     });
   });
 });

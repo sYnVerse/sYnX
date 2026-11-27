@@ -13,12 +13,12 @@ import * as mobileCategories from "../mobile/src/shared/categories";
 import { PRESET_CATEGORIES as MOBILE_INDEX_PRESETS } from "../mobile/src/shared";
 import sharedCategoriesSource from "../shared/categories.ts?raw";
 import mobileCategoriesSource from "../mobile/src/shared/categories.ts?raw";
-import todoPageSource from "../app/features/list/TodoPage.tsx?raw";
-import listDialogsSource from "../app/features/list/components/ListDialogs.tsx?raw";
+import todoPageSource from "../web/app/features/list/TodoPage.tsx?raw";
+import listDialogsSource from "../web/app/features/list/components/ListDialogs.tsx?raw";
 import listsScreenSource from "../mobile/src/screens/ListsScreen.tsx?raw";
 
 const allSources: Record<string, string> = {
-  ...import.meta.glob<string>("../app/**/*.{ts,tsx}", {
+  ...import.meta.glob<string>("../web/app/**/*.{ts,tsx}", {
     query: "?raw",
     import: "default",
     eager: true,

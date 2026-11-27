@@ -1,0 +1,83 @@
+import type { ListActionHandler } from "./context";
+import {
+  handleAcceptSuggestedDisplayName,
+  handleApproveDeleteRequest,
+  handleDeclineDeleteRequest,
+  handleDismissSuggestedDisplayName,
+  handleInitTimeZone,
+  handleListActivity,
+  handleMigrateGuestLists,
+  handleRemoveSharedList,
+  handleSetArchiveSuggestions,
+  handleSetTimeZone,
+  handleUpdateSettings,
+} from "./account.server";
+import {
+  handleCancelStartTask,
+  handleClearCompleted,
+  handleCreateTask,
+  handleDeleteTask,
+  handleReorderTasks,
+  handleSetCompleted,
+  handleSetCompletionDuration,
+  handleStartTask,
+  handleToggleTask,
+  handleUndoRepeatTask,
+} from "./tasks.server";
+import {
+  handleMarkReminderSent,
+  handleUpdateDuration,
+  handleUpdatePriority,
+  handleUpdateRecurrence,
+  handleUpdateReminder,
+  handleUpdateText,
+} from "./task-fields.server";
+import {
+  handleArchiveList,
+  handleCreateList,
+  handleDeleteList,
+  handleRenameList,
+  handleUnarchiveList,
+  handleUpdateListCategory,
+  handleUpdateShareMode,
+} from "./lists.server";
+
+export const ACCOUNT_INTENTS: Record<string, ListActionHandler> = {
+  listActivity: handleListActivity,
+  migrateGuestLists: handleMigrateGuestLists,
+  setTimeZone: handleSetTimeZone,
+  initTimeZone: handleInitTimeZone,
+  acceptSuggestedDisplayName: handleAcceptSuggestedDisplayName,
+  dismissSuggestedDisplayName: handleDismissSuggestedDisplayName,
+  setArchiveSuggestions: handleSetArchiveSuggestions,
+  archiveList: handleArchiveList,
+  unarchiveList: handleUnarchiveList,
+  updateSettings: handleUpdateSettings,
+  removeSharedList: handleRemoveSharedList,
+  approveDeleteRequest: handleApproveDeleteRequest,
+  declineDeleteRequest: handleDeclineDeleteRequest,
+  setCompletionDuration: handleSetCompletionDuration,
+};
+
+export const LIST_INTENTS: Record<string, ListActionHandler> = {
+  create: handleCreateTask,
+  toggle: handleToggleTask,
+  setCompleted: handleSetCompleted,
+  start: handleStartTask,
+  cancelStart: handleCancelStartTask,
+  undoRepeat: handleUndoRepeatTask,
+  delete: handleDeleteTask,
+  clearCompleted: handleClearCompleted,
+  updatePriority: handleUpdatePriority,
+  updateText: handleUpdateText,
+  updateReminder: handleUpdateReminder,
+  markReminderSent: handleMarkReminderSent,
+  updateRecurrence: handleUpdateRecurrence,
+  updateDuration: handleUpdateDuration,
+  reorderTasks: handleReorderTasks,
+  updateShareMode: handleUpdateShareMode,
+  createList: handleCreateList,
+  renameList: handleRenameList,
+  updateListCategory: handleUpdateListCategory,
+  deleteList: handleDeleteList,
+};

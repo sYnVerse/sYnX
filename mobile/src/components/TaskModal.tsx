@@ -11,17 +11,21 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
+import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { DateTimePicker } from "@expo/ui/community/datetime-picker";
-import { CalendarClock, Trash2 } from "lucide-react-native";
+import { CalendarClock, Trash2, X } from "lucide-react-native";
+import { apiClient } from "../api/client";
 import {
   PriorityLevel,
   RecurrencePattern,
   ReminderSelection,
+  TaskCompletionStats,
   combineDateAndTime,
   defaultPickerValue,
   formatReminderPillLabel,
   formatReminderPreview,
+  formatTaskCompletionStatsLine,
   initialReminderSelection,
   nextFullHour,
   prefers24HourClock,
@@ -33,6 +37,8 @@ import { typography, spacing, MIN_TOUCH_TARGET, getSheetBottomPadding } from "..
 import { getErrorMessage } from "../utils/feedback";
 import { useToast } from "../context/ToastContext";
 import { usePushPrompt } from "../context/PushPromptContext";
+import { useQuickAddPreferences } from "../hooks/useQuickAddPreferences";
+import { computeQuickAddFormState } from "../utils/quickAddForm";
 
 interface TaskModalProps {
   visible: boolean;
@@ -51,7 +57,10 @@ interface TaskModalProps {
   initialReminderAt?: number;
   initialRecurrence?: RecurrencePattern;
   initialDurationMinutes?: number | null;
+  baseDay?: string | null;
   isEditing?: boolean;
+  taskId?: string;
+  smartEnabled?: boolean;
 }
 
 export const TaskModal: React.FC<TaskModalProps> = ({
@@ -64,30 +73,30 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   initialReminderAt,
   initialRecurrence = "none",
   initialDurationMinutes,
+  baseDay = null,
   isEditing = false,
+  taskId,
+  smartEnabled,
 }) => {
   const { theme, hapticsEnabled } = useTheme();
   const { showError } = useToast();
   const { maybeAskOnReminder } = usePushPrompt();
+  const prefSmartQuickAdd = useQuickAddPreferences();
+  const effectiveSmartEnabled = smartEnabled ?? prefSmartQuickAdd;
   const insets = useSafeAreaInsets();
   const [text, setText] = useState(initialText);
-  const [priority, setPriority] = useState<PriorityLevel>(initialPriority);
-  const [recurrence, setRecurrence] = useState<RecurrencePattern>(initialRecurrence);
-  const [durationMinutes, setDurationMinutes] = useState<string>(
-    initialDurationMinutes != null ? String(initialDurationMinutes) : ""
-  );
-  const [reminder, setReminder] = useState<ReminderSelection>(() =>
-    initialReminderSelection(initialReminderAt)
-  );
-  /** True once the user changes the reminder row; untouched sheets save the reminder they opened with. */
-  const [reminderTouched, setReminderTouched] = useState(false);
+  const [dismissedTokens, setDismissedTokens] = useState<string[]>([]);
+  const [manualPriority, setManualPriority] = useState<PriorityLevel | null>(null);
+  const [manualRecurrence, setManualRecurrence] = useState<RecurrencePattern | null>(null);
+  const [manualDurationText, setManualDurationText] = useState<string | null>(null);
+  const [manualReminder, setManualReminder] = useState<ReminderSelection | null>(null);
   /** Which native picker dialog is open: the date first, then the time. */
   const [pickerStep, setPickerStep] = useState<"date" | "time" | null>(null);
   const [pickerDraft, setPickerDraft] = useState<Date>(() => new Date(nextFullHour()));
   /** Bumped to remount (re-open) the time dialog after a past time is rejected. */
   const [timePickerKey, setTimePickerKey] = useState(0);
   const [saving, setSaving] = useState(false);
-  /** Clock for the reminder preview; ticks on each minute boundary while the sheet is open. */
+  /** Clock for smart quick-add & reminder preview; ticks on each minute boundary while open. */
   const [now, setNow] = useState(() => Date.now());
 
   // Reset the form when the sheet opens or its initial values change. Done during
@@ -100,6 +109,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     initialRecurrence,
     initialDurationMinutes,
     initialReminderAt,
+    baseDay,
   };
   const [prevOpenState, setPrevOpenState] = useState(openState);
   if (
@@ -110,11 +120,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setPrevOpenState(openState);
     if (visible) {
       setText(initialText);
-      setPriority(initialPriority);
-      setRecurrence(initialRecurrence);
-      setDurationMinutes(initialDurationMinutes != null ? String(initialDurationMinutes) : "");
-      setReminder(initialReminderSelection(initialReminderAt));
-      setReminderTouched(false);
+      setDismissedTokens([]);
+      setManualPriority(null);
+      setManualRecurrence(null);
+      setManualDurationText(null);
+      setManualReminder(null);
       setPickerStep(null);
       setSaving(false);
     }
@@ -133,13 +143,45 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     return () => clearTimeout(timer);
   }, [visible]);
 
-  /** The reminderAt that Save would send right now: the opened-with value until the row is touched. */
-  const effectiveReminderAt = (at: number): number | null | undefined =>
-    reminderTouched
-      ? resolveReminderAt({ selection: reminder, isEditing, existingReminderAt: initialReminderAt, now: at })
-      : initialReminderAt;
+  const quickState = computeQuickAddFormState({
+    text,
+    isEditing,
+    smartEnabled: effectiveSmartEnabled,
+    now,
+    baseDay,
+    dismissed: dismissedTokens,
+    manualPriority,
+    manualRecurrence,
+    manualDurationText,
+    manualReminder,
+    initialPriority,
+    initialRecurrence,
+    initialDurationMinutes,
+    initialReminderAt,
+  });
 
-  const reminderPreview = formatReminderPreview(effectiveReminderAt(now), now);
+  const priority = quickState.effectivePriority;
+  const recurrence = quickState.effectiveRecurrence;
+  const durationMinutes = quickState.effectiveDurationText;
+  const reminder = quickState.effectiveReminderSelection;
+  const reminderPreview = formatReminderPreview(quickState.resolveEffectiveReminderAt(now), now);
+
+  const statsQuery = useQuery<TaskCompletionStats | null>({
+    queryKey: ["todo-completions", taskId],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/v1/todos/${taskId}/completions?limit=20`);
+      return (res.data?.stats as TaskCompletionStats | undefined) ?? null;
+    },
+    enabled: Boolean(visible && isEditing && taskId),
+  });
+  const parsedEst = parseInt(durationMinutes.trim().replace(/\D/g, ""), 10);
+  const statsLine = isEditing
+    ? formatTaskCompletionStatsLine(statsQuery.data, {
+        isRecurring: recurrence !== "none",
+        estimatedMinutes:
+          !isNaN(parsedEst) && parsedEst > 0 ? parsedEst : initialDurationMinutes ?? null,
+      })
+    : null;
 
   const triggerHaptic = () => {
     if (hapticsEnabled && Platform.OS !== "web") {
@@ -155,8 +197,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   const chooseReminder = (next: ReminderSelection) => {
     setNow(Date.now());
-    setReminderTouched(true);
-    setReminder(next);
+    setManualReminder(next);
   };
 
   const openDateTimePicker = () => {
@@ -195,20 +236,20 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setPickerStep(null);
   };
 
-  const handleSave = async () => {
+  const handleSave = async (saveNow: number) => {
     if (!text.trim() || saving) return;
     triggerHaptic();
-    const reminderAt = effectiveReminderAt(Date.now());
+    const reminderAt = quickState.resolveEffectiveReminderAt(saveNow);
     const cleanDur = durationMinutes.trim();
     const parsedDur = cleanDur ? parseInt(cleanDur.replace(/\D/g, ""), 10) : NaN;
 
     const resolvedDurationMinutes = isNaN(parsedDur) ? null : parsedDur;
-    const shouldAskReminder = reminderAt != null && reminderTouched;
+    const shouldAskReminder = reminderAt != null && quickState.reminderTouchedEffective;
 
     setSaving(true);
     try {
       await onSave({
-        text: text.trim(),
+        text: quickState.effectiveTitle || text.trim(),
         priority,
         reminderAt: reminderAt as any,
         recurrence,
@@ -259,11 +300,44 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               placeholder="What needs to be done?"
               placeholderTextColor={theme.inputPlaceholder}
               value={text}
-              onChangeText={setText}
+              onChangeText={(next) => {
+                setNow(Date.now());
+                setText(next);
+              }}
               autoFocus
               editable={!saving}
               accessibilityLabel="Task description"
             />
+            {quickState.chips.length > 0 && (
+              <View style={styles.chipsRow}>
+                {quickState.chips.map((chip) => (
+                  <TouchableOpacity
+                    key={chip.key}
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: theme.accentLight,
+                        borderColor: theme.accent + "55",
+                      },
+                    ]}
+                    onPress={() => {
+                      triggerHaptic();
+                      setDismissedTokens((prev) =>
+                        prev.includes(chip.dismissToken) ? prev : [...prev, chip.dismissToken]
+                      );
+                    }}
+                    disabled={saving}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Dismiss detected detail ${chip.label}`}
+                  >
+                    <Text style={[styles.chipText, { color: theme.accent }]} maxFontSizeMultiplier={1.2}>
+                      {chip.label}
+                    </Text>
+                    <X size={12} color={theme.accent} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Est. Duration (Minutes)</Text>
             <TextInput
@@ -279,10 +353,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
               placeholder="Optional (e.g. 15)"
               placeholderTextColor={theme.inputPlaceholder}
               value={durationMinutes}
-              onChangeText={setDurationMinutes}
+              onChangeText={setManualDurationText}
               editable={!saving}
               accessibilityLabel="Estimated duration in minutes"
             />
+            {statsLine ? (
+              <Text
+                style={[styles.statsLine, { color: theme.textSecondary }]}
+                maxFontSizeMultiplier={1.3}
+              >
+                📊 {statsLine}
+              </Text>
+            ) : null}
 
             <Text style={[styles.label, { color: theme.textMuted }]}>Priority Level</Text>
             <View style={styles.row} accessibilityRole="radiogroup">
@@ -299,7 +381,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   ]}
                   onPress={() => {
                     triggerHaptic();
-                    setPriority(p);
+                    setManualPriority(p);
                   }}
                   disabled={saving}
                 >
@@ -332,7 +414,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   ]}
                   onPress={() => {
                     triggerHaptic();
-                    setRecurrence(r);
+                    setManualRecurrence(r);
                   }}
                   disabled={saving}
                 >
@@ -499,7 +581,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 styles.saveButton,
                 { backgroundColor: theme.accent, opacity: !text.trim() || saving ? 0.6 : 1 },
               ]}
-              onPress={handleSave}
+              onPress={() => {
+                void handleSave(Date.now());
+              }}
               disabled={!text.trim() || saving}
               accessibilityRole="button"
               accessibilityLabel={isEditing ? "Save task" : "Create task"}
@@ -582,6 +666,26 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     minHeight: MIN_TOUCH_TARGET,
   },
+  chipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  chipText: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+  },
   row: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -598,6 +702,11 @@ const styles = StyleSheet.create({
   reminderPreview: {
     fontSize: typography.xs,
     marginTop: 8,
+  },
+  statsLine: {
+    fontSize: typography.xs,
+    fontWeight: "600",
+    marginTop: 6,
   },
   pillWithIcon: {
     flexDirection: "row",

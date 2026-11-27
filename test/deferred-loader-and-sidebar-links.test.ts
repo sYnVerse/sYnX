@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { env } from "cloudflare:test";
-import { loader as listLoader } from "../app/features/list/loader.server";
+import { loader as listLoader } from "../web/app/features/list/loader.server";
 
 describe("deferred loader and sidebar link prefetch", () => {
   beforeEach(async () => {

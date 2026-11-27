@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { env } from "cloudflare:test";
-import { getOptionalUser } from "../app/auth.server";
+import { getOptionalUser } from "../backend/services/auth.server";
 import {
   GUEST_REMINDER_DENIAL,
   GUEST_SHARED_LIST_INTENTS,
@@ -8,8 +8,8 @@ import {
   guestIntentDenial,
   isGuestId,
   isListFull,
-} from "../app/guest-access.server";
-import { MAX_TASK_TEXT_LENGTH, MAX_TASKS_PER_LIST, taskTextError } from "../app/write-limits";
+} from "../backend/services/guest-access.server";
+import { MAX_TASK_TEXT_LENGTH, MAX_TASKS_PER_LIST, taskTextError } from "../shared/write-limits";
 
 const GUEST = "guest_0b6f3c1e-2d4a-4f5b-9c8d-7e6f5a4b3c2d";
 const DAY_MS = 86_400_000;

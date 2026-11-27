@@ -1,4 +1,4 @@
-import { secureSessionStore } from "../api/client";
+import { revokeMobileSession, secureSessionStore } from "../api/client";
 import { releasePushTokenForSignOut } from "./notifications";
 import { clearPersistedQueryCache } from "./storage";
 import { clearWidgetPreferences } from "./widgetPreferences";
@@ -12,6 +12,8 @@ export async function clearSignedOutDeviceData(): Promise<void> {
   // Stop pushes to this device for the signed-out user (best effort, never
   // waits on the network).
   await releasePushTokenForSignOut();
+  // Revoke the server-side mobile session before deleting the access token.
+  await revokeMobileSession();
   await secureSessionStore.clearSessionTokens();
   await clearPersistedQueryCache();
   await clearWidgetPreferences();

@@ -458,47 +458,44 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("react", () => harness.reactMock);
-vi.mock("../mobile/node_modules/react", () => harness.reactMock);
-vi.mock("../mobile/node_modules/react/index.js", () => harness.reactMock);
+vi.mock("../node_modules/react", () => harness.reactMock);
 vi.mock("../node_modules/react/index.js", () => harness.reactMock);
 vi.mock("react/jsx-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-runtime.js", () => harness.jsxRuntimeMock);
+vi.mock("../node_modules/react/jsx-runtime", () => harness.jsxRuntimeMock);
 vi.mock("../node_modules/react/jsx-runtime.js", () => harness.jsxRuntimeMock);
 vi.mock("react/jsx-dev-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-dev-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-dev-runtime.js", () => harness.jsxRuntimeMock);
+vi.mock("../node_modules/react/jsx-dev-runtime", () => harness.jsxRuntimeMock);
 vi.mock("../node_modules/react/jsx-dev-runtime.js", () => harness.jsxRuntimeMock);
 vi.mock("react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native/index.js", () => mocks.reactNative);
+vi.mock("../node_modules/react-native", () => mocks.reactNative);
+vi.mock("../node_modules/react-native/index.js", () => mocks.reactNative);
 vi.mock("@react-native-async-storage/async-storage", () => mocks.asyncStorage);
-vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
-vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage/lib/commonjs/index.js", () => mocks.asyncStorage);
+vi.mock("../node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
+vi.mock("../node_modules/@react-native-async-storage/async-storage/lib/commonjs/index.js", () => mocks.asyncStorage);
 vi.mock("expo-haptics", () => mocks.hapticsMod);
-vi.mock("../mobile/node_modules/expo-haptics", () => mocks.hapticsMod);
-vi.mock("../mobile/node_modules/expo-haptics/build/Haptics.js", () => mocks.hapticsMod);
+vi.mock("../node_modules/expo-haptics", () => mocks.hapticsMod);
+vi.mock("../node_modules/expo-haptics/build/Haptics.js", () => mocks.hapticsMod);
 vi.mock("expo-status-bar", () => ({ StatusBar: () => null }));
-vi.mock("../mobile/node_modules/expo-status-bar", () => ({ StatusBar: () => null }));
-vi.mock("../mobile/node_modules/expo-status-bar/build/StatusBar.js", () => ({ StatusBar: () => null }));
+vi.mock("../node_modules/expo-status-bar", () => ({ StatusBar: () => null }));
+vi.mock("../node_modules/expo-status-bar/build/StatusBar.js", () => ({ StatusBar: () => null }));
 vi.mock("expo-secure-store", () => ({
   getItemAsync: vi.fn(async () => null),
   setItemAsync: vi.fn(async () => {}),
   deleteItemAsync: vi.fn(async () => {}),
 }));
-vi.mock("../mobile/node_modules/expo-secure-store", () => ({
+vi.mock("../node_modules/expo-secure-store", () => ({
   getItemAsync: vi.fn(async () => null),
   setItemAsync: vi.fn(async () => {}),
   deleteItemAsync: vi.fn(async () => {}),
 }));
-vi.mock("../mobile/node_modules/expo-secure-store/build/SecureStore.js", () => ({
+vi.mock("../node_modules/expo-secure-store/build/SecureStore.js", () => ({
   getItemAsync: vi.fn(async () => null),
   setItemAsync: vi.fn(async () => {}),
   deleteItemAsync: vi.fn(async () => {}),
 }));
 vi.mock("lucide-react-native", () => mocks.iconsMod);
-vi.mock("../mobile/node_modules/lucide-react-native", () => mocks.iconsMod);
-vi.mock("../mobile/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js", () => mocks.iconsMod);
+vi.mock("../node_modules/lucide-react-native", () => mocks.iconsMod);
+vi.mock("../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js", () => mocks.iconsMod);
 vi.mock("../mobile/src/api/client", () => ({
   apiClient: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
   secureSessionStore: { clearSessionTokens: vi.fn(async () => {}) },
@@ -518,7 +515,7 @@ vi.mock("../mobile/src/services/notifications", () => ({
 }));
 vi.mock("../mobile/src/services/calendar", () => mocks.calendarService);
 
-import { QueryClient, QueryClientProvider } from "../mobile/node_modules/@tanstack/react-query/build/modern/index.js";
+import { QueryClient, QueryClientProvider } from "../node_modules/@tanstack/react-query/build/modern/index.js";
 import { ThemeProvider } from "../mobile/src/context/ThemeContext";
 import { PushPromptProvider, isChangelogSettled } from "../mobile/src/context/PushPromptContext";
 import { MOBILE_VERSION } from "../mobile/src/constants/changelog";

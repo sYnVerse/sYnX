@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getProfileLabel } from "../app/profile-label";
+import { getProfileLabel } from "../web/app/profile-label";
 
 describe("getProfileLabel", () => {
   it("shows the display name over the email when one is set", () => {

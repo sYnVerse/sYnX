@@ -10,6 +10,7 @@ import { FloatingTabBar, TabType } from "../components/FloatingTabBar";
 import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { apiClient } from "../api/client";
+import { DEV_TEST_AUTH_ENABLED } from "../api/devTestAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { ScreenContainer } from "../components/ScreenContainer";
 import { NativeUpdateBanner } from "../components/NativeUpdateBanner";
@@ -35,8 +36,9 @@ async function fetchOrCreateActiveListId(): Promise<string> {
 }
 
 const MainAppContent: React.FC = () => {
-  const { token, login, isLoading } = useAuth();
+  const { token, login, loginWithTestAccount, isLoading } = useAuth();
   const { theme } = useTheme();
+  const [testLoginError, setTestLoginError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>("tasks");
@@ -52,6 +54,13 @@ const MainAppContent: React.FC = () => {
    */
   const [newTaskRequest, setNewTaskRequest] = useState<{ id: number; listId: string | null } | null>(null);
   const clearNewTaskRequest = useCallback(() => setNewTaskRequest(null), []);
+  /** One-shot request from a widget task row tap (`synx://list/<listId>?task=<taskId>`). */
+  const [openTaskRequest, setOpenTaskRequest] = useState<{
+    id: number;
+    listId: string;
+    taskId: string;
+  } | null>(null);
+  const clearOpenTaskRequest = useCallback(() => setOpenTaskRequest(null), []);
   /** One-shot request from the Pinned List widget's switch button to choose its list. */
   const [pickPinnedListRequest, setPickPinnedListRequest] = useState<number | null>(null);
   const clearPickPinnedListRequest = useCallback(() => setPickPinnedListRequest(null), []);
@@ -95,7 +104,12 @@ const MainAppContent: React.FC = () => {
       }
       if (parsed.action === "newTask") {
         setActiveTab("tasks");
+        setOpenTaskRequest(null);
         setNewTaskRequest({ id: Date.now(), listId: parsed.listId ?? null });
+      } else if (parsed.listId && parsed.taskId) {
+        setActiveTab("tasks");
+        setNewTaskRequest(null);
+        setOpenTaskRequest({ id: Date.now(), listId: parsed.listId, taskId: parsed.taskId });
       }
     },
     [applyDeepLinkedList]
@@ -184,34 +198,42 @@ const MainAppContent: React.FC = () => {
     }
     setListError(null);
 
+    const recoverToFallbackActiveList = async (listIdToReplace: string) => {
+      await setLastActiveListId(null);
+      if (!pendingDeepLinkListIdRef.current && activeListIdRef.current === listIdToReplace) {
+        try {
+          const fallbackId = await fetchOrCreateActiveListId();
+          if (!pendingDeepLinkListIdRef.current) {
+            activeListIdRef.current = fallbackId;
+            setActiveListId(fallbackId);
+          }
+        } catch (fallbackErr: any) {
+          activeListIdRef.current = null;
+          setActiveListId(null);
+          setListError(
+            fallbackErr?.response?.data?.error ||
+              fallbackErr?.message ||
+              "Failed to load your lists."
+          );
+        }
+      }
+    };
+
     const refreshListMetaInBackground = (listIdToVerify: string) => {
       apiClient
         .get(`/api/v1/lists/${listIdToVerify}`)
-        .then((res) => {
-          if (res.data?.list) {
-            queryClient.setQueryData(["list_meta", listIdToVerify], res.data.list);
+        .then(async (res) => {
+          const refreshedList = res.data?.list as TodoList | undefined;
+          if (refreshedList) {
+            queryClient.setQueryData(["list_meta", listIdToVerify], refreshedList);
+            if (refreshedList.isArchived && !pendingDeepLinkListIdRef.current) {
+              await recoverToFallbackActiveList(listIdToVerify);
+            }
           }
         })
         .catch(async (e: any) => {
           if (e?.response?.status === 403 || e?.response?.status === 404) {
-            await setLastActiveListId(null);
-            if (!pendingDeepLinkListIdRef.current && activeListIdRef.current === listIdToVerify) {
-              try {
-                const fallbackId = await fetchOrCreateActiveListId();
-                if (!pendingDeepLinkListIdRef.current) {
-                  activeListIdRef.current = fallbackId;
-                  setActiveListId(fallbackId);
-                }
-              } catch (fallbackErr: any) {
-                activeListIdRef.current = null;
-                setActiveListId(null);
-                setListError(
-                  fallbackErr?.response?.data?.error ||
-                    fallbackErr?.message ||
-                    "Failed to load your lists."
-                );
-              }
-            }
+            await recoverToFallbackActiveList(listIdToVerify);
           }
         });
     };
@@ -219,13 +241,17 @@ const MainAppContent: React.FC = () => {
     try {
       const lastId = await getLastActiveListId();
       if (lastId) {
-        const hasCachedListData = Boolean(
-          queryClient.getQueryData(["list_meta", lastId]) ||
-            queryClient.getQueryData(["todos", lastId]) ||
-            queryClient
-              .getQueryData<TodoList[]>(["lists", "all"])
-              ?.some((l) => l.id === lastId)
-        );
+        const cachedMeta = queryClient.getQueryData<TodoList>(["list_meta", lastId]);
+        const cachedIsArchived = Boolean(cachedMeta?.isArchived);
+        const hasCachedListData =
+          !cachedIsArchived &&
+          Boolean(
+            cachedMeta ||
+              queryClient.getQueryData(["todos", lastId]) ||
+              queryClient
+                .getQueryData<TodoList[]>(["lists", "all"])
+                ?.some((l) => l.id === lastId && !l.isArchived)
+          );
         if (hasCachedListData) {
           const resolved = pendingDeepLinkListIdRef.current ?? lastId;
           activeListIdRef.current = resolved;
@@ -237,31 +263,41 @@ const MainAppContent: React.FC = () => {
           return;
         }
 
-        try {
-          const res = await apiClient.get(`/api/v1/lists/${lastId}`);
-          if (res.data?.list) {
-            queryClient.setQueryData(["list_meta", lastId], res.data.list);
-          }
-          const resolved = pendingDeepLinkListIdRef.current ?? lastId;
-          activeListIdRef.current = resolved;
-          setActiveListId(resolved);
-          return;
-        } catch (e: any) {
-          if (e?.response?.status === 403 || e?.response?.status === 404) {
-            await setLastActiveListId(null);
-          } else {
-            // Keep lastId if offline/network error
-            const resolved = pendingDeepLinkListIdRef.current ?? lastId;
-            activeListIdRef.current = resolved;
-            setActiveListId(resolved);
-            return;
+        if (cachedIsArchived && !pendingDeepLinkListIdRef.current) {
+          await setLastActiveListId(null);
+        } else {
+          try {
+            const res = await apiClient.get(`/api/v1/lists/${lastId}`);
+            const fetchedList = res.data?.list as TodoList | undefined;
+            if (fetchedList) {
+              queryClient.setQueryData(["list_meta", lastId], fetchedList);
+            }
+            if (fetchedList?.isArchived && !pendingDeepLinkListIdRef.current) {
+              await setLastActiveListId(null);
+            } else {
+              const resolved = pendingDeepLinkListIdRef.current ?? lastId;
+              activeListIdRef.current = resolved;
+              setActiveListId(resolved);
+              return;
+            }
+          } catch (e: any) {
+            if (e?.response?.status === 403 || e?.response?.status === 404) {
+              await setLastActiveListId(null);
+            } else {
+              // Keep lastId if offline/network error
+              const resolved = pendingDeepLinkListIdRef.current ?? lastId;
+              activeListIdRef.current = resolved;
+              setActiveListId(resolved);
+              return;
+            }
           }
         }
       }
 
       const cachedLists = queryClient.getQueryData<TodoList[]>(["lists", "all"]);
-      if (cachedLists && cachedLists.length > 0 && !pendingDeepLinkListIdRef.current) {
-        const cachedFirstId = cachedLists[0].id;
+      const firstActiveCached = cachedLists?.find((l) => !l.isArchived);
+      if (firstActiveCached && !pendingDeepLinkListIdRef.current) {
+        const cachedFirstId = firstActiveCached.id;
         activeListIdRef.current = cachedFirstId;
         setActiveListId(cachedFirstId);
         setListLoading(false);
@@ -344,6 +380,16 @@ const MainAppContent: React.FC = () => {
     }
   }, [queryClient, setPendingDeepLinkListId]);
 
+  const handleTestLogin = async () => {
+    if (!DEV_TEST_AUTH_ENABLED) return;
+    setTestLoginError(null);
+    try {
+      await loginWithTestAccount();
+    } catch (e: any) {
+      setTestLoginError(e?.response?.data?.error || e?.message || "Test sign in failed.");
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.bg }]}>
@@ -365,6 +411,29 @@ const MainAppContent: React.FC = () => {
         <TouchableOpacity style={[styles.loginBtn, { backgroundColor: theme.accent }]} onPress={login}>
           <Text style={styles.loginBtnText}>Sign In with sYnID</Text>
         </TouchableOpacity>
+        {DEV_TEST_AUTH_ENABLED ? (
+          <>
+            <TouchableOpacity
+              testID="dev-test-login-button"
+              style={[
+                styles.testLoginBtn,
+                { borderColor: theme.cardBorder, backgroundColor: theme.surface },
+              ]}
+              onPress={handleTestLogin}
+              accessibilityRole="button"
+              accessibilityLabel="Test Sign In"
+            >
+              <Text style={[styles.testLoginBtnText, { color: theme.textPrimary }]}>
+                Test Sign In
+              </Text>
+            </TouchableOpacity>
+            {testLoginError ? (
+              <Text style={[styles.testLoginError, { color: theme.danger }]}>
+                {testLoginError}
+              </Text>
+            ) : null}
+          </>
+        ) : null}
       </SafeAreaView>
     );
   }
@@ -405,6 +474,12 @@ const MainAppContent: React.FC = () => {
                   : undefined
               }
               onNewTaskRequestHandled={clearNewTaskRequest}
+              openTaskRequest={
+                openTaskRequest && openTaskRequest.listId === activeListId
+                  ? { id: openTaskRequest.id, taskId: openTaskRequest.taskId }
+                  : undefined
+              }
+              onOpenTaskRequestHandled={clearOpenTaskRequest}
               onGoToMyLists={goToMyLists}
               onSwitchLists={() => handleTabSwitch("lists")}
             />
@@ -473,6 +548,25 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 16,
     fontWeight: "700",
+  },
+  testLoginBtn: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    borderWidth: 1,
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  testLoginBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  testLoginError: {
+    marginTop: 10,
+    fontSize: 13,
+    textAlign: "center",
   },
   loadingText: {
     fontSize: 15,

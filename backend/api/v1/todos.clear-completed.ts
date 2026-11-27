@@ -1,0 +1,89 @@
+import type { ApiRouteArgs } from "../types";
+import { getCloudflareContext } from "../../services/context.server";
+import { getRequestApiAuth } from "../../services/auth-context.server";
+import { getListAccess } from "../../services/api-helpers.server";
+import {
+  deleteRequestActivitySummary,
+  logListActivity,
+} from "../../services/list-activity.server";
+import { requestOrPerformDelete } from "../../services/pending-deletes.server";
+
+export async function action({  request, context  }: ApiRouteArgs) {
+  if (request.method !== "POST") {
+    return Response.json({ error: "Method not allowed" }, { status: 405 });
+  }
+
+  const env = getCloudflareContext(context).env;
+  const db = env.DB as D1Database;
+  const user = await getRequestApiAuth(request, context);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(request.url);
+  const listId = url.searchParams.get("listId");
+  if (!listId) {
+    return Response.json({ error: "listId query parameter is required" }, { status: 400 });
+  }
+
+  const access = await getListAccess(db, listId, user.userId);
+  if (!access.canEdit) {
+    return Response.json({ error: "Edit permission denied for list" }, { status: 403 });
+  }
+
+  const waitUntil = getCloudflareContext(context).ctx?.waitUntil?.bind(getCloudflareContext(context).ctx);
+  const result = await requestOrPerformDelete(db, {
+    listId,
+    userId: user.userId,
+    isOwner: access.isOwner,
+    canEdit: access.canEdit,
+    targetType: "clear_completed",
+    env,
+    waitUntil,
+  });
+
+  if (result.kind === "requested" && result.deletedOwnCount) {
+    // The collaborator's own completed tasks were cleared right away.
+    const ownLogPromise = logListActivity(db, {
+      listId,
+      action: "clear_completed",
+      actorId: user.userId,
+      isOwner: access.isOwner,
+      shareMode: access.list?.share_mode,
+      request,
+    });
+    if (waitUntil) waitUntil(ownLogPromise); else await ownLogPromise;
+  }
+
+  if (result.kind === "deleted" || result.kind === "requested") {
+    const logPromise = logListActivity(db, {
+      listId,
+      action: result.kind === "requested" ? "delete_requested" : "clear_completed",
+      actorId: user.userId,
+      isOwner: access.isOwner,
+      shareMode: access.list?.share_mode,
+      request,
+      summary:
+        result.kind === "requested"
+          ? deleteRequestActivitySummary("clear_completed")
+          : undefined,
+    });
+    if (waitUntil) waitUntil(logPromise); else await logPromise;
+  }
+
+  if (result.kind === "deleted") {
+    return Response.json({ success: true });
+  }
+  if (result.kind === "requested") {
+    return Response.json({
+      success: true,
+      pendingApproval: true,
+      alreadyRequested: result.alreadyExisted,
+      requestId: result.requestId,
+      message: result.message,
+      deletedOwnCount: result.deletedOwnCount ?? 0,
+    });
+  }
+  return Response.json({ error: result.error }, { status: 403 });
+}

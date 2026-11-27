@@ -28,7 +28,7 @@ const mocks = vi.hoisted(() => {
   return { reactNative, calendar, client, appStateListeners };
 });
 vi.mock("react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native", () => mocks.reactNative);
+vi.mock("../node_modules/react-native", () => mocks.reactNative);
 vi.mock("../mobile/src/services/calendar", () => mocks.calendar);
 vi.mock("../mobile/src/api/client", () => mocks.client);
 

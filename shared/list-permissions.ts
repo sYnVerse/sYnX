@@ -170,6 +170,15 @@ export function isOwnTaskTree(
  * (including every subtask). People who can't edit can't delete at all, so
  * this is false for them too. Server-side checks stay authoritative.
  */
+/** Whether a user can archive or unarchive a list for themselves. */
+export function canArchiveList(input: {
+  isLoggedIn: boolean;
+  isOwner: boolean;
+  hasSharedAccess: boolean;
+}): boolean {
+  return Boolean(input.isLoggedIn && (input.isOwner || input.hasSharedAccess));
+}
+
 export function canDeleteTaskDirectly(input: {
   tasks: readonly TaskCreatorInfo[];
   taskId: string;
