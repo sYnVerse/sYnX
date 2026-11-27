@@ -1,6 +1,6 @@
 import { data, href, redirect } from "react-router";
 import { getCloudflareContext } from "@synx/backend/services/context.server";
-import { getAuthSettings } from "@synx/backend/services/auth.server";
+import { getAuthSettings, serializeGuestSessionCookie } from "@synx/backend/services/auth.server";
 import { getRequestWebAuth } from "@synx/backend/services/auth-context.server";
 import {
   DEFAULT_DISPLAY_NAME,
@@ -39,7 +39,7 @@ export const loader = async ({ request, params, context }: { request: Request; p
 
   const headers = new Headers();
   if (isNewGuest && guestId) {
-    headers.append("Set-Cookie", `guest_session=${guestId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`);
+    headers.append("Set-Cookie", serializeGuestSessionCookie(request.url, guestId));
   }
 
   // Keep profile (email) in sync on signed-in page loads — display name is never derived from email

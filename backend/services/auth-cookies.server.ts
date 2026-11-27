@@ -5,12 +5,42 @@
 
 export const AUTH_SESSION_COOKIE = "synx_auth_session";
 export const AUTH_REFRESH_COOKIE = "synx_refresh_session";
+export const AUTH_SESSION_ID_COOKIE = "synx_session_id";
+export const GUEST_SESSION_COOKIE = "guest_session";
 export const ACCESS_TOKEN_MAX_AGE_SECONDS = 15 * 60; // 15 minutes (900s)
 export const REFRESH_TOKEN_MAX_AGE_SECONDS = 14 * 24 * 60 * 60; // 14 days (1,209,600s)
+export const GUEST_SESSION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days (2,592,000s)
 
 /** Short-lived host-only cookie holding OAuth `state` + PKCE `verifier` for the web BFF. */
 export const PKCE_COOKIE_NAME = "synx_oauth_pkce";
 export const PKCE_MAX_AGE_SECONDS = 300; // 5 minutes
+
+/**
+ * Extracts an exact cookie value by name from a raw `Cookie` header without
+ * substring matching look-alike cookie names.
+ */
+export function parseCookieValue(
+  cookieHeader: string | null | undefined,
+  name: string,
+): string | null {
+  if (!cookieHeader || !name) return null;
+  for (const part of cookieHeader.split(";")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex <= 0) continue;
+    const key = trimmed.slice(0, eqIndex).trim();
+    if (key !== name) continue;
+    const rawVal = trimmed.slice(eqIndex + 1).trim();
+    if (!rawVal) return null;
+    try {
+      return decodeURIComponent(rawVal);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 export type OAuthPkceChallenge = {
   state: string;
@@ -65,6 +95,19 @@ export function getCookieAttributes(requestUrl: string, maxAge: number = 0): str
 }
 
 /**
+ * Host-only cookie attributes (no Domain) so the cookie stays on this app origin
+ * (synx.christran.io or localhost), adding Secure on HTTPS.
+ */
+export function getHostOnlyCookieAttributes(
+  requestUrl: string,
+  maxAge: number = 0,
+): string {
+  const url = new URL(requestUrl);
+  const secureAttr = url.protocol === "https:" ? "; Secure" : "";
+  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureAttr}`;
+}
+
+/**
  * PKCE/state cookie attributes: host-only (no Domain) so the verifier stays on this
  * app origin (synx.christran.io or localhost) and is never shared across sibling apps.
  */
@@ -72,9 +115,7 @@ export function getPkceCookieAttributes(
   requestUrl: string,
   maxAge: number = PKCE_MAX_AGE_SECONDS,
 ): string {
-  const url = new URL(requestUrl);
-  const secureAttr = url.protocol === "https:" ? "; Secure" : "";
-  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureAttr}`;
+  return getHostOnlyCookieAttributes(requestUrl, maxAge);
 }
 
 export function serializePkceCookie(
@@ -120,19 +161,40 @@ export function clearAuthRefreshCookie(requestUrl: string): string {
   return `${AUTH_REFRESH_COOKIE}=; ${getCookieAttributes(requestUrl, 0)}`;
 }
 
-/** Clear session + refresh + any in-flight PKCE cookie (e.g. /logout?local=true). */
+export function serializeAuthSessionIdCookie(
+  requestUrl: string,
+  sessionId: string,
+  maxAge: number = REFRESH_TOKEN_MAX_AGE_SECONDS,
+): string {
+  return `${AUTH_SESSION_ID_COOKIE}=${encodeURIComponent(sessionId)}; ${getHostOnlyCookieAttributes(requestUrl, maxAge)}`;
+}
+
+export function clearAuthSessionIdCookie(requestUrl: string): string {
+  return `${AUTH_SESSION_ID_COOKIE}=; ${getHostOnlyCookieAttributes(requestUrl, 0)}`;
+}
+
+export function serializeGuestSessionCookie(
+  requestUrl: string,
+  guestId: string,
+  maxAge: number = GUEST_SESSION_MAX_AGE_SECONDS,
+): string {
+  return `${GUEST_SESSION_COOKIE}=${encodeURIComponent(guestId)}; ${getHostOnlyCookieAttributes(requestUrl, maxAge)}`;
+}
+
+/** Clear session + refresh + host-only session id + any in-flight PKCE cookie (e.g. /logout?local=true). */
 export function buildAuthClearCookieHeaders(requestUrl: string): Headers {
   const headers = new Headers();
   headers.append("Set-Cookie", clearAuthSessionCookie(requestUrl));
   headers.append("Set-Cookie", clearAuthRefreshCookie(requestUrl));
+  headers.append("Set-Cookie", clearAuthSessionIdCookie(requestUrl));
   headers.append("Set-Cookie", clearPkceCookie(requestUrl));
   return headers;
 }
 
 /**
  * Headers for redirecting to central sYnID logout.
- * Clears only the short-lived PKCE cookie — not synx_auth_session / synx_refresh_session — so
- * "Cancel and return" on sYnID can keep the user signed in locally.
+ * Clears only the short-lived PKCE cookie — not synx_auth_session / synx_refresh_session /
+ * synx_session_id — so "Cancel and return" on sYnID can keep the user signed in locally.
  * Session clearing is done by sYnID (/logout/all) or by /logout?local=true.
  */
 export function buildCentralLogoutClearHeaders(requestUrl: string): Headers {
@@ -141,13 +203,24 @@ export function buildCentralLogoutClearHeaders(requestUrl: string): Headers {
   return headers;
 }
 
+export function parseAuthSessionCookie(request: Request): string | null {
+  return parseCookieValue(request.headers.get("Cookie"), AUTH_SESSION_COOKIE);
+}
+
+export function parseSessionIdCookie(request: Request): string | null {
+  return parseCookieValue(request.headers.get("Cookie"), AUTH_SESSION_ID_COOKIE);
+}
+
+export function parseGuestSessionCookie(request: Request): string | null {
+  return parseCookieValue(request.headers.get("Cookie"), GUEST_SESSION_COOKIE);
+}
+
 export function parsePkceCookie(request: Request): OAuthPkceChallenge | null {
-  const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.match(new RegExp(`${PKCE_COOKIE_NAME}=([^;]+)`));
-  if (!match) return null;
+  const raw = parseCookieValue(request.headers.get("Cookie"), PKCE_COOKIE_NAME);
+  if (!raw) return null;
 
   try {
-    const parsed = JSON.parse(decodeURIComponent(match[1])) as {
+    const parsed = JSON.parse(raw) as {
       state?: unknown;
       verifier?: unknown;
       redirectTo?: unknown;
@@ -177,7 +250,5 @@ export function parsePkceCookie(request: Request): OAuthPkceChallenge | null {
 }
 
 export function parseRefreshCookie(request: Request): string | null {
-  const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.match(new RegExp(`${AUTH_REFRESH_COOKIE}=([^;]+)`));
-  return match ? decodeURIComponent(match[1]) : null;
+  return parseCookieValue(request.headers.get("Cookie"), AUTH_REFRESH_COOKIE);
 }

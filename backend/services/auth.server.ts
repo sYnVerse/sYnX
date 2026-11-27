@@ -3,37 +3,60 @@ import { createSubjects } from "@openauthjs/openauth/subject";
 import { href } from "react-router";
 import { object, string } from "valibot";
 import {
-  AUTH_SESSION_COOKIE,
   buildAuthClearCookieHeaders,
+  clearAuthSessionIdCookie,
+  parseAuthSessionCookie,
+  parseGuestSessionCookie,
   parseRefreshCookie,
   parseSafeRedirectTo,
+  parseSessionIdCookie,
   serializeAuthRefreshCookie,
   serializeAuthSessionCookie,
+  serializeAuthSessionIdCookie,
 } from "./auth-cookies.server";
+import {
+  attachTokenToAuthSession,
+  checkAccessTokenSession,
+  isAuthSessionRevoked,
+  revokeAuthSessionById,
+} from "./auth-sessions.server";
 import { isGuestId } from "./guest-access.server";
+import { verifyAccessJwtWithJwks } from "./jwks-verifier.server";
 
 export {
   AUTH_SESSION_COOKIE,
+  AUTH_SESSION_ID_COOKIE,
+  GUEST_SESSION_COOKIE,
+  GUEST_SESSION_MAX_AGE_SECONDS,
   PKCE_COOKIE_NAME,
   PKCE_MAX_AGE_SECONDS,
   ACCESS_TOKEN_MAX_AGE_SECONDS,
   REFRESH_TOKEN_MAX_AGE_SECONDS,
   buildAuthClearCookieHeaders,
   buildCentralLogoutClearHeaders,
+  clearAuthSessionIdCookie,
   clearPkceCookie,
   getCookieAttributes,
   getCookieDomain,
+  getHostOnlyCookieAttributes,
   getPkceCookieAttributes,
+  parseAuthSessionCookie,
+  parseCookieValue,
+  parseGuestSessionCookie,
   parsePkceCookie,
   parseRefreshCookie,
   parseSafeRedirectTo,
+  parseSessionIdCookie,
   serializeAuthRefreshCookie,
   serializeAuthSessionCookie,
+  serializeAuthSessionIdCookie,
+  serializeGuestSessionCookie,
   serializePkceCookie,
 } from "./auth-cookies.server";
 export type { OAuthPkceChallenge } from "./auth-cookies.server";
 
 export interface AuthEnv {
+  DB?: D1Database;
   CLIENT_ID_MAP?: string | Record<string, string>;
   OPENAUTH_ISSUER?: string;
   SYNX_ALLOWED_CLIENT_IDS?: string;
@@ -165,9 +188,7 @@ export function parseTestLoginRequest(
     };
   }
 
-  const cookieHeader = request.headers.get("Cookie") || "";
-  const guestMatch = cookieHeader.match(/guest_session=([^;]+)/);
-  const guestId = guestMatch ? decodeURIComponent(guestMatch[1]) : null;
+  const guestId = parseGuestSessionCookie(request);
 
   const userId =
     rawUserId ||
@@ -317,9 +338,9 @@ export type VerifiedAccessToken = { userId: string; email: string };
 
 /**
  * Single entry point for validating a sYnID access token in sYnX.
- * Runs OpenAuth's `verify` (signature, issuer, expiry, access mode, subject
- * schema), then requires the verified `aud` to be one of sYnX's own client IDs.
- * Returns null for any invalid or foreign token; never throws.
+ * Verifies the ES256 signature, issuer, expiry, access mode, subject schema,
+ * allowed audience (`aud`), and server-side revocation state in `auth_sessions`.
+ * Returns null for any invalid, foreign, or revoked token; never throws.
  */
 export async function verifyAccessToken(
   request: Request,
@@ -331,13 +352,19 @@ export async function verifyAccessToken(
     if (!isLocalTestAuthAllowed(request, env)) return null;
     return parseLocalTestToken(token);
   }
-  const client = getAuthClient(request, env);
+  const { issuer } = getAuthSettings(request, env);
   try {
-    const verified = await client.verify(subjects, token);
-    if (verified.err) return null;
+    const verified = await verifyAccessJwtWithJwks(token, { issuer, subjects });
+    if (!verified) return null;
     if (!isAllowedAudience(verified.aud, getAllowedClientIDs(env))) {
       console.warn("Rejected sYnID access token issued to another client");
       return null;
+    }
+    if (env?.DB) {
+      const sessionStatus = await checkAccessTokenSession(env.DB, token);
+      if (sessionStatus.status === "revoked") {
+        return null;
+      }
     }
     const properties = verified.subject.properties;
     return {
@@ -350,10 +377,38 @@ export async function verifyAccessToken(
   }
 }
 
+const reconciledCentralLogoutRequests = new WeakSet<Request>();
+
+/**
+ * Reconciles central sYnID logout when sYnID cleared the shared `.christran.io`
+ * auth cookies (`synx_auth_session`, `synx_refresh_session`) while sYnX's
+ * host-only `synx_session_id` cookie is still present on the next request.
+ */
+async function reconcileCentralLogout(
+  request: Request,
+  env: AuthEnv | null | undefined,
+): Promise<void> {
+  if (reconciledCentralLogoutRequests.has(request)) return;
+  reconciledCentralLogoutRequests.add(request);
+
+  const sessionId = parseSessionIdCookie(request);
+  if (!sessionId) return;
+  if (parseAuthSessionCookie(request) || parseRefreshCookie(request)) return;
+
+  if (env?.DB) {
+    try {
+      await revokeAuthSessionById(env.DB, sessionId, "logout_central");
+    } catch (err) {
+      console.error("Failed to revoke centrally logged-out session:", err);
+    }
+  }
+  recordRefreshedCookies(request, [clearAuthSessionIdCookie(request.url)]);
+}
+
 /**
  * Attempts silent session renewal using the synx_refresh_session cookie.
- * On success, verifies the new access token, records refreshed Set-Cookie headers,
- * and returns the authenticated user payload.
+ * On success, verifies the new access token, links it to the active server-side session,
+ * records refreshed Set-Cookie headers, and returns the authenticated user payload.
  */
 export async function trySilentRefresh(
   request: Request,
@@ -362,6 +417,17 @@ export async function trySilentRefresh(
 ): Promise<{ userId: string; email: string; token: string } | null> {
   const refreshToken = parseRefreshCookie(request);
   if (!refreshToken) return null;
+
+  const sessionId = parseSessionIdCookie(request);
+  if (sessionId && env?.DB) {
+    try {
+      if (await isAuthSessionRevoked(env.DB, sessionId)) {
+        return null;
+      }
+    } catch (err) {
+      console.error("Failed to check session revocation before refresh:", err);
+    }
+  }
 
   const client = getAuthClient(request, env);
   try {
@@ -379,12 +445,31 @@ export async function trySilentRefresh(
       return null;
     }
 
+    let attachedSessionId: string | null = null;
+    if (env?.DB) {
+      const attached = await attachTokenToAuthSession(env.DB, {
+        sessionId,
+        userId: verified.userId,
+        source: "web",
+        accessToken: newAccessToken,
+      });
+      if (!attached.ok) {
+        return null;
+      }
+      attachedSessionId = attached.sessionId;
+    }
+
     const cookieHeaders: string[] = [
       serializeAuthSessionCookie(request.url, newAccessToken),
     ];
     if (refreshed.tokens.refresh) {
       cookieHeaders.push(
         serializeAuthRefreshCookie(request.url, refreshed.tokens.refresh),
+      );
+    }
+    if (attachedSessionId && attachedSessionId !== sessionId) {
+      cookieHeaders.push(
+        serializeAuthSessionIdCookie(request.url, attachedSessionId),
       );
     }
     recordRefreshedCookies(request, cookieHeaders);
@@ -401,9 +486,8 @@ export async function trySilentRefresh(
 }
 
 export async function requireUser(request: Request, env: AuthEnv | null | undefined) {
-  const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
-  const token = match ? decodeURIComponent(match[1]) : null;
+  await reconcileCentralLogout(request, env);
+  const token = parseAuthSessionCookie(request);
 
   const verified = await verifyAccessToken(request, env, token);
   if (verified && token) {
@@ -443,9 +527,8 @@ async function resolveOptionalUser(
   request: Request,
   env: AuthEnv | null | undefined,
 ): Promise<OptionalUserResult> {
-  const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
-  const token = match ? decodeURIComponent(match[1]) : null;
+  await reconcileCentralLogout(request, env);
+  const token = parseAuthSessionCookie(request);
 
   const verified = await verifyAccessToken(request, env, token);
   if (verified) {
@@ -477,16 +560,9 @@ async function resolveOptionalUser(
   // Only accept a cookie that holds an id this app minted (guest_<uuid>);
   // anything else gets a fresh guest id, so a guest can never act as another
   // user's id.
-  const guestMatch = cookieHeader.match(/guest_session=([^;]+)/);
-  let guestId: string | null = null;
-  if (guestMatch) {
-    try {
-      const candidate = decodeURIComponent(guestMatch[1]);
-      if (isGuestId(candidate)) guestId = candidate;
-    } catch {
-      // Malformed cookie value; treat as no guest session.
-    }
-  }
+  const guestCandidate = parseGuestSessionCookie(request);
+  let guestId: string | null =
+    guestCandidate && isGuestId(guestCandidate) ? guestCandidate : null;
   let isNewGuest = false;
   if (!guestId) {
     guestId = `guest_${crypto.randomUUID()}`;
@@ -522,9 +598,10 @@ export async function verifyBearerToken(request: Request, env: AuthEnv | null | 
     token = authHeader.substring(7).trim();
   }
 
-  const cookieHeader = request.headers.get("Cookie") || "";
-  const match = cookieHeader.match(new RegExp(`${AUTH_SESSION_COOKIE}=([^;]+)`));
-  const cookieToken = match ? decodeURIComponent(match[1]) : null;
+  if (!isBearer) {
+    await reconcileCentralLogout(request, env);
+  }
+  const cookieToken = parseAuthSessionCookie(request);
 
   if (!token && cookieToken) {
     token = cookieToken;

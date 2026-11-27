@@ -2,12 +2,14 @@ import type { Route } from "./+types/callback";
 import { href, redirect } from "react-router";
 import { RouteErrorBoundary } from "~/components/RouteErrorBoundary";
 import { getAuthClient, getAuthSettings, parseSafeRedirectTo, verifyAccessToken } from "@synx/backend/services/auth.server";
+import { createAuthSession } from "@synx/backend/services/auth-sessions.server";
 import { syncProviderProfile } from "@synx/backend/services/provider-profile.server";
 import {
   clearPkceCookie,
   parsePkceCookie,
   serializeAuthRefreshCookie,
   serializeAuthSessionCookie,
+  serializeAuthSessionIdCookie,
 } from "@synx/backend/services/auth-cookies.server";
 import { getCloudflareContext } from "@synx/backend/services/context.server";
 
@@ -61,12 +63,23 @@ export const loader = async ({ request, context }: Route.LoaderArgs) => {
       issuer: getAuthSettings(request, env).issuer,
       force: true,
     });
+    let sessionId: string | null = null;
+    if (env.DB) {
+      sessionId = await createAuthSession(env.DB, {
+        userId: verified.userId,
+        source: "web",
+        accessToken: access,
+      });
+    }
     const headers = new Headers();
     // Always clear the short-lived PKCE cookie after a successful exchange.
     headers.append("Set-Cookie", clearPkce);
     headers.append("Set-Cookie", serializeAuthSessionCookie(request.url, access));
     if (refresh) {
       headers.append("Set-Cookie", serializeAuthRefreshCookie(request.url, refresh));
+    }
+    if (sessionId) {
+      headers.append("Set-Cookie", serializeAuthSessionIdCookie(request.url, sessionId));
     }
 
     // Determine return destination

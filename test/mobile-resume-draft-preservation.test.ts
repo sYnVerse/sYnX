@@ -462,6 +462,8 @@ const mocks = vi.hoisted(() => {
     OPENAUTH_CLIENT_ID: "synx",
     OPENAUTH_TOKEN_ENDPOINT: "https://auth.christran.io/token",
     sessionRefresh,
+    registerMobileSession: vi.fn(async () => null),
+    revokeMobileSession: vi.fn(async () => {}),
     setAuthFailureHandler: vi.fn((fn: (() => Promise<void>) | null) => {
       authFailureHandler = fn;
     }),

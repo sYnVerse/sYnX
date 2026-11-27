@@ -17,6 +17,7 @@ import {
   OPENAUTH_ISSUER,
   OPENAUTH_CLIENT_ID,
   OPENAUTH_TOKEN_ENDPOINT,
+  registerMobileSession,
   sessionRefresh,
   setAuthFailureHandler,
 } from "../api/client";
@@ -176,6 +177,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const result = await sessionRefresh.refresh();
       if (result.ok) {
         applyAccessToken(result.tokens.accessToken);
+        void registerMobileSession(result.tokens.accessToken);
         return;
       }
 
@@ -296,6 +298,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.access_token) {
         await persistTokenPair(data.access_token, data.refresh_token ?? null);
         applyAccessToken(data.access_token);
+        void registerMobileSession(data.access_token);
       }
     } catch (e) {
       console.error("Code exchange failed", e);
