@@ -4,6 +4,7 @@ import { href, useLoaderData, useNavigate } from "react-router";
 import { parseSafeRedirectTo } from "@synx/backend/services/auth.server";
 import { getRequestWebAuth } from "@synx/backend/services/auth-context.server";
 import { getCloudflareContext } from "@synx/backend/services/context.server";
+import { findFirstActiveOwnedListId } from "@synx/backend/services/list-archives.server";
 import { loader as listLoader } from "~/features/list/loader.server";
 import { action as listAction } from "~/features/list/action.server";
 import { canAccessList, getActiveListAccess } from "~/features/list/actions/access.server";
@@ -48,11 +49,7 @@ function extractListIdFromLocation(location: string | null | undefined): string 
 async function findPrimaryListId(db: D1Database | undefined, userId: string): Promise<string | undefined> {
   if (!db) return undefined;
   try {
-    const firstList = await db
-      .prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1")
-      .bind(userId)
-      .first<{ id: string }>();
-    return firstList?.id;
+    return (await findFirstActiveOwnedListId(db, userId)) ?? undefined;
   } catch (e) {
     console.error("Failed to resolve primary list in _index:", e);
     return undefined;

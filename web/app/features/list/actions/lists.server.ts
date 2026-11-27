@@ -2,6 +2,14 @@ import { href } from "react-router";
 import type { ListActionContext } from "./context";
 import { redirect } from "./context";
 import { categoryError, listNameError, normalizeOptionalCategory } from "@synx/shared/write-limits";
+import { getListAccess } from "@synx/backend/services/api-helpers.server";
+import {
+  archiveListForUser,
+  findFirstActiveOwnedListId,
+  getArchivedListMap,
+  unarchiveListForUser,
+} from "@synx/backend/services/list-archives.server";
+import { recordSharedListAccess, listSharedWithMe } from "@synx/backend/services/shared-lists.server";
 import { requestOrPerformDelete } from "@synx/backend/services/pending-deletes.server";
 import { deleteRequestActivitySummary } from "@synx/backend/services/list-activity.server";
 
@@ -173,19 +181,97 @@ export async function handleDeleteList(ctx: ListActionContext) {
 
   if (ownsList && activeListId === listId) {
     try {
-      const firstList = await db
-        .prepare("SELECT id FROM lists WHERE owner_id = ? ORDER BY created_at ASC LIMIT 1")
-        .bind(userId)
-        .first<{ id: string }>();
-      if (firstList) {
-        return redirect(href("/:id", { id: firstList.id }));
-      } else {
-        return redirect(href("/"));
+      const nextOwnedId = await findFirstActiveOwnedListId(db, userId);
+      if (nextOwnedId) {
+        return redirect(href("/:id", { id: nextOwnedId }));
       }
+      return redirect(href("/"));
     } catch (e) {
       console.error("Failed to find fallback list:", e);
       return redirect(href("/"));
     }
   }
   return { success: true };
+}
+
+export async function handleArchiveList(ctx: ListActionContext) {
+  const { isLoggedIn, formData, db, userId, activeListId, scheduleActivityLog } = ctx;
+  if (!isLoggedIn) {
+    return Response.json({ error: "Sign in required" }, { status: 401 });
+  }
+  const listId = ((formData.get("listId") as string) || activeListId || "").trim();
+  if (!listId) {
+    return Response.json({ error: "List ID is required" }, { status: 400 });
+  }
+  const access = await getListAccess(db, listId, userId);
+  if (!access.hasAccess || !access.list) {
+    return Response.json(
+      { error: access.denial === "not_found" ? "List not found" : "Access denied to list" },
+      { status: access.denial === "not_found" ? 404 : 403 },
+    );
+  }
+  if (!access.isOwner) {
+    await recordSharedListAccess(db, userId, listId, false);
+  }
+  const { archivedAt, alreadyArchived } = await archiveListForUser(db, userId, listId);
+  if (!alreadyArchived) {
+    scheduleActivityLog({
+      listId,
+      action: "list_archived",
+      actorId: userId,
+      isOwner: access.isOwner,
+      shareMode: access.list.share_mode,
+      summary: access.list.name,
+    });
+  }
+
+  if (activeListId === listId) {
+    const nextOwnedId = await findFirstActiveOwnedListId(db, userId, listId);
+    if (nextOwnedId) {
+      return redirect(href("/:id", { id: nextOwnedId }));
+    }
+    const sharedRows = await listSharedWithMe(db, userId);
+    const archivedMap = await getArchivedListMap(
+      db,
+      userId,
+      sharedRows.map((r) => r.id),
+    );
+    const nextShared = sharedRows.find((r) => r.id !== listId && !archivedMap.has(r.id));
+    if (nextShared) {
+      return redirect(href("/:id", { id: nextShared.id }));
+    }
+    return redirect(href("/"));
+  }
+
+  return Response.json({ success: true, archived: true, archivedAt });
+}
+
+export async function handleUnarchiveList(ctx: ListActionContext) {
+  const { isLoggedIn, formData, db, userId, activeListId, scheduleActivityLog } = ctx;
+  if (!isLoggedIn) {
+    return Response.json({ error: "Sign in required" }, { status: 401 });
+  }
+  const listId = ((formData.get("listId") as string) || activeListId || "").trim();
+  if (!listId) {
+    return Response.json({ error: "List ID is required" }, { status: 400 });
+  }
+  const access = await getListAccess(db, listId, userId);
+  if (!access.hasAccess || !access.list) {
+    return Response.json(
+      { error: access.denial === "not_found" ? "List not found" : "Access denied to list" },
+      { status: access.denial === "not_found" ? 404 : 403 },
+    );
+  }
+  const removed = await unarchiveListForUser(db, userId, listId);
+  if (removed) {
+    scheduleActivityLog({
+      listId,
+      action: "list_unarchived",
+      actorId: userId,
+      isOwner: access.isOwner,
+      shareMode: access.list.share_mode,
+      summary: access.list.name,
+    });
+  }
+  return Response.json({ success: true, archived: false, archivedAt: null });
 }

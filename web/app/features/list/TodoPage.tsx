@@ -5,14 +5,22 @@ import { GuestContext } from "~/guest-context";
 import { getProfileLabel } from "~/profile-label";
 import { WEB_VERSION } from "~/constants/changelog";
 import {
+  ARCHIVE_PROMPT_DISMISSED_STORAGE_KEY,
   DEFAULT_TASK_SORT_MODE,
   QUICK_PICK_DURATION_MINUTES,
+  canArchiveList,
+  clearArchivePromptDismissed,
   describeDeleteTarget,
   formatRescheduledToast,
   getCategoryTagEmoji,
+  isListCompleted,
   isPresetCategory,
   getLocalTimeZone,
+  markArchivePromptDismissed,
+  parseDismissedArchivePrompts,
   resolveTaskSortMode,
+  serializeDismissedArchivePrompts,
+  shouldSuggestArchivingList,
   taskSortStorageKey,
   type ListActivityEntry,
   type PendingDeleteRequest,
@@ -272,6 +280,8 @@ export default function TodoPage({
     requestCloseProfile,
     smartQuickAddEnabled,
     setSmartQuickAddEnabled,
+    archiveSuggestionsEnabled,
+    setArchiveSuggestionsEnabled,
   } = useProfileSettings({
     settings,
     providerProfile,
@@ -624,6 +634,133 @@ export default function TodoPage({
     prevTotalTodos.current = totalCount;
   }, [completedCount, totalCount, effectiveActiveListId]);
 
+  const canArchive = canArchiveList({
+    isLoggedIn,
+    isOwner,
+    hasSharedAccess: isLoggedIn && isSharedServerList,
+  });
+  const isActiveListArchived = Boolean(isLoggedIn && activeListMeta?.archived_at);
+  const [savedDismissedArchivePrompts, setSavedDismissedArchivePrompts] = useStoredValue(
+    ARCHIVE_PROMPT_DISMISSED_STORAGE_KEY
+  );
+  const dismissedArchivePrompts = useMemo(
+    () => parseDismissedArchivePrompts(savedDismissedArchivePrompts),
+    [savedDismissedArchivePrompts]
+  );
+  const isListNowCompleted = useMemo(
+    () => isListCompleted(optimisticTodos),
+    [optimisticTodos]
+  );
+  const archiveStateSettled = Boolean(hydrated && !isIndexRedirecting && effectiveActiveListId);
+  const [archivePromptListId, setArchivePromptListId] = useState<string | null>(null);
+  const [prevArchiveCheck, setPrevArchiveCheck] = useState<{
+    listId: string | undefined;
+    completed: boolean;
+    settled: boolean;
+  }>({
+    listId: effectiveActiveListId,
+    completed: isListNowCompleted,
+    settled: archiveStateSettled,
+  });
+
+  if (
+    prevArchiveCheck.listId !== effectiveActiveListId ||
+    prevArchiveCheck.completed !== isListNowCompleted ||
+    prevArchiveCheck.settled !== archiveStateSettled
+  ) {
+    const wasSettledSameList =
+      archiveStateSettled &&
+      prevArchiveCheck.settled &&
+      prevArchiveCheck.listId === effectiveActiveListId;
+    const wasCompleted = prevArchiveCheck.completed;
+
+    setPrevArchiveCheck({
+      listId: effectiveActiveListId,
+      completed: isListNowCompleted,
+      settled: archiveStateSettled,
+    });
+
+    if (!wasSettledSameList || !isListNowCompleted || !effectiveActiveListId) {
+      if (archivePromptListId !== null) {
+        setArchivePromptListId(null);
+      }
+    } else if (
+      shouldSuggestArchivingList({
+        wasCompleted,
+        isNowCompleted: isListNowCompleted,
+        isArchived: isActiveListArchived,
+        canArchive,
+        suggestionsEnabled: archiveSuggestionsEnabled,
+        dismissedForCycle: dismissedArchivePrompts.has(effectiveActiveListId),
+      })
+    ) {
+      setArchivePromptListId(effectiveActiveListId);
+    }
+  }
+
+  useEffect(() => {
+    if (!archiveStateSettled || !effectiveActiveListId || isListNowCompleted) return;
+    if (dismissedArchivePrompts.has(effectiveActiveListId)) {
+      setSavedDismissedArchivePrompts(
+        serializeDismissedArchivePrompts(
+          clearArchivePromptDismissed(dismissedArchivePrompts, effectiveActiveListId)
+        )
+      );
+    }
+  }, [
+    archiveStateSettled,
+    effectiveActiveListId,
+    isListNowCompleted,
+    dismissedArchivePrompts,
+    setSavedDismissedArchivePrompts,
+  ]);
+
+  const handleDismissArchivePrompt = () => {
+    if (!effectiveActiveListId) return;
+    setArchivePromptListId(null);
+    setSavedDismissedArchivePrompts(
+      serializeDismissedArchivePrompts(
+        markArchivePromptDismissed(dismissedArchivePrompts, effectiveActiveListId)
+      )
+    );
+  };
+
+  const handleArchiveList = (targetListId: string) => {
+    if (!isLoggedIn || !targetListId) return;
+    if (targetListId === effectiveActiveListId) {
+      setArchivePromptListId(null);
+    }
+    if (dismissedArchivePrompts.has(targetListId)) {
+      setSavedDismissedArchivePrompts(
+        serializeDismissedArchivePrompts(
+          clearArchivePromptDismissed(dismissedArchivePrompts, targetListId)
+        )
+      );
+    }
+    listFetcher.submit(
+      { intent: "archiveList", listId: targetListId },
+      { method: "post" }
+    );
+    showToast("✓ List archived");
+  };
+
+  const handleUnarchiveList = (targetListId: string) => {
+    if (!isLoggedIn || !targetListId) return;
+    listFetcher.submit(
+      { intent: "unarchiveList", listId: targetListId },
+      { method: "post" }
+    );
+    showToast("✓ List unarchived");
+  };
+
+  const showArchivePrompt =
+    archivePromptListId === effectiveActiveListId &&
+    isListNowCompleted &&
+    !isActiveListArchived &&
+    canArchive &&
+    archiveSuggestionsEnabled &&
+    !dismissedArchivePrompts.has(effectiveActiveListId);
+
   return (
     <GuestContext.Provider value={guestContextValue}>
       <div className="min-h-screen md:h-screen bg-themeBg text-slate-100 flex flex-col md:grid md:grid-cols-[minmax(0,240px)_minmax(0,1fr)] lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)] relative overflow-x-hidden overflow-y-auto md:overflow-hidden font-sans w-full max-w-[100vw]">
@@ -691,6 +828,9 @@ export default function TodoPage({
           settings={settings}
           profileLabel={profileLabel}
           setIsProfileOpen={setIsProfileOpen}
+          archiveSuggestionsEnabled={archiveSuggestionsEnabled}
+          onArchiveList={handleArchiveList}
+          onUnarchiveList={handleUnarchiveList}
         />
 
         {/* ── Main Area ─────────────────────────────────────── */}
@@ -885,9 +1025,79 @@ export default function TodoPage({
             </div>
 
             <div className="flex items-center gap-3 flex-shrink-0 self-start sm:self-auto">
+              {canArchive && effectiveActiveListId && (
+                isActiveListArchived ? (
+                  <button
+                    type="button"
+                    data-testid="active-list-unarchive-button"
+                    onClick={() => handleUnarchiveList(effectiveActiveListId)}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 transition-colors cursor-pointer"
+                  >
+                    Unarchive
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="active-list-archive-button"
+                    aria-label="Archive list"
+                    title="Archive list"
+                    onClick={() => handleArchiveList(effectiveActiveListId)}
+                    className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] text-slate-300 hover:text-themeAccentText hover:border-themeAccentRing/40 transition-colors cursor-pointer"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                    <span className="hidden sm:inline">Archive</span>
+                  </button>
+                )
+              )}
               <ProgressRing percent={progress.percent} />
             </div>
           </header>
+
+          {canArchive && effectiveActiveListId && isActiveListArchived && (
+            <div
+              data-testid="archived-list-banner"
+              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-xs text-amber-100"
+            >
+              <span>This list is archived — adding a task unarchives it for you.</span>
+              <button
+                type="button"
+                data-testid="archived-banner-unarchive"
+                onClick={() => handleUnarchiveList(effectiveActiveListId)}
+                className="px-3 py-1 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 text-amber-100 font-semibold border border-amber-300/30 transition-colors cursor-pointer"
+              >
+                Unarchive
+              </button>
+            </div>
+          )}
+
+          {showArchivePrompt && effectiveActiveListId && (
+            <div
+              data-testid="archive-suggestion-prompt"
+              className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100"
+            >
+              <span>All tasks done! Archive this list?</span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="archive-prompt-archive"
+                  onClick={() => handleArchiveList(effectiveActiveListId)}
+                  className="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold transition-colors cursor-pointer"
+                >
+                  Archive
+                </button>
+                <button
+                  type="button"
+                  data-testid="archive-prompt-not-now"
+                  onClick={handleDismissArchivePrompt}
+                  className="px-3 py-1 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-slate-200 font-semibold transition-colors cursor-pointer"
+                >
+                  Not now
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Create Task Form / View Only Banner */}
           <CreateTaskForm
@@ -1098,6 +1308,8 @@ export default function TodoPage({
           handleExportCompletionsCsv={handleExportCompletionsCsv}
           smartQuickAddEnabled={smartQuickAddEnabled}
           setSmartQuickAddEnabled={setSmartQuickAddEnabled}
+          archiveSuggestionsEnabled={archiveSuggestionsEnabled}
+          setArchiveSuggestionsEnabled={setArchiveSuggestionsEnabled}
         />
 
         {/* ── Owner Activity Log Modal ──────────────────────── */}

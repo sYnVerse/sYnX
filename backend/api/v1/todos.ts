@@ -7,6 +7,7 @@ import { CreateTodoSchema, canDeleteTaskDirectly } from "@synx/shared";
 
 import { getListAccess } from "../../services/api-helpers.server";
 import { isListFull } from "../../services/guest-access.server";
+import { unarchiveListIfArchivedOnTaskAdd } from "../../services/list-archives.server";
 import { logListActivity } from "../../services/list-activity.server";
 import {
   listPendingDeletesForList,
@@ -120,7 +121,16 @@ export async function action({  request, context  }: ApiRouteArgs) {
     });
     if (waitUntil) waitUntil(logPromise); else await logPromise;
 
-    return Response.json({ success: true, todo }, { status: 201 });
+    const unarchivedList = await unarchiveListIfArchivedOnTaskAdd(db, {
+      userId: user.userId,
+      listId: parsed.listId,
+      isOwner: access.isOwner,
+      shareMode: access.list?.share_mode,
+      request,
+      waitUntil,
+    });
+
+    return Response.json({ success: true, todo, unarchivedList }, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "";
     return Response.json({ error: message || "Invalid request payload" }, { status: 400 });

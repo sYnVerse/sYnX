@@ -16,6 +16,7 @@ export interface ListRowProps {
   ownerName?: string;
   viewMode: ListsViewMode;
   pickingPinnedList: boolean;
+  showCompletedHint?: boolean;
   previewData?: ListPreviewTasksResult<TodoItem> | null;
   onPress: (item: TodoList) => void;
   onOpenActions: (item: TodoList) => void;
@@ -34,6 +35,7 @@ export const ListRow: React.FC<ListRowProps> = ({
   ownerName,
   viewMode,
   pickingPinnedList,
+  showCompletedHint = false,
   previewData,
   onPress,
   onOpenActions,
@@ -108,6 +110,26 @@ export const ListRow: React.FC<ListRowProps> = ({
             >
               {title}
             </Text>
+
+            {showCompletedHint && !item.isArchived && (
+              <View
+                style={[
+                  styles.doneBadge,
+                  {
+                    backgroundColor: theme.badgeSuccessBg,
+                    borderColor: theme.badgeSuccessBorder,
+                  },
+                ]}
+                accessibilityLabel="All tasks completed"
+              >
+                <Text
+                  style={[styles.doneBadgeText, { color: theme.badgeSuccessFg }]}
+                  maxFontSizeMultiplier={1.2}
+                >
+                  Done
+                </Text>
+              </View>
+            )}
 
             {isPinned && (
               <View style={styles.statusBadge} accessibilityLabel="Pinned to widget">
@@ -258,6 +280,18 @@ const styles = StyleSheet.create({
   statusBadge: {
     justifyContent: "center",
     alignItems: "center",
+  },
+  doneBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  doneBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
   },
   metaText: {
     fontSize: typography.xs,

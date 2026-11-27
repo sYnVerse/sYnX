@@ -4,7 +4,7 @@ import { addUserInteractionListener } from 'expo-widgets';
 import currentListWidget, { initialSnapshot as initialCurrentSnapshot } from '../widgets/CurrentListWidget';
 import pinnedListWidget, { initialSnapshot as initialPinnedSnapshot } from '../widgets/PinnedListWidget';
 import listProgressWidget, { initialProgressSnapshot } from '../widgets/ListProgressWidget';
-import { getLastActiveListId, getPinnedWidgetConfig } from './widgetPreferences';
+import { getLastActiveListId, getPinnedWidgetConfig, setPinnedWidgetConfig } from './widgetPreferences';
 import {
   WIDGET_UNDO_WINDOW_MS,
   buildListWidgetSnapshot,
@@ -391,6 +391,47 @@ export async function syncActiveList(
     const meta = providedMeta || (await resolveListMeta(targetId, queryClient));
     if (!meta) return;
 
+    if (meta.isArchived) {
+      let fallbackList: TodoList | undefined = queryClient
+        ?.getQueryData<TodoList[]>(['lists', 'all'])
+        ?.find((l) => !l.isArchived && l.id !== meta.id);
+      if (!fallbackList) {
+        const token = await secureSessionStore.getAccessToken();
+        if (token) {
+          try {
+            const res = await apiClient.get('/api/v1/lists');
+            const activeLists = (res.data?.lists || []) as TodoList[];
+            fallbackList = activeLists.find((l) => !l.isArchived && l.id !== meta.id);
+          } catch {
+            // Fall through and clear active widgets if no active fallback can be fetched.
+          }
+        }
+      }
+
+      if (!fallbackList) {
+        currentListWidget.updateSnapshot(toNativeWidgetProps(initialCurrentSnapshot));
+        listProgressWidget.updateSnapshot(toNativeWidgetProps(initialProgressSnapshot));
+        return;
+      }
+
+      const fallbackTodos = await resolveListTodos(fallbackList.id, queryClient);
+      const fallbackSortMode = await resolveWidgetSortMode(fallbackList.id);
+      writeListWidgetSnapshot(
+        currentListWidget,
+        buildListWidgetSnapshot(fallbackList, fallbackTodos, {
+          sortMode: fallbackSortMode,
+          now: options?.now,
+        }),
+        options
+      );
+      const fallbackProgressSnap = buildProgressWidgetSnapshot(fallbackList, fallbackTodos, {
+        sortMode: fallbackSortMode,
+        now: options?.now,
+      });
+      listProgressWidget.updateSnapshot(toNativeWidgetProps(fallbackProgressSnap));
+      return;
+    }
+
     const todos =
       providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);
 
@@ -435,6 +476,12 @@ export async function syncPinnedList(
 
     const meta = providedMeta || (await resolveListMeta(targetId, queryClient));
     if (!meta) return;
+
+    if (meta.isArchived) {
+      await setPinnedWidgetConfig(null);
+      pinnedListWidget.updateSnapshot(toNativeWidgetProps(initialPinnedSnapshot));
+      return;
+    }
 
     const todos =
       providedTodos !== undefined ? providedTodos : await resolveListTodos(targetId, queryClient);

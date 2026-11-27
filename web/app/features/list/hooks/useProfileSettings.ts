@@ -14,6 +14,7 @@ interface SettingsData {
   timeZone?: string | null;
   avatarUrl?: string | null;
   suggestedDisplayName?: string | null;
+  archiveSuggestionsEnabled?: boolean;
 }
 
 interface UseProfileSettingsOptions {
@@ -72,6 +73,25 @@ export function useProfileSettings({
   const smartQuickAddEnabled = savedSmartQuickAdd !== "false";
   const setSmartQuickAddEnabled = (enabled: boolean) => {
     setSavedSmartQuickAdd(enabled ? "true" : "false");
+  };
+
+  const initialArchiveSuggestionsEnabled = settings?.archiveSuggestionsEnabled !== false;
+  const [archiveSuggestionsEnabled, setArchiveSuggestionsState] = useState(
+    initialArchiveSuggestionsEnabled
+  );
+  const [syncedArchiveSuggestions, setSyncedArchiveSuggestions] = useState(
+    initialArchiveSuggestionsEnabled
+  );
+  if (syncedArchiveSuggestions !== initialArchiveSuggestionsEnabled) {
+    setSyncedArchiveSuggestions(initialArchiveSuggestionsEnabled);
+    setArchiveSuggestionsState(initialArchiveSuggestionsEnabled);
+  }
+  const setArchiveSuggestionsEnabled = (enabled: boolean) => {
+    setArchiveSuggestionsState(enabled);
+    suggestionFetcher.submit(
+      { intent: "setArchiveSuggestions", enabled: enabled ? "true" : "false" },
+      { method: "post" }
+    );
   };
 
   useEffect(() => {
@@ -230,5 +250,7 @@ export function useProfileSettings({
     requestCloseProfile,
     smartQuickAddEnabled,
     setSmartQuickAddEnabled,
+    archiveSuggestionsEnabled,
+    setArchiveSuggestionsEnabled,
   };
 }

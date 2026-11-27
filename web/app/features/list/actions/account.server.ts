@@ -153,6 +153,24 @@ export async function handleDismissSuggestedDisplayName(ctx: ListActionContext) 
   return Response.json({ success: true });
 }
 
+export async function handleSetArchiveSuggestions(ctx: ListActionContext) {
+  const { isLoggedIn, db, userId, email, formData } = ctx;
+  if (!isLoggedIn) {
+    return Response.json({ error: "Sign in required" }, { status: 401 });
+  }
+  const enabled = formData.get("enabled") !== "false";
+  await db
+    .prepare(
+      `INSERT INTO user_settings (user_id, email, archive_suggestions_enabled)
+       VALUES (?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         archive_suggestions_enabled = excluded.archive_suggestions_enabled`,
+    )
+    .bind(userId, email || "", enabled ? 1 : 0)
+    .run();
+  return Response.json({ success: true, archiveSuggestionsEnabled: enabled });
+}
+
 export async function handleUpdateSettings(ctx: ListActionContext) {
   const { isLoggedIn, formData, db, userId, email } = ctx;
   if (!isLoggedIn) {

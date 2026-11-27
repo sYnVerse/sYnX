@@ -1,4 +1,5 @@
 import { getDisplayNamesForUsers, ownerPayload } from "./user-profile.server";
+import { getArchivedListMap, isListArchivedForUser } from "./list-archives.server";
 
 export type ListAccessDenial = "not_found" | "private";
 
@@ -45,29 +46,44 @@ export async function getListAccess(db: D1Database, listId: string, userId: stri
   };
 }
 
+export interface ListTaskSummary {
+  openTopLevelCount: number;
+  totalCount: number;
+  openTotalCount: number;
+}
+
 export type SerializeListOptions = {
   viewerUserId: string;
   /** Pre-resolved owner display names keyed by owner_id */
   ownerNames?: Map<string, string>;
   /** Pre-resolved open task counts keyed by list_id */
   openTaskCounts?: Map<string, number>;
+  /** Pre-resolved task completion summaries keyed by list_id */
+  taskSummaries?: Map<string, ListTaskSummary>;
+  /** Pre-resolved archive timestamps for viewerUserId keyed by list_id */
+  archivedAtByListId?: Map<string, number>;
   /** Override canEdit (defaults from share mode + ownership) */
   canEdit?: boolean;
 };
 
 /**
- * Batched query for open top-level task counts across a set of lists.
+ * Batched query for total, open total (tasks + subtasks), and open top-level
+ * task counts across a set of lists.
  */
-export async function getOpenTaskCountsForLists(
+export async function getTaskCompletionSummaryForLists(
   db: D1Database,
-  listIds: string[]
-): Promise<Map<string, number>> {
-  const counts = new Map<string, number>();
+  listIds: string[],
+): Promise<Map<string, ListTaskSummary>> {
+  const summaries = new Map<string, ListTaskSummary>();
   const uniqueIds = Array.from(new Set(listIds)).filter(Boolean);
-  if (uniqueIds.length === 0) return counts;
+  if (uniqueIds.length === 0) return summaries;
 
   for (const id of uniqueIds) {
-    counts.set(id, 0);
+    summaries.set(id, {
+      openTopLevelCount: 0,
+      totalCount: 0,
+      openTotalCount: 0,
+    });
   }
 
   const chunkSize = 50;
@@ -76,25 +92,50 @@ export async function getOpenTaskCountsForLists(
     const placeholders = chunk.map(() => "?").join(", ");
     const { results } = await db
       .prepare(
-        `SELECT list_id, COUNT(*) AS open_count
+        `SELECT list_id,
+                COUNT(*) AS total_count,
+                SUM(CASE WHEN completed = 0 THEN 1 ELSE 0 END) AS open_total_count,
+                SUM(CASE WHEN parent_id IS NULL AND completed = 0 THEN 1 ELSE 0 END) AS open_top_level_count
          FROM todos
          WHERE list_id IN (${placeholders})
-           AND parent_id IS NULL
-           AND completed = 0
-         GROUP BY list_id`
+         GROUP BY list_id`,
       )
       .bind(...chunk)
-      .all<{ list_id: string; open_count: number }>();
+      .all<{
+        list_id: string;
+        total_count: number;
+        open_total_count: number;
+        open_top_level_count: number;
+      }>();
 
     for (const r of results || []) {
-      counts.set(r.list_id, Number(r.open_count) || 0);
+      summaries.set(r.list_id, {
+        totalCount: Number(r.total_count) || 0,
+        openTotalCount: Number(r.open_total_count) || 0,
+        openTopLevelCount: Number(r.open_top_level_count) || 0,
+      });
     }
   }
 
+  return summaries;
+}
+
+/**
+ * Batched query for open top-level task counts across a set of lists.
+ */
+export async function getOpenTaskCountsForLists(
+  db: D1Database,
+  listIds: string[]
+): Promise<Map<string, number>> {
+  const summaries = await getTaskCompletionSummaryForLists(db, listIds);
+  const counts = new Map<string, number>();
+  for (const [id, summary] of summaries.entries()) {
+    counts.set(id, summary.openTopLevelCount);
+  }
   return counts;
 }
 
-/** Map a D1 lists row to the public API list shape (includes additive `owner`). */
+/** Map a D1 lists row to the public API list shape (includes additive `owner` and archive state). */
 export async function serializeListRow(
   db: D1Database,
   row: ListRow,
@@ -117,19 +158,51 @@ export async function serializeListRow(
   }
 
   let openTaskCount: number;
-  if (options.openTaskCounts) {
+  let totalTaskCount: number;
+  let openTotalCount: number;
+  if (options.taskSummaries) {
+    const summary = options.taskSummaries.get(row.id);
+    openTaskCount = summary?.openTopLevelCount ?? 0;
+    totalTaskCount = summary?.totalCount ?? 0;
+    openTotalCount = summary?.openTotalCount ?? 0;
+  } else if (options.openTaskCounts) {
     openTaskCount = options.openTaskCounts.get(row.id) ?? 0;
+    totalTaskCount = openTaskCount;
+    openTotalCount = openTaskCount;
   } else {
     try {
-      const rowCount = await db
+      const rowSummary = await db
         .prepare(
-          "SELECT COUNT(*) AS c FROM todos WHERE list_id = ? AND parent_id IS NULL AND completed = 0"
+          `SELECT COUNT(*) AS total_count,
+                  SUM(CASE WHEN completed = 0 THEN 1 ELSE 0 END) AS open_total_count,
+                  SUM(CASE WHEN parent_id IS NULL AND completed = 0 THEN 1 ELSE 0 END) AS open_top_level_count
+           FROM todos
+           WHERE list_id = ?`,
         )
         .bind(row.id)
-        .first<{ c: number }>();
-      openTaskCount = Number(rowCount?.c) || 0;
+        .first<{
+          total_count: number;
+          open_total_count: number | null;
+          open_top_level_count: number | null;
+        }>();
+      totalTaskCount = Number(rowSummary?.total_count) || 0;
+      openTotalCount = Number(rowSummary?.open_total_count) || 0;
+      openTaskCount = Number(rowSummary?.open_top_level_count) || 0;
     } catch {
+      totalTaskCount = 0;
+      openTotalCount = 0;
       openTaskCount = 0;
+    }
+  }
+
+  let archivedAt: number | null = null;
+  if (options.archivedAtByListId) {
+    archivedAt = options.archivedAtByListId.get(row.id) ?? null;
+  } else if (viewerUserId) {
+    try {
+      archivedAt = await isListArchivedForUser(db, viewerUserId, row.id);
+    } catch {
+      archivedAt = null;
     }
   }
 
@@ -145,23 +218,38 @@ export async function serializeListRow(
     canEdit,
     owner: ownerPayload(displayName),
     openTaskCount,
+    totalTaskCount,
+    allTasksCompleted: totalTaskCount > 0 && openTotalCount === 0,
+    archivedAt,
+    isArchived: archivedAt !== null,
   };
 }
 
 export async function serializeListRows(
   db: D1Database,
   rows: ListRow[],
-  viewerUserId: string
+  viewerUserId: string,
+  archivedAtByListId?: Map<string, number>,
 ): Promise<Record<string, unknown>[]> {
   const ownerIds = rows.map((r) => r.owner_id);
   const listIds = rows.map((r) => r.id);
-  const [ownerNames, openTaskCounts] = await Promise.all([
+  const [ownerNames, taskSummaries, archivedMap] = await Promise.all([
     getDisplayNamesForUsers(db, ownerIds),
-    getOpenTaskCountsForLists(db, listIds),
+    getTaskCompletionSummaryForLists(db, listIds),
+    archivedAtByListId !== undefined
+      ? Promise.resolve(archivedAtByListId)
+      : viewerUserId
+        ? getArchivedListMap(db, viewerUserId, listIds)
+        : Promise.resolve(new Map<string, number>()),
   ]);
   return Promise.all(
     rows.map((row) =>
-      serializeListRow(db, row, { viewerUserId, ownerNames, openTaskCounts })
-    )
+      serializeListRow(db, row, {
+        viewerUserId,
+        ownerNames,
+        taskSummaries,
+        archivedAtByListId: archivedMap,
+      }),
+    ),
   );
 }

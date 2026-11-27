@@ -7,7 +7,11 @@ import { getLoadContext } from "./load-context";
 import { sendFCMPushNotification } from "./services/fcm.server";
 import { buildReminderEmailHtml, sanitizeEmailSubject } from "./services/html-escape.server";
 import { finalizeWorkerResponse, unexpectedErrorResponse } from "./services/worker-response.server";
-import { getDueReminderRecipients, type DueReminderRow } from "./services/due-reminders.server";
+import {
+  getDueReminderRecipients,
+  suppressDueRemindersForArchivedRecipients,
+  type DueReminderRow,
+} from "./services/due-reminders.server";
 import { deleteExpiredGuestLists } from "./services/guest-access.server";
 import { pruneOldListActivity } from "./services/list-activity.server";
 import { pruneVoidedTaskCompletions } from "./services/to-do-manager";
@@ -85,6 +89,16 @@ export default {
       } catch (e) {
         console.error("[Cron] Failed to prune auth sessions:", e);
       }
+    }
+
+    // Suppress due reminders whose recipient archived that list so they aren't sent late after unarchive
+    try {
+      const suppressed = await suppressDueRemindersForArchivedRecipients(db, now);
+      if (suppressed > 0) {
+        console.log(`[Cron] Suppressed ${suppressed} due reminder(s) for archived list(s).`);
+      }
+    } catch (e) {
+      console.error("[Cron] Failed to suppress archived-list reminders:", e);
     }
 
     // Fetch due reminders with user settings and emails (routed to the user who created/set the reminder, falling back to list owner)

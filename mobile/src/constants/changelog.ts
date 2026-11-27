@@ -22,6 +22,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Toggle Smart Quick Add in Settings to keep typed task text literal, tap a duration quick pick (15m, 30m, 1h, Skip) in the toast after untimed check-offs, and Undo repeating completions cleanly (restoring reminders and moving your calendar event back).",
       },
       {
+        type: "NEW",
+        text: "Archive finished lists to hide them from your active lists and home screen widgets without deleting them (with a collapsible Archived section, completion archive suggestions you can toggle in Settings, and automatic unarchiving when you add a new task).",
+      },
+      {
         type: "IMPR",
         text: "View activity is now available for all of your lists, including private lists.",
       },

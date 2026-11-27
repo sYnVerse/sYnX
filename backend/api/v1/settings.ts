@@ -23,6 +23,7 @@ interface UserSettingsRow {
   avatar_url?: string | null;
   suggested_display_name?: string | null;
   display_name_suggestion_dismissed?: number | null;
+  archive_suggestions_enabled?: number | boolean | null;
 }
 
 export async function loader({  request, context  }: ApiRouteArgs) {
@@ -58,6 +59,11 @@ export async function loader({  request, context  }: ApiRouteArgs) {
     discordWebhookUrl: row ? row.discord_webhook_url || "" : "",
     /** Home time zone (IANA) for repeating reminders, or null until a device sets it. */
     timeZone: row?.time_zone || null,
+    /** Whether completed-list archive suggestions are enabled for this account. */
+    archiveSuggestionsEnabled:
+      row?.archive_suggestions_enabled === undefined || row?.archive_suggestions_enabled === null
+        ? true
+        : Boolean(row.archive_suggestions_enabled),
     /** Provider photo URL and suggested display name (null when unknown or not applicable). */
     ...providerProfileFields(row),
   };
@@ -81,88 +87,113 @@ export async function action({  request, context  }: ApiRouteArgs) {
   try {
     const body = (await request.json()) as Record<string, unknown>;
     const parseBool = (v: unknown) => v === true || v === "true" || v === 1;
-    const emailEnabled = parseBool(body.emailEnabled);
-    const smsEnabled = parseBool(body.smsEnabled);
-    const phoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber.trim() : "";
-    const phoneCarrier = typeof body.phoneCarrier === "string" ? body.phoneCarrier.trim() : "";
-    const discordWebhookUrl =
-      typeof body.discordWebhookUrl === "string" ? body.discordWebhookUrl.trim() : "";
+    const hasNotificationFields = [
+      "emailEnabled",
+      "smsEnabled",
+      "phoneNumber",
+      "phoneCarrier",
+      "discordWebhookUrl",
+    ].some((key) => Object.prototype.hasOwnProperty.call(body, key));
+    const hasDisplayNameField = Object.prototype.hasOwnProperty.call(body, "displayName");
+    const hasArchiveSuggestionsField = Object.prototype.hasOwnProperty.call(
+      body,
+      "archiveSuggestionsEnabled",
+    );
 
-    const phoneError = phoneSettingsError(phoneNumber, phoneCarrier);
-    if (phoneError) {
-      return Response.json({ error: phoneError }, { status: 400 });
-    }
+    if (!hasNotificationFields && !hasDisplayNameField && hasArchiveSuggestionsField) {
+      const archiveSuggestionsEnabled = parseBool(body.archiveSuggestionsEnabled);
+      await db
+        .prepare(
+          `INSERT INTO user_settings (user_id, email, archive_suggestions_enabled)
+           VALUES (?, ?, ?)
+           ON CONFLICT(user_id) DO UPDATE SET
+             archive_suggestions_enabled = excluded.archive_suggestions_enabled`,
+        )
+        .bind(user.userId, user.email || "", archiveSuggestionsEnabled ? 1 : 0)
+        .run();
+    } else {
+      const emailEnabled = parseBool(body.emailEnabled);
+      const smsEnabled = parseBool(body.smsEnabled);
+      const phoneNumber = typeof body.phoneNumber === "string" ? body.phoneNumber.trim() : "";
+      const phoneCarrier = typeof body.phoneCarrier === "string" ? body.phoneCarrier.trim() : "";
+      const discordWebhookUrl =
+        typeof body.discordWebhookUrl === "string" ? body.discordWebhookUrl.trim() : "";
 
-    if (discordWebhookUrl) {
-      const DISCORD_WEBHOOK_REGEX =
-        /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
-      if (!DISCORD_WEBHOOK_REGEX.test(discordWebhookUrl)) {
-        return Response.json({ error: "Invalid Discord Webhook URL format" }, { status: 400 });
+      const phoneError = phoneSettingsError(phoneNumber, phoneCarrier);
+      if (phoneError) {
+        return Response.json({ error: phoneError }, { status: 400 });
+      }
+
+      if (discordWebhookUrl) {
+        const DISCORD_WEBHOOK_REGEX =
+          /^https:\/\/(?:ptb\.|canary\.)?discord(?:app)?\.com\/api\/webhooks\/\d+\/[\w-]+$/i;
+        if (!DISCORD_WEBHOOK_REGEX.test(discordWebhookUrl)) {
+          return Response.json({ error: "Invalid Discord Webhook URL format" }, { status: 400 });
+        }
+      }
+
+      const displayName = hasDisplayNameField ? sanitizeDisplayNameInput(body.displayName) : undefined;
+
+      if (hasDisplayNameField) {
+        await db
+          .prepare(
+            `INSERT INTO user_settings (user_id, email, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url, display_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(user_id) DO UPDATE SET
+               email_enabled = excluded.email_enabled,
+               sms_enabled = excluded.sms_enabled,
+               phone_number = excluded.phone_number,
+               phone_carrier = excluded.phone_carrier,
+               discord_webhook_url = excluded.discord_webhook_url,
+               display_name = excluded.display_name`,
+          )
+          .bind(
+            user.userId,
+            user.email || "",
+            emailEnabled ? 1 : 0,
+            smsEnabled ? 1 : 0,
+            phoneNumber,
+            phoneCarrier,
+            discordWebhookUrl,
+            displayName,
+          )
+          .run();
+      } else {
+        await db
+          .prepare(
+            `INSERT INTO user_settings (user_id, email, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url)
+             VALUES (?, ?, ?, ?, ?, ?, ?)
+             ON CONFLICT(user_id) DO UPDATE SET
+               email_enabled = excluded.email_enabled,
+               sms_enabled = excluded.sms_enabled,
+               phone_number = excluded.phone_number,
+               phone_carrier = excluded.phone_carrier,
+               discord_webhook_url = excluded.discord_webhook_url`,
+          )
+          .bind(
+            user.userId,
+            user.email || "",
+            emailEnabled ? 1 : 0,
+            smsEnabled ? 1 : 0,
+            phoneNumber,
+            phoneCarrier,
+            discordWebhookUrl,
+          )
+          .run();
+      }
+
+      if (hasArchiveSuggestionsField) {
+        await db
+          .prepare("UPDATE user_settings SET archive_suggestions_enabled = ? WHERE user_id = ?")
+          .bind(parseBool(body.archiveSuggestionsEnabled) ? 1 : 0, user.userId)
+          .run();
       }
     }
 
-    const hasDisplayNameField = Object.prototype.hasOwnProperty.call(body, "displayName");
-    const displayName = hasDisplayNameField ? sanitizeDisplayNameInput(body.displayName) : undefined;
-
-    if (hasDisplayNameField) {
-      await db
-        .prepare(
-          `INSERT INTO user_settings (user_id, email, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url, display_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(user_id) DO UPDATE SET
-             email_enabled = excluded.email_enabled,
-             sms_enabled = excluded.sms_enabled,
-             phone_number = excluded.phone_number,
-             phone_carrier = excluded.phone_carrier,
-             discord_webhook_url = excluded.discord_webhook_url,
-             display_name = excluded.display_name`
-        )
-        .bind(
-          user.userId,
-          user.email || "",
-          emailEnabled ? 1 : 0,
-          smsEnabled ? 1 : 0,
-          phoneNumber,
-          phoneCarrier,
-          discordWebhookUrl,
-          displayName
-        )
-        .run();
-    } else {
-      await db
-        .prepare(
-          `INSERT INTO user_settings (user_id, email, email_enabled, sms_enabled, phone_number, phone_carrier, discord_webhook_url)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(user_id) DO UPDATE SET
-             email_enabled = excluded.email_enabled,
-             sms_enabled = excluded.sms_enabled,
-             phone_number = excluded.phone_number,
-             phone_carrier = excluded.phone_carrier,
-             discord_webhook_url = excluded.discord_webhook_url`
-        )
-        .bind(
-          user.userId,
-          user.email || "",
-          emailEnabled ? 1 : 0,
-          smsEnabled ? 1 : 0,
-          phoneNumber,
-          phoneCarrier,
-          discordWebhookUrl
-        )
-        .run();
-    }
-
     const row = await db
-      .prepare(
-        "SELECT display_name, avatar_url, suggested_display_name, display_name_suggestion_dismissed FROM user_settings WHERE user_id = ?"
-      )
+      .prepare("SELECT * FROM user_settings WHERE user_id = ?")
       .bind(user.userId)
-      .first<{
-        display_name?: string | null;
-        avatar_url?: string | null;
-        suggested_display_name?: string | null;
-        display_name_suggestion_dismissed?: number | null;
-      }>();
+      .first<UserSettingsRow>();
 
     return Response.json({
       success: true,
@@ -171,16 +202,20 @@ export async function action({  request, context  }: ApiRouteArgs) {
         email: user.email,
         displayName: resolveDisplayName(row?.display_name),
         displayNameSet: Boolean(row?.display_name && String(row.display_name).trim()),
-        emailEnabled,
-        smsEnabled,
-        phoneNumber,
-        phoneCarrier,
-        discordWebhookUrl,
+        emailEnabled: row ? Boolean(row.email_enabled) : false,
+        smsEnabled: row ? Boolean(row.sms_enabled) : false,
+        phoneNumber: row ? row.phone_number || "" : "",
+        phoneCarrier: row ? row.phone_carrier || "" : "",
+        discordWebhookUrl: row ? row.discord_webhook_url || "" : "",
+        archiveSuggestionsEnabled:
+          row?.archive_suggestions_enabled === undefined || row?.archive_suggestions_enabled === null
+            ? true
+            : Boolean(row.archive_suggestions_enabled),
         ...providerProfileFields(row),
       },
     });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "";
-      return Response.json({ error: message || "Invalid settings payload" }, { status: 400 });
-    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "";
+    return Response.json({ error: message || "Invalid settings payload" }, { status: 400 });
+  }
 }

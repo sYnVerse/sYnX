@@ -2,6 +2,7 @@ import type { ListActionContext } from "./context";
 import { taskTextError, TASK_LIMIT_ERROR } from "@synx/shared/write-limits";
 import { GUEST_REMINDER_DENIAL, isListFull } from "@synx/backend/services/guest-access.server";
 import { getUserTimeZone } from "@synx/backend/services/user-profile.server";
+import { unarchiveListIfArchivedOnTaskAdd } from "@synx/backend/services/list-archives.server";
 import { requestOrPerformDelete } from "@synx/backend/services/pending-deletes.server";
 import { deleteRequestActivitySummary } from "@synx/backend/services/list-activity.server";
 import { MAX_STAT_DURATION_SECONDS, setCompletionDuration } from "@synx/backend/services/to-do-manager";
@@ -17,6 +18,7 @@ export async function handleCreateTask(ctx: ListActionContext) {
     hasOwnership,
     activeShareMode,
     scheduleActivityLog,
+    waitUntil,
   } = ctx;
   const text = formData.get("text");
   const priority =
@@ -65,7 +67,18 @@ export async function handleCreateTask(ctx: ListActionContext) {
     shareMode: activeShareMode,
     summary: text,
   });
-  return { success: true };
+  let unarchivedList = false;
+  if (isLoggedIn) {
+    unarchivedList = await unarchiveListIfArchivedOnTaskAdd(db, {
+      userId,
+      listId: activeListId,
+      isOwner: hasOwnership,
+      shareMode: activeShareMode,
+      request: ctx.request,
+      waitUntil,
+    });
+  }
+  return { success: true, unarchivedList };
 }
 
 export async function handleToggleTask(ctx: ListActionContext) {

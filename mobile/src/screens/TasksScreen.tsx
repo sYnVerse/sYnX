@@ -16,7 +16,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { Search, Plus, FolderKanban, Pencil, X } from "lucide-react-native";
+import { Search, Plus, FolderKanban, Pencil, X, Archive } from "lucide-react-native";
 import { apiClient } from "../api/client";
 import {
   TodoItem,
@@ -26,7 +26,9 @@ import {
   canDragTaskForPriority,
   applyOptimisticTaskPriority,
   describeListActivityAction,
+  isListCompleted,
   resolveTaskSortMode,
+  shouldSuggestArchivingList,
   sortTasks,
   splitCompletedTasks,
   type ListAccessDenialCode,
@@ -34,6 +36,11 @@ import {
   type PendingDeleteRequest,
   type PriorityLevel,
 } from "../shared";
+import {
+  clearDismissedArchivePromptForList,
+  dismissArchivePromptForList,
+  useArchivePreferences,
+} from "../services/archivePreferences";
 import { TaskModal } from "../components/TaskModal";
 import { TaskRow } from "../components/TaskRow";
 import { CompletedSectionHeader } from "../components/CompletedSectionHeader";
@@ -287,6 +294,118 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   // Open a specific task requested via widget deep link once list and todos settle.
   const [handledOpenTaskId, setHandledOpenTaskId] = useState<number | null>(null);
   const todosSettled = !isLoading && (rawTodos !== undefined || todosIsError);
+
+  const { archiveSuggestionsEnabled, dismissedListIds } = useArchivePreferences();
+  const isListNowCompleted = useMemo(() => isListCompleted(rawTodos), [rawTodos]);
+  const archiveStateSettled = Boolean(listMeta && todosSettled);
+  const [archivePromptListId, setArchivePromptListId] = useState<string | null>(null);
+  const [archivePending, setArchivePending] = useState(false);
+  const [prevArchiveCheck, setPrevArchiveCheck] = useState<{
+    listId: string;
+    completed: boolean;
+    settled: boolean;
+  }>({
+    listId,
+    completed: isListNowCompleted,
+    settled: archiveStateSettled,
+  });
+
+  if (
+    prevArchiveCheck.listId !== listId ||
+    prevArchiveCheck.completed !== isListNowCompleted ||
+    prevArchiveCheck.settled !== archiveStateSettled
+  ) {
+    const wasSettledSameList =
+      archiveStateSettled &&
+      prevArchiveCheck.settled &&
+      prevArchiveCheck.listId === listId;
+    const wasCompleted = prevArchiveCheck.completed;
+
+    setPrevArchiveCheck({
+      listId,
+      completed: isListNowCompleted,
+      settled: archiveStateSettled,
+    });
+
+    if (!wasSettledSameList || !isListNowCompleted) {
+      if (archivePromptListId !== null) {
+        setArchivePromptListId(null);
+      }
+    } else if (
+      shouldSuggestArchivingList({
+        wasCompleted,
+        isNowCompleted: isListNowCompleted,
+        isArchived: Boolean(listMeta?.isArchived),
+        canArchive: true,
+        suggestionsEnabled: archiveSuggestionsEnabled,
+        dismissedForCycle: dismissedListIds.has(listId),
+      })
+    ) {
+      setArchivePromptListId(listId);
+    }
+  }
+
+  React.useEffect(() => {
+    if (!archiveStateSettled || isListNowCompleted) return;
+    if (dismissedListIds.has(listId)) {
+      void clearDismissedArchivePromptForList(listId);
+    }
+  }, [archiveStateSettled, isListNowCompleted, dismissedListIds, listId]);
+
+  const handleArchiveOrUnarchiveActiveList = async () => {
+    if (!listMeta || archivePending) return;
+    setArchivePending(true);
+    triggerImpactHaptic();
+    const currentlyArchived = Boolean(listMeta.isArchived);
+    try {
+      if (currentlyArchived) {
+        await apiClient.delete(`/api/v1/lists/${listId}/archive`);
+        queryClient.setQueryData<TodoList>(["list_meta", listId], (old) =>
+          old ? { ...old, isArchived: false, archivedAt: null } : old
+        );
+        queryClient.invalidateQueries({ queryKey: ["lists"] });
+        queryClient.invalidateQueries({ queryKey: ["list_meta", listId] });
+        showToast("List unarchived", "success");
+      } else {
+        await apiClient.post(`/api/v1/lists/${listId}/archive`);
+        setArchivePromptListId(null);
+        await clearDismissedArchivePromptForList(listId);
+        if (pinnedConfig?.listId === listId) {
+          await setPinnedWidgetConfig(null);
+          setPinnedConfig(null);
+          await syncPinnedList(null);
+        }
+        queryClient.setQueryData<TodoList[]>(["lists", "all"], (old) =>
+          old ? old.filter((l) => l.id !== listId) : []
+        );
+        queryClient.setQueryData<TodoList>(["list_meta", listId], (old) =>
+          old ? { ...old, isArchived: true, archivedAt: Date.now() } : old
+        );
+        queryClient.invalidateQueries({ queryKey: ["lists"] });
+        queryClient.invalidateQueries({ queryKey: ["list_meta", listId] });
+        showToast("List archived", "info");
+        onGoToMyLists?.() ?? onSwitchLists?.();
+      }
+    } catch (e) {
+      triggerErrorHaptic(hapticsEnabled);
+      showError(
+        getErrorMessage(
+          e,
+          currentlyArchived ? "Couldn't unarchive list" : "Couldn't archive list"
+        )
+      );
+    } finally {
+      setArchivePending(false);
+    }
+  };
+
+  const showArchivePrompt =
+    archivePromptListId === listId &&
+    isListNowCompleted &&
+    Boolean(listMeta) &&
+    !listMeta?.isArchived &&
+    archiveSuggestionsEnabled &&
+    !dismissedListIds.has(listId);
   if (
     openTaskRequest &&
     openTaskRequest.id !== handledOpenTaskId &&
@@ -645,6 +764,77 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
         />
       ) : null}
 
+      {listMeta?.isArchived ? (
+        <View
+          style={[
+            styles.archiveBanner,
+            { backgroundColor: theme.accentLight, borderColor: theme.accent },
+          ]}
+          accessibilityRole="summary"
+        >
+          <Archive size={16} color={theme.accent} />
+          <Text
+            style={[styles.archiveBannerText, { color: theme.textPrimary }]}
+            maxFontSizeMultiplier={1.3}
+          >
+            This list is archived — adding a task unarchives it for you.
+          </Text>
+          <TouchableOpacity
+            style={[styles.archiveBannerBtn, { backgroundColor: theme.accent }]}
+            onPress={() => void handleArchiveOrUnarchiveActiveList()}
+            disabled={archivePending}
+            accessibilityRole="button"
+            accessibilityLabel={`Unarchive ${listMeta.name}`}
+          >
+            <Text style={styles.archiveBannerBtnText}>Unarchive</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      {showArchivePrompt && listMeta ? (
+        <View
+          style={[
+            styles.archiveBanner,
+            {
+              backgroundColor: theme.badgeSuccessBg,
+              borderColor: theme.badgeSuccessBorder,
+            },
+          ]}
+          accessibilityRole="summary"
+        >
+          <Text
+            style={[styles.archiveBannerText, { color: theme.textPrimary }]}
+            maxFontSizeMultiplier={1.3}
+          >
+            All tasks done! Archive this list?
+          </Text>
+          <View style={styles.archiveBannerActions}>
+            <TouchableOpacity
+              style={[styles.archiveBannerBtn, { backgroundColor: theme.accent }]}
+              onPress={() => void handleArchiveOrUnarchiveActiveList()}
+              disabled={archivePending}
+              accessibilityRole="button"
+              accessibilityLabel={`Archive ${listMeta.name}`}
+            >
+              <Text style={styles.archiveBannerBtnText}>Archive</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.archiveBannerDismissBtn, { backgroundColor: theme.inputBg }]}
+              onPress={() => {
+                setArchivePromptListId(null);
+                void dismissArchivePromptForList(listId);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Not now"
+            >
+              <Text style={[styles.archiveBannerDismissText, { color: theme.textSecondary }]}>
+                Not now
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       {ownerPendingRequests.length > 0 ? (
         <View
           style={[
@@ -934,6 +1124,7 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             showToast(`Pinned "${listMeta.name}" to widget`, "success");
           }
         }}
+        onToggleArchive={() => void handleArchiveOrUnarchiveActiveList()}
         onShareAccess={() => setShowShareListModal(true)}
         onEditDetails={() => setShowEditListModal(true)}
         onViewActivity={canViewActivity ? openActivity : undefined}
@@ -1435,5 +1626,52 @@ const styles = StyleSheet.create({
   pendingActionDeclineText: {
     fontSize: typography.sm,
     fontWeight: "700",
+  },
+  archiveBanner: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  archiveBannerText: {
+    flex: 1,
+    minWidth: 160,
+    fontSize: typography.sm,
+    fontWeight: "600",
+  },
+  archiveBannerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  archiveBannerBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minHeight: MIN_TOUCH_TARGET - 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  archiveBannerBtnText: {
+    color: "#FFFFFF",
+    fontSize: typography.sm,
+    fontWeight: "700",
+  },
+  archiveBannerDismissBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    minHeight: MIN_TOUCH_TARGET - 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  archiveBannerDismissText: {
+    fontSize: typography.sm,
+    fontWeight: "600",
   },
 });
