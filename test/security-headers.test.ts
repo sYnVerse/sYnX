@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { SECURITY_HEADERS, applySecurityHeaders } from "../app/security-headers";
-import { finalizeWorkerResponse, unexpectedErrorResponse } from "../app/worker-response.server";
-import { recordRefreshedCookies } from "../app/auth.server";
+import { SECURITY_HEADERS, applySecurityHeaders } from "../backend/services/security-headers";
+import { finalizeWorkerResponse, unexpectedErrorResponse } from "../backend/services/worker-response.server";
+import { recordRefreshedCookies } from "../backend/services/auth.server";
 
 const EXPECTED: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",

@@ -8,8 +8,8 @@ import {
 import * as mobileCarriers from "../mobile/src/shared/phone-carriers";
 import { PHONE_CARRIERS as SHARED_INDEX_CARRIERS } from "../shared";
 import { PHONE_CARRIERS as MOBILE_INDEX_CARRIERS } from "../mobile/src/shared";
-import webSettingsSource from "../app/features/list/components/ProfileModal.tsx?raw";
-import serverSource from "../server.ts?raw";
+import webSettingsSource from "../web/app/features/list/components/ProfileModal.tsx?raw";
+import serverSource from "../backend/server.ts?raw";
 import mobileSettingsSource from "../mobile/src/screens/SettingsScreen.tsx?raw";
 import mobileThemeSource from "../mobile/src/theme/theme.ts?raw";
 

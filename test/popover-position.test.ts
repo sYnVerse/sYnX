@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computePopoverPosition } from "../app/features/list/popover-position";
+import { computePopoverPosition } from "../web/app/features/list/popover-position";
 
 describe("computePopoverPosition (#140, #138)", () => {
   const defaultViewport = { width: 1024, height: 768 };

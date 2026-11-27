@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RouterContextProvider } from "react-router";
 import { env as workerEnv } from "cloudflare:test";
-import * as authServer from "../app/auth.server";
-import { cloudflareContext } from "../app/context.server";
+import * as authServer from "../backend/services/auth.server";
+import { cloudflareContext } from "../backend/services/context.server";
 import {
   apiAuthContext,
   authMiddleware,
@@ -11,10 +11,10 @@ import {
   shouldResolveApiAuth,
   shouldResolveWebAuth,
   webAuthContext,
-} from "../app/auth-context.server";
-import { loader as indexLoader } from "../app/routes/_index";
-import { action as devicesAction } from "../app/routes/api.v1.devices";
-import { action as deleteRequestAction } from "../app/routes/api.v1.delete-requests.$id";
+} from "../backend/services/auth-context.server";
+import { loader as indexLoader } from "../web/app/routes/_index";
+import { action as devicesAction } from "../backend/api/v1/devices";
+import { action as deleteRequestAction } from "../backend/api/v1/delete-requests.$id";
 
 function createProvider(env: Partial<Env> = {}): RouterContextProvider {
   const provider = new RouterContextProvider();

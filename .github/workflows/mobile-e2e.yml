@@ -22,9 +22,11 @@ on:
       - "mobile/**"
       - "shared/**"
       - ".maestro/**"
-      - "app/routes/api.v1.dev.test-login.ts"
-      - "app/auth.server.ts"
-      - "app/auth-context.server.ts"
+      - "backend/api/v1/dev.test-login.ts"
+      - "backend/api/router.ts"
+      - "backend/server.ts"
+      - "backend/services/auth.server.ts"
+      - "backend/services/auth-context.server.ts"
       - ".github/workflows/mobile-e2e.yml"
       - "!**/*.md"
 
@@ -47,9 +49,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            mobile/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - uses: actions/setup-java@v4
         with:
@@ -59,9 +59,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Install dependencies
-        run: |
-          npm ci
-          npm ci --prefix mobile
+        run: npm ci
 
       - name: Sync shared modules and version
         working-directory: mobile
@@ -71,7 +69,7 @@ jobs:
 
       - name: Prepare local backend (D1 migrations + web build)
         run: |
-          npx wrangler d1 migrations apply synx-db --local
+          npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state
           npm run build
 
       - name: Ensure dummy google-services.json for prebuild
@@ -131,7 +129,7 @@ jobs:
 
       - name: Start local Wrangler backend
         run: |
-          npx wrangler dev --ip 127.0.0.1 --port 8787 --var ALLOW_DEV_TEST_AUTH:true --var MOBILE_MIN_BUILD_VERSION:1 > /tmp/wrangler.log 2>&1 &
+          npx wrangler dev --config web/build/server/wrangler.json --persist-to backend/.wrangler/state --ip 127.0.0.1 --port 8787 --var ALLOW_DEV_TEST_AUTH:true --var MOBILE_MIN_BUILD_VERSION:1 > /tmp/wrangler.log 2>&1 &
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:8787/api/v1/mobile/version >/dev/null 2>&1; then
               echo "Local Wrangler backend ready"

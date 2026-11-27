@@ -6,8 +6,8 @@ import {
   clearAuthRefreshCookie,
   clearAuthSessionCookie,
   clearPkceCookie,
-} from "../app/auth-cookies.server";
-import { planLogoutAction, planLogoutLoader } from "../app/logout-policy.server";
+} from "../backend/services/auth-cookies.server";
+import { planLogoutAction, planLogoutLoader } from "../backend/services/logout-policy.server";
 
 function setCookieValues(headers: Headers | null): string[] {
   if (!headers) return [];

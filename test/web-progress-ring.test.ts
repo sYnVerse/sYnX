@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 // useVisibleTodos has no React state or effects, so it runs as a plain
 // function here; the alias keeps the hooks lint rule from treating it as one.
 import { useVisibleTodos as computeVisibleTodos } from "~/features/list/hooks/useVisibleTodos";
-import type { Todo } from "~/to-do-manager";
-import todoPageSource from "../app/features/list/TodoPage.tsx?raw";
-import uiBitsSource from "../app/features/list/components/ui-bits.tsx?raw";
+import type { Todo } from "../backend/services/to-do-manager";
+import todoPageSource from "../web/app/features/list/TodoPage.tsx?raw";
+import uiBitsSource from "../web/app/features/list/components/ui-bits.tsx?raw";
 
 function todo(id: string, completed: boolean, parentId?: string): Todo {
   return { id, listId: "list-1", text: id, completed, createdAt: 1000, priority: "none", parentId };

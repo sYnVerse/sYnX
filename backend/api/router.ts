@@ -189,7 +189,7 @@ export async function handleApiRequest(
       continue;
     }
 
-    await resolveApiAuthInContext(request, context);
+    await resolveApiAuthInContext(request, context, pathname);
     return route.invoke(request.method, {
       request,
       params: matched.params,

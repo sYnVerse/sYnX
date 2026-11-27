@@ -60,22 +60,22 @@ For the Android app's extras, see [Mobile app](#mobile-app).
 
 ---
 
-## Web app
+## Web and backend
 
 | | |
 |---|---|
-| Framework | [Remix](https://remix.run/) 2.17 (on Vite 5) with React 19, running on [Cloudflare Workers](https://developers.cloudflare.com/workers/) with static assets |
+| Framework | [React Router](https://reactrouter.com/) 8 (on Vite 8) with React 19, running on [Cloudflare Workers](https://developers.cloudflare.com/workers/) with static assets |
 | Database | [Cloudflare D1](https://developers.cloudflare.com/d1/) (`synx-db`, binding `DB`) |
 | Styling | Tailwind CSS 3 |
 | Auth | [OpenAuth](https://openauth.js.org/) client (`@openauthjs/openauth`) against sYnID |
 | Validation | [Valibot](https://valibot.dev/) |
-| Tooling | Wrangler 4, TypeScript 5.8, ESLint 9 (flat config), Vitest 4 with `@cloudflare/vitest-pool-workers` |
+| Tooling | Wrangler 4, TypeScript 6.0, ESLint 9 (flat config), Vitest 4 with `@cloudflare/vitest-pool-workers` |
 
-`server.ts` is the Worker entry. Its `fetch` handler serves the Remix app, and its `scheduled` handler is the every-minute reminder cron (`triggers.crons` in `wrangler.jsonc`).
+`backend/server.ts` is the Worker entry. Its `fetch` handler dispatches `/api/v1/*` requests through `backend/api/router.ts` and falls through to the React Router web app (`web/`), while its `scheduled` handler runs the every-minute reminder cron (`triggers.crons` in `backend/wrangler.jsonc`).
 
 ### REST API (`/api/v1`)
 
-The mobile app uses these routes. They expect a sYnID access token in an `Authorization: Bearer <token>` header.
+The mobile app uses these routes (`backend/api/v1/`). They expect a sYnID access token in an `Authorization: Bearer <token>` header.
 
 | Route | Methods |
 |---|---|
@@ -99,7 +99,7 @@ Set these on the Worker in the Cloudflare dashboard, or locally in a `.dev.vars`
 
 | Name | Used for |
 |---|---|
-| `DB` | D1 binding, set up in `wrangler.jsonc` |
+| `DB` | D1 binding, set up in `backend/wrangler.jsonc` |
 | `OPENAUTH_ISSUER` | sYnID issuer URL (defaults to `https://auth.christran.io`) |
 | `CLIENT_ID_MAP` | Optional JSON map from hostname to OAuth client ID (defaults to `synx`) |
 | `SYNX_ALLOWED_CLIENT_IDS` | Optional comma-separated list of accepted token audiences (defaults to `synx`) |
@@ -163,24 +163,24 @@ You need Node 22 or newer: Wrangler 4 requires it, and CI uses Node 22. `.nvmrc`
 
 ```bash
 npm install
-npx wrangler d1 migrations apply synx-db --local   # create the local D1 database
-npm run dev                                        # Remix dev server on Vite, with the local D1
+npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state   # create the local D1 database
+npm run dev                                                                        # React Router dev server on Vite, with local D1
 ```
 
 The local app runs in guest mode until you sign in. Signing in locally needs a sYnID client that allows your local callback URL.
 
 | Script | What it does |
 |---|---|
-| `npm run dev` | Remix dev server (Vite), with the Cloudflare bindings from `wrangler.jsonc` |
-| `npm run build` | Production build into `build/` |
+| `npm run dev` | React Router dev server (Vite), with the Cloudflare bindings from `backend/wrangler.jsonc` |
+| `npm run build` | Production build into `web/build/` |
 | `npm run preview` | Build, then run it in the Workers runtime with `wrangler dev` |
-| `npm start` | `wrangler dev` on an existing build |
-| `npm run check` | Typecheck, build and `wrangler deploy --dry-run` |
-| `npm run cf-typegen` | Regenerate `worker-configuration.d.ts` (binding types) |
+| `npm start` | `wrangler dev` on an existing build (`web/build/server/wrangler.json`) |
+| `npm run check` | Typecheck, build, React Compiler check, and `wrangler deploy --dry-run` |
+| `npm run cf-typegen` | Regenerate `backend/worker-configuration.d.ts` (binding types) |
 | `npm run lint` | ESLint |
 | `npm test` | Vitest |
-| `npm run test:e2e` | Playwright end-to-end tests against local wrangler dev |
-| `npm run typecheck` | Web typecheck |
+| `npm run test:e2e` | Playwright end-to-end tests against local `wrangler dev` |
+| `npm run typecheck` | Web, backend, and root workspace typechecks |
 | `npm run typecheck:mobile-tests` | Typecheck the root tests that import mobile code, using the mobile types |
 | `npm run deploy` | Build, apply D1 migrations to production, then deploy. Workers Builds runs this; don't run it by hand |
 | `npm run deploy:preview` | Build, apply D1 migrations to the preview database, then deploy a Worker Preview. Workers Builds runs this for PRs; don't run it by hand |
@@ -191,31 +191,40 @@ The local app runs in guest mode until you sign in. Signing in locally needs a s
 
 Tests live in [`test/`](test/) (Vitest) and [`e2e/`](e2e/) (Playwright).
 
-- **Unit and Integration Tests** (`test/`) run inside the Workers runtime with `@cloudflare/vitest-pool-workers`. Each test file gets its own isolated D1 database, built directly from `migrations/`. They cover the web server routes, `shared/`, and parts of the mobile app.
+- **Unit and Integration Tests** (`test/`) run inside the Workers runtime with `@cloudflare/vitest-pool-workers`. Each test file gets its own isolated D1 database, built directly from `backend/migrations/`. They cover the backend API handlers, web server routes, `shared/`, and parts of the mobile app.
 - **End-to-End Tests** (`e2e/`) run in real Chromium via Playwright against a local `wrangler dev` Worker instance backed by a local D1 database. They test the full user-facing application: guest workflows, synthetic test authentication, multi-user list sharing, and permissions.
 
-[GitHub Actions](.github/workflows/ci.yml) runs three parallel CI jobs on every pull request (branch protection gates merge on all checks passing):
+[GitHub Actions](.github/workflows/ci.yml) runs parallel CI jobs (`Backend`, `Web`, `E2E`, `Mobile`) on every pull request (branch protection gates merge on all checks passing):
 
 ```bash
+# Backend checks
+npm --workspace=backend run typecheck
+npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state
+npm run build
+npx wrangler deploy --dry-run --config web/build/server/wrangler.json
+
 # Web Job
 npm run lint
 npm test -- --run --maxWorkers=2
 npm run typecheck
-npm run typecheck:mobile-tests
 
 # E2E Job
-npx wrangler d1 migrations apply synx-db --local
+npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state
 npm run test:e2e
 
 # Mobile Job
-cd mobile && npm run typecheck
+npm --workspace=mobile run typecheck
+npm --workspace=mobile run lint
+npm --workspace=mobile run doctor
+npm run typecheck:mobile-tests
+npm run test:mobile
 ```
 
-CI also checks that `mobile/src/shared/` and the mobile version files are in sync, and runs `expo-doctor` and the mobile lint (`cd mobile && npm run lint`) when `mobile/` or `shared/` changes. Dependabot opens weekly pull requests for production npm dependencies.
+CI also checks that `mobile/src/shared/` and the mobile version files are in sync, and runs `expo-doctor` and the mobile lint (`npm --workspace=mobile run lint`) when `mobile/` or `shared/` changes. Dependabot opens weekly pull requests for production npm dependencies.
 
 ### Running End-to-End Tests Locally
 
-Playwright tests run against a local `wrangler dev` server automatically managed by `playwright.config.ts`.
+Playwright tests run against a local `wrangler dev` server automatically managed by `e2e/playwright.config.ts`.
 
 **1. One-time browser setup:**
 ```bash
@@ -224,7 +233,7 @@ npx playwright install --with-deps chromium
 
 **2. Ensure local D1 migrations are applied:**
 ```bash
-npx wrangler d1 migrations apply synx-db --local
+npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state
 ```
 
 **3. Run the E2E test suite:**
@@ -249,32 +258,32 @@ The `synx` Worker deploys through [Cloudflare Workers Builds](https://developers
 
 ### Database schema and migrations
 
-The app stores its data in a Cloudflare D1 (SQLite) database named `synx-db`. The schema lives in numbered SQL files in [`migrations/`](migrations/), and Wrangler records which ones have run in a `d1_migrations` table inside the database. `migrations/0000_baseline.sql` is the full schema as it existed in production on Oct 27, 2026, and `migrations/0001_indexes.sql` adds indexes for the busiest queries.
+The app stores its data in a Cloudflare D1 (SQLite) database named `synx-db`. The schema lives in numbered SQL files in [`backend/migrations/`](backend/migrations/), and Wrangler records which ones have run in a `d1_migrations` table inside the database. `backend/migrations/0000_baseline.sql` is the full schema as it existed in production on Oct 27, 2026, and `backend/migrations/0001_indexes.sql` adds indexes for the busiest queries.
 
 #### Change the schema
 
 1. Create a new numbered migration file and write the SQL in it:
    ```bash
-   npx wrangler d1 migrations create synx-db <short_name>
+   npx wrangler d1 migrations create synx-db <short_name> --config backend/wrangler.jsonc
    ```
 2. Apply it to your local dev database:
    ```bash
-   npx wrangler d1 migrations apply synx-db --local
+   npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state
    ```
-3. Run the tests. They build their database from `migrations/`, so they pick up the change automatically.
+3. Run the tests. They build their database from `backend/migrations/`, so they pick up the change automatically.
 
 Rules:
 
 * Never edit a migration that has already been applied. Fix mistakes with a new migration.
 * Keep changes additive within a release (expand, then contract): add the new column or table first, ship code that uses it, and only drop the old one in a later release.
-* Don't run DDL (`CREATE`/`ALTER`/`DROP`) from app code. The app assumes the schema from `migrations/` is already in place.
+* Don't run DDL (`CREATE`/`ALTER`/`DROP`) from app code. The app assumes the schema from `backend/migrations/` is already in place.
 
 #### Production
 
 Production migrations run in the deploy pipeline, not by hand. `npm run deploy` (what Cloudflare Workers Builds runs on every push to `main`) builds the app, applies any pending migrations to the remote database, then deploys the Worker. If a migration fails, the deploy stops before the new code goes live. To see which migrations production has applied (read-only):
 
 ```bash
-npx wrangler d1 migrations list synx-db --remote
+npx wrangler d1 migrations list synx-db --remote --config backend/wrangler.jsonc
 ```
 
 ---
@@ -283,7 +292,7 @@ npx wrangler d1 migrations list synx-db --remote
 
 The web and mobile apps have separate SemVer version lines: minor versions for features, patch versions for fixes, and major versions for breaking changes. The full rules, including when to bump and the release checklist, are in [`.claude/rules/versioning.md`](.claude/rules/versioning.md).
 
-* **Web**: `WEB_VERSION` and the What's New entries are in the [web changelog](app/constants/changelog.ts). Bump it only for user-facing web changes.
+* **Web**: `WEB_VERSION` and the What's New entries are in the [web changelog](web/app/constants/changelog.ts). Bump it only for user-facing web changes.
 * **Mobile**: `MOBILE_APP_VERSION` is in [`shared/mobile-version.ts`](shared/mobile-version.ts), and the release notes are in the [mobile changelog](mobile/src/constants/changelog.ts).
 * Within each version, changelog items go NEW, then IMPR, then FIX. `test/changelog-order.test.ts` enforces this.
 
@@ -292,22 +301,26 @@ The web and mobile apps have separate SemVer version lines: minor versions for f
 ## Project structure
 
 ```
-app/                 Remix app: web UI, server code, /api/v1 routes
-  routes/            Pages ($id.tsx is the main list page), auth routes, API routes
-  constants/         Web changelog and WEB_VERSION
-server.ts            Worker entry: fetch handler and reminder cron
-migrations/          D1 schema migrations
-shared/              Code shared by web and mobile (copied into mobile/src/shared/)
+backend/             Cloudflare Worker API, services, and D1 database layer
+  api/               REST API router and /api/v1 handlers
+  services/          Auth, FCM, due reminders, activity, guest access, TodoManager
+  migrations/        D1 schema migrations
+  server.ts          Worker entry: API dispatch, React Router SSR, and reminder cron
+  wrangler.jsonc     Worker config: D1 binding, cron trigger, web assets
+web/                 React Router + Tailwind CSS web frontend workspace
+  app/               Pages ($id.tsx is the main list page), components, features, changelog
+  public/            Static public assets (.well-known, etc.)
+shared/              Code shared by web, backend, and mobile (synced into mobile/src/shared/)
 mobile/              Expo / React Native Android app
   src/               Screens, components, widgets, services, API client
   scripts/           sync-shared, sync-version, google-services decode, EAS build comment
   plugins/           Expo config plugins (widget progress ring)
   .eas/workflows/    EAS Android preview build workflow
+e2e/                 Playwright end-to-end test suite
 test/                Vitest tests (Workers runtime)
-scripts/             PKCE flow check against a mock sYnID server
+scripts/             React Compiler bundle check & PKCE check scripts
 docs/screenshots/    README screenshots
 graphify-out/        Code knowledge graph for coding agents
-wrangler.jsonc       Worker config: D1 binding, cron trigger, assets
 ```
 
 Rules for coding agents are in [`CLAUDE.md`](CLAUDE.md), `.claude/rules/`, `.cursor/rules/` and the other agent rule folders.

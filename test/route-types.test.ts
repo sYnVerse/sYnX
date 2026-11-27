@@ -1,9 +1,10 @@
 import { describe, it, expectTypeOf } from "vitest";
-import type { Route as IdRoute } from "../app/routes/+types/$id";
-import type { Route as IndexRoute } from "../app/routes/+types/_index";
-import type { Route as TodosIdRoute } from "../app/routes/+types/api.v1.todos.$id";
-import { loader as idLoader, action as idAction } from "../app/routes/$id";
-import { loader as indexLoader } from "../app/routes/_index";
+import type { Route as IdRoute } from "../web/app/routes/+types/$id";
+import type { Route as IndexRoute } from "../web/app/routes/+types/_index";
+import type { ApiRouteArgs } from "../backend/api/types";
+import { action as todosIdAction } from "../backend/api/v1/todos.$id";
+import { loader as idLoader, action as idAction } from "../web/app/routes/$id";
+import { loader as indexLoader } from "../web/app/routes/_index";
 
 describe("generated route types conformance", () => {
   it("enforces generated Route.LoaderArgs and Route.ActionArgs on dynamic routes", () => {
@@ -21,7 +22,8 @@ describe("generated route types conformance", () => {
     expectTypeOf(indexLoader).toBeCallableWith({} as IndexRoute.LoaderArgs);
   });
 
-  it("enforces generated Route.ActionArgs for API routes", () => {
-    expectTypeOf<TodosIdRoute.ActionArgs["params"]>().toEqualTypeOf<{ id: string }>();
+  it("enforces ApiRouteArgs for backend API routes", () => {
+    expectTypeOf<ApiRouteArgs<{ id: string }>["params"]>().toEqualTypeOf<{ id: string }>();
+    expectTypeOf(todosIdAction).toBeCallableWith({} as ApiRouteArgs<{ id: string }>);
   });
 });

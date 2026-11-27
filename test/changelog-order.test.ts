@@ -7,7 +7,7 @@ import {
   type ChangelogItem,
   type ReleaseNote,
 } from "../shared/changelog";
-import { WEB_CHANGELOG } from "../app/constants/changelog";
+import { WEB_CHANGELOG } from "../web/app/constants/changelog";
 import { MOBILE_CHANGELOG } from "../mobile/src/constants/changelog";
 
 describe("changelog category order helpers", () => {

@@ -7,13 +7,13 @@ import {
   syncUserProfileOnSignIn,
   getDisplayNameForUser,
   ownerPayload,
-} from "../app/user-profile.server";
+} from "../backend/services/user-profile.server";
 import {
   recordSharedListAccess,
   removeSharedListAccess,
   listSharedWithMe,
-} from "../app/shared-lists.server";
-import { parseListScope, serializeListRow } from "../app/api-helpers.server";
+} from "../backend/services/shared-lists.server";
+import { parseListScope, serializeListRow } from "../backend/services/api-helpers.server";
 
 describe("display name helpers", () => {
   it("uses a non-email default when unset", () => {

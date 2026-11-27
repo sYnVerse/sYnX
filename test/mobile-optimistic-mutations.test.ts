@@ -325,23 +325,20 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("react", () => harness.reactMock);
-vi.mock("../mobile/node_modules/react", () => harness.reactMock);
-vi.mock("../mobile/node_modules/react/index.js", () => harness.reactMock);
+vi.mock("../node_modules/react", () => harness.reactMock);
 vi.mock("../node_modules/react/index.js", () => harness.reactMock);
 vi.mock("react/jsx-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-runtime.js", () => harness.jsxRuntimeMock);
+vi.mock("../node_modules/react/jsx-runtime", () => harness.jsxRuntimeMock);
 vi.mock("../node_modules/react/jsx-runtime.js", () => harness.jsxRuntimeMock);
 vi.mock("react/jsx-dev-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-dev-runtime", () => harness.jsxRuntimeMock);
-vi.mock("../mobile/node_modules/react/jsx-dev-runtime.js", () => harness.jsxRuntimeMock);
+vi.mock("../node_modules/react/jsx-dev-runtime", () => harness.jsxRuntimeMock);
 vi.mock("../node_modules/react/jsx-dev-runtime.js", () => harness.jsxRuntimeMock);
 vi.mock("react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native/index.js", () => mocks.reactNative);
+vi.mock("../node_modules/react-native", () => mocks.reactNative);
+vi.mock("../node_modules/react-native/index.js", () => mocks.reactNative);
 vi.mock("expo-haptics", () => mocks.haptics);
-vi.mock("../mobile/node_modules/expo-haptics", () => mocks.haptics);
-vi.mock("../mobile/node_modules/expo-haptics/build/Haptics.js", () => mocks.haptics);
+vi.mock("../node_modules/expo-haptics", () => mocks.haptics);
+vi.mock("../node_modules/expo-haptics/build/Haptics.js", () => mocks.haptics);
 vi.mock("../mobile/src/api/client", () => ({
   apiClient: mocks.apiClient,
 }));
@@ -360,7 +357,7 @@ vi.mock("../mobile/src/context/ToastContext", () => ({
 import {
   QueryClient,
   QueryClientProvider,
-} from "../mobile/node_modules/@tanstack/react-query/build/modern/index.js";
+} from "../node_modules/@tanstack/react-query/build/modern/index.js";
 import {
   SLOW_MUTATION_THRESHOLD_MS,
   useSetTodoCompleted,

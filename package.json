@@ -52,7 +52,7 @@
     "build": "npm --workspace=web run build",
     "cf-typegen": "npm --workspace=backend run cf-typegen",
     "check": "npm run typecheck && npm run build && node scripts/verify-react-compiler-bundle.mjs && wrangler deploy --dry-run --config web/build/server/wrangler.json",
-    "db:migrate:local": "wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc",
+    "db:migrate:local": "wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state",
     "deploy": "npm run build && wrangler d1 migrations apply synx-db --remote --config backend/wrangler.jsonc && wrangler deploy --config web/build/server/wrangler.json",
     "deploy:preview": "npm run build && wrangler d1 migrations apply PREVIEW_DB --remote --config backend/wrangler.preview-migrations.jsonc && wrangler preview --config web/build/server/wrangler.json",
     "dev": "npm --workspace=web run dev",

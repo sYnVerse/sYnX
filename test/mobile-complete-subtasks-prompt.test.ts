@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { QueryClient } from "../mobile/node_modules/@tanstack/react-query/build/modern/index.js";
+import { QueryClient } from "../node_modules/@tanstack/react-query/build/modern/index.js";
 import {
   applySetCompletedWithSubtasksLocal,
   formatSubtaskCompletionPrompt,
@@ -85,34 +85,34 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("react", () => mocks.reactMod);
-vi.mock("../mobile/node_modules/react", () => mocks.reactMod);
-vi.mock("../mobile/node_modules/react/index.js", () => mocks.reactMod);
+vi.mock("../node_modules/react", () => mocks.reactMod);
+vi.mock("../node_modules/react/index.js", () => mocks.reactMod);
 vi.mock("@tanstack/react-query", async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
-    "../mobile/node_modules/@tanstack/react-query/build/modern/index.js"
+    "../node_modules/@tanstack/react-query/build/modern/index.js"
   );
   return { ...actual, ...mocks.rqOverrides };
 });
-vi.mock("../mobile/node_modules/@tanstack/react-query", async () => {
+vi.mock("../node_modules/@tanstack/react-query", async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
-    "../mobile/node_modules/@tanstack/react-query/build/modern/index.js"
+    "../node_modules/@tanstack/react-query/build/modern/index.js"
   );
   return { ...actual, ...mocks.rqOverrides };
 });
-vi.mock("../mobile/node_modules/@tanstack/react-query/build/modern/index.js", async () => {
+vi.mock("../node_modules/@tanstack/react-query/build/modern/index.js", async () => {
   const actual = await vi.importActual<Record<string, unknown>>(
-    "../mobile/node_modules/@tanstack/react-query/build/modern/index.js"
+    "../node_modules/@tanstack/react-query/build/modern/index.js"
   );
   return { ...actual, ...mocks.rqOverrides };
 });
 vi.mock("react-native", () => mocks.reactNativeMod);
-vi.mock("../mobile/node_modules/react-native", () => mocks.reactNativeMod);
-vi.mock("../mobile/node_modules/react-native/index.js", () => mocks.reactNativeMod);
+vi.mock("../node_modules/react-native", () => mocks.reactNativeMod);
+vi.mock("../node_modules/react-native/index.js", () => mocks.reactNativeMod);
 vi.mock("expo-haptics", () => ({
   NotificationFeedbackType: { Success: "Success", Error: "Error" },
   notificationAsync: vi.fn(async () => {}),
 }));
-vi.mock("../mobile/node_modules/expo-haptics", () => ({
+vi.mock("../node_modules/expo-haptics", () => ({
   NotificationFeedbackType: { Success: "Success", Error: "Error" },
   notificationAsync: vi.fn(async () => {}),
 }));

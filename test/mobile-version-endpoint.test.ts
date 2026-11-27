@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { loader as versionLoader } from "../app/routes/api.v1.mobile.version";
-import { loader as downloadLoader } from "../app/routes/download.android";
-import { finalizeWorkerResponse } from "../app/worker-response.server";
+import { loader as versionLoader } from "../backend/api/v1/mobile.version";
+import { loader as downloadLoader } from "../web/app/routes/download.android";
+import { finalizeWorkerResponse } from "../backend/services/worker-response.server";
 
 function createMockContext(env: Record<string, string | undefined> = {}) {
   return {

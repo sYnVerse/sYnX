@@ -8,14 +8,14 @@ import {
   serializeAuthRefreshCookie,
   buildAuthClearCookieHeaders,
   parseRefreshCookie,
-} from "../app/auth-cookies.server";
+} from "../backend/services/auth-cookies.server";
 import {
   getOptionalUser,
   getRefreshedCookies,
   requireUser,
   trySilentRefresh,
   verifyBearerToken,
-} from "../app/auth.server";
+} from "../backend/services/auth.server";
 
 // Mock @openauthjs/openauth/client
 const mockRefresh = vi.fn();

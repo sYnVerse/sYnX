@@ -3,7 +3,7 @@ import {
   buildReminderEmailHtml,
   escapeHtml,
   sanitizeEmailSubject,
-} from "../app/html-escape.server";
+} from "../backend/services/html-escape.server";
 
 describe("escapeHtml / reminder email templates", () => {
   it("escapes HTML special characters (before → after)", () => {

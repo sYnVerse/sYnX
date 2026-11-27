@@ -32,9 +32,9 @@ const { storage, platform, linking, asyncStorageModule, reactNativeModule } = vi
   };
 });
 vi.mock("@react-native-async-storage/async-storage", () => asyncStorageModule);
-vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage", () => asyncStorageModule);
+vi.mock("../node_modules/@react-native-async-storage/async-storage", () => asyncStorageModule);
 vi.mock("react-native", () => reactNativeModule);
-vi.mock("../mobile/node_modules/react-native", () => reactNativeModule);
+vi.mock("../node_modules/react-native", () => reactNativeModule);
 
 const cal = vi.hoisted(() => {
   const state = {
@@ -122,7 +122,7 @@ const cal = vi.hoisted(() => {
   };
 });
 vi.mock("expo-calendar", () => cal.module);
-vi.mock("../mobile/node_modules/expo-calendar", () => cal.module);
+vi.mock("../node_modules/expo-calendar", () => cal.module);
 
 import {
   checkCalendarPermissions,

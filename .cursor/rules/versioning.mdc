@@ -17,5 +17,5 @@ Follow the canonical rules in `.claude/rules/versioning.md`. Do not invent a par
   ```
   so `mobile/package.json` and `mobile/app.json` match. `mobile/app.config.js` feeds Expo `version` (Android `versionName` / iOS `CFBundleShortVersionString`).
 - **Do not hand-edit** Android `versionCode` / iOS `buildNumber` — EAS remote + `autoIncrement`.
-- **Web** (`WEB_VERSION` in `app/constants/changelog.ts`) is separate; bump only for user-facing web changes.
+- **Web** (`WEB_VERSION` in `web/app/constants/changelog.ts`) is separate; bump only for user-facing web changes.
 - **Before finish:** version file → sync → changelog → tests (see checklist in `.claude/rules/versioning.md`).

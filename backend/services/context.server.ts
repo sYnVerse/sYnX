@@ -3,7 +3,7 @@ import type { PlatformProxy } from "wrangler";
 
 export interface CloudflarePlatformContext {
   env: Env;
-  ctx: ExecutionContext;
+  ctx: ExecutionContext | PlatformProxy<Env>["ctx"];
   cf?: Request["cf"];
   caches?: CacheStorage | PlatformProxy<Env>["caches"];
 }

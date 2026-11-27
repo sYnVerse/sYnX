@@ -4,7 +4,7 @@ import {
   deleteRequestActivitySummary,
   listActivityForOwner,
   logListActivity,
-} from "../app/list-activity.server";
+} from "../backend/services/list-activity.server";
 
 const ownerId = "user-owner-activity";
 const collaboratorId = "user-collab-activity";

@@ -30,6 +30,7 @@ export default defineConfig({
     },
   ],
   webServer: {
+    cwd: path.resolve(__dirname, ".."),
     command:
       "npx wrangler dev --config web/build/server/wrangler.json --persist-to backend/.wrangler/state --ip 127.0.0.1 --port 8787 --var ALLOW_DEV_TEST_AUTH:true",
     url: "http://127.0.0.1:8787",

@@ -8,13 +8,13 @@ import {
   type TaskCompletionStats,
   type TodoItem,
 } from "../shared";
-import { action as completedApiAction } from "../app/routes/api.v1.todos.$id.completed";
-import { TodoManager, getTodoCompletions } from "../app/to-do-manager";
+import { action as completedApiAction } from "../backend/api/v1/todos.$id.completed";
+import { TodoManager, getTodoCompletions } from "../backend/services/to-do-manager";
 
 const OWNER_ID = "owner-widget-replay-test";
 
-vi.mock("../app/auth.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../app/auth.server")>();
+vi.mock("../backend/services/auth.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../backend/services/auth.server")>();
   return {
     ...actual,
     verifyBearerToken: vi.fn(async () => ({

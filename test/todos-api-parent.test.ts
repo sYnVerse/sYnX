@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import { env } from "cloudflare:test";
-import { action as todosAction } from "../app/routes/api.v1.todos";
+import { action as todosAction } from "../backend/api/v1/todos";
 
 // Skip real token verification: every request is the list owner below.
-vi.mock("../app/auth.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../app/auth.server")>();
+vi.mock("../backend/services/auth.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../backend/services/auth.server")>();
   return {
     ...actual,
     verifyBearerToken: vi.fn(async () => ({

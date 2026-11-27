@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import { env } from "cloudflare:test";
-import { action as listAction } from "../app/features/list/action.server";
-import { action as toggleApiAction } from "../app/routes/api.v1.todos.$id.toggle";
-import { listActivityForOwner } from "../app/list-activity.server";
-import { TodoManager } from "../app/to-do-manager";
+import { action as listAction } from "../web/app/features/list/action.server";
+import { action as toggleApiAction } from "../backend/api/v1/todos.$id.toggle";
+import { listActivityForOwner } from "../backend/services/list-activity.server";
+import { TodoManager } from "../backend/services/to-do-manager";
 import {
   computeWebQuickAddState,
   formatLocalBaseDay,
-} from "../app/features/list/quick-add-form";
+} from "../web/app/features/list/quick-add-form";
 
 const OWNER_ID = "owner-quick-add-test";
 
-vi.mock("../app/auth.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../app/auth.server")>();
+vi.mock("../backend/services/auth.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../backend/services/auth.server")>();
   return {
     ...actual,
     verifyBearerToken: vi.fn(async () => ({

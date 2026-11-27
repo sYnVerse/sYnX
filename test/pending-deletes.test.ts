@@ -5,7 +5,7 @@ import {
   declinePendingDelete,
   listPendingDeletesForList,
   requestOrPerformDelete,
-} from "../app/pending-deletes.server";
+} from "../backend/services/pending-deletes.server";
 
 const ownerId = "user-owner-pending";
 const collaboratorId = "user-collab-pending";

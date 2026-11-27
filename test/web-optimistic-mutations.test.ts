@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { env } from "cloudflare:test";
 import type { ActionFunctionArgs } from "react-router";
-import type { Todo } from "../app/to-do-manager";
-import { ROLLBACK_ERROR_MESSAGE, formatSaveError } from "../app/features/list/hooks/useOptimisticField";
+import type { Todo } from "../backend/services/to-do-manager";
+import { ROLLBACK_ERROR_MESSAGE, formatSaveError } from "../web/app/features/list/hooks/useOptimisticField";
 
 const harness = vi.hoisted(() => {
   type HookState = {
@@ -338,22 +338,22 @@ vi.mock("react-router", async (importOriginal) => {
   };
 });
 
-vi.mock("../app/features/list/components/ReminderPicker", () => ({
+vi.mock("../web/app/features/list/components/ReminderPicker", () => ({
   ReminderPicker: () => null,
 }));
-vi.mock("../app/features/list/components/CompletedSectionToggle", () => ({
+vi.mock("../web/app/features/list/components/CompletedSectionToggle", () => ({
   CompletedSectionToggle: () => null,
 }));
-vi.mock("../app/features/list/components/FloatingPopover", () => ({
+vi.mock("../web/app/features/list/components/FloatingPopover", () => ({
   FloatingPopover: ({ open, children }: { open: boolean; children?: any }) =>
     open ? { type: "div", props: { children } } : null,
 }));
 
-import { GuestContext } from "../app/guest-context";
-import { TodoItem } from "../app/features/list/components/TodoItem";
-import { PriorityPicker } from "../app/features/list/components/pickers";
-import { action as listAction } from "../app/features/list/action.server";
-import { TodoManager } from "../app/to-do-manager";
+import { GuestContext } from "../web/app/guest-context";
+import { TodoItem } from "../web/app/features/list/components/TodoItem";
+import { PriorityPicker } from "../web/app/features/list/components/pickers";
+import { action as listAction } from "../web/app/features/list/action.server";
+import { TodoManager } from "../backend/services/to-do-manager";
 
 function findElements(node: any, pred: (el: any) => boolean, out: any[] = []): any[] {
   if (!node || typeof node !== "object") return out;

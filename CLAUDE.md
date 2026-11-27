@@ -16,7 +16,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs these on every pull request, so
 - `npm run lint`
 - `npm test -- --run --maxWorkers=2`
 - `npm run test:e2e` (Playwright E2E UI suite: guest, signed-in auth/profile, lists/tasks, and shared lists, run against local wrangler dev)
-- `npm run typecheck` (web, must report 0 errors) and `npm run typecheck:mobile-tests` (root tests that import mobile code, checked with the mobile types)
+- `npm run typecheck` (web, backend, and root; must report 0 errors) and `npm run typecheck:mobile-tests` (root tests that import mobile code, checked with the mobile types)
 - `cd mobile && npm run typecheck`
 - `cd mobile && npm run doctor` when `mobile/` or `shared/` changes (see below)
 - `cd mobile && npm run lint` when `mobile/` or `shared/` changes (Expo's ESLint setup in `mobile/eslint.config.js`; `--max-warnings 0`, so warnings fail CI too)
@@ -55,24 +55,24 @@ The web end-to-end suite lives in `e2e/` and runs with `npm run test:e2e` agains
 
 ## Mobile dependency check (expo-doctor)
 
-- After any change to mobile dependencies (`mobile/package.json` or `mobile/package-lock.json`), and before any mobile build or release, run `cd mobile && npm run doctor`. It runs `expo-doctor`, the same check the EAS build runs. Use Node 22.13 or newer.
+- After any change to mobile dependencies (`mobile/package.json` or `package-lock.json`), and before any mobile build or release, run `cd mobile && npm run doctor`. It runs `expo-doctor`, the same check the EAS build runs. Use Node 22.13 or newer.
 - If a check fails because package versions don't match the Expo SDK, fix it with `cd mobile && npx expo install --fix` (updates `package.json` and the lockfile together), then run the doctor again until all checks pass. Don't hand-edit versions or silence checks; report anything it can't fix.
 
 ## Database schema (D1 migrations)
 
-The D1 schema lives in `migrations/` (numbered SQL files applied by Wrangler and recorded in the `d1_migrations` table). `migrations/0000_baseline.sql` mirrors production as of Oct 27, 2026; later files build on it.
+The D1 schema lives in `backend/migrations/` (numbered SQL files applied by Wrangler and recorded in the `d1_migrations` table). `backend/migrations/0000_baseline.sql` mirrors production as of Oct 27, 2026; later files build on it.
 
-- Every schema change is a new numbered migration: `npx wrangler d1 migrations create synx-db <name>`, then `npx wrangler d1 migrations apply synx-db --local`. Tests build their database from `migrations/` (see `test/apply-migrations.ts`), so don't hand-write `CREATE TABLE` in tests.
+- Every schema change is a new numbered migration: `npx wrangler d1 migrations create synx-db <name> --config backend/wrangler.jsonc`, then `npx wrangler d1 migrations apply synx-db --local --config backend/wrangler.jsonc --persist-to backend/.wrangler/state` (or `npm run db:migrate:local`). Tests build their database from `backend/migrations/` (see `test/apply-migrations.ts`), so don't hand-write `CREATE TABLE` in tests.
 - Never edit a migration that has already been applied (anything merged to main). Fix it with a new migration.
 - Keep schema changes additive within a release (expand, then contract): add the new column or table, ship code that uses it, and only drop or rename the old one in a later release, once no deployed code (web or mobile) relies on it.
-- No DDL (`CREATE`/`ALTER`/`DROP`) or `PRAGMA` schema checks in app code. The app assumes the schema from `migrations/` is in place; don't add "create if missing" or "add column if missing" code, and don't wrap queries in `try/catch` just to ignore schema errors.
-- Never run `wrangler d1 migrations apply` or `wrangler d1 execute` with `--remote` by hand. Production migrations run only in the deploy pipeline (`npm run deploy`, which Workers Builds runs on pushes to main). Don't run `npm run deploy` from your own machine either, since it applies migrations to production. `wrangler d1 migrations list synx-db --remote` is read-only and fine for checking.
+- No DDL (`CREATE`/`ALTER`/`DROP`) or `PRAGMA` schema checks in app code. The app assumes the schema from `backend/migrations/` is in place; don't add "create if missing" or "add column if missing" code, and don't wrap queries in `try/catch` just to ignore schema errors.
+- Never run `wrangler d1 migrations apply` or `wrangler d1 execute` with `--remote` by hand. Production migrations run only in the deploy pipeline (`npm run deploy`, which Workers Builds runs on pushes to main). Don't run `npm run deploy` from your own machine either, since it applies migrations to production. `npx wrangler d1 migrations list synx-db --remote --config backend/wrangler.jsonc` is read-only and fine for checking.
 
 ## Worker Previews (pull request previews)
 
-Every pull request gets a Preview URL from Workers Builds (`wrangler preview`), set up in the `previews` block of `wrangler.jsonc` and deployed via `npm run deploy:preview`.
+Every pull request gets a Preview URL from Workers Builds (`wrangler preview`), set up in the `previews` block of `backend/wrangler.jsonc` and deployed via `npm run deploy:preview`.
 
-- Previews use their own `synx-preview` D1 database, never `synx-db`. Before each Preview deploys, `npm run deploy:preview` applies `migrations/` to it through `wrangler.preview-migrations.jsonc` and deploys via `wrangler preview`. If you change the preview database, change it in both files.
+- Previews use their own `synx-preview` D1 database, never `synx-db`. Before each Preview deploys, `npm run deploy:preview` applies `backend/migrations/` to it through `backend/wrangler.preview-migrations.jsonc` and deploys via `wrangler preview`. If you change the preview database, change it in both files.
 - Previews don't inherit production settings. Any new binding the app needs must be added to `previews` too, pointed at a preview-safe resource. Never point a preview binding at a production resource.
 - Previews have no notification secrets (Resend, Twilio, Firebase), and cron triggers don't run on them. Don't add any of these.
 - Sign-in doesn't work on previews yet, so check changes there in guest mode.
@@ -85,6 +85,6 @@ Follow **`.claude/rules/versioning.md`** (canonical). Summary:
 - SemVer `MAJOR.MINOR.PATCH`: feature batch → minor; fixes → patch; breaking changes → major.
 - Same calendar day as the last release for that surface: append changelog bullets; do not bump again. A PR merging on a different day gets a new version + dated What's New entry.
 - **Mobile** single source of truth: `shared/mobile-version.ts`. After editing, run `cd mobile && npm run sync-version` so `mobile/package.json` and `mobile/app.json` match. `app.config.js` sets Expo `version` (Android `versionName` / iOS short version). Do not hand-edit EAS-managed `versionCode` / `buildNumber`.
-- **Web** (`WEB_VERSION` in `app/constants/changelog.ts`) is separate; bump only for user-facing web changes.
+- **Web** (`WEB_VERSION` in `web/app/constants/changelog.ts`) is separate; bump only for user-facing web changes.
 - Changelog items within each version go NEW → IMPR → FIX (defined in `shared/changelog.ts`, enforced by `test/changelog-order.test.ts`).
 - Before finish: version file → sync → changelog → tests. Full checklist in the canonical doc.

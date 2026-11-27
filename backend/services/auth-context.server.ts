@@ -80,10 +80,10 @@ export function shouldResolveWebAuth(pathname: string): boolean {
  */
 export async function resolveApiAuthInContext(
   request: Request,
-  context: Readonly<RouterContextProvider>
+  context: Readonly<RouterContextProvider>,
+  pathname = new URL(request.url).pathname
 ): Promise<void> {
   const { env } = getCloudflareContext(context);
-  const pathname = new URL(request.url).pathname;
 
   if (!shouldResolveApiAuth(pathname)) return;
 

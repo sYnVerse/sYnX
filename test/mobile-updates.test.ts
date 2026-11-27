@@ -64,13 +64,13 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native", () => mocks.reactNative);
+vi.mock("../node_modules/react-native", () => mocks.reactNative);
 vi.mock("expo-application", () => mocks.application);
-vi.mock("../mobile/node_modules/expo-application", () => mocks.application);
+vi.mock("../node_modules/expo-application", () => mocks.application);
 vi.mock("expo-updates", () => mocks.updates);
-vi.mock("../mobile/node_modules/expo-updates", () => mocks.updates);
+vi.mock("../node_modules/expo-updates", () => mocks.updates);
 vi.mock("expo-constants", () => ({ default: mocks.constants }));
-vi.mock("../mobile/node_modules/expo-constants", () => ({ default: mocks.constants }));
+vi.mock("../node_modules/expo-constants", () => ({ default: mocks.constants }));
 vi.mock("../mobile/src/api/client", () => ({
   apiClient: mocks.apiClient,
   onNativeUpdateRequired: vi.fn(),
@@ -78,7 +78,7 @@ vi.mock("../mobile/src/api/client", () => ({
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: mocks.asyncStorage,
 }));
-vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage", () => ({
+vi.mock("../node_modules/@react-native-async-storage/async-storage", () => ({
   default: mocks.asyncStorage,
 }));
 

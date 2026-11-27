@@ -7,12 +7,12 @@ import {
   getTodoCompletions,
   resolveRestoredReminderSent,
   setCompletionDuration,
-} from "../app/to-do-manager";
-import { getDueReminderRecipients } from "../app/due-reminders.server";
-import { action as listAction } from "../app/features/list/action.server";
-import { action as undoRepeatApiAction } from "../app/routes/api.v1.todos.$id.undo-repeat";
-import { action as durationApiAction } from "../app/routes/api.v1.completions.$id.duration";
-import { loader as completionsExportLoader } from "../app/routes/api.v1.completions.export";
+} from "../backend/services/to-do-manager";
+import { getDueReminderRecipients } from "../backend/services/due-reminders.server";
+import { action as listAction } from "../web/app/features/list/action.server";
+import { action as undoRepeatApiAction } from "../backend/api/v1/todos.$id.undo-repeat";
+import { action as durationApiAction } from "../backend/api/v1/completions.$id.duration";
+import { loader as completionsExportLoader } from "../backend/api/v1/completions.export";
 
 const USER_A = { userId: "user-104-a", email: "a104@example.com" };
 const USER_B = { userId: "user-104-b", email: "b104@example.com" };
@@ -32,7 +32,7 @@ let currentApiUser: { userId: string; email: string; token: string } | null = {
   token: "test-token-a",
 };
 
-vi.mock("../app/auth-context.server", () => ({
+vi.mock("../backend/services/auth-context.server", () => ({
   getRequestWebAuth: vi.fn(async () => currentWebAuth),
   getRequestApiAuth: vi.fn(async () => currentApiUser),
 }));

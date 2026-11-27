@@ -16,8 +16,8 @@ let currentApiUser: { userId: string; email: string; token: string } | null = {
   token: "tok-owner",
 };
 
-vi.mock("../app/auth-context.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../app/auth-context.server")>();
+vi.mock("../backend/services/auth-context.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../backend/services/auth-context.server")>();
   return {
     ...actual,
     getRequestWebAuth: vi.fn(async () => currentWebUser),
@@ -25,9 +25,9 @@ vi.mock("../app/auth-context.server", async (importOriginal) => {
   };
 });
 
-import { loader as listLoader } from "../app/features/list/loader.server";
-import { loader as activityApiLoader } from "../app/routes/api.v1.lists.$id.activity";
-import { listActivityForOwner, logListActivity } from "../app/list-activity.server";
+import { loader as listLoader } from "../web/app/features/list/loader.server";
+import { loader as activityApiLoader } from "../backend/api/v1/lists.$id.activity";
+import { listActivityForOwner, logListActivity } from "../backend/services/list-activity.server";
 
 async function seedPrivateList(listId: string, ownerId: string) {
   await env.DB.prepare(

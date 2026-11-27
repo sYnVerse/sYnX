@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { RouterContextProvider } from "react-router";
 import { env as workerEnv } from "cloudflare:test";
-import wranglerRaw from "../wrangler.jsonc?raw";
-import previewRaw from "../wrangler.preview-migrations.jsonc?raw";
-import { cloudflareContext } from "../app/context.server";
-import { shouldResolveApiAuth } from "../app/auth-context.server";
+import wranglerRaw from "../backend/wrangler.jsonc?raw";
+import previewRaw from "../backend/wrangler.preview-migrations.jsonc?raw";
+import { cloudflareContext } from "../backend/services/context.server";
+import { shouldResolveApiAuth } from "../backend/services/auth-context.server";
 import {
   isLocalTestAuthAllowed,
   mintLocalTestToken,
@@ -14,11 +14,11 @@ import {
   verifyAccessToken,
   verifyBearerToken,
   type AuthEnv,
-} from "../app/auth.server";
+} from "../backend/services/auth.server";
 import {
   loader as devTestLoginLoader,
   action as devTestLoginAction,
-} from "../app/routes/api.v1.dev.test-login";
+} from "../backend/api/v1/dev.test-login";
 
 function makeTestLoginArgs(request: Request, envOverrides: Record<string, unknown> = {}) {
   const provider = new RouterContextProvider();

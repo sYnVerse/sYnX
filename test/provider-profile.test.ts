@@ -7,7 +7,7 @@ import {
   providerProfileFields,
   sanitizeProviderAvatarUrl,
   syncProviderProfile,
-} from "../app/provider-profile.server";
+} from "../backend/services/provider-profile.server";
 import { getSharedNameNotice, isMakingListPublic } from "../shared";
 
 const ISSUER = "https://auth.example.test";

@@ -12,7 +12,7 @@ import {
   serializeListRow,
   serializeListRows,
   type ListRow,
-} from "../app/api-helpers.server";
+} from "../backend/services/api-helpers.server";
 import type { TodoItem } from "../shared";
 
 describe("formatListRowTitleAndEmoji (#143)", () => {
