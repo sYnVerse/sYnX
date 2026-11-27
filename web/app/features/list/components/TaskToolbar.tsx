@@ -18,6 +18,7 @@ const TASK_SORT_EMOJI: Record<TaskSortMode, string> = {
   priority: "🔴",
   reminder: "⏰",
   alphabetical: "🔤",
+  manual: "↕️",
 };
 
 const filterButtons: { key: Filter; label: string }[] = [
@@ -44,6 +45,7 @@ interface TaskToolbarProps {
   isSharedServerList: boolean;
   handleGuestAction: (intent: string, payload?: GuestActionPayload) => void;
   isOwner: boolean;
+  canEdit?: boolean;
   clearCompletedNeedsApproval: boolean;
   activeListShareMode: "private" | "public_read" | "public_edit";
   loaderListActivity?: unknown;
@@ -77,6 +79,7 @@ export function TaskToolbar({
   isSharedServerList,
   handleGuestAction,
   isOwner,
+  canEdit = false,
   clearCompletedNeedsApproval,
   activeListShareMode,
   loaderListActivity,
@@ -117,30 +120,47 @@ export function TaskToolbar({
         </div>
 
         {/* Sort Dropdown */}
-        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sort by</span>
-          <select
-            value={sortBy}
-            onChange={(e) => setSavedSortBy(resolveTaskSortMode(DEFAULT_TASK_SORT_MODE, e.target.value))}
-            className="rounded-xl bg-white/[0.03] border border-white/[0.06] text-slate-300 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 cursor-pointer appearance-none bg-slate-900 pr-8 relative max-w-[11rem]"
-            style={{
-              backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
-              backgroundPosition: 'right 0.5rem center',
-              backgroundSize: '1.25rem',
-              backgroundRepeat: 'no-repeat',
-            }}
-          >
-            {TASK_SORT_OPTIONS.map((opt) => (
-              <option
-                key={opt.value}
-                value={opt.value}
-                className="bg-slate-900 text-slate-100"
-                style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}
+        <div className="flex flex-col items-end gap-1 self-end sm:self-auto shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Sort by</span>
+            <select
+              aria-label="Sort by"
+              value={sortBy}
+              onChange={(e) => setSavedSortBy(resolveTaskSortMode(DEFAULT_TASK_SORT_MODE, e.target.value))}
+              className="rounded-xl bg-white/[0.03] border border-white/[0.06] text-slate-300 text-xs px-3 py-2 focus:outline-none focus:ring-1 focus:ring-themeAccentRing/50 cursor-pointer appearance-none bg-slate-900 pr-8 relative max-w-[11rem]"
+              style={{
+                backgroundImage: `url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%2394a3b8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E")`,
+                backgroundPosition: 'right 0.5rem center',
+                backgroundSize: '1.25rem',
+                backgroundRepeat: 'no-repeat',
+              }}
+            >
+              {TASK_SORT_OPTIONS.map((opt) => (
+                <option
+                  key={opt.value}
+                  value={opt.value}
+                  className="bg-slate-900 text-slate-100"
+                  style={{ backgroundColor: '#0f172a', color: '#f8fafc' }}
+                >
+                  {`${TASK_SORT_EMOJI[opt.value]} ${opt.label}`}
+                </option>
+              ))}
+            </select>
+          </div>
+          {canEdit && viewMode === "list" && sortBy !== "manual" && (
+            <p className="text-[11px] text-slate-500 text-right">
+              Reordering moves tied tasks here &mdash;{" "}
+              <button
+                type="button"
+                data-testid="switch-to-manual-sort"
+                onClick={() => setSavedSortBy("manual")}
+                className="text-themeAccentText hover:underline font-medium cursor-pointer"
               >
-                {`${TASK_SORT_EMOJI[opt.value]} ${opt.label}`}
-              </option>
-            ))}
-          </select>
+                Switch to Manual
+              </button>{" "}
+              to order freely.
+            </p>
+          )}
         </div>
       </div>
 

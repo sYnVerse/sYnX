@@ -8,7 +8,9 @@ import {
   ARCHIVE_PROMPT_DISMISSED_STORAGE_KEY,
   DEFAULT_TASK_SORT_MODE,
   QUICK_PICK_DURATION_MINUTES,
+  applyOptimisticReorder,
   canArchiveList,
+  canMoveTaskInDirection,
   clearArchivePromptDismissed,
   describeDeleteTarget,
   formatRescheduledToast,
@@ -110,6 +112,11 @@ export default function TodoPage({
   const completionActionFetcher = useFetcher<{
     success?: boolean;
     todo?: Todo;
+    error?: string;
+  }>();
+  const reorderFetcher = useFetcher<{
+    success?: boolean;
+    todos?: Todo[];
     error?: string;
   }>();
   const initTimeZoneSent = useRef(false);
@@ -510,6 +517,35 @@ export default function TodoPage({
     onTaskCompleted: handleTaskCompletedFeedback,
   });
 
+  const todosWithOptimisticReorder = useMemo(() => {
+    if (
+      reorderFetcher.state === "idle" ||
+      reorderFetcher.formData?.get("intent") !== "reorderTasks"
+    ) {
+      return listTodosWithSubtaskAction;
+    }
+    const rawIds = reorderFetcher.formData.get("orderedIds");
+    if (typeof rawIds !== "string") return listTodosWithSubtaskAction;
+    try {
+      const parsedIds = JSON.parse(rawIds) as unknown;
+      if (!Array.isArray(parsedIds)) return listTodosWithSubtaskAction;
+      const parentIdRaw = reorderFetcher.formData.get("parentId");
+      const targetParentId =
+        typeof parentIdRaw === "string" && parentIdRaw.trim() !== ""
+          ? parentIdRaw.trim()
+          : null;
+      return (
+        applyOptimisticReorder(
+          listTodosWithSubtaskAction,
+          parsedIds.filter((x): x is string => typeof x === "string"),
+          targetParentId
+        ) ?? listTodosWithSubtaskAction
+      );
+    } catch {
+      return listTodosWithSubtaskAction;
+    }
+  }, [listTodosWithSubtaskAction, reorderFetcher.state, reorderFetcher.formData]);
+
   // Visible todos and counts
   const {
     optimisticTodos,
@@ -522,7 +558,7 @@ export default function TodoPage({
     activeCount,
     progress,
     clearCompletedNeedsApproval,
-  } = useVisibleTodos({ todos: listTodosWithSubtaskAction, filter, searchQuery, sortBy });
+  } = useVisibleTodos({ todos: todosWithOptimisticReorder, filter, searchQuery, sortBy });
 
   const completedSectionOpen = completedOpenListId === effectiveActiveListId;
 
@@ -548,6 +584,26 @@ export default function TodoPage({
   useFetcherToast(clearFetcher, showToast, { surfacePendingApproval: true });
   useFetcherToast(listFetcher, showToast, { surfacePendingApproval: true });
   useFetcherToast(completionActionFetcher, showToast);
+  useFetcherToast(reorderFetcher, showToast);
+
+  const handleReorderTasks = useCallback(
+    (orderedIds: string[], parentId?: string | null) => {
+      if (!canEdit || orderedIds.length === 0) return;
+      if (!isLoggedIn && !isSharedServerList) {
+        handleGuestAction("reorderTasks", { orderedIds, parentId: parentId ?? null });
+        return;
+      }
+      const submitData: Record<string, string> = {
+        intent: "reorderTasks",
+        orderedIds: JSON.stringify(orderedIds),
+      };
+      if (parentId) {
+        submitData.parentId = parentId;
+      }
+      reorderFetcher.submit(submitData, { method: "post" });
+    },
+    [canEdit, isLoggedIn, isSharedServerList, handleGuestAction, reorderFetcher]
+  );
 
   const handleExportData = () => {
     const dataStr =
@@ -1147,6 +1203,7 @@ export default function TodoPage({
             isSharedServerList={isSharedServerList}
             handleGuestAction={handleGuestAction}
             isOwner={isOwner}
+            canEdit={canEdit}
             clearCompletedNeedsApproval={clearCompletedNeedsApproval}
             activeListShareMode={activeListShareMode}
             setShowActivityModal={setShowActivityModal}
@@ -1183,21 +1240,33 @@ export default function TodoPage({
               </div>
             ) : (
               <ul className="space-y-2 flex-1 overflow-y-auto pr-1 scrollbar-thin">
-                {activeParents.map((todo) => (
-                  <TodoItem 
-                    key={todo.id} 
-                    todo={todo} 
-                    subtasks={subtasksMap[todo.id] || []}
-                    canEdit={canEdit}
-                    onNotify={showToast}
-                    onBeforeSetCompleted={maybePromptForCompletion}
-                    onTaskCompleted={handleTaskCompletedFeedback}
-                    completionStatsByTodoId={completionStatsByTodoId}
-                    timerNow={timerNow}
-                    onTimerTick={setTimerNow}
-                    searchQuery={searchQuery}
-                  />
-                ))}
+                {activeParents.map((todo) => {
+                  const upInfo = canMoveTaskInDirection(activeParents, todo.id, "up", sortBy);
+                  const downInfo = canMoveTaskInDirection(activeParents, todo.id, "down", sortBy);
+                  return (
+                    <TodoItem
+                      key={todo.id}
+                      todo={todo}
+                      subtasks={subtasksMap[todo.id] || []}
+                      canEdit={canEdit}
+                      onNotify={showToast}
+                      onBeforeSetCompleted={maybePromptForCompletion}
+                      onTaskCompleted={handleTaskCompletedFeedback}
+                      completionStatsByTodoId={completionStatsByTodoId}
+                      timerNow={timerNow}
+                      onTimerTick={setTimerNow}
+                      searchQuery={searchQuery}
+                      sortBy={sortBy}
+                      canMoveUp={upInfo.canMove}
+                      canMoveDown={downInfo.canMove}
+                      onMoveUp={() => upInfo.orderedIds && handleReorderTasks(upInfo.orderedIds)}
+                      onMoveDown={() => downInfo.orderedIds && handleReorderTasks(downInfo.orderedIds)}
+                      onReorderSubtasks={(parentId, orderedIds) =>
+                        handleReorderTasks(orderedIds, parentId)
+                      }
+                    />
+                  );
+                })}
                 {completedParents.length > 0 && (
                   <li className="list-none flex">
                     <CompletedSectionToggle

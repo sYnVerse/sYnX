@@ -4,11 +4,14 @@ import { GuestContext } from "~/guest-context";
 import { canEditReminderText } from "@synx/shared/reminder-ownership";
 import { MAX_TASK_TEXT_LENGTH } from "@synx/shared/write-limits";
 import {
+  DEFAULT_TASK_SORT_MODE,
+  canMoveTaskInDirection,
   formatElapsedTimerLabel,
   formatRescheduledToast,
   formatTaskCompletionStatsLine,
   splitCompletedTasks,
   type TaskCompletionStats,
+  type TaskSortMode,
 } from "@synx/shared";
 import type { CompletionSummary, Todo } from "@synx/backend/services/to-do-manager";
 import { useOptimisticField } from "../hooks/useOptimisticField";
@@ -61,6 +64,12 @@ export interface TodoItemProps {
   timerNow?: number;
   onTimerTick?: (now: number) => void;
   searchQuery?: string;
+  sortBy?: TaskSortMode;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onReorderSubtasks?: (parentId: string, orderedIds: string[]) => void;
 }
 
 export function TodoItem({
@@ -75,6 +84,12 @@ export function TodoItem({
   timerNow = 0,
   onTimerTick,
   searchQuery = "",
+  sortBy = DEFAULT_TASK_SORT_MODE,
+  canMoveUp = false,
+  canMoveDown = false,
+  onMoveUp,
+  onMoveDown,
+  onReorderSubtasks,
 }: TodoItemProps) {
   const { isLoggedIn, canSetReminders, currentUserId, listOwnerId, onGuestAction } = useContext(GuestContext);
   // A task's reminder text goes to the user who set the reminder, so guests or
@@ -540,6 +555,49 @@ export function TodoItem({
           </button>
         )}
 
+        {canEdit && !optimisticCompleted && !todo.pendingDelete && onMoveUp && onMoveDown && (
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              data-testid={`move-up-${todo.id}`}
+              disabled={!canMoveUp}
+              onClick={onMoveUp}
+              aria-label="Move task up"
+              title={
+                canMoveUp
+                  ? "Move up"
+                  : sortBy === "manual"
+                    ? "Already at top"
+                    : "Switch to Manual sort to move freely"
+              }
+              className="p-1 rounded-lg text-slate-400 hover:text-themeAccentText hover:bg-white/[0.04] disabled:opacity-25 disabled:pointer-events-none transition-all cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              data-testid={`move-down-${todo.id}`}
+              disabled={!canMoveDown}
+              onClick={onMoveDown}
+              aria-label="Move task down"
+              title={
+                canMoveDown
+                  ? "Move down"
+                  : sortBy === "manual"
+                    ? "Already at bottom"
+                    : "Switch to Manual sort to move freely"
+              }
+              className="p-1 rounded-lg text-slate-400 hover:text-themeAccentText hover:bg-white/[0.04] disabled:opacity-25 disabled:pointer-events-none transition-all cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {canEdit && !todo.pendingDelete && (
           <deleteFetcher.Form
             method="post"
@@ -579,20 +637,37 @@ export function TodoItem({
       {/* Render subtasks underneath the parent */}
       {!isSubtask && (subtasks.length > 0 || showAddSubtask) && (
         <div className="pl-6 mt-1 flex flex-col gap-1 border-l border-white/[0.04] ml-5">
-          {activeSubtasks.map((sub) => (
-            <TodoItem
-              key={sub.id}
-              todo={sub}
-              isSubtask={true}
-              canEdit={canEdit}
-              onNotify={onNotify}
-              onTaskCompleted={onTaskCompleted}
-              completionStatsByTodoId={completionStatsByTodoId}
-              timerNow={timerNow}
-              onTimerTick={onTimerTick}
-              searchQuery={searchQuery}
-            />
-          ))}
+          {activeSubtasks.map((sub) => {
+            const subUp = canMoveTaskInDirection(activeSubtasks, sub.id, "up", sortBy);
+            const subDown = canMoveTaskInDirection(activeSubtasks, sub.id, "down", sortBy);
+            return (
+              <TodoItem
+                key={sub.id}
+                todo={sub}
+                isSubtask={true}
+                canEdit={canEdit}
+                onNotify={onNotify}
+                onTaskCompleted={onTaskCompleted}
+                completionStatsByTodoId={completionStatsByTodoId}
+                timerNow={timerNow}
+                onTimerTick={onTimerTick}
+                searchQuery={searchQuery}
+                sortBy={sortBy}
+                canMoveUp={subUp.canMove}
+                canMoveDown={subDown.canMove}
+                onMoveUp={
+                  onReorderSubtasks
+                    ? () => subUp.orderedIds && onReorderSubtasks(todo.id, subUp.orderedIds)
+                    : undefined
+                }
+                onMoveDown={
+                  onReorderSubtasks
+                    ? () => subDown.orderedIds && onReorderSubtasks(todo.id, subDown.orderedIds)
+                    : undefined
+                }
+              />
+            );
+          })}
 
           {/* Completed subtasks, collapsed by default */}
           {completedSubtasks.length > 0 && (

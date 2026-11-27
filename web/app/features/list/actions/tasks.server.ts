@@ -348,6 +348,52 @@ export async function handleDeleteTask(ctx: ListActionContext) {
   return Response.json({ error: result.error }, { status: 403 });
 }
 
+export async function handleReorderTasks(ctx: ListActionContext) {
+  const { formData, db, activeListId, todoManager } = ctx;
+  const rawOrderedIds = formData.get("orderedIds");
+  if (typeof rawOrderedIds !== "string" || !rawOrderedIds.trim()) {
+    return Response.json({ error: "orderedIds is required" }, { status: 400 });
+  }
+  let parsedIds: unknown;
+  try {
+    parsedIds = JSON.parse(rawOrderedIds);
+  } catch {
+    return Response.json({ error: "Invalid orderedIds JSON" }, { status: 400 });
+  }
+  if (
+    !Array.isArray(parsedIds) ||
+    parsedIds.length === 0 ||
+    !parsedIds.every((id): id is string => typeof id === "string" && id.trim().length > 0)
+  ) {
+    return Response.json({ error: "orderedIds must be a non-empty array of task IDs" }, { status: 400 });
+  }
+
+  const rawParentId = formData.get("parentId");
+  const parentId =
+    typeof rawParentId === "string" && rawParentId.trim() !== ""
+      ? rawParentId.trim()
+      : null;
+  if (parentId) {
+    const parentRow = await db
+      .prepare("SELECT id FROM todos WHERE id = ? AND list_id = ?")
+      .bind(parentId, activeListId)
+      .first();
+    if (!parentRow) {
+      return Response.json({ error: "Parent task not found" }, { status: 400 });
+    }
+  }
+
+  try {
+    const todos = await todoManager.reorder(parsedIds, parentId);
+    return { success: true, todos };
+  } catch (e) {
+    return Response.json(
+      { error: e instanceof Error ? e.message : "Invalid reorder task IDs" },
+      { status: 400 }
+    );
+  }
+}
+
 export async function handleClearCompleted(ctx: ListActionContext) {
   const {
     db,

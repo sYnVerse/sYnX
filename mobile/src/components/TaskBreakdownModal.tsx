@@ -10,11 +10,21 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Animated,
+  PanResponder,
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
-import { X, Plus, Minus, Clock, Check, Pencil } from "lucide-react-native";
-import { TodoItem, sortTasks, splitCompletedTasks, type TaskSortMode } from "../shared";
+import { X, Plus, Minus, Clock, Check, Pencil, GripVertical } from "lucide-react-native";
+import {
+  TodoItem,
+  applyOptimisticReorder,
+  hasTiedNeighborInSortMode,
+  resolveListReorderDragOutcome,
+  sortTasks,
+  splitCompletedTasks,
+  type TaskSortMode,
+} from "../shared";
 import { apiClient } from "../api/client";
 import { useTheme } from "../context/ThemeContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -33,6 +43,188 @@ import {
 import { CompletedSectionHeader } from "./CompletedSectionHeader";
 import { SubtaskEditModal } from "./SubtaskEditModal";
 
+interface DraggableSubtaskRowProps {
+  st: TodoItem;
+  canEdit: boolean;
+  canDrag: boolean;
+  isDragging: boolean;
+  isPending: boolean;
+  isSlowPending: boolean;
+  onToggleCompleted: (subtask: TodoItem) => void;
+  onEdit: () => void;
+  onRemove: (id: string) => void;
+  onDragStart: (subtask: TodoItem) => void;
+  onDragMove: (subtask: TodoItem, dy: number) => void;
+  onDragEnd: (subtask: TodoItem, dy: number) => void;
+  onDragCancel: () => void;
+}
+
+const DraggableSubtaskRow: React.FC<DraggableSubtaskRowProps> = ({
+  st,
+  canEdit,
+  canDrag,
+  isDragging,
+  isPending,
+  isSlowPending,
+  onToggleCompleted,
+  onEdit,
+  onRemove,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onDragCancel,
+}) => {
+  const { theme, resolvedMode } = useTheme();
+  const [translateY] = useState(() => new Animated.Value(0));
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_evt, gestureState) =>
+          canDrag && Math.abs(gestureState.dy) > 4,
+        onMoveShouldSetPanResponderCapture: (_evt, gestureState) =>
+          canDrag && Math.abs(gestureState.dy) > 4,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => {
+          onDragStart(st);
+        },
+        onPanResponderMove: (_evt, gestureState) => {
+          const clampedDy = Math.max(-120, Math.min(120, gestureState.dy * 0.45));
+          translateY.setValue(clampedDy);
+          onDragMove(st, gestureState.dy);
+        },
+        onPanResponderRelease: (_evt, gestureState) => {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+          onDragEnd(st, gestureState.dy);
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+          onDragCancel();
+        },
+      }),
+    [canDrag, onDragCancel, onDragEnd, onDragMove, onDragStart, st, translateY]
+  );
+
+  return (
+    <Animated.View
+      style={{
+        transform: [{ translateY }],
+        zIndex: isDragging ? 10 : 0,
+      }}
+    >
+      <View
+        style={[
+          styles.subtaskRow,
+          {
+            backgroundColor:
+              resolvedMode === "light" ? "#F8FAFC" : "rgba(255,255,255,0.03)",
+            borderColor: isDragging ? theme.accent : theme.cardBorder,
+          },
+        ]}
+      >
+        <TouchableOpacity
+          disabled={!canEdit}
+          style={[
+            styles.checkboxHit,
+            (!canEdit || isPending) && { opacity: canEdit ? 0.85 : 0.7 },
+          ]}
+          onPress={() => onToggleCompleted(st)}
+          accessibilityRole="checkbox"
+          accessibilityState={{
+            checked: st.completed,
+            disabled: !canEdit,
+          }}
+          accessibilityLabel={`Mark subtask ${st.completed ? "incomplete" : "complete"}`}
+        >
+          <View
+            style={[
+              styles.checkbox,
+              { borderColor: theme.accent },
+              st.completed && { backgroundColor: theme.accent },
+            ]}
+          >
+            {st.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
+          </View>
+        </TouchableOpacity>
+
+        <View style={styles.subtaskContent}>
+          <Text
+            style={[
+              styles.subtaskText,
+              { color: theme.textPrimary },
+              st.completed && { color: theme.textMuted, textDecorationLine: "line-through" },
+            ]}
+            maxFontSizeMultiplier={1.4}
+          >
+            {st.text}
+          </Text>
+          {st.durationMinutes != null && st.durationMinutes > 0 ? (
+            <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
+              <Clock size={10} color={theme.accent} />
+              <Text style={[styles.durationBadgeText, { color: theme.accent }]}>
+                {st.durationMinutes}m
+              </Text>
+            </View>
+          ) : null}
+          {isSlowPending ? (
+            <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
+              <ActivityIndicator size="small" color={theme.accent} />
+              <Text style={[styles.durationBadgeText, { color: theme.accent }]}>
+                Saving…
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {canEdit && (
+          <View style={styles.subtaskActions}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={onEdit}
+              accessibilityRole="button"
+              accessibilityLabel={`Edit subtask ${st.text}`}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Pencil size={15} color={theme.textMuted} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => onRemove(st.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove subtask ${st.text}`}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Minus size={15} color={theme.danger} />
+            </TouchableOpacity>
+
+            {canDrag ? (
+              <View
+                style={styles.actionBtn}
+                {...panResponder.panHandlers}
+                accessibilityRole="adjustable"
+                accessibilityLabel={`Drag to reorder subtask ${st.text}`}
+              >
+                <GripVertical
+                  size={16}
+                  color={isDragging ? theme.accent : theme.textMuted}
+                />
+              </View>
+            ) : null}
+          </View>
+        )}
+      </View>
+    </Animated.View>
+  );
+};
+
 interface TaskBreakdownModalProps {
   visible: boolean;
   task: TodoItem | null;
@@ -49,12 +241,15 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   sortMode,
   onClose,
 }) => {
-  const { theme, resolvedMode, hapticsEnabled } = useTheme();
+  const { theme, hapticsEnabled } = useTheme();
   const { showError, showToast } = useToast();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [newSubtaskText, setNewSubtaskText] = useState("");
   const [editingSubtask, setEditingSubtask] = useState<TodoItem | null>(null);
+  const [draggingSubtaskId, setDraggingSubtaskId] = useState<string | null>(null);
+  const [subtaskDragPreviewLabel, setSubtaskDragPreviewLabel] = useState<string | null>(null);
+  const lastSubtaskTargetRef = useRef<number | null>(null);
 
   // The Completed section starts collapsed each time the sheet opens; it isn't remembered.
   const [completedOpen, setCompletedOpen] = useState(false);
@@ -251,6 +446,70 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
     },
   });
 
+  type ReorderSubtasksVars = { orderedIds: string[] };
+  type ReorderSubtasksContext = { previousTodos?: TodoItem[]; listId?: string; seq: number };
+  const subtaskReorderSeqRef = useRef(0);
+
+  const reorderSubtasksMutation = useMutation<
+    TodoItem[] | undefined,
+    unknown,
+    ReorderSubtasksVars,
+    ReorderSubtasksContext
+  >({
+    mutationFn: async ({ orderedIds }: ReorderSubtasksVars) => {
+      if (!task) return undefined;
+      const res = await apiClient.post("/api/v1/todos/reorder", {
+        listId: task.listId,
+        parentId: task.id,
+        orderedIds,
+      });
+      return res.data?.todos as TodoItem[] | undefined;
+    },
+    onMutate: async ({ orderedIds }) => {
+      const listId = task?.listId;
+      const parentId = task?.id;
+      subtaskReorderSeqRef.current += 1;
+      const seq = subtaskReorderSeqRef.current;
+      const previousTodos = listId
+        ? queryClient.getQueryData<TodoItem[]>(["todos", listId])
+        : undefined;
+      if (listId && parentId) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+          applyOptimisticReorder(old, orderedIds, parentId)
+        );
+        await queryClient.cancelQueries({ queryKey: ["todos", listId] });
+        if (subtaskReorderSeqRef.current === seq) {
+          queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
+            applyOptimisticReorder(old, orderedIds, parentId)
+          );
+        }
+      }
+      return { previousTodos, listId, seq };
+    },
+    onSuccess: (todos, _vars, context) => {
+      if (context?.seq !== subtaskReorderSeqRef.current) return;
+      triggerHaptic();
+      const listId = context?.listId;
+      if (listId && todos) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], todos);
+      }
+      if (listId) {
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      }
+    },
+    onError: (e, _vars, context) => {
+      if (context?.seq !== subtaskReorderSeqRef.current) return;
+      const listId = context?.listId;
+      if (listId && context?.previousTodos !== undefined) {
+        queryClient.setQueryData<TodoItem[]>(["todos", listId], context.previousTodos);
+      }
+      if (listId) {
+        queryClient.invalidateQueries({ queryKey: ["todos", listId] });
+      }
+      onErr(e, "Couldn't reorder subtasks");
+    },
+  });
+
   const overallDurationMinutes = useMemo(() => {
     return subtasks.reduce((sum, st) => {
       const mins = st.durationMinutes;
@@ -275,106 +534,79 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
   // Completed subtasks go in a collapsible section at the bottom, in the list's sort like the rest.
   const { active: activeDrafts, completed: completedDrafts } = splitCompletedTasks(subtasks);
 
-  const renderSubtaskRow = (st: TodoItem) => (
-    <View
-      key={st.id}
-      style={[
-        styles.subtaskRow,
-        {
-          backgroundColor:
-            resolvedMode === "light" ? "#F8FAFC" : "rgba(255,255,255,0.03)",
-          borderColor: theme.cardBorder,
-        },
-      ]}
-    >
-      <TouchableOpacity
-        disabled={!canEdit}
-        style={[
-          styles.checkboxHit,
-          (!canEdit || isPendingId(st.id)) && { opacity: canEdit ? 0.85 : 0.7 },
-        ]}
-        onPress={() => {
+  const handleSubtaskDragStart = (st: TodoItem) => {
+    triggerHaptic();
+    lastSubtaskTargetRef.current = null;
+    setDraggingSubtaskId(st.id);
+    setSubtaskDragPreviewLabel(null);
+  };
+
+  const handleSubtaskDragMove = (st: TodoItem, dy: number) => {
+    const outcome = resolveListReorderDragOutcome(activeDrafts, st.id, dy, sortMode, 56);
+    if (outcome.kind === "reorder") {
+      if (lastSubtaskTargetRef.current !== outcome.targetIndex) {
+        lastSubtaskTargetRef.current = outcome.targetIndex;
+        triggerHaptic();
+      }
+      setSubtaskDragPreviewLabel(`Position ${outcome.positionInGroup} of ${outcome.groupSize}`);
+    } else {
+      lastSubtaskTargetRef.current = null;
+      setSubtaskDragPreviewLabel(null);
+    }
+  };
+
+  const handleSubtaskDragEnd = (st: TodoItem, dy: number) => {
+    lastSubtaskTargetRef.current = null;
+    setDraggingSubtaskId(null);
+    setSubtaskDragPreviewLabel(null);
+    const outcome = resolveListReorderDragOutcome(activeDrafts, st.id, dy, sortMode, 56);
+    if (outcome.kind === "reorder") {
+      reorderSubtasksMutation.mutate({ orderedIds: outcome.orderedIds });
+    }
+  };
+
+  const handleSubtaskDragCancel = () => {
+    lastSubtaskTargetRef.current = null;
+    setDraggingSubtaskId(null);
+    setSubtaskDragPreviewLabel(null);
+  };
+
+  const renderSubtaskRow = (st: TodoItem) => {
+    const canDrag =
+      canEdit &&
+      !st.completed &&
+      !st.pendingDelete &&
+      (sortMode === "manual"
+        ? activeDrafts.length >= 2
+        : hasTiedNeighborInSortMode(activeDrafts, st.id, sortMode));
+    return (
+      <DraggableSubtaskRow
+        key={st.id}
+        st={st}
+        canEdit={canEdit}
+        canDrag={canDrag}
+        isDragging={draggingSubtaskId === st.id}
+        isPending={isPendingId(st.id)}
+        isSlowPending={isSlowPendingId(st.id)}
+        onToggleCompleted={(target) => {
           if (!canEdit) return;
-          setCompleted({ id: st.id, completed: st.completed });
+          setCompleted({ id: target.id, completed: target.completed });
         }}
-        accessibilityRole="checkbox"
-        accessibilityState={{
-          checked: st.completed,
-          disabled: !canEdit,
+        onEdit={() => {
+          triggerHaptic();
+          setEditingSubtask(st);
         }}
-        accessibilityLabel={`Mark subtask ${st.completed ? "incomplete" : "complete"}`}
-      >
-        <View
-          style={[
-            styles.checkbox,
-            { borderColor: theme.accent },
-            st.completed && { backgroundColor: theme.accent },
-          ]}
-        >
-          {st.completed && <Check size={12} color="#FFFFFF" strokeWidth={3} />}
-        </View>
-      </TouchableOpacity>
-
-      <View style={styles.subtaskContent}>
-        <Text
-          style={[
-            styles.subtaskText,
-            { color: theme.textPrimary },
-            st.completed && { color: theme.textMuted, textDecorationLine: "line-through" },
-          ]}
-          maxFontSizeMultiplier={1.4}
-        >
-          {st.text}
-        </Text>
-        {st.durationMinutes != null && st.durationMinutes > 0 ? (
-          <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
-            <Clock size={10} color={theme.accent} />
-            <Text style={[styles.durationBadgeText, { color: theme.accent }]}>
-              {st.durationMinutes}m
-            </Text>
-          </View>
-        ) : null}
-        {isSlowPendingId(st.id) ? (
-          <View style={[styles.durationBadge, { backgroundColor: theme.accentLight }]}>
-            <ActivityIndicator size="small" color={theme.accent} />
-            <Text style={[styles.durationBadgeText, { color: theme.accent }]}>
-              Saving…
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      {canEdit && (
-        <View style={styles.subtaskActions}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => {
-              triggerHaptic();
-              setEditingSubtask(st);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`Edit subtask ${st.text}`}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Pencil size={15} color={theme.textMuted} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => {
-              triggerHaptic();
-              removeSubtaskMutation.mutate(st.id);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={`Remove subtask ${st.text}`}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Minus size={15} color={theme.danger} />
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
-  );
+        onRemove={(id) => {
+          triggerHaptic();
+          removeSubtaskMutation.mutate(id);
+        }}
+        onDragStart={handleSubtaskDragStart}
+        onDragMove={handleSubtaskDragMove}
+        onDragEnd={handleSubtaskDragEnd}
+        onDragCancel={handleSubtaskDragCancel}
+      />
+    );
+  };
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
@@ -424,12 +656,26 @@ export const TaskBreakdownModal: React.FC<TaskBreakdownModalProps> = ({
             />
           </View>
 
-          <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>
-            SUBTASKS ({completedCount}/{subtasks.length})
-          </Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>
+              SUBTASKS ({completedCount}/{subtasks.length})
+            </Text>
+            {subtaskDragPreviewLabel ? (
+              <Text style={[styles.reorderPreviewText, { color: theme.accent }]}>
+                {subtaskDragPreviewLabel}
+              </Text>
+            ) : null}
+          </View>
+
+          {canEdit && activeDrafts.length >= 2 && sortMode !== "manual" ? (
+            <Text style={[styles.reorderHintText, { color: theme.textMuted }]}>
+              Reordering moves tied subtasks here — switch to Manual in List Details to order freely.
+            </Text>
+          ) : null}
 
           <ScrollView
             style={styles.subtaskList}
+            scrollEnabled={!draggingSubtaskId}
             contentContainerStyle={{ paddingBottom: 8, flexGrow: 1 }}
             keyboardShouldPersistTaps="handled"
             nestedScrollEnabled
@@ -580,10 +826,25 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 3,
   },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    marginBottom: 6,
+  },
   sectionTitle: {
     fontSize: typography.xs,
     fontWeight: "700",
     letterSpacing: 1,
+  },
+  reorderPreviewText: {
+    fontSize: typography.xs,
+    fontWeight: "700",
+  },
+  reorderHintText: {
+    fontSize: typography.xs,
+    lineHeight: 16,
     marginBottom: 8,
   },
   subtaskList: {

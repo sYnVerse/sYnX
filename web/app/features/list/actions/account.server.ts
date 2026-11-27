@@ -81,8 +81,12 @@ export async function handleMigrateGuestLists(ctx: ListActionContext) {
 
           for (const [index, todo] of todos.entries()) {
             const { id: todoId, parentId: mappedParentId } = remappedIds[index];
+            const sortOrder =
+              typeof todo.sortOrder === "number" && Number.isFinite(todo.sortOrder)
+                ? Math.round(todo.sortOrder)
+                : index;
             await db.prepare(
-              "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+              "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence, created_by, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             ).bind(
               todoId,
               newListId,
@@ -95,7 +99,8 @@ export async function handleMigrateGuestLists(ctx: ListActionContext) {
               todo.reminderAt ? userId : null,
               mappedParentId,
               todo.recurrence || "none",
-              userId
+              userId,
+              sortOrder
             ).run();
           }
         }

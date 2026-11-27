@@ -12,7 +12,8 @@ export interface GuestActionPayload {
   text?: string;
   priority?: "low" | "medium" | "high" | "none";
   reminderAt?: number;
-  parentId?: string;
+  parentId?: string | null;
+  orderedIds?: string[];
   recurrence?: "none" | "daily" | "weekly" | "monthly";
   durationMinutes?: number | null;
   startedAt?: number | null;

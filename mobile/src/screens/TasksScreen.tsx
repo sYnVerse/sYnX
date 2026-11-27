@@ -24,9 +24,12 @@ import {
   PRIORITY_LEVELS_DESC,
   PRIORITY_DROP_LABELS,
   canDragTaskForPriority,
+  canDragTaskToReorder,
   applyOptimisticTaskPriority,
   describeListActivityAction,
   isListCompleted,
+  resolveListReorderDragOutcome,
+  resolvePriorityModeDragOutcome,
   resolveTaskSortMode,
   shouldSuggestArchivingList,
   sortTasks,
@@ -138,7 +141,9 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const [showChangelog, setShowChangelog] = useState(false);
   const [draggingTask, setDraggingTask] = useState<TodoItem | null>(null);
   const [dragPreviewPriority, setDragPreviewPriority] = useState<PriorityLevel | null>(null);
+  const [dragPreviewLabel, setDragPreviewLabel] = useState<string | null>(null);
   const lastPreviewPriorityRef = React.useRef<PriorityLevel | null>(null);
+  const lastReorderTargetRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     getPinnedWidgetConfig().then(setPinnedConfig).catch(() => {});
@@ -471,38 +476,19 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
   const {
     createMutation,
     updateMutation,
+    reorderMutation,
     deleteMutation,
     reviewDeleteMutation,
     isSlowPendingId: isSlowTaskUpdateId,
   } = useTaskMutations(listId);
 
-  const handlePriorityDragStart = React.useCallback(
-    (task: TodoItem) => {
-      triggerImpactHaptic();
-      const initial = (task.priority || "none") as PriorityLevel;
-      lastPreviewPriorityRef.current = initial;
-      setDraggingTask(task);
-      setDragPreviewPriority(initial);
-    },
-    [triggerImpactHaptic]
+  const activeTopLevelTasks = useMemo(
+    () => structuredTodos.filter((t) => !t.completed),
+    [structuredTodos]
   );
 
-  const handlePriorityDragHover = React.useCallback(
-    (_task: TodoItem, preview: PriorityLevel) => {
-      if (lastPreviewPriorityRef.current !== preview) {
-        lastPreviewPriorityRef.current = preview;
-        triggerImpactHaptic();
-        setDragPreviewPriority(preview);
-      }
-    },
-    [triggerImpactHaptic]
-  );
-
-  const handlePriorityDragEnd = React.useCallback(
+  const commitPriorityChange = React.useCallback(
     (task: TodoItem, nextPriority: PriorityLevel) => {
-      lastPreviewPriorityRef.current = null;
-      setDraggingTask(null);
-      setDragPreviewPriority(null);
       const currentPriority = (task.priority || "none") as PriorityLevel;
       if (currentPriority === nextPriority) return;
       triggerImpactHaptic();
@@ -525,10 +511,105 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
     [listId, queryClient, triggerImpactHaptic, updateMutation]
   );
 
-  const handlePriorityDragCancel = React.useCallback(() => {
+  const handleReorderDragStart = React.useCallback(
+    (task: TodoItem) => {
+      triggerImpactHaptic();
+      lastPreviewPriorityRef.current =
+        taskSortMode === "priority" ? ((task.priority || "none") as PriorityLevel) : null;
+      lastReorderTargetRef.current = null;
+      setDraggingTask(task);
+      setDragPreviewPriority(null);
+      setDragPreviewLabel(null);
+    },
+    [taskSortMode, triggerImpactHaptic]
+  );
+
+  const handleReorderDragMove = React.useCallback(
+    (task: TodoItem, dy: number) => {
+      if (taskSortMode === "priority") {
+        const outcome = resolvePriorityModeDragOutcome(activeTopLevelTasks, task.id, dy);
+        if (outcome.kind === "priority") {
+          if (lastPreviewPriorityRef.current !== outcome.nextPriority) {
+            lastPreviewPriorityRef.current = outcome.nextPriority;
+            triggerImpactHaptic();
+          }
+          lastReorderTargetRef.current = null;
+          setDragPreviewPriority(outcome.nextPriority);
+          setDragPreviewLabel(null);
+        } else if (outcome.kind === "reorder") {
+          lastPreviewPriorityRef.current = (task.priority || "none") as PriorityLevel;
+          if (lastReorderTargetRef.current !== outcome.targetIndex) {
+            lastReorderTargetRef.current = outcome.targetIndex;
+            triggerImpactHaptic();
+          }
+          setDragPreviewPriority(null);
+          setDragPreviewLabel(`Position ${outcome.positionInGroup} of ${outcome.groupSize}`);
+        } else {
+          lastPreviewPriorityRef.current = (task.priority || "none") as PriorityLevel;
+          lastReorderTargetRef.current = null;
+          setDragPreviewPriority(null);
+          setDragPreviewLabel(null);
+        }
+        return;
+      }
+
+      const outcome = resolveListReorderDragOutcome(
+        activeTopLevelTasks,
+        task.id,
+        dy,
+        taskSortMode
+      );
+      if (outcome.kind === "reorder") {
+        if (lastReorderTargetRef.current !== outcome.targetIndex) {
+          lastReorderTargetRef.current = outcome.targetIndex;
+          triggerImpactHaptic();
+        }
+        setDragPreviewLabel(`Position ${outcome.positionInGroup} of ${outcome.groupSize}`);
+      } else {
+        lastReorderTargetRef.current = null;
+        setDragPreviewLabel(null);
+      }
+    },
+    [activeTopLevelTasks, taskSortMode, triggerImpactHaptic]
+  );
+
+  const handleReorderDragEnd = React.useCallback(
+    (task: TodoItem, dy: number) => {
+      lastPreviewPriorityRef.current = null;
+      lastReorderTargetRef.current = null;
+      setDraggingTask(null);
+      setDragPreviewPriority(null);
+      setDragPreviewLabel(null);
+
+      if (taskSortMode === "priority") {
+        const outcome = resolvePriorityModeDragOutcome(activeTopLevelTasks, task.id, dy);
+        if (outcome.kind === "priority") {
+          commitPriorityChange(task, outcome.nextPriority);
+        } else if (outcome.kind === "reorder") {
+          reorderMutation.mutate({ orderedIds: outcome.orderedGroupIds, parentId: null });
+        }
+        return;
+      }
+
+      const outcome = resolveListReorderDragOutcome(
+        activeTopLevelTasks,
+        task.id,
+        dy,
+        taskSortMode
+      );
+      if (outcome.kind === "reorder") {
+        reorderMutation.mutate({ orderedIds: outcome.orderedIds, parentId: null });
+      }
+    },
+    [activeTopLevelTasks, commitPriorityChange, reorderMutation, taskSortMode]
+  );
+
+  const handleReorderDragCancel = React.useCallback(() => {
     lastPreviewPriorityRef.current = null;
+    lastReorderTargetRef.current = null;
     setDraggingTask(null);
     setDragPreviewPriority(null);
+    setDragPreviewLabel(null);
   }, []);
 
   const handleDeleteTask = (task: TodoItem) => {
@@ -913,40 +994,55 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
             styles.priorityDropBar,
             { backgroundColor: theme.cardBg, borderColor: theme.accent },
           ]}
-          accessibilityLabel="Priority drop targets"
+          accessibilityLabel={
+            taskSortMode === "priority" ? "Priority drop targets" : "Task reorder status"
+          }
         >
-          <Text style={[styles.priorityDropLabel, { color: theme.textSecondary }]}>
-            Release to set priority for &ldquo;{draggingTask.text}&rdquo;:
-          </Text>
-          <View style={styles.priorityDropChips}>
-            {PRIORITY_LEVELS_DESC.map((level) => {
-              const isSelected = dragPreviewPriority === level;
-              const chipTint =
-                level === "none" ? theme.textSecondary : priorityColor(level, theme);
-              return (
-                <View
-                  key={level}
-                  style={[
-                    styles.priorityDropChip,
-                    {
-                      borderColor: isSelected ? chipTint : theme.cardBorder,
-                      backgroundColor: isSelected ? `${chipTint}22` : theme.inputBg,
-                    },
-                  ]}
-                  accessibilityLabel={PRIORITY_DROP_LABELS[level]}
-                >
-                  <Text
-                    style={[
-                      styles.priorityDropChipText,
-                      { color: isSelected ? chipTint : theme.textPrimary },
-                    ]}
-                  >
-                    {PRIORITY_DROP_LABELS[level]}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
+          {taskSortMode === "priority" ? (
+            <>
+              <Text style={[styles.priorityDropLabel, { color: theme.textSecondary }]}>
+                Release to set priority for &ldquo;{draggingTask.text}&rdquo;:
+              </Text>
+              <View style={styles.priorityDropChips}>
+                {PRIORITY_LEVELS_DESC.map((level) => {
+                  const isSelected = dragPreviewPriority === level;
+                  const chipTint =
+                    level === "none" ? theme.textSecondary : priorityColor(level, theme);
+                  return (
+                    <View
+                      key={level}
+                      style={[
+                        styles.priorityDropChip,
+                        {
+                          borderColor: isSelected ? chipTint : theme.cardBorder,
+                          backgroundColor: isSelected ? `${chipTint}22` : theme.inputBg,
+                        },
+                      ]}
+                      accessibilityLabel={PRIORITY_DROP_LABELS[level]}
+                    >
+                      <Text
+                        style={[
+                          styles.priorityDropChipText,
+                          { color: isSelected ? chipTint : theme.textPrimary },
+                        ]}
+                      >
+                        {PRIORITY_DROP_LABELS[level]}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+              <Text style={[styles.reorderHintText, { color: theme.textMuted }]}>
+                Drag within a priority tier to reorder, across tiers to change priority, or switch to Manual in List Details to order freely.
+              </Text>
+            </>
+          ) : (
+            <Text style={[styles.priorityDropLabel, { color: theme.textSecondary }]}>
+              {taskSortMode === "manual"
+                ? `Release to place "${draggingTask.text}" in your custom order.`
+                : `Moving "${draggingTask.text}" among tied tasks — switch to Manual in List Details to order freely.`}
+            </Text>
+          )}
         </View>
       ) : null}
 
@@ -1028,14 +1124,28 @@ export const TasksScreen: React.FC<TasksScreenProps> = ({
                   sortMode: taskSortMode,
                   task: row.task,
                 })}
-                isDraggingPriority={draggingTask?.id === row.task.id}
+                isDraggingPriority={
+                  draggingTask?.id === row.task.id && dragPreviewPriority !== null
+                }
                 dragPreviewPriority={
                   draggingTask?.id === row.task.id ? dragPreviewPriority : null
                 }
-                onPriorityDragStart={handlePriorityDragStart}
-                onPriorityDragHover={handlePriorityDragHover}
-                onPriorityDragEnd={handlePriorityDragEnd}
-                onPriorityDragCancel={handlePriorityDragCancel}
+                canDragReorder={canDragTaskToReorder({
+                  canEdit,
+                  sortMode: taskSortMode,
+                  task: row.task,
+                  activeSiblings: activeTopLevelTasks,
+                })}
+                isDraggingReorder={
+                  draggingTask?.id === row.task.id && dragPreviewPriority === null
+                }
+                dragPreviewLabel={
+                  draggingTask?.id === row.task.id ? dragPreviewLabel : null
+                }
+                onReorderDragStart={handleReorderDragStart}
+                onReorderDragMove={handleReorderDragMove}
+                onReorderDragEnd={handleReorderDragEnd}
+                onReorderDragCancel={handleReorderDragCancel}
                 onToggleCompleted={(task) => setCompleted(task)}
                 onToggleStart={canEdit ? handleToggleStart : undefined}
                 now={timerNow}
@@ -1520,6 +1630,10 @@ const styles = StyleSheet.create({
   priorityDropChipText: {
     fontSize: typography.xs,
     fontWeight: "700",
+  },
+  reorderHintText: {
+    fontSize: typography.xs,
+    lineHeight: 16,
   },
   searchInputWrapper: {
     flex: 1,
