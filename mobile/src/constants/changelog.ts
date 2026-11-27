@@ -30,6 +30,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Custom Manual sort mode and drag-to-reorder handles for active tasks and subtasks, including dragging within a Priority tier to reorder or across tiers to change priority, synced with web.",
       },
       {
+        type: "NEW",
+        text: "Configure your default reminder snooze duration in Settings (5, 10, 15, 30, or 60 minutes, or a custom duration from 1 to 1,440 minutes), synced to your account and applied directly from notification Snooze actions.",
+      },
+      {
         type: "IMPR",
         text: "View activity is now available for all of your lists, including private lists.",
       },

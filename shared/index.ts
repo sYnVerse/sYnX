@@ -188,6 +188,8 @@ export interface UserSettings {
   phoneNumber: string;
   phoneCarrier: string;
   discordWebhookUrl: string;
+  /** Preferred reminder snooze duration in minutes (defaults to 10 when unset). */
+  snoozeMinutes?: number;
 }
 
 // API Schemas & Request Payloads

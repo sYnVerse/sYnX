@@ -3,6 +3,7 @@ import { releasePushTokenForSignOut } from "./notifications";
 import { clearPersistedQueryCache } from "./storage";
 import { clearWidgetPreferences } from "./widgetPreferences";
 import { resetWidgetsLoggedOut } from "./widgetSync";
+import { clearSnoozePreferences } from "./snoozePreferences";
 
 /**
  * Removes the signed-out user's data from this device. Used by both a manual
@@ -17,5 +18,6 @@ export async function clearSignedOutDeviceData(): Promise<void> {
   await secureSessionStore.clearSessionTokens();
   await clearPersistedQueryCache();
   await clearWidgetPreferences();
+  await clearSnoozePreferences();
   resetWidgetsLoggedOut();
 }

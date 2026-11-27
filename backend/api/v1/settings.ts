@@ -8,6 +8,10 @@ import {
   sanitizeDisplayNameInput,
   syncUserProfileOnSignIn,
 } from "../../services/user-profile.server";
+import {
+  parseReminderSnoozeMinutesInput,
+  resolveReminderSnoozeMinutes,
+} from "@synx/shared";
 import { phoneSettingsError } from "@synx/shared/write-limits";
 
 interface UserSettingsRow {
@@ -24,6 +28,36 @@ interface UserSettingsRow {
   suggested_display_name?: string | null;
   display_name_suggestion_dismissed?: number | null;
   archive_suggestions_enabled?: number | boolean | null;
+  snooze_minutes?: number | null;
+}
+
+function serializeSettingsResponse(
+  user: { userId: string; email: string },
+  row: UserSettingsRow | null | undefined,
+) {
+  return {
+    userId: user.userId,
+    email: user.email,
+    displayName: resolveDisplayName(row?.display_name),
+    /** True when the user has explicitly set a display name (not the default). */
+    displayNameSet: Boolean(row?.display_name && String(row.display_name).trim()),
+    emailEnabled: row ? Boolean(row.email_enabled) : false,
+    smsEnabled: row ? Boolean(row.sms_enabled) : false,
+    phoneNumber: row ? row.phone_number || "" : "",
+    phoneCarrier: row ? row.phone_carrier || "" : "",
+    discordWebhookUrl: row ? row.discord_webhook_url || "" : "",
+    /** Home time zone (IANA) for repeating reminders, or null until a device sets it. */
+    timeZone: row?.time_zone || null,
+    /** Whether completed-list archive suggestions are enabled for this account. */
+    archiveSuggestionsEnabled:
+      row?.archive_suggestions_enabled === undefined || row?.archive_suggestions_enabled === null
+        ? true
+        : Boolean(row.archive_suggestions_enabled),
+    /** Default notification snooze duration in minutes (null means 10 minutes). */
+    snoozeMinutes: resolveReminderSnoozeMinutes(row?.snooze_minutes),
+    /** Provider photo URL and suggested display name (null when unknown or not applicable). */
+    ...providerProfileFields(row),
+  };
 }
 
 export async function loader({  request, context  }: ApiRouteArgs) {
@@ -46,29 +80,7 @@ export async function loader({  request, context  }: ApiRouteArgs) {
 
   const row = await db.prepare("SELECT * FROM user_settings WHERE user_id = ?").bind(user.userId).first<UserSettingsRow>();
 
-  const settings = {
-    userId: user.userId,
-    email: user.email,
-    displayName: resolveDisplayName(row?.display_name),
-    /** True when the user has explicitly set a display name (not the default). */
-    displayNameSet: Boolean(row?.display_name && String(row.display_name).trim()),
-    emailEnabled: row ? Boolean(row.email_enabled) : false,
-    smsEnabled: row ? Boolean(row.sms_enabled) : false,
-    phoneNumber: row ? row.phone_number || "" : "",
-    phoneCarrier: row ? row.phone_carrier || "" : "",
-    discordWebhookUrl: row ? row.discord_webhook_url || "" : "",
-    /** Home time zone (IANA) for repeating reminders, or null until a device sets it. */
-    timeZone: row?.time_zone || null,
-    /** Whether completed-list archive suggestions are enabled for this account. */
-    archiveSuggestionsEnabled:
-      row?.archive_suggestions_enabled === undefined || row?.archive_suggestions_enabled === null
-        ? true
-        : Boolean(row.archive_suggestions_enabled),
-    /** Provider photo URL and suggested display name (null when unknown or not applicable). */
-    ...providerProfileFields(row),
-  };
-
-  return Response.json({ success: true, settings });
+  return Response.json({ success: true, settings: serializeSettingsResponse(user, row) });
 }
 
 export async function action({  request, context  }: ApiRouteArgs) {
@@ -99,18 +111,41 @@ export async function action({  request, context  }: ApiRouteArgs) {
       body,
       "archiveSuggestionsEnabled",
     );
+    const hasSnoozeMinutesField = Object.prototype.hasOwnProperty.call(
+      body,
+      "snoozeMinutes",
+    );
 
-    if (!hasNotificationFields && !hasDisplayNameField && hasArchiveSuggestionsField) {
-      const archiveSuggestionsEnabled = parseBool(body.archiveSuggestionsEnabled);
+    let parsedSnoozeMinutes: number | null | undefined;
+    if (hasSnoozeMinutesField) {
+      const snoozeValidation = parseReminderSnoozeMinutesInput(body.snoozeMinutes);
+      if (!snoozeValidation.ok) {
+        return Response.json({ error: snoozeValidation.error }, { status: 400 });
+      }
+      parsedSnoozeMinutes = snoozeValidation.minutes;
+    }
+
+    if (
+      !hasNotificationFields &&
+      !hasDisplayNameField &&
+      (hasArchiveSuggestionsField || hasSnoozeMinutesField)
+    ) {
       await db
-        .prepare(
-          `INSERT INTO user_settings (user_id, email, archive_suggestions_enabled)
-           VALUES (?, ?, ?)
-           ON CONFLICT(user_id) DO UPDATE SET
-             archive_suggestions_enabled = excluded.archive_suggestions_enabled`,
-        )
-        .bind(user.userId, user.email || "", archiveSuggestionsEnabled ? 1 : 0)
+        .prepare("INSERT OR IGNORE INTO user_settings (user_id, email) VALUES (?, ?)")
+        .bind(user.userId, user.email || "")
         .run();
+      if (hasArchiveSuggestionsField) {
+        await db
+          .prepare("UPDATE user_settings SET archive_suggestions_enabled = ? WHERE user_id = ?")
+          .bind(parseBool(body.archiveSuggestionsEnabled) ? 1 : 0, user.userId)
+          .run();
+      }
+      if (hasSnoozeMinutesField && parsedSnoozeMinutes !== undefined) {
+        await db
+          .prepare("UPDATE user_settings SET snooze_minutes = ? WHERE user_id = ?")
+          .bind(parsedSnoozeMinutes, user.userId)
+          .run();
+      }
     } else {
       const emailEnabled = parseBool(body.emailEnabled);
       const smsEnabled = parseBool(body.smsEnabled);
@@ -188,6 +223,12 @@ export async function action({  request, context  }: ApiRouteArgs) {
           .bind(parseBool(body.archiveSuggestionsEnabled) ? 1 : 0, user.userId)
           .run();
       }
+      if (hasSnoozeMinutesField && parsedSnoozeMinutes !== undefined) {
+        await db
+          .prepare("UPDATE user_settings SET snooze_minutes = ? WHERE user_id = ?")
+          .bind(parsedSnoozeMinutes, user.userId)
+          .run();
+      }
     }
 
     const row = await db
@@ -197,22 +238,7 @@ export async function action({  request, context  }: ApiRouteArgs) {
 
     return Response.json({
       success: true,
-      settings: {
-        userId: user.userId,
-        email: user.email,
-        displayName: resolveDisplayName(row?.display_name),
-        displayNameSet: Boolean(row?.display_name && String(row.display_name).trim()),
-        emailEnabled: row ? Boolean(row.email_enabled) : false,
-        smsEnabled: row ? Boolean(row.sms_enabled) : false,
-        phoneNumber: row ? row.phone_number || "" : "",
-        phoneCarrier: row ? row.phone_carrier || "" : "",
-        discordWebhookUrl: row ? row.discord_webhook_url || "" : "",
-        archiveSuggestionsEnabled:
-          row?.archive_suggestions_enabled === undefined || row?.archive_suggestions_enabled === null
-            ? true
-            : Boolean(row.archive_suggestions_enabled),
-        ...providerProfileFields(row),
-      },
+      settings: serializeSettingsResponse(user, row),
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "";

@@ -47,6 +47,7 @@ import {
   STORAGE_KEY_LAST_ACTIVE_LIST_ID,
   STORAGE_KEY_PINNED_WIDGET_CONFIG,
 } from "../mobile/src/services/widgetPreferences";
+import { STORAGE_KEY_SNOOZE_MINUTES } from "../mobile/src/services/snoozePreferences";
 
 // signOutCleanup imports widgetSync, which pulls in the widget components.
 // Those only type-check under the mobile app's own config (Mobile typecheck),
@@ -72,6 +73,7 @@ describe("mobile sign-out cleanup", () => {
     mocks.storage.set(QUERY_CACHE_KEY, "{\"clientState\":{}}");
     mocks.storage.set(STORAGE_KEY_LAST_ACTIVE_LIST_ID, "list-1");
     mocks.storage.set(STORAGE_KEY_PINNED_WIDGET_CONFIG, "{\"listId\":\"list-1\"}");
+    mocks.storage.set(STORAGE_KEY_SNOOZE_MINUTES, "30");
     mocks.storage.set("unrelated_key", "kept");
 
     const { clearSignedOutDeviceData } = await loadSignOutCleanup();
@@ -82,6 +84,7 @@ describe("mobile sign-out cleanup", () => {
     expect(mocks.storage.has(QUERY_CACHE_KEY)).toBe(false);
     expect(mocks.storage.has(STORAGE_KEY_LAST_ACTIVE_LIST_ID)).toBe(false);
     expect(mocks.storage.has(STORAGE_KEY_PINNED_WIDGET_CONFIG)).toBe(false);
+    expect(mocks.storage.has(STORAGE_KEY_SNOOZE_MINUTES)).toBe(false);
     expect(mocks.storage.get("unrelated_key")).toBe("kept");
     expect(mocks.widgetSync.resetWidgetsLoggedOut).toHaveBeenCalledTimes(1);
     expect(mocks.notifications.releasePushTokenForSignOut).toHaveBeenCalledTimes(1);
