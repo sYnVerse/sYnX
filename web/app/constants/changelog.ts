@@ -25,6 +25,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Archive completed lists to tuck them out of your active lists (including a collapsible Archived section in the sidebar, one-click archive suggestions when all tasks are done, auto-unarchive when you add a task, and a Profile Settings toggle).",
       },
       {
+        type: "NEW",
+        text: "Custom Manual task sort mode and in-list reordering with Move Up and Move Down controls for tasks and subtasks, synced across web and mobile (plus tied-group reordering within sorted views).",
+      },
+      {
         type: "IMPR",
         text: "Activity log is now available for all of your lists, including private lists.",
       },

@@ -22,6 +22,7 @@ import * as sessions from "./v1/sessions";
 import * as sessionsRevoke from "./v1/sessions.revoke";
 import * as todos from "./v1/todos";
 import * as todosClearCompleted from "./v1/todos.clear-completed";
+import * as todosReorder from "./v1/todos.reorder";
 import * as todoById from "./v1/todos.$id";
 import * as todoCompleted from "./v1/todos.$id.completed";
 import * as todoCompletions from "./v1/todos.$id.completions";
@@ -113,6 +114,7 @@ const API_ROUTES: RegisteredApiRoute[] = [
   idRoute("/api/v1/lists/:id", listById),
 
   staticRoute("/api/v1/todos/clear-completed", todosClearCompleted),
+  staticRoute("/api/v1/todos/reorder", todosReorder),
   staticRoute("/api/v1/todos", todos),
   idRoute("/api/v1/todos/:id/completed", todoCompleted),
   idRoute("/api/v1/todos/:id/completions", todoCompletions),

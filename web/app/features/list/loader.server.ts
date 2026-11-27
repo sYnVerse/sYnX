@@ -288,6 +288,7 @@ export const loader = async ({ request, params, context }: { request: Request; p
         durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : undefined,
         startedAt: t.started_at !== null && t.started_at !== undefined ? Number(t.started_at) : undefined,
         startedBy: t.started_by || undefined,
+        sortOrder: t.sort_order !== null && t.sort_order !== undefined ? Number(t.sort_order) : undefined,
         pendingDelete: pendingTaskIds.has(t.id),
         createdBy: t.created_by || undefined,
         canDeleteDirectly: canDeleteTaskDirectly({
@@ -298,7 +299,14 @@ export const loader = async ({ request, params, context }: { request: Request; p
           canEdit: canEditList((list.share_mode || "private") as ShareMode, isLoggedIn && list.owner_id === userId, isLoggedIn),
         }),
       }))
-      .sort((a, b) => b.createdAt - a.createdAt);
+      .sort((a, b) => {
+        if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+          return a.sortOrder - b.sortOrder || b.createdAt - a.createdAt;
+        }
+        if (a.sortOrder !== undefined) return -1;
+        if (b.sortOrder !== undefined) return 1;
+        return b.createdAt - a.createdAt;
+      });
     return {
       ...list,
       archived_at: archivedByListId.get(list.id) ?? null,

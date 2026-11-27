@@ -29,6 +29,7 @@ export interface Todo {
   startedAt?: number;
   /** Signed-in user ID who started the active timer. */
   startedBy?: string;
+  sortOrder?: number;
   /** Signed-in user who added the task (undefined for tasks added before this was recorded). */
   createdBy?: string;
   /** Collaborator delete request awaiting owner approval. */
@@ -53,6 +54,7 @@ export interface TodoRow {
   duration_minutes: number | null;
   started_at?: number | null;
   started_by?: string | null;
+  sort_order?: number | null;
   created_by?: string | null;
 }
 
@@ -478,6 +480,7 @@ export class TodoManager {
       durationMinutes: t.duration_minutes !== null && t.duration_minutes !== undefined ? Number(t.duration_minutes) : undefined,
       startedAt: t.started_at !== null && t.started_at !== undefined ? Number(t.started_at) : undefined,
       startedBy: t.started_by || undefined,
+      sortOrder: t.sort_order !== null && t.sort_order !== undefined ? Number(t.sort_order) : undefined,
       createdBy: t.created_by || undefined,
     };
   }
@@ -548,11 +551,13 @@ export class TodoManager {
 
   /**
    * Retrieves all todos from storage
-   * @returns Promise containing an array of Todo items, sorted by creation date (newest first)
+   * @returns Promise containing an array of Todo items, sorted by custom order then creation date (newest first)
    */
   async list(): Promise<Todo[]> {
     const { results } = await this.db
-      .prepare("SELECT * FROM todos WHERE list_id = ? ORDER BY created_at DESC")
+      .prepare(
+        "SELECT * FROM todos WHERE list_id = ? ORDER BY CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END ASC, sort_order ASC, created_at DESC"
+      )
       .bind(this.listId)
       .all<TodoRow>();
     return results.map((t) => this.mapRow(t));
@@ -583,9 +588,22 @@ export class TodoManager {
     const id = crypto.randomUUID();
     const createdAt = Date.now();
     const effectiveReminderUserId = reminderAt ? (reminderUserId ?? null) : null;
+    const minOrderRow = await this.db
+      .prepare(
+        parentId
+          ? "SELECT MIN(sort_order) AS min_order FROM todos WHERE list_id = ? AND parent_id = ?"
+          : "SELECT MIN(sort_order) AS min_order FROM todos WHERE list_id = ? AND parent_id IS NULL"
+      )
+      .bind(...(parentId ? [this.listId, parentId] : [this.listId]))
+      .first<{ min_order: number | null }>();
+    const sortOrder =
+      minOrderRow?.min_order !== null && minOrderRow?.min_order !== undefined
+        ? Number(minOrderRow.min_order) - 1
+        : 0;
+
     await this.db
       .prepare(
-        "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence, duration_minutes, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO todos (id, list_id, text, completed, created_at, priority, reminder_at, reminder_sent, reminder_user_id, parent_id, recurrence, duration_minutes, created_by, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
       )
       .bind(
         id,
@@ -600,7 +618,8 @@ export class TodoManager {
         parentId ?? null,
         recurrence,
         durationMinutes,
-        createdBy ?? null
+        createdBy ?? null,
+        sortOrder
       )
       .run();
     return {
@@ -616,6 +635,7 @@ export class TodoManager {
       parentId,
       recurrence,
       durationMinutes: durationMinutes !== null && durationMinutes !== undefined ? durationMinutes : undefined,
+      sortOrder,
       createdBy: createdBy || undefined,
     };
   }
@@ -913,7 +933,9 @@ export class TodoManager {
     let updatedSubtasks: Todo[] | undefined;
     if (completed && (options.subtaskAction === "complete" || options.subtaskAction === "promote")) {
       const { results: openRows } = await this.db
-        .prepare("SELECT * FROM todos WHERE list_id = ? AND parent_id = ? AND completed = 0 ORDER BY created_at DESC")
+        .prepare(
+          "SELECT * FROM todos WHERE list_id = ? AND parent_id = ? AND completed = 0 ORDER BY CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END ASC, sort_order ASC, created_at DESC"
+        )
         .bind(this.listId, id)
         .all<TodoRow>();
 
@@ -947,11 +969,25 @@ export class TodoManager {
             startedBy: undefined,
           }));
         } else {
-          await this.db
-            .prepare("UPDATE todos SET parent_id = NULL WHERE list_id = ? AND parent_id = ? AND completed = 0")
-            .bind(this.listId, id)
-            .run();
-          updatedSubtasks = openRows.map((row) => ({ ...this.mapRow(row), parentId: undefined }));
+          const minTopRow = await this.db
+            .prepare("SELECT MIN(sort_order) AS min_order FROM todos WHERE list_id = ? AND parent_id IS NULL")
+            .bind(this.listId)
+            .first<{ min_order: number | null }>();
+          const firstOrder =
+            minTopRow?.min_order !== null && minTopRow?.min_order !== undefined
+              ? Number(minTopRow.min_order) - openRows.length
+              : 0;
+          const promoteStmts = openRows.map((row, index) =>
+            this.db
+              .prepare("UPDATE todos SET parent_id = NULL, sort_order = ? WHERE id = ? AND list_id = ?")
+              .bind(firstOrder + index, row.id, this.listId)
+          );
+          await this.runBatch(promoteStmts);
+          updatedSubtasks = openRows.map((row, index) => ({
+            ...this.mapRow(row),
+            parentId: undefined,
+            sortOrder: firstOrder + index,
+          }));
         }
       } else {
         updatedSubtasks = [];
@@ -1216,6 +1252,57 @@ export class TodoManager {
       throw new Error(`Todo with id ${id} not found in this list`);
     }
     return this.mapRow(todo);
+  }
+
+  /**
+   * Reorders tasks or subtasks within `(this.listId, parentId)` using slot-preserving merge
+   * and normalizes `sort_order` densely (`0..n-1`) for all siblings in that scope.
+   */
+  async reorder(orderedIds: string[], parentId: string | null = null): Promise<Todo[]> {
+    if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+      throw new Error("Invalid reorder task IDs");
+    }
+    const seenRequested = new Set<string>();
+    for (const rawId of orderedIds) {
+      if (typeof rawId !== "string" || !rawId.trim() || seenRequested.has(rawId)) {
+        throw new Error("Invalid reorder task IDs");
+      }
+      seenRequested.add(rawId);
+    }
+
+    const { results: scopeRows } = await this.db
+      .prepare(
+        parentId
+          ? "SELECT id FROM todos WHERE list_id = ? AND parent_id = ? ORDER BY CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END ASC, sort_order ASC, created_at DESC, id ASC"
+          : "SELECT id FROM todos WHERE list_id = ? AND parent_id IS NULL ORDER BY CASE WHEN sort_order IS NULL THEN 1 ELSE 0 END ASC, sort_order ASC, created_at DESC, id ASC"
+      )
+      .bind(...(parentId ? [this.listId, parentId] : [this.listId]))
+      .all<{ id: string }>();
+
+    const scopeIds = new Set(scopeRows.map((r) => r.id));
+    for (const id of orderedIds) {
+      if (!scopeIds.has(id)) {
+        throw new Error("Invalid reorder task IDs");
+      }
+    }
+
+    const mergedIds: string[] = [];
+    let queueIdx = 0;
+    for (const row of scopeRows) {
+      if (seenRequested.has(row.id)) {
+        mergedIds.push(orderedIds[queueIdx++]);
+      } else {
+        mergedIds.push(row.id);
+      }
+    }
+
+    const statements = mergedIds.map((id, index) =>
+      this.db
+        .prepare("UPDATE todos SET sort_order = ? WHERE id = ? AND list_id = ?")
+        .bind(index, id, this.listId)
+    );
+    await this.runBatch(statements);
+    return await this.list();
   }
 
   /**

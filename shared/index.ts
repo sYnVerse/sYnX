@@ -31,6 +31,7 @@ export interface TodoItem {
   durationMinutes?: number | null;
   startedAt?: number | null;
   startedBy?: string | null;
+  sortOrder?: number | null;
   subtasks?: TodoItem[];
   /** True when a collaborator has requested deleting this task (awaits owner). */
   pendingDelete?: boolean;
@@ -305,6 +306,17 @@ export const UndoRepeatSchema = v.object({
 });
 
 export type UndoRepeatInput = v.InferOutput<typeof UndoRepeatSchema>;
+
+export const ReorderTodosSchema = v.object({
+  listId: v.pipe(v.string(), v.trim(), v.minLength(1, "List ID is required")),
+  parentId: v.optional(v.nullable(v.string())),
+  orderedIds: v.pipe(
+    v.array(v.pipe(v.string(), v.trim(), v.minLength(1))),
+    v.minLength(1, "At least one task ID is required")
+  ),
+});
+
+export type ReorderTodosInput = v.InferOutput<typeof ReorderTodosSchema>;
 
 export * from "./categories";
 

@@ -38,6 +38,7 @@ describe("list action dispatch maps", () => {
     "markReminderSent",
     "updateRecurrence",
     "updateDuration",
+    "reorderTasks",
     "updateShareMode",
     "createList",
     "renameList",

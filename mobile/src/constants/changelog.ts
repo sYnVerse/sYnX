@@ -26,6 +26,10 @@ export const MOBILE_CHANGELOG: ReleaseNote[] = [
         text: "Archive finished lists to hide them from your active lists and home screen widgets without deleting them (with a collapsible Archived section, completion archive suggestions you can toggle in Settings, and automatic unarchiving when you add a new task).",
       },
       {
+        type: "NEW",
+        text: "Custom Manual sort mode and drag-to-reorder handles for active tasks and subtasks, including dragging within a Priority tier to reorder or across tiers to change priority, synced with web.",
+      },
+      {
         type: "IMPR",
         text: "View activity is now available for all of your lists, including private lists.",
       },

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from "react";
 import type { FetcherWithComponents } from "react-router";
 import { readStoredValue, useHydrated, useStoredValue, writeStoredValue } from "~/client-storage";
 import {
+  applyOptimisticReorder,
   applySetCompletedLocal,
   applySetCompletedWithSubtasksLocal,
   applyStartTodoLocal,
@@ -100,6 +101,11 @@ export function useGuestLists({
 
     switch (intent) {
       case "create": {
+        const targetParentId = payload.parentId || null;
+        const scopeOrders = (targetList?.todos || [])
+          .filter((t) => (t.parentId ?? null) === targetParentId && typeof t.sortOrder === "number")
+          .map((t) => t.sortOrder as number);
+        const nextSortOrder = scopeOrders.length > 0 ? Math.min(...scopeOrders) - 1 : 0;
         const newTodo: Todo = {
           id: crypto.randomUUID(),
           listId: targetListId || userId || "guest_default",
@@ -109,9 +115,10 @@ export function useGuestLists({
           priority: payload.priority || "none",
           reminderAt: payload.reminderAt ? Number(payload.reminderAt) : undefined,
           reminderSent: payload.reminderAt ? false : undefined,
-          parentId: payload.parentId || undefined,
+          parentId: targetParentId ?? undefined,
           recurrence: payload.recurrence || "none",
           durationMinutes: payload.durationMinutes ?? undefined,
+          sortOrder: nextSortOrder,
         };
         if (prevLists.length === 0) {
           const defaultList: GuestList = {
@@ -254,6 +261,20 @@ export function useGuestLists({
             todos: l.todos.map((t) => (t.id === payload.id ? { ...t, durationMinutes: payload.durationMinutes ?? undefined } : t)),
           };
         });
+        break;
+      }
+      case "reorderTasks": {
+        const orderedIds = Array.isArray(payload.orderedIds) ? payload.orderedIds : [];
+        const targetParent = payload.parentId ?? null;
+        if (orderedIds.length > 0) {
+          updatedLists = prevLists.map((l) => {
+            if (l.id !== targetListId) return l;
+            return {
+              ...l,
+              todos: applyOptimisticReorder(l.todos, orderedIds, targetParent) ?? l.todos,
+            };
+          });
+        }
         break;
       }
       case "clearCompleted": {
