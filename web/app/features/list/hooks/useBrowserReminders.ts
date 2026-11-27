@@ -18,6 +18,7 @@ export function useBrowserReminders({ lists, userId }: UseBrowserRemindersOption
       const notifiedSet = new Set<string>(JSON.parse(notifiedStr));
 
       lists.forEach((list) => {
+        if (list.archived_at) return;
         const listTitle = (list.name && String(list.name).trim()) || "Reminder";
         ((list.todos || []) as Todo[]).forEach((todo) => {
           if (

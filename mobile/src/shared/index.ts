@@ -82,6 +82,8 @@ export type ListActivityAction =
   | "clear_completed"
   | "list_renamed"
   | "list_settings_changed"
+  | "list_archived"
+  | "list_unarchived"
   | "list_deleted"
   | "delete_requested"
   | "delete_approved"
@@ -124,6 +126,10 @@ export function describeListActivityAction(action: ListActivityAction): string {
       return "Renamed the list";
     case "list_settings_changed":
       return "Changed list settings";
+    case "list_archived":
+      return "Archived the list";
+    case "list_unarchived":
+      return "Unarchived the list";
     case "list_deleted":
       return "Deleted the list";
     case "delete_requested":
@@ -159,6 +165,14 @@ export interface TodoList {
   owner?: ListOwner;
   /** Additive: count of open top-level tasks in this list */
   openTaskCount?: number;
+  /** Additive: timestamp when the caller archived this list (null/undefined if active) */
+  archivedAt?: number | null;
+  /** Additive: true when archived for the current signed-in user */
+  isArchived?: boolean;
+  /** Additive: count of all tasks and subtasks in this list */
+  totalTaskCount?: number;
+  /** Additive: true when totalTaskCount > 0 and every task and subtask is completed */
+  allTasksCompleted?: boolean;
 }
 
 // User settings data structure
@@ -297,6 +311,8 @@ export * from "./categories";
 export * from "./changelog";
 
 export * from "./deep-link";
+
+export * from "./list-archive";
 
 export * from "./list-permissions";
 

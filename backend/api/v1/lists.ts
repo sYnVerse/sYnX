@@ -4,9 +4,18 @@ import { getRequestApiAuth } from "../../services/auth-context.server";
 import * as v from "valibot";
 import { CreateListSchema } from "@synx/shared";
 import { parseListScope, serializeListRows, type ListRow } from "../../services/api-helpers.server";
+import { getArchivedListMap } from "../../services/list-archives.server";
 import { listSharedWithMe } from "../../services/shared-lists.server";
 import { ownerPayload, resolveDisplayName } from "../../services/user-profile.server";
 import { categoryError, listNameError, normalizeOptionalCategory } from "@synx/shared/write-limits";
+
+type ArchivedFilter = "exclude" | "only" | "all";
+
+function parseArchivedFilter(raw: string | null): ArchivedFilter {
+  if (raw === "true" || raw === "only") return "only";
+  if (raw === "all") return "all";
+  return "exclude";
+}
 
 export async function loader({  request, context  }: ApiRouteArgs) {
   const env = getCloudflareContext(context).env;
@@ -19,6 +28,7 @@ export async function loader({  request, context  }: ApiRouteArgs) {
 
   const url = new URL(request.url);
   const scope = parseListScope(url.searchParams.get("scope"));
+  const archivedFilter = parseArchivedFilter(url.searchParams.get("archived"));
 
   let rows: ListRow[] = [];
 
@@ -43,8 +53,24 @@ export async function loader({  request, context  }: ApiRouteArgs) {
     }
   }
 
-  const lists = await serializeListRows(db, rows, user.userId);
-  return Response.json({ success: true, lists, scope });
+  const archivedAtByListId = await getArchivedListMap(
+    db,
+    user.userId,
+    rows.map((r) => r.id),
+  );
+  if (archivedFilter === "exclude") {
+    rows = rows.filter((r) => !archivedAtByListId.has(r.id));
+  } else if (archivedFilter === "only") {
+    rows = rows
+      .filter((r) => archivedAtByListId.has(r.id))
+      .sort(
+        (a, b) =>
+          (archivedAtByListId.get(b.id) ?? 0) - (archivedAtByListId.get(a.id) ?? 0),
+      );
+  }
+
+  const lists = await serializeListRows(db, rows, user.userId, archivedAtByListId);
+  return Response.json({ success: true, lists, scope, archived: archivedFilter });
 }
 
 export async function action({  request, context  }: ApiRouteArgs) {
@@ -99,6 +125,10 @@ export async function action({  request, context  }: ApiRouteArgs) {
       canEdit: true,
       owner: ownerPayload(displayName),
       openTaskCount: 0,
+      totalTaskCount: 0,
+      allTasksCompleted: false,
+      archivedAt: null,
+      isArchived: false,
     };
 
     return Response.json({ success: true, list: newList }, { status: 201 });

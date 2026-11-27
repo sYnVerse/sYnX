@@ -11,6 +11,7 @@ export interface GuestList {
   share_mode?: string | null;
   category?: string | null;
   owner_display_name?: string;
+  archived_at?: number | null;
   todos: Todo[];
 }
 

@@ -32,6 +32,7 @@ import {
   RefreshCw,
   RotateCcw,
   AlertTriangle,
+  Archive,
 } from "lucide-react-native";
 import {
   checkForUpdate,
@@ -60,6 +61,11 @@ import { useTaskSortPreferences } from "../hooks/useTaskSortPreferences";
 import { setAppTaskSortMode } from "../services/taskSortPreferences";
 import { useQuickAddPreferences } from "../hooks/useQuickAddPreferences";
 import { setSmartQuickAddEnabled } from "../services/quickAddPreferences";
+import {
+  setArchiveSuggestionsEnabledLocal,
+  updateArchiveSuggestionsPreference,
+  useArchivePreferences,
+} from "../services/archivePreferences";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "../context/ToastContext";
 import { getCachedListName } from "../services/listNames";
@@ -140,6 +146,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
   const { theme, themeMode, setThemeMode, hapticsEnabled, setHapticsEnabled } = useTheme();
   const { appDefault: taskSortMode } = useTaskSortPreferences();
   const smartQuickAddEnabled = useQuickAddPreferences();
+  const { archiveSuggestionsEnabled } = useArchivePreferences();
   const { showError, showSuccess } = useToast();
   const insets = useSafeAreaInsets();
 
@@ -262,6 +269,11 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
               ? res.data.settings.suggestedDisplayName
               : null
           );
+          if (typeof res.data.settings.archiveSuggestionsEnabled === "boolean") {
+            void setArchiveSuggestionsEnabledLocal(
+              res.data.settings.archiveSuggestionsEnabled
+            );
+          }
           markLoadedClean();
         }
       } catch (e) {
@@ -987,6 +999,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onDirtyChange, o
             thumbColor={smartQuickAddEnabled ? theme.accent : theme.textMuted}
             accessibilityLabel="Smart quick add"
             testID="settings-smart-quick-add-switch"
+          />
+        </View>
+
+        <View style={styles.switchRow}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+            <Archive size={18} color={theme.textSecondary} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.label, { color: theme.textPrimary }]}>
+                Suggest archiving completed lists
+              </Text>
+              <Text style={[styles.hint, { color: theme.textMuted }]}>
+                Prompt to archive when you finish the last task in a list
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={archiveSuggestionsEnabled}
+            onValueChange={(val) => {
+              triggerImpact();
+              void updateArchiveSuggestionsPreference(val).catch((e) => {
+                showError(getErrorMessage(e, "Couldn't update archive suggestions setting"));
+              });
+            }}
+            trackColor={{ false: theme.inputBg, true: theme.accentLight }}
+            thumbColor={archiveSuggestionsEnabled ? theme.accent : theme.textMuted}
+            accessibilityLabel="Suggest archiving completed lists"
+            testID="settings-archive-suggestions-switch"
           />
         </View>
 

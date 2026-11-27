@@ -1,7 +1,7 @@
-import { Suspense, type Dispatch, type SetStateAction } from "react";
+import { Suspense, useState, type Dispatch, type SetStateAction } from "react";
 import { Await, href, Link, type FetcherWithComponents } from "react-router";
 import { ProfileAvatar } from "~/components/profile-avatar";
-import type { PendingDeleteRequest } from "@synx/shared";
+import { isListCompleted, type PendingDeleteRequest } from "@synx/shared";
 import type { GuestList } from "../guest-lists";
 
 interface SidebarProps {
@@ -30,6 +30,9 @@ interface SidebarProps {
     initials: string;
   };
   setIsProfileOpen: (open: boolean) => void;
+  archiveSuggestionsEnabled?: boolean;
+  onArchiveList?: (listId: string) => void;
+  onUnarchiveList?: (listId: string) => void;
 }
 
 export function Sidebar({
@@ -51,12 +54,34 @@ export function Sidebar({
   settings,
   profileLabel,
   setIsProfileOpen,
+  archiveSuggestionsEnabled = true,
+  onArchiveList,
+  onUnarchiveList,
 }: SidebarProps) {
-  const myLists = lists.filter((l) => l.owner_id === userId);
-  const sharedLists = lists.filter((l) => l.owner_id !== userId);
+  const [isArchivedExpanded, setIsArchivedExpanded] = useState(false);
+  const allOwnedLists = lists.filter((l) => l.owner_id === userId);
+  const myLists = isLoggedIn
+    ? allOwnedLists.filter((l) => !l.archived_at)
+    : allOwnedLists;
+  const sharedLists = isLoggedIn
+    ? lists.filter((l) => l.owner_id !== userId && !l.archived_at)
+    : lists.filter((l) => l.owner_id !== userId);
+  const archivedLists = isLoggedIn
+    ? lists
+        .filter((l) => Boolean(l.archived_at))
+        .sort((a, b) => (b.archived_at ?? 0) - (a.archived_at ?? 0))
+    : [];
+  if (archivedLists.length === 0 && isArchivedExpanded) {
+    setIsArchivedExpanded(false);
+  }
+  const activeListIsArchived = archivedLists.some((l) => l.id === activeListId);
+  const showArchivedLists = isArchivedExpanded || activeListIsArchived;
 
-  const renderListRow = (list: GuestList, opts: { shared?: boolean }) => {
+  const renderListRow = (list: GuestList, opts: { shared?: boolean; archived?: boolean }) => {
     const isActive = list.id === activeListId;
+    const isRowShared = opts.shared ?? list.owner_id !== userId;
+    const isCompletedList =
+      !opts.archived && isLoggedIn && archiveSuggestionsEnabled && isListCompleted(list.todos);
     const remainingCount = (list.todos || []).filter((t) => !t.completed).length;
     const pendingForList = (pendingDeleteRequests as PendingDeleteRequest[]).filter(
       (r) => r.listId === list.id
@@ -64,7 +89,7 @@ export function Sidebar({
     const listPendingDelete = (pendingDeleteRequests as PendingDeleteRequest[]).some(
       (r) => r.listId === list.id && r.targetType === "list"
     );
-    const shouldPrefetch = !isActive && (isLoggedIn || Boolean(opts.shared));
+    const shouldPrefetch = !isActive && (isLoggedIn || Boolean(isRowShared));
     return (
       <div
         key={list.id}
@@ -84,7 +109,7 @@ export function Sidebar({
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
           <span className="text-xs font-semibold truncate">{list.name}</span>
-          {opts.shared && list.owner_display_name ? (
+          {isRowShared && list.owner_display_name ? (
             <span className="text-[9px] px-1.5 py-0.5 rounded bg-white/[0.04] text-slate-400 font-medium shrink-0 truncate max-w-[7rem]">
               {list.owner_display_name}
             </span>
@@ -96,7 +121,7 @@ export function Sidebar({
         </Link>
 
         <div className="flex items-center gap-1.5">
-          {!opts.shared && (
+          {!isRowShared && (
             ownedPendingDeleteRequests ? (
               <Suspense fallback={null}>
                 <Await resolve={ownedPendingDeleteRequests}>
@@ -123,14 +148,70 @@ export function Sidebar({
               </span>
             ) : null
           )}
+          {isCompletedList && (
+            <span
+              data-testid={`archive-hint-${list.id}`}
+              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 shrink-0"
+              title="All tasks done — ready to archive"
+            >
+              All done
+            </span>
+          )}
           {remainingCount > 0 && (
             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? "bg-themeAccentBg text-themeAccentText" : "bg-white/5 text-slate-400"}`}>
               {remainingCount}
             </span>
           )}
 
-          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-opacity duration-200 bg-slate-900/80 px-1 py-0.5 rounded-md border border-white/5 shadow-sm absolute right-2">
-            {opts.shared ? (
+          <div className="opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:opacity-100 flex items-center gap-1 transition-opacity duration-200 bg-slate-900/90 px-1 py-0.5 rounded-md border border-white/5 shadow-sm absolute right-2">
+            {isLoggedIn && (
+              opts.archived ? (
+                <button
+                  type="button"
+                  data-testid={`unarchive-list-${list.id}`}
+                  aria-label="Unarchive list"
+                  title="Unarchive list"
+                  onClick={() => {
+                    if (onUnarchiveList) {
+                      onUnarchiveList(list.id);
+                    } else {
+                      settingsFetcher.submit(
+                        { intent: "unarchiveList", listId: list.id },
+                        { method: "post" }
+                      );
+                    }
+                  }}
+                  className="text-slate-400 hover:text-emerald-300 p-0.5 rounded transition-colors cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  data-testid={`archive-list-${list.id}`}
+                  aria-label="Archive list"
+                  title="Archive list"
+                  onClick={() => {
+                    if (onArchiveList) {
+                      onArchiveList(list.id);
+                    } else {
+                      settingsFetcher.submit(
+                        { intent: "archiveList", listId: list.id },
+                        { method: "post" }
+                      );
+                    }
+                  }}
+                  className="text-slate-500 hover:text-themeAccentText p-0.5 rounded transition-colors cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                  </svg>
+                </button>
+              )
+            )}
+            {isRowShared ? (
               <>
                 {list.share_mode === "public_edit" && !listPendingDelete && (
                   <button
@@ -177,7 +258,7 @@ export function Sidebar({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                   </svg>
                 </button>
-                {myLists.length > 1 && (
+                {allOwnedLists.length > 1 && (
                   <button
                     onClick={() => setListToDelete({ id: list.id, name: list.name })}
                     className="text-slate-500 hover:text-rose-400 p-0.5 rounded transition-colors"
@@ -267,6 +348,37 @@ export function Sidebar({
                       <p className="text-[10px] text-slate-500 px-1 py-2">Open a shared link to add lists here</p>
                     )}
                   </div>
+                </div>
+              )}
+              {isLoggedIn && archivedLists.length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    data-testid="archived-section-toggle"
+                    aria-expanded={showArchivedLists}
+                    onClick={() => setIsArchivedExpanded((open) => !open)}
+                    className="w-full flex items-center justify-between mb-2 px-1 text-left cursor-pointer group"
+                  >
+                    <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-500 group-hover:text-slate-300 transition-colors">
+                      Archived ({archivedLists.length})
+                    </h3>
+                    <svg
+                      className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${showArchivedLists ? "rotate-180" : ""}`}
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showArchivedLists && (
+                    <div className="space-y-1" data-testid="archived-lists-section">
+                      {archivedLists.map((list) =>
+                        renderListRow(list, { shared: list.owner_id !== userId, archived: true })
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </nav>

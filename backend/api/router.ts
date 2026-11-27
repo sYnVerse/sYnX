@@ -10,6 +10,7 @@ import * as devTestLogin from "./v1/dev.test-login";
 import * as devices from "./v1/devices";
 import * as lists from "./v1/lists";
 import * as listById from "./v1/lists.$id";
+import * as listArchive from "./v1/lists.$id.archive";
 import * as listActivity from "./v1/lists.$id.activity";
 import * as listShareMode from "./v1/lists.$id.share-mode";
 import * as listShared from "./v1/lists.$id.shared";
@@ -106,6 +107,7 @@ function idRoute(pattern: string, mod: IdModule): RegisteredApiRoute {
 const API_ROUTES: RegisteredApiRoute[] = [
   staticRoute("/api/v1/lists", lists),
   idRoute("/api/v1/lists/:id/activity", listActivity),
+  idRoute("/api/v1/lists/:id/archive", listArchive),
   idRoute("/api/v1/lists/:id/share-mode", listShareMode),
   idRoute("/api/v1/lists/:id/shared", listShared),
   idRoute("/api/v1/lists/:id", listById),

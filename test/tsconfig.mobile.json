@@ -21,6 +21,7 @@
     "mobile-quick-add.test.ts",
     "mobile-timer-and-widget-ops.test.ts",
     "mobile-widget-sync-replay.test.ts",
+    "mobile-list-archives.test.ts",
     "mobile-issue-104.test.ts",
     "android-app-links.test.ts",
     "widget-pinned-toggle.test.ts",

@@ -112,9 +112,12 @@ export function useTaskMutations(listId: string) {
   const createMutation = useMutation({
     mutationFn: async (newTodo: any) => {
       const res = await apiClient.post("/api/v1/todos", { ...newTodo, listId });
-      return res.data.todo as TodoItem;
+      return {
+        todo: res.data.todo as TodoItem,
+        unarchivedList: Boolean(res.data?.unarchivedList),
+      };
     },
-    onSuccess: (createdTodo) => {
+    onSuccess: ({ todo: createdTodo, unarchivedList }) => {
       triggerSuccessHaptic(hapticsEnabled);
       if (createdTodo) {
         queryClient.setQueryData<TodoItem[]>(["todos", listId], (old) =>
@@ -123,6 +126,15 @@ export function useTaskMutations(listId: string) {
         syncTaskToNativeCalendar(createdTodo, {
           listName: getCachedListName(queryClient, createdTodo.listId),
         }).catch(() => {});
+      }
+      if (unarchivedList) {
+        queryClient.setQueryData<{ isArchived?: boolean; archivedAt?: number | null } & Record<string, any>>(
+          ["list_meta", listId],
+          (old) => (old ? { ...old, isArchived: false, archivedAt: null } : old)
+        );
+        queryClient.invalidateQueries({ queryKey: ["lists"] });
+        queryClient.invalidateQueries({ queryKey: ["list_meta", listId] });
+        showSuccess("List unarchived");
       }
       queryClient.invalidateQueries({ queryKey: ["todos", listId] });
     },

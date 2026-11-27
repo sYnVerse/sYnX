@@ -71,6 +71,8 @@ interface ProfileModalProps {
   handleExportCompletionsCsv: () => void;
   smartQuickAddEnabled: boolean;
   setSmartQuickAddEnabled: (enabled: boolean) => void;
+  archiveSuggestionsEnabled?: boolean;
+  setArchiveSuggestionsEnabled?: (enabled: boolean) => void;
 }
 
 export function ProfileModal({
@@ -114,6 +116,8 @@ export function ProfileModal({
   handleExportCompletionsCsv,
   smartQuickAddEnabled,
   setSmartQuickAddEnabled,
+  archiveSuggestionsEnabled = true,
+  setArchiveSuggestionsEnabled,
 }: ProfileModalProps) {
   if (!isProfileOpen) return null;
 
@@ -345,6 +349,29 @@ export function ProfileModal({
                 ${smartQuickAddEnabled ? "translate-x-4" : "translate-x-0"}`} />
             </button>
           </div>
+          {isLoggedIn && setArchiveSuggestionsEnabled && (
+            <div className="flex items-center justify-between gap-3 pt-3 mt-3 border-t border-white/[0.04]">
+              <div>
+                <p className="font-semibold text-slate-300">Suggest archiving completed lists</p>
+                <p className="text-[10px] text-slate-500">
+                  Prompt to archive when you finish the last task in a list
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={archiveSuggestionsEnabled}
+                aria-label="Suggest archiving completed lists"
+                data-testid="archive-suggestions-toggle"
+                onClick={() => setArchiveSuggestionsEnabled(!archiveSuggestionsEnabled)}
+                className={`w-9 h-5 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none relative shrink-0
+                  ${archiveSuggestionsEnabled ? "bg-themeAccentFrom" : "bg-slate-800"}`}
+              >
+                <div className={`w-4 h-4 bg-white rounded-full transition-transform duration-200
+                  ${archiveSuggestionsEnabled ? "translate-x-4" : "translate-x-0"}`} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Notification Settings */}

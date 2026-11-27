@@ -8,6 +8,7 @@ import {
   handleListActivity,
   handleMigrateGuestLists,
   handleRemoveSharedList,
+  handleSetArchiveSuggestions,
   handleSetTimeZone,
   handleUpdateSettings,
 } from "./account.server";
@@ -31,9 +32,11 @@ import {
   handleUpdateText,
 } from "./task-fields.server";
 import {
+  handleArchiveList,
   handleCreateList,
   handleDeleteList,
   handleRenameList,
+  handleUnarchiveList,
   handleUpdateListCategory,
   handleUpdateShareMode,
 } from "./lists.server";
@@ -45,6 +48,9 @@ export const ACCOUNT_INTENTS: Record<string, ListActionHandler> = {
   initTimeZone: handleInitTimeZone,
   acceptSuggestedDisplayName: handleAcceptSuggestedDisplayName,
   dismissSuggestedDisplayName: handleDismissSuggestedDisplayName,
+  setArchiveSuggestions: handleSetArchiveSuggestions,
+  archiveList: handleArchiveList,
+  unarchiveList: handleUnarchiveList,
   updateSettings: handleUpdateSettings,
   removeSharedList: handleRemoveSharedList,
   approveDeleteRequest: handleApproveDeleteRequest,

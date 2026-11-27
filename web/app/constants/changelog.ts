@@ -21,6 +21,10 @@ export const WEB_CHANGELOG: ReleaseNote[] = [
         text: "Smart Quick Add toggle in Profile Settings to enter task titles literally when turned off, quick-pick duration buttons (15m, 30m, 1h, Skip) in the toast after untimed check-offs, Undo on repeating task completions, and CSV export of your completion log.",
       },
       {
+        type: "NEW",
+        text: "Archive completed lists to tuck them out of your active lists (including a collapsible Archived section in the sidebar, one-click archive suggestions when all tasks are done, auto-unarchive when you add a task, and a Profile Settings toggle).",
+      },
+      {
         type: "IMPR",
         text: "Activity log is now available for all of your lists, including private lists.",
       },

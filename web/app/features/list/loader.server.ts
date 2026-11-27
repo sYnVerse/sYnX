@@ -13,6 +13,7 @@ import {
   syncProviderProfile,
 } from "@synx/backend/services/provider-profile.server";
 import { listSharedWithMe, recordSharedListAccess } from "@synx/backend/services/shared-lists.server";
+import { getArchivedListMap } from "@synx/backend/services/list-archives.server";
 import {
   listPendingDeletesForList,
   listPendingDeletesForOwner,
@@ -147,6 +148,15 @@ export const loader = async ({ request, params, context }: { request: Request; p
     }
 
     if (!activeListExists && lists.length > 0) {
+      const archivedForRedirect = await getArchivedListMap(
+        db,
+        userId,
+        lists.map((l) => l.id),
+      ).catch(() => new Map<string, number>());
+      const firstActive = lists.find((l) => !archivedForRedirect.has(l.id));
+      if (firstActive) {
+        return redirect(href("/:id", { id: firstActive.id }));
+      }
       return redirect(href("/:id", { id: lists[0].id }));
     }
   } else {
@@ -242,6 +252,19 @@ export const loader = async ({ request, params, context }: { request: Request; p
     return [];
   })();
 
+  let archivedByListId = new Map<string, number>();
+  if (isLoggedIn && lists.length > 0) {
+    try {
+      archivedByListId = await getArchivedListMap(
+        db,
+        userId,
+        lists.map((l) => l.id),
+      );
+    } catch (e) {
+      console.error("Failed to load archived list state:", e);
+    }
+  }
+
   const listsWithTodos: GuestList[] = lists.map((list) => {
     const listRows = allTodos.filter((t) => t.list_id === list.id);
     const listCreators = listRows.map((t) => ({
@@ -278,6 +301,7 @@ export const loader = async ({ request, params, context }: { request: Request; p
       .sort((a, b) => b.createdAt - a.createdAt);
     return {
       ...list,
+      archived_at: archivedByListId.get(list.id) ?? null,
       todos: listTodos,
     };
   });
@@ -303,6 +327,7 @@ export const loader = async ({ request, params, context }: { request: Request; p
     displayName: DEFAULT_DISPLAY_NAME,
     displayNameSet: false,
     timeZone: null as string | null,
+    archiveSuggestionsEnabled: true,
     /** Provider profile photo (Google, GitHub or Microsoft work/school via sYnID), or null. */
     avatarUrl: null as string | null,
     /** Provider name offered as a display name; null once set, accepted or dismissed. */
@@ -318,6 +343,7 @@ export const loader = async ({ request, params, context }: { request: Request; p
         discord_webhook_url?: string | null;
         display_name?: string | null;
         time_zone?: string | null;
+        archive_suggestions_enabled?: number | boolean | null;
         avatar_url?: string | null;
         suggested_display_name?: string | null;
         display_name_suggestion_dismissed?: number | null;
@@ -332,6 +358,11 @@ export const loader = async ({ request, params, context }: { request: Request; p
           displayName: resolveDisplayName(settingsVal.display_name),
           displayNameSet: Boolean(settingsVal.display_name && String(settingsVal.display_name).trim()),
           timeZone: settingsVal.time_zone || null,
+          archiveSuggestionsEnabled:
+            settingsVal.archive_suggestions_enabled === undefined ||
+            settingsVal.archive_suggestions_enabled === null
+              ? true
+              : Boolean(settingsVal.archive_suggestions_enabled),
           ...providerProfileFields(settingsVal),
         };
       }
