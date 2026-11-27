@@ -42,6 +42,10 @@ jobs:
     name: Mobile E2E (Maestro)
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      MAESTRO_VERSION: "2.12.1"
+      # Published in checksums_sha256.txt for mobile-dev-inc/Maestro release cli-2.12.1
+      MAESTRO_ZIP_SHA256: "54dbb0716425626604973cbb374c585ca30272375d9ce15177a1152765ddd9d7"
     steps:
       - uses: actions/checkout@v7
 
@@ -146,12 +150,55 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      - name: Cache Maestro CLI archive
+        id: maestro-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/maestro
+          key: maestro-${{ env.MAESTRO_VERSION }}-${{ env.MAESTRO_ZIP_SHA256 }}
+
       - name: Install Maestro CLI
+        shell: bash
         env:
-          MAESTRO_VERSION: "2.12.1"
+          CACHE_HIT: ${{ steps.maestro-cache.outputs.cache-hit }}
+          MAESTRO_CLI_NO_ANALYTICS: "1"
+          MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: "true"
         run: |
-          curl -fsSL "https://get.maestro.mobile.dev" | bash
-          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          set -euo pipefail
+          for cmd in java curl sha256sum; do
+            if ! command -v "$cmd" > /dev/null; then
+              echo "Missing required prerequisite: $cmd" >&2
+              exit 1
+            fi
+          done
+          if ! command -v unzip > /dev/null; then
+            sudo apt-get update && sudo apt-get install -y unzip
+          fi
+
+          CACHE_DIR="$HOME/.cache/maestro"
+          ZIP_PATH="$CACHE_DIR/maestro.zip"
+          mkdir -p "$CACHE_DIR"
+
+          if [ "${CACHE_HIT:-}" != "true" ] || [ ! -f "$ZIP_PATH" ]; then
+            TMP_ZIP="$(mktemp "$CACHE_DIR/maestro.zip.XXXXXX")"
+            curl -fsSL "https://github.com/mobile-dev-inc/maestro/releases/download/cli-${MAESTRO_VERSION}/maestro.zip" -o "$TMP_ZIP"
+            mv "$TMP_ZIP" "$ZIP_PATH"
+          fi
+
+          # Always verify SHA-256 on both fresh downloads and restored cache entries
+          echo "${MAESTRO_ZIP_SHA256}  ${ZIP_PATH}" | sha256sum -c -
+
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "$TMP_DIR"' EXIT
+          unzip -qo "$ZIP_PATH" -d "$TMP_DIR"
+
+          MAESTRO_DIR="$HOME/.maestro"
+          mkdir -p "$MAESTRO_DIR"
+          rm -rf "${MAESTRO_DIR}/bin" "${MAESTRO_DIR}/lib"
+          cp -rf "$TMP_DIR"/maestro/* "$MAESTRO_DIR/"
+
+          "$MAESTRO_DIR/bin/maestro" --version
+          echo "$MAESTRO_DIR/bin" >> "$GITHUB_PATH"
 
       - name: Run Maestro smoke flow on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
