@@ -1,0 +1,25 @@
+{
+  "name": "@synx/backend",
+  "version": "1.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    "./*": "./*.ts"
+  },
+  "scripts": {
+    "cf-typegen": "wrangler types",
+    "db:migrate:local": "wrangler d1 migrations apply synx-db --local",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openauthjs/openauth": "^0.4.3",
+    "@react-router/cloudflare": "^8.5.1",
+    "@synx/shared": "*",
+    "react-router": "^8.5.1",
+    "valibot": "^1.5.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250404.0"
+  }
+}

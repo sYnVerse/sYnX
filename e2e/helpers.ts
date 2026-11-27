@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 import { randomBytes } from "crypto";
-import { WEB_VERSION } from "../app/constants/changelog";
+import { WEB_VERSION } from "../web/app/constants/changelog";
 
 export interface TestUser {
   userId: string;

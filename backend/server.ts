@@ -1,0 +1,270 @@
+import { createRequestHandler, type ServerBuild } from "react-router";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore This file won’t exist if it hasn’t yet been built
+import * as build from "virtual:react-router/server-build";
+import { getLoadContext } from "./load-context";
+
+import { sendFCMPushNotification } from "./services/fcm.server";
+import { buildReminderEmailHtml, sanitizeEmailSubject } from "./services/html-escape.server";
+import { finalizeWorkerResponse, unexpectedErrorResponse } from "./services/worker-response.server";
+import { getDueReminderRecipients, type DueReminderRow } from "./services/due-reminders.server";
+import { deleteExpiredGuestLists } from "./services/guest-access.server";
+import { pruneOldListActivity } from "./services/list-activity.server";
+import { pruneVoidedTaskCompletions } from "./services/to-do-manager";
+import { phoneCarrierGatewayDomain } from "@synx/shared/phone-carriers";
+import {
+  REMINDER_NOTIFICATION_CATEGORY,
+  reminderNotificationIdentifier,
+} from "@synx/shared";
+import { handleApiRequest } from "./api/router";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const handleRequest = createRequestHandler(build as any as ServerBuild);
+
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      const loadContext = getLoadContext({
+        request,
+        context: {
+          cloudflare: {
+            cf: request.cf,
+            ctx,
+            caches,
+            env,
+          },
+        },
+      });
+      const apiResponse = await handleApiRequest(request, loadContext);
+      const response = apiResponse ?? (await handleRequest(request, loadContext));
+      return finalizeWorkerResponse(request, response, env);
+    } catch (error) {
+      console.log(error);
+      return unexpectedErrorResponse();
+    }
+  },
+
+  async scheduled(event, env: Env, ctx) {
+    const db = env.DB;
+    const now = Date.now();
+
+    console.log(`[Cron] Scheduled job started at ${new Date(now).toISOString()}`);
+
+    // Once an hour, delete expired lists that guests created in D1 before
+    // guest list creation moved fully to the browser, and prune activity
+    // log rows older than 90 days.
+    if (new Date(event.scheduledTime).getUTCMinutes() === 0) {
+      try {
+        const deleted = await deleteExpiredGuestLists(db, now);
+        if (deleted > 0) console.log(`[Cron] Deleted ${deleted} expired guest list(s).`);
+      } catch (e) {
+        console.error("[Cron] Failed to delete expired guest lists:", e);
+      }
+      try {
+        const pruned = await pruneOldListActivity(db, now);
+        if (pruned > 0) console.log(`[Cron] Pruned ${pruned} list activity row(s) older than 90 days.`);
+      } catch (e) {
+        console.error("[Cron] Failed to prune list activity:", e);
+      }
+      try {
+        const prunedCompletions = await pruneVoidedTaskCompletions(db, now);
+        if (prunedCompletions > 0) {
+          console.log(`[Cron] Pruned ${prunedCompletions} voided task completion row(s) older than 30 days.`);
+        }
+      } catch (e) {
+        console.error("[Cron] Failed to prune voided task completions:", e);
+      }
+    }
+
+    // Fetch due reminders with user settings and emails (routed to the user who created/set the reminder, falling back to list owner)
+    let dueReminders: DueReminderRow[] = [];
+    try {
+      dueReminders = await getDueReminderRecipients(db, now);
+      console.log(`[Cron] Found ${dueReminders.length} due reminders.`);
+    } catch (e) {
+      console.error("[Cron] Failed to query due reminders:", e);
+      return;
+    }
+
+    if (dueReminders.length === 0) return;
+
+    if (!env.RESEND_API_KEY) {
+      console.warn("[Cron] WARNING: RESEND_API_KEY is not defined in the environment. Email and Email-to-Text notifications will be skipped.");
+    }
+
+    for (const reminder of dueReminders) {
+      const promises: Promise<unknown>[] = [];
+      const listTitle = (reminder.listName && String(reminder.listName).trim()) || "Reminder";
+      // User-controlled fields for HTML email channels (Resend HTML + subjects).
+      const emailSubject = sanitizeEmailSubject(listTitle);
+      const emailHtml = buildReminderEmailHtml(reminder.text);
+
+      const emailEnabled = Boolean(reminder.emailEnabled);
+      const smsEnabled = Boolean(reminder.smsEnabled);
+
+      console.log(`[Cron] Processing reminder ID: ${reminder.id}. Email Enabled: ${emailEnabled}, SMS Enabled: ${smsEnabled}`);
+
+      // Email (Resend)
+      if (reminder.email && emailEnabled) {
+        if (env.RESEND_API_KEY) {
+          console.log(`[Cron] Sending email notification to ${reminder.email}...`);
+          promises.push(
+            fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: "sYnX Reminders <no-reply@synx.christran.io>",
+                to: [reminder.email],
+                subject: emailSubject,
+                html: emailHtml,
+              }),
+            }).then(res => {
+              if (!res.ok) {
+                console.error(`[Cron] Resend email failed with status ${res.status}:`, res.statusText);
+              } else {
+                console.log(`[Cron] Email notification sent successfully to ${reminder.email}.`);
+              }
+            }).catch(err => console.error("[Cron] Resend fetch error:", err))
+          );
+        } else {
+          console.warn(`[Cron] Skipped email to ${reminder.email} because RESEND_API_KEY is missing.`);
+        }
+      }
+
+      // SMS (Twilio or Carrier-specific Email-to-Text Gateway)
+      if (reminder.phoneNumber && smsEnabled) {
+        if (reminder.phoneCarrier) {
+          if (env.RESEND_API_KEY) {
+            const domain = phoneCarrierGatewayDomain(reminder.phoneCarrier);
+            if (domain) {
+              const cleanPhone = reminder.phoneNumber.replace(/\D/g, "");
+              const displayPhone = cleanPhone.length > 10 ? cleanPhone.substring(cleanPhone.length - 10) : cleanPhone;
+              const gatewayEmail = `${displayPhone}@${domain}`;
+
+              console.log(`[Cron] Sending SMS via Email-to-Text gateway: ${gatewayEmail}...`);
+              promises.push(
+                fetch("https://api.resend.com/emails", {
+                  method: "POST",
+                  headers: {
+                    "Authorization": `Bearer ${env.RESEND_API_KEY}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    from: "sYnX Reminders <no-reply@synx.christran.io>",
+                    to: [gatewayEmail],
+                    subject: emailSubject,
+                    text: reminder.text,
+                  }),
+                }).then(res => {
+                  if (!res.ok) {
+                    console.error(`[Cron] Email-to-Text SMS failed with status ${res.status}:`, res.statusText);
+                  } else {
+                    console.log(`[Cron] Email-to-Text SMS sent successfully to ${gatewayEmail}.`);
+                  }
+                }).catch(err => console.error("[Cron] Email-to-Text fetch error:", err))
+              );
+            } else {
+              console.error(`[Cron] Unknown carrier: ${reminder.phoneCarrier}`);
+            }
+          } else {
+            console.warn(`[Cron] Skipped SMS gateway for ${reminder.phoneNumber} because RESEND_API_KEY is missing.`);
+          }
+        } else if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_FROM_NUMBER) {
+          console.log(`[Cron] Sending SMS via Twilio to ${reminder.phoneNumber}...`);
+          const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Messages.json`;
+          const auth = btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`);
+          const formData = new URLSearchParams();
+          formData.append("To", reminder.phoneNumber);
+          formData.append("From", env.TWILIO_FROM_NUMBER);
+          formData.append("Body", `[${listTitle}] ${reminder.text}`);
+
+          promises.push(
+            fetch(twilioUrl, {
+              method: "POST",
+              headers: {
+                "Authorization": `Basic ${auth}`,
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: formData.toString(),
+            }).then(res => {
+              if (!res.ok) {
+                console.error(`[Cron] Twilio SMS failed with status ${res.status}:`, res.statusText);
+              } else {
+                console.log(`[Cron] Twilio SMS sent successfully to ${reminder.phoneNumber}.`);
+              }
+            }).catch(err => console.error("[Cron] Twilio fetch error:", err))
+          );
+        } else {
+          console.warn(`[Cron] Skipped SMS for ${reminder.phoneNumber} because neither carrier nor Twilio config is available.`);
+        }
+      }
+
+      // Discord Webhook
+      if (reminder.discordWebhookUrl) {
+        promises.push(
+          fetch(reminder.discordWebhookUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              content: `⏰ **${listTitle}:** ${reminder.text}`,
+            }),
+          }).then(res => {
+            if (!res.ok) console.error("Discord Webhook failed:", res.statusText);
+          }).catch(err => console.error("Discord fetch error:", err))
+        );
+      }
+
+      // Mobile FCM Push Notifications
+      try {
+        const queryRes = await db
+          .prepare("SELECT token FROM device_tokens WHERE user_id = ?")
+          .bind(reminder.userId)
+          .all();
+        const tokens = (queryRes.results || []) as { token: string }[];
+
+        if (tokens.length > 0) {
+          for (const device of tokens) {
+            promises.push(
+              sendFCMPushNotification(
+                device.token,
+                {
+                  title: listTitle,
+                  body: reminder.text,
+                  categoryId: REMINDER_NOTIFICATION_CATEGORY,
+                  data: {
+                    todoId: reminder.id,
+                    listId: reminder.listId,
+                    tag: reminderNotificationIdentifier(reminder.id),
+                    ...(reminder.recurrence && reminder.recurrence !== "none"
+                      ? { recurrence: reminder.recurrence }
+                      : {}),
+                  },
+                },
+                env
+              )
+            );
+          }
+        }
+      } catch (fcmErr) {
+        console.error("[Cron] Failed to fetch or dispatch FCM device tokens:", fcmErr);
+      }
+
+      if (promises.length > 0) {
+        ctx.waitUntil(Promise.all(promises));
+      }
+
+      // Mark reminder as sent in the database
+      try {
+        await db.prepare("UPDATE todos SET reminder_sent = 1 WHERE id = ?").bind(reminder.id).run();
+        console.log(`[Cron] Marked reminder ID ${reminder.id} as sent in database.`);
+      } catch (e) {
+        console.error("[Cron] Failed to mark reminder sent:", e);
+      }
+    }
+  }
+} satisfies ExportedHandler<Env>;

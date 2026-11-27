@@ -2,6 +2,11 @@ node_modules
 
 /.wrangler
 /build
+/web/build
+web/.react-router/
+web/.wrangler/
+backend/.wrangler/
+backend/.dev.vars
 .env
 .dev.vars
 
@@ -10,7 +15,7 @@ node_modules
 *.sql
 .sql
 # D1 migrations are source, not dumps
-!migrations/*.sql
+!backend/migrations/*.sql
 vitest
 .vitest
 test-results/

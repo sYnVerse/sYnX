@@ -1,18 +1,21 @@
 {
   "include": [
-    ".react-router/types/**/*",
-    "worker-configuration.d.ts",
+    "web/.react-router/types/**/*",
+    "backend/worker-configuration.d.ts",
     "env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    "**/.server/**/*.ts",
-    "**/.server/**/*.tsx",
-    "**/.client/**/*.ts",
-    "**/.client/**/*.tsx"
+    "web/app/**/*.ts",
+    "web/app/**/*.tsx",
+    "backend/**/*.ts",
+    "shared/**/*.ts",
+    "test/**/*.ts",
+    "e2e/**/*.ts",
+    "vitest.config.ts",
+    "playwright.config.ts"
   ],
   "exclude": [
     "mobile/**/*",
     "node_modules/**/*",
+    "web/build/**/*",
     // These tests import mobile code that pulls in React Native, whose global
     // types (e.g. FormData) clash with the web DOM types. They are type-checked
     // with the mobile types by test/tsconfig.mobile.json instead.
@@ -42,7 +45,7 @@
       "@cloudflare/vitest-pool-workers",
       "node"
     ],
-    "rootDirs": [".", "./.react-router/types"],
+    "rootDirs": [".", "./web", "./web/.react-router/types"],
     "isolatedModules": true,
     "esModuleInterop": true,
     "jsx": "react-jsx",
@@ -55,7 +58,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "paths": {
-      "~/*": ["./app/*"]
+      "~/*": ["./web/app/*"],
+      "@synx/shared": ["./shared/index.ts"],
+      "@synx/shared/*": ["./shared/*.ts"],
+      "@synx/backend/*": ["./backend/*.ts"]
     },
     "noEmit": true
   }
