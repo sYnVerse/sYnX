@@ -1,0 +1,43 @@
+{
+  "include": [
+    ".react-router/types/**/*",
+    "../backend/worker-configuration.d.ts",
+    "../backend/load-context.ts",
+    "app/**/*.ts",
+    "app/**/*.tsx",
+    "vite.config.ts",
+    "tailwind.config.ts"
+  ],
+  "exclude": [
+    "node_modules/**/*",
+    "build/**/*"
+  ],
+  "compilerOptions": {
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "types": [
+      "@react-router/cloudflare",
+      "@cloudflare/workers-types",
+      "vite/client",
+      "node"
+    ],
+    "rootDirs": [".", "./.react-router/types"],
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "target": "ES2022",
+    "strict": true,
+    "allowJs": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "~/*": ["./app/*"],
+      "@synx/shared": ["../shared/index.ts"],
+      "@synx/shared/*": ["../shared/*.ts"],
+      "@synx/backend/*": ["../backend/*.ts"]
+    },
+    "noEmit": true
+  }
+}

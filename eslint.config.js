@@ -12,19 +12,22 @@ import globals from "globals";
 export default tseslint.config(
   {
     ignores: [
-      ".react-router/**",
+      "**/.react-router/**",
       "build/**",
+      "web/build/**",
+      "web/public/build/**",
       "public/build/**",
-      ".wrangler/**",
+      "**/.wrangler/**",
       ".cache/**",
       "node_modules/**",
+      "**/node_modules/**",
       "graphify-out/**",
       "mobile/**",
       ".artifacts/**",
+      "backend/worker-configuration.d.ts",
       "worker-configuration.d.ts",
       "test-results/**",
       "playwright-report/**",
-      ".react-router/**",
     ],
   },
 
@@ -45,7 +48,7 @@ export default tseslint.config(
 
   // Node scripts and config files
   {
-    files: ["scripts/**/*.{js,mjs}", "*.config.{js,ts}", "e2e/*.config.{js,ts}"],
+    files: ["scripts/**/*.{js,mjs}", "*.config.{js,ts}", "web/*.config.{js,ts}", "e2e/*.config.{js,ts}"],
     languageOptions: { globals: { ...globals.node } },
   },
 
@@ -75,10 +78,18 @@ export default tseslint.config(
       importPlugin.flatConfigs.typescript,
     ],
     settings: {
-      "import/internal-regex": "^~/",
+      "import/internal-regex": "^(~/|@synx/)",
       "import/resolver": {
         node: { extensions: [".ts", ".tsx"] },
-        typescript: { alwaysTryTypes: true },
+        typescript: {
+          alwaysTryTypes: true,
+          project: [
+            "./tsconfig.json",
+            "./web/tsconfig.json",
+            "./backend/tsconfig.json",
+            "./shared/tsconfig.json",
+          ],
+        },
       },
     },
     rules: {

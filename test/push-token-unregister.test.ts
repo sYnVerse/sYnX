@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { action as devicesAction } from "../app/routes/api.v1.devices";
-import { isInvalidTokenResponse, sendFCMPushNotification } from "../app/fcm.server";
+import { action as devicesAction } from "../backend/api/v1/devices";
+import { isInvalidTokenResponse, sendFCMPushNotification } from "../backend/services/fcm.server";
 import { REMINDER_NOTIFICATION_CATEGORY } from "../shared";
 
 async function makeTempServiceAccountJson(): Promise<string> {

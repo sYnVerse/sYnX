@@ -9,7 +9,7 @@ import {
   getPkceCookieAttributes,
   parsePkceCookie,
   serializePkceCookie,
-} from "../app/auth-cookies.server";
+} from "../backend/services/auth-cookies.server";
 
 describe("OAuth PKCE BFF cookie helpers", () => {
   it("serializes a host-only HttpOnly SameSite=Lax PKCE cookie with 5-minute Max-Age", () => {

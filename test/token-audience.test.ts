@@ -10,9 +10,9 @@ import {
   trySilentRefresh,
   verifyAccessToken,
   verifyBearerToken,
-} from "../app/auth.server";
-import { loader as todosLoader } from "../app/routes/api.v1.todos";
-import { loader as listsLoader } from "../app/routes/api.v1.lists";
+} from "../backend/services/auth.server";
+import { loader as todosLoader } from "../backend/api/v1/todos";
+import { loader as listsLoader } from "../backend/api/v1/lists";
 
 /**
  * These tests sign real ES256 access tokens shaped exactly like sYnID's

@@ -8,7 +8,7 @@ vi.mock("react-native", () => ({
   AppState: { addEventListener: vi.fn() },
   Platform: { OS: "android" },
 }));
-vi.mock("../mobile/node_modules/react-native", () => ({
+vi.mock("../node_modules/react-native", () => ({
   AppState: { addEventListener: vi.fn() },
   Platform: { OS: "android" },
 }));
@@ -17,7 +17,7 @@ vi.mock("expo-widgets", () => ({
   addUserInteractionListener: vi.fn(),
   createWidget: vi.fn(() => ({ updateSnapshot: vi.fn(), getSnapshot: vi.fn() })),
 }));
-vi.mock("../mobile/node_modules/expo-widgets", () => ({
+vi.mock("../node_modules/expo-widgets", () => ({
   addUserInteractionListener: vi.fn(),
   createWidget: vi.fn(() => ({ updateSnapshot: vi.fn(), getSnapshot: vi.fn() })),
 }));

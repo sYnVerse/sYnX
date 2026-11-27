@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { MAX_STAT_DURATION_SECONDS, TodoManager, getListCompletionStats, summarizeCompletionDurations, type Todo } from "../app/to-do-manager";
+import { MAX_STAT_DURATION_SECONDS, TodoManager, getListCompletionStats, summarizeCompletionDurations, type Todo } from "../backend/services/to-do-manager";
 import type { TaskCompletionStats } from "../shared";
-import { loader as listLoader } from "../app/features/list/loader.server";
-import { action as startApiAction } from "../app/routes/api.v1.todos.$id.start";
+import { loader as listLoader } from "../web/app/features/list/loader.server";
+import { action as startApiAction } from "../backend/api/v1/todos.$id.start";
 
 const USER_A = { userId: "user-timer-a", email: "a@example.com" };
 const USER_B = { userId: "user-timer-b", email: "b@example.com" };
@@ -23,7 +23,7 @@ let currentApiUser: { userId: string; email: string; token: string } | null = {
   token: "test-token",
 };
 
-vi.mock("../app/auth-context.server", () => ({
+vi.mock("../backend/services/auth-context.server", () => ({
   getRequestWebAuth: vi.fn(async () => currentWebAuth),
   getRequestApiAuth: vi.fn(async () => currentApiUser),
 }));

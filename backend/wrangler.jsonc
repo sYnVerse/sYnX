@@ -1,0 +1,78 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "synx",
+  "workers_dev": false,
+  // Turns on workers.dev URLs for Worker Previews (see "previews" below).
+  // The same setting also turns on Version URLs, which run with production
+  // bindings, so Cloudflare Access must cover this Worker's workers.dev URLs.
+  "preview_urls": true,
+  "compatibility_date": "2025-04-01",
+  "upload_source_maps": true,
+  "main": "./server.ts",
+  "assets": {
+    "directory": "../web/build/client"
+  },
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "synx-db",
+      "database_id": "0201d5b3-1df0-4dfe-a47c-22bb1dd9f878",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // Rate limit for writes by guests (not signed in) on lists shared as
+  // "anyone can edit". Checked per guest id and per IP in
+  // backend/services/guest-access.server.ts. namespace_id must be unique in the account.
+  "ratelimits": [
+    {
+      "name": "GUEST_WRITE_LIMITER",
+      "namespace_id": "4201",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "* * * * *"
+    ]
+  },
+  // Worker Previews: every pull request gets its own Preview URL. Previews
+  // don't inherit anything above, so only what's listed here exists on them.
+  // - DB points at the separate synx-preview database, never synx-db. The
+  //   Preview command applies backend/migrations/ to it first, using
+  //   backend/wrangler.preview-migrations.jsonc (keep the two files on the same
+  //   database).
+  // - The rate limiter gets its own namespace so preview traffic never counts
+  //   against production.
+  // - No notification secrets (Resend, Twilio, Firebase): reminders don't go
+  //   out from previews, and crons never run there.
+  // - Sign-in isn't set up for previews yet, so they work in guest mode only.
+  // Previews are served on workers.dev, not christran.io, so they never get
+  // the production sign-in cookies set on .christran.io.
+  "previews": {
+    "d1_databases": [
+      {
+        "binding": "DB",
+        "database_name": "synx-preview",
+        "database_id": "dd5b8ab6-9068-4c87-b1ea-5c9afeade6e3",
+        "migrations_dir": "migrations"
+      }
+    ],
+    "ratelimits": [
+      {
+        "name": "GUEST_WRITE_LIMITER",
+        "namespace_id": "4202",
+        "simple": {
+          "limit": 60,
+          "period": 60
+        }
+      }
+    ]
+  }
+}

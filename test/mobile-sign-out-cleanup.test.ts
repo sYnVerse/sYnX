@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => {
   };
 });
 vi.mock("@react-native-async-storage/async-storage", () => mocks.asyncStorage);
-vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
+vi.mock("../node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
 vi.mock("../mobile/src/api/client", () => mocks.client);
 vi.mock("../mobile/src/services/notifications", () => mocks.notifications);
 vi.mock("../mobile/src/services/widgetSync", () => mocks.widgetSync);

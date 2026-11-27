@@ -9,9 +9,18 @@
 const fs = require('fs');
 const path = require('path');
 
-const expoWidgetsDir = path.resolve(__dirname, '..', 'node_modules', 'expo-widgets');
+let expoWidgetsDir = '';
+try {
+  expoWidgetsDir = path.dirname(
+    require.resolve('expo-widgets/package.json', {
+      paths: [path.resolve(__dirname, '..'), path.resolve(__dirname, '..', '..')],
+    })
+  );
+} catch {
+  // Handled below
+}
 
-if (!fs.existsSync(expoWidgetsDir)) {
+if (!expoWidgetsDir || !fs.existsSync(expoWidgetsDir)) {
   console.log('[patch-expo-widgets] expo-widgets not found, skipping patch.');
   process.exit(0);
 }

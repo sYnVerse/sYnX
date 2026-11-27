@@ -5,12 +5,14 @@ import { cloudflareTest, readD1Migrations } from "@cloudflare/vitest-pool-worker
 export default defineConfig({
   plugins: [
     cloudflareTest(async () => {
-      // Tests build their D1 schema from the same migrations/ folder that
+      // Tests build their D1 schema from the same backend/migrations/ folder that
       // production uses, so the test schema can't drift from the real one.
-      const migrations = await readD1Migrations(path.join(import.meta.dirname, "migrations"));
+      const migrations = await readD1Migrations(
+        path.join(import.meta.dirname, "backend", "migrations")
+      );
       return {
         main: "./test/dummy-worker.ts",
-        wrangler: { configPath: "./wrangler.jsonc" },
+        wrangler: { configPath: "./backend/wrangler.jsonc" },
         miniflare: {
           // Test-only binding, read by test/apply-migrations.ts.
           bindings: { TEST_MIGRATIONS: migrations },

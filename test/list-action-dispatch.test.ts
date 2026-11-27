@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { ActionFunctionArgs } from "react-router";
-import { action } from "../app/features/list/action.server";
-import { ACCOUNT_INTENTS, LIST_INTENTS } from "../app/features/list/actions/index.server";
-import { checkListAccessGate, type ListAccessInfo } from "../app/features/list/actions/access.server";
+import { action } from "../web/app/features/list/action.server";
+import { ACCOUNT_INTENTS, LIST_INTENTS } from "../web/app/features/list/actions/index.server";
+import { checkListAccessGate, type ListAccessInfo } from "../web/app/features/list/actions/access.server";
 
 describe("list action dispatch maps", () => {
   const expectedAccountIntents = [

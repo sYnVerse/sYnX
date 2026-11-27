@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { QueryClient } from "../mobile/node_modules/@tanstack/react-query/build/modern/index.js";
+import { QueryClient } from "../node_modules/@tanstack/react-query/build/modern/index.js";
 import appSource from "../mobile/App.tsx?raw";
 import bgTaskSource from "../mobile/src/services/widgetBackgroundTask.ts?raw";
-import serverSource from "../server.ts?raw";
+import serverSource from "../backend/server.ts?raw";
 
 const mocks = vi.hoisted(() => {
   const storage = new Map<string, string>();
@@ -114,15 +114,15 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("@react-native-async-storage/async-storage", () => mocks.asyncStorage);
-vi.mock("../mobile/node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
+vi.mock("../node_modules/@react-native-async-storage/async-storage", () => mocks.asyncStorage);
 vi.mock("expo-notifications", () => mocks.notifications);
-vi.mock("../mobile/node_modules/expo-notifications", () => mocks.notifications);
+vi.mock("../node_modules/expo-notifications", () => mocks.notifications);
 vi.mock("expo-task-manager", () => mocks.taskManager);
-vi.mock("../mobile/node_modules/expo-task-manager", () => mocks.taskManager);
+vi.mock("../node_modules/expo-task-manager", () => mocks.taskManager);
 vi.mock("expo-secure-store", () => mocks.secureStore);
-vi.mock("../mobile/node_modules/expo-secure-store", () => mocks.secureStore);
+vi.mock("../node_modules/expo-secure-store", () => mocks.secureStore);
 vi.mock("react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native", () => mocks.reactNative);
+vi.mock("../node_modules/react-native", () => mocks.reactNative);
 vi.mock("../mobile/src/api/client", () => mocks.client);
 vi.mock("../mobile/src/services/calendar", () => mocks.calendar);
 vi.mock("../mobile/src/services/widgetSync", () => mocks.widgetSync);

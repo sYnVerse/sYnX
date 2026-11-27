@@ -12,7 +12,7 @@ export const COMPILER_RUNTIME_MARKER = "react.memo_cache_sentinel";
  */
 export function verifyReactCompilerAssets(
   assets,
-  assetsDirLabel = "build/client/assets"
+  assetsDirLabel = "web/build/client/assets"
 ) {
   const jsFiles = Object.keys(assets)
     .filter((name) => name.endsWith(".js"))
@@ -73,7 +73,7 @@ export async function runCli(clientAssetsDir) {
     return;
   }
 
-  const targetDir = clientAssetsDir ?? path.resolve(process.cwd(), "build", "client", "assets");
+  const targetDir = clientAssetsDir ?? path.resolve(process.cwd(), "web", "build", "client", "assets");
   if (!fs.existsSync(targetDir)) {
     throw new Error(`Client assets directory not found at ${targetDir}. Run "npm run build" first.`);
   }

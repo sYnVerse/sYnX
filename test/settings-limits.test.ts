@@ -1,16 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { ActionFunctionArgs } from "react-router";
 import { env } from "cloudflare:test";
-import { action as settingsAction } from "../app/routes/api.v1.settings";
+import { action as settingsAction } from "../backend/api/v1/settings";
 import {
   MAX_PHONE_CARRIER_LENGTH,
   MAX_PHONE_NUMBER_LENGTH,
   phoneSettingsError,
-} from "../app/write-limits";
+} from "../shared/write-limits";
 
 // Skip real token verification: every request is this user.
-vi.mock("../app/auth.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../app/auth.server")>();
+vi.mock("../backend/services/auth.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../backend/services/auth.server")>();
   return {
     ...actual,
     verifyBearerToken: vi.fn(async () => ({

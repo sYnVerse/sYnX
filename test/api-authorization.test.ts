@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { getListAccess } from "../app/api-helpers.server";
+import { getListAccess } from "../backend/services/api-helpers.server";
 import { env } from "cloudflare:test";
 
 describe("REST API Authorization & Share Modes", () => {

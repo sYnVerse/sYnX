@@ -4,9 +4,9 @@ import {
   serializePkceCookie,
   parsePkceCookie,
   PKCE_COOKIE_NAME,
-} from "../app/auth-cookies.server";
-import { loader as callbackLoader } from "../app/routes/callback";
-import { loader as indexLoader, action as indexAction } from "../app/routes/_index";
+} from "../backend/services/auth-cookies.server";
+import { loader as callbackLoader } from "../web/app/routes/callback";
+import { loader as indexLoader, action as indexAction } from "../web/app/routes/_index";
 import { opensApp } from "./android-app-links.test";
 
 async function unwrapLoaderData(res: unknown) {
@@ -128,8 +128,8 @@ describe("app/routes/callback loader behavior (#196)", () => {
   });
 
   it("completes sign-in and returns HTTP 302 redirect to / without landing screen", async () => {
-    const authModule = await import("../app/auth.server");
-    const providerModule = await import("../app/provider-profile.server");
+    const authModule = await import("../backend/services/auth.server");
+    const providerModule = await import("../backend/services/provider-profile.server");
 
     vi.spyOn(authModule, "getAuthClient").mockReturnValue({
       exchange: vi.fn().mockResolvedValue({
@@ -179,8 +179,8 @@ describe("app/routes/callback loader behavior (#196)", () => {
   });
 
   it("passes safe redirectTo as query param on / redirect", async () => {
-    const authModule = await import("../app/auth.server");
-    const providerModule = await import("../app/provider-profile.server");
+    const authModule = await import("../backend/services/auth.server");
+    const providerModule = await import("../backend/services/provider-profile.server");
 
     vi.spyOn(authModule, "getAuthClient").mockReturnValue({
       exchange: vi.fn().mockResolvedValue({

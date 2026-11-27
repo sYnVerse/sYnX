@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describeRouteError } from "../app/components/RouteErrorBoundary";
-import * as idRoute from "../app/routes/$id";
-import * as listIdRoute from "../app/routes/list.$id";
-import * as indexRoute from "../app/routes/_index";
-import * as loginRoute from "../app/routes/login";
-import * as callbackRoute from "../app/routes/callback";
-import * as mobileCallbackRoute from "../app/routes/mobile.callback";
-import * as logoutRoute from "../app/routes/logout";
-import * as rootRoute from "../app/root";
+import { describeRouteError } from "../web/app/components/RouteErrorBoundary";
+import * as idRoute from "../web/app/routes/$id";
+import * as listIdRoute from "../web/app/routes/list.$id";
+import * as indexRoute from "../web/app/routes/_index";
+import * as loginRoute from "../web/app/routes/login";
+import * as callbackRoute from "../web/app/routes/callback";
+import * as mobileCallbackRoute from "../web/app/routes/mobile.callback";
+import * as logoutRoute from "../web/app/routes/logout";
+import * as rootRoute from "../web/app/root";
 
 function makeRouteErrorResponse(
   status: number,

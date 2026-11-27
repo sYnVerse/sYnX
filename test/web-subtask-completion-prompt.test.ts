@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { env } from "cloudflare:test";
 import type { ActionFunctionArgs } from "react-router";
-import type { GuestActionPayload } from "../app/guest-context";
-import type { Todo } from "../app/to-do-manager";
-import { ROLLBACK_ERROR_MESSAGE, formatSaveError } from "../app/features/list/hooks/useOptimisticField";
+import type { GuestActionPayload } from "../web/app/guest-context";
+import type { Todo } from "../backend/services/to-do-manager";
+import { ROLLBACK_ERROR_MESSAGE, formatSaveError } from "../web/app/features/list/hooks/useOptimisticField";
 import { formatSubtaskCompletionPrompt } from "../shared";
 
 const harness = vi.hoisted(() => {
@@ -292,10 +292,10 @@ vi.mock("react-router", async (importOriginal) => {
   };
 });
 
-import { useSubtaskCompletionPrompt } from "../app/features/list/hooks/useSubtaskCompletionPrompt";
-import { SubtaskCompletionModal } from "../app/features/list/components/SubtaskCompletionModal";
-import { action as listAction } from "../app/features/list/action.server";
-import { TodoManager } from "../app/to-do-manager";
+import { useSubtaskCompletionPrompt } from "../web/app/features/list/hooks/useSubtaskCompletionPrompt";
+import { SubtaskCompletionModal } from "../web/app/features/list/components/SubtaskCompletionModal";
+import { action as listAction } from "../web/app/features/list/action.server";
+import { TodoManager } from "../backend/services/to-do-manager";
 
 function findElements(node: any, pred: (el: any) => boolean, out: any[] = []): any[] {
   if (!node || typeof node !== "object") return out;

@@ -1,0 +1,726 @@
+import { useState, useMemo, useEffect, useRef, useContext } from "react";
+import { useFetcher } from "react-router";
+import type { CompletionSummary, Todo } from "@synx/backend/services/to-do-manager";
+import { GUEST_REMINDER_HINT, GuestContext } from "~/guest-context";
+import {
+  applySetCompletedLocal,
+  applyStartTodoLocal,
+  formatElapsedTimerLabel,
+  formatRescheduledToast,
+  type TaskCompletionStats,
+} from "@synx/shared";
+import { priorityConfig } from "~/features/list/format";
+import { QuickAddTaskModal } from "./calendar/QuickAddTaskModal";
+import { EditTaskModal } from "./calendar/EditTaskModal";
+
+
+
+interface CalendarViewProps {
+  todos: Todo[];
+  activeListId: string;
+  canEdit?: boolean;
+  onNotify?: (message: string) => void;
+  onTaskCompleted?: (payload: {
+    todo: Todo;
+    rescheduled: boolean;
+    completion?: CompletionSummary | null;
+  }) => void;
+  completionStatsByTodoId?: Record<string, TaskCompletionStats>;
+  timerNow?: number;
+  onTimerTick?: (now: number) => void;
+  smartQuickAddEnabled?: boolean;
+}
+
+export function CalendarView({
+  todos,
+  activeListId,
+  canEdit = true,
+  onNotify,
+  onTaskCompleted,
+  completionStatsByTodoId,
+  timerNow = 0,
+  onTimerTick,
+  smartQuickAddEnabled = true,
+}: CalendarViewProps) {
+  const fetcher = useFetcher<{
+    success?: boolean;
+    todo?: Todo;
+    rescheduled?: boolean;
+    completion?: CompletionSummary | null;
+    error?: string;
+  }>();
+  const timerFetcher = useFetcher<{ success?: boolean; todo?: Todo; error?: string }>();
+  // Guests' own lists live in localStorage, so their changes go through
+  // onGuestAction as well as the server (which ignores them). Guests on
+  // someone else's shared list can't schedule tasks there.
+  const { isLoggedIn, canSetReminders, onGuestAction } = useContext(GuestContext);
+  
+  // Navigation states
+  const [currentDate, setCurrentDate] = useState(() => new Date());
+  const currentMonth = currentDate.getMonth();
+  const currentYear = currentDate.getFullYear();
+
+  // Dialog / Modal states
+  const [quickAddDate, setQuickAddDate] = useState<Date | null>(null);
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+
+  // Drag & drop visual states
+  const [dragOverCell, setDragOverCell] = useState<string | null>(null);
+  const [isDragOverUnscheduled, setIsDragOverUnscheduled] = useState(false);
+
+  // Collapsible sidebar state on mobile
+  const [isUnscheduledOpen, setIsUnscheduledOpen] = useState(true);
+
+  const lastRescheduleToastKey = useRef<string | null>(null);
+  const [flashCompleteId, setFlashCompleteId] = useState<string | null>(null);
+
+  // Keep the optimistic values as primitives so the memo below only
+  // recomputes when the pending toggle actually changes.
+  const isPendingSetCompleted =
+    fetcher.state !== "idle" && fetcher.formData?.get("intent") === "setCompleted";
+  const pendingCompleteId = isPendingSetCompleted ? String(fetcher.formData?.get("id") || "") : "";
+  const pendingCompleted = isPendingSetCompleted && fetcher.formData?.get("completed") === "true";
+
+  const timerIntent =
+    timerFetcher.state !== "idle" ? String(timerFetcher.formData?.get("intent") || "") : "";
+  const pendingTimerId =
+    timerIntent === "start" || timerIntent === "cancelStart"
+      ? String(timerFetcher.formData?.get("id") || "")
+      : "";
+  const rawPendingStartedAt =
+    timerIntent === "start" ? Number(timerFetcher.formData?.get("startedAt") || 0) : null;
+
+  const displayTodos = useMemo(() => {
+    if (!pendingCompleteId && !pendingTimerId) return todos;
+    return todos.map((t) => {
+      let next = t;
+      if (pendingCompleteId && t.id === pendingCompleteId) {
+        next = applySetCompletedLocal(next, pendingCompleted).todo;
+      }
+      if (pendingTimerId && next.id === pendingTimerId) {
+        next = applyStartTodoLocal(
+          next,
+          timerIntent === "start" && rawPendingStartedAt && Number.isFinite(rawPendingStartedAt)
+            ? rawPendingStartedAt
+            : null
+        );
+      }
+      return next;
+    });
+  }, [todos, pendingCompleteId, pendingCompleted, pendingTimerId, timerIntent, rawPendingStartedAt]);
+
+  const editingTodo = editingTodoId
+    ? displayTodos.find((t) => t.id === editingTodoId) ?? null
+    : null;
+
+  useEffect(() => {
+    if (timerFetcher.state !== "idle" || !timerFetcher.data) return;
+    if (timerFetcher.data.error) {
+      onNotify?.(timerFetcher.data.error);
+    }
+  }, [timerFetcher.state, timerFetcher.data, onNotify]);
+
+  useEffect(() => {
+    if (fetcher.state !== "idle") return;
+    const data = fetcher.data;
+    if (!data) return;
+    if (data.error) {
+      onNotify?.(data.error);
+      return;
+    }
+    if (data.todo && (data.rescheduled || data.todo.completed)) {
+      const key = data.completion?.id
+        ? `c:${data.completion.id}`
+        : `${data.todo.id}:${data.todo.reminderAt ?? ""}:${data.todo.completed}:${Boolean(data.rescheduled)}`;
+      if (lastRescheduleToastKey.current === key) return;
+      lastRescheduleToastKey.current = key;
+      if (data.rescheduled && data.todo.reminderAt) {
+        const flashId = data.todo.id;
+        window.setTimeout(() => setFlashCompleteId(flashId), 0);
+        window.setTimeout(() => setFlashCompleteId(null), 450);
+      }
+      if (onTaskCompleted) {
+        onTaskCompleted({
+          todo: data.todo,
+          rescheduled: Boolean(data.rescheduled),
+          completion: data.completion ?? null,
+        });
+      } else if (data.rescheduled && data.todo.reminderAt) {
+        onNotify?.(formatRescheduledToast(data.todo.reminderAt));
+      }
+    }
+  }, [fetcher.state, fetcher.data, onNotify, onTaskCompleted]);
+
+  // Month navigation helpers
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(currentYear, currentMonth - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(currentYear, currentMonth + 1, 1));
+  };
+
+  const handleToday = () => {
+    setCurrentDate(new Date());
+  };
+
+  // Format month name
+  const monthName = currentDate.toLocaleString("default", { month: "long" });
+
+  // Generate 42 calendar grid cells (6 weeks)
+  const calendarCells = useMemo(() => {
+    const firstDayOfMonth = new Date(currentYear, currentMonth, 1);
+    const startDayOfWeek = firstDayOfMonth.getDay(); // 0 is Sunday
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const daysInPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+    const cells = [];
+
+    // Previous month's padding days
+    for (let i = startDayOfWeek - 1; i >= 0; i--) {
+      cells.push({
+        dayNum: daysInPrevMonth - i,
+        monthOffset: -1,
+        isCurrentMonth: false,
+        date: new Date(currentYear, currentMonth - 1, daysInPrevMonth - i),
+      });
+    }
+
+    // Current month's days
+    for (let i = 1; i <= daysInMonth; i++) {
+      cells.push({
+        dayNum: i,
+        monthOffset: 0,
+        isCurrentMonth: true,
+        date: new Date(currentYear, currentMonth, i),
+      });
+    }
+
+    // Next month's padding days (fill out remaining space up to 42 cells)
+    const remaining = 42 - cells.length;
+    for (let i = 1; i <= remaining; i++) {
+      cells.push({
+        dayNum: i,
+        monthOffset: 1,
+        isCurrentMonth: false,
+        date: new Date(currentYear, currentMonth + 1, i),
+      });
+    }
+
+    return cells.map((cell) => {
+      // Create local YYYY-MM-DD representation
+      const y = cell.date.getFullYear();
+      const m = String(cell.date.getMonth() + 1).padStart(2, "0");
+      const d = String(cell.date.getDate()).padStart(2, "0");
+      const dateStr = `${y}-${m}-${d}`;
+      
+      const today = new Date();
+      const isToday = 
+        y === today.getFullYear() && 
+        cell.date.getMonth() === today.getMonth() && 
+        cell.date.getDate() === today.getDate();
+
+      return {
+        ...cell,
+        dateStr,
+        isToday,
+      };
+    });
+  }, [currentYear, currentMonth]);
+
+  // Helper to convert timestamp to local YYYY-MM-DD string
+  const getLocalDateString = (timestamp?: number) => {
+    if (!timestamp) return "";
+    const date = new Date(timestamp);
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  // Categorize todos into Scheduled (group by day) and Unscheduled
+  // Exclude subtasks (todos with parentId) from main rendering, as they render inside their parents
+  const { scheduledMap, unscheduledList } = useMemo(() => {
+    const sMap: Record<string, Todo[]> = {};
+    const uList: Todo[] = [];
+
+    displayTodos.forEach((todo) => {
+      if (todo.parentId) return; // skip subtasks in main calendar rendering
+
+      if (todo.reminderAt) {
+        const dateStr = getLocalDateString(todo.reminderAt);
+        if (!sMap[dateStr]) {
+          sMap[dateStr] = [];
+        }
+        sMap[dateStr].push(todo);
+      } else {
+        uList.push(todo);
+      }
+    });
+
+    // Sort scheduled items in each cell (completed items at the bottom, others by priority then date)
+    Object.keys(sMap).forEach((dateStr) => {
+      sMap[dateStr].sort((a, b) => {
+        if (a.completed !== b.completed) {
+          return a.completed ? 1 : -1;
+        }
+        const pMap = { high: 3, medium: 2, low: 1, none: 0 };
+        const aPri = a.priority ? pMap[a.priority] : 0;
+        const bPri = b.priority ? pMap[b.priority] : 0;
+        if (aPri !== bPri) return bPri - aPri;
+        return a.createdAt - b.createdAt;
+      });
+    });
+
+    return {
+      scheduledMap: sMap,
+      unscheduledList: uList,
+    };
+  }, [displayTodos]);
+
+  // HTML5 Drag-and-drop drop handlers
+  const handleDropOnDate = (todoId: string, dateStr: string) => {
+    if (!canSetReminders) {
+      onNotify?.(`${GUEST_REMINDER_HINT}.`);
+      return;
+    }
+    const [year, month, day] = dateStr.split("-").map(Number);
+    // Schedule for 9:00 AM on the target date in local time
+    const targetDate = new Date(year, month - 1, day);
+    targetDate.setHours(9, 0, 0, 0);
+
+    if (!isLoggedIn) {
+      onGuestAction("updateReminder", { id: todoId, reminderAt: targetDate.getTime() });
+    }
+    fetcher.submit(
+      {
+        intent: "updateReminder",
+        id: todoId,
+        reminderAt: targetDate.getTime().toString(),
+      },
+      { method: "post" }
+    );
+  };
+
+  const handleDropOnUnscheduled = (todoId: string) => {
+    if (!canSetReminders) {
+      onNotify?.(`${GUEST_REMINDER_HINT}.`);
+      return;
+    }
+    if (!isLoggedIn) {
+      onGuestAction("updateReminder", { id: todoId, reminderAt: undefined });
+    }
+    fetcher.submit(
+      {
+        intent: "updateReminder",
+        id: todoId,
+        reminderAt: "", // Empty string clears it
+      },
+      { method: "post" }
+    );
+  };
+
+  // Set explicit done state (idempotent); block while this task's request is in flight
+  const handleToggleTodo = (todoId: string) => {
+    if (pendingCompleteId === todoId) return;
+    const current = todos.find((t) => t.id === todoId);
+    if (!current) return;
+    if (!isLoggedIn) {
+      onGuestAction("setCompleted", { id: todoId, completed: !current.completed });
+    }
+    fetcher.submit(
+      {
+        intent: "setCompleted",
+        id: todoId,
+        completed: String(!current.completed),
+      },
+      { method: "post" }
+    );
+  };
+
+  const handleToggleTimer = (todo: Todo, nowMs: number) => {
+    if (!canEdit || todo.completed || pendingTimerId === todo.id) return;
+    onTimerTick?.(nowMs);
+    if (todo.startedAt != null) {
+      if (!isLoggedIn) {
+        onGuestAction("cancelStart", { id: todo.id });
+      }
+      timerFetcher.submit(
+        {
+          intent: "cancelStart",
+          id: todo.id,
+        },
+        { method: "post" }
+      );
+    } else {
+      if (!isLoggedIn) {
+        onGuestAction("start", { id: todo.id, startedAt: nowMs });
+      }
+      timerFetcher.submit(
+        {
+          intent: "start",
+          id: todo.id,
+          startedAt: String(nowMs),
+        },
+        { method: "post" }
+      );
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,260px)] gap-6 min-h-0 h-full overflow-hidden min-w-0">
+      
+      {/* Main Calendar Panel */}
+      <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-themeCard border border-themeBorder rounded-2xl p-4 shadow-sm">
+        
+        {/* Navigation & Title */}
+        <div className="flex items-center justify-between gap-4 mb-4 pb-3 border-b border-themeBorder">
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handlePrevMonth}
+              className="p-1.5 rounded-lg border border-themeBorder bg-white/[0.02] hover:bg-themeCardHover text-slate-400 hover:text-white transition cursor-pointer flex items-center justify-center"
+              title="Previous Month"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <button
+              onClick={handleNextMonth}
+              className="p-1.5 rounded-lg border border-themeBorder bg-white/[0.02] hover:bg-themeCardHover text-slate-400 hover:text-white transition cursor-pointer flex items-center justify-center"
+              title="Next Month"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <button
+              onClick={handleToday}
+              className="px-3 py-1.5 rounded-lg border border-themeBorder bg-white/[0.02] hover:bg-themeCardHover text-xs font-semibold text-slate-350 hover:text-white transition ml-1 cursor-pointer"
+            >
+              Today
+            </button>
+          </div>
+
+          <h2 className="font-display font-bold text-base sm:text-lg text-slate-100 uppercase tracking-wide">
+            {monthName} {currentYear}
+          </h2>
+        </div>
+
+        {/* Day of Week Headers */}
+        <div className="grid grid-cols-7 border-b border-themeBorder pb-2">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+            <div
+              key={day}
+              className="text-center text-[10px] font-bold uppercase tracking-wider text-slate-500 py-1"
+            >
+              {day}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar Day Grid */}
+        <div className="flex-1 min-h-0 overflow-y-auto rounded-xl bg-themeBorder mt-1.5 scrollbar-thin">
+          <div className="grid grid-cols-7 auto-rows-[minmax(84px,1fr)] gap-px min-h-full">
+          {calendarCells.map(({ dayNum, isCurrentMonth, dateStr, isToday, date }) => {
+            const dayTodos = scheduledMap[dateStr] || [];
+            const isDragOver = dragOverCell === dateStr;
+
+            return (
+              <div
+                key={dateStr}
+                onDragOver={(e) => e.preventDefault()}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  setDragOverCell(dateStr);
+                }}
+                onDragLeave={() => setDragOverCell(null)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverCell(null);
+                  const id = e.dataTransfer.getData("text/plain");
+                  if (id) handleDropOnDate(id, dateStr);
+                }}
+                className={`bg-slate-900/[0.1] p-1 flex flex-col min-h-0 overflow-hidden relative group transition-all duration-200
+                  ${isCurrentMonth ? "text-slate-200" : "text-slate-650 bg-slate-950/[0.3]"}
+                  ${isToday ? "ring-1 ring-themeAccentRing/40 bg-themeAccentBg/5" : ""}
+                  ${isDragOver ? "bg-themeAccentBg/15 ring-2 ring-themeAccentRing/60" : ""}
+                `}
+              >
+                {/* Date Cell Header */}
+                <div className="flex justify-between items-start mb-1 px-0.5">
+                  <span
+                    className={`text-[10px] font-semibold flex-shrink-0 select-none
+                      ${isToday 
+                        ? "bg-themeAccentBg text-themeAccentText px-1.5 py-0.5 rounded-md font-extrabold shadow-sm" 
+                        : isCurrentMonth ? "text-slate-350" : "text-slate-600"}`}
+                  >
+                    {dayNum}
+                  </span>
+                  
+                  {/* Plus button to quick-add (adds a dated task, so not for guests on shared lists) */}
+                  {canSetReminders && (
+                  <button
+                    onClick={() => canEdit && setQuickAddDate(date)}
+                    className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-themeAccentText hover:bg-white/[0.04] p-0.5 rounded transition duration-150 cursor-pointer flex items-center justify-center"
+                    title="Add task on this day"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                  </button>
+                  )}
+                </div>
+
+                {/* List of Tasks in this Date */}
+                <div className="flex-1 overflow-y-auto pr-0.5 space-y-1 scrollbar-thin max-h-[85px] md:max-h-none">
+                  {dayTodos.map((todo) => {
+                    const cfg = priorityConfig[todo.priority || "none"];
+                    
+                    return (
+                      <div
+                        key={todo.id}
+                        draggable={canEdit && canSetReminders}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", todo.id);
+                        }}
+                        className={`group/task flex flex-col gap-1 px-1.5 py-1 rounded bg-slate-900/60 border border-white/5 hover:border-white/10 cursor-grab active:cursor-grabbing hover:bg-white/[0.02] transition-colors
+                          ${todo.completed ? "opacity-60" : ""}
+                        `}
+                        title={todo.text}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0 w-full">
+                          {/* Left priority border color strip */}
+                          <span className={`w-1 h-3 rounded-full flex-shrink-0 ${cfg.dot}`} />
+                          
+                          <button
+                            type="button"
+                            disabled={!canEdit || pendingCompleteId === todo.id}
+                            aria-busy={pendingCompleteId === todo.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTodo(todo.id);
+                            }}
+                            className={`w-3.5 h-3.5 rounded border border-slate-700 flex items-center justify-center flex-shrink-0
+                              ${pendingCompleteId === todo.id ? "cursor-default opacity-80" : "cursor-pointer"}
+                              ${todo.completed || flashCompleteId === todo.id ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText" : "hover:border-themeAccentRing"}`}
+                          >
+                            {(todo.completed || flashCompleteId === todo.id) && (
+                              <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => canEdit && setEditingTodoId(todo.id)}
+                            className={`flex-1 min-w-0 text-left text-[10px] md:text-xs truncate text-slate-355 group-hover/task:text-white cursor-pointer
+                              ${todo.completed ? "line-through text-slate-500 italic" : ""}`}
+                          >
+                            {todo.text}
+                          </button>
+
+                          {canEdit && !todo.completed && todo.startedAt == null && (
+                            <button
+                              type="button"
+                              data-testid="calendar-task-timer-start"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleTimer(todo, Date.now());
+                              }}
+                              aria-label="Start task timer"
+                              title="Start task timer"
+                              className="md:opacity-0 md:group-hover/task:opacity-100 focus-visible:opacity-100 text-[9px] font-semibold px-1 py-0.5 rounded text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-all cursor-pointer flex-shrink-0"
+                            >
+                              ▶
+                            </button>
+                          )}
+                        </div>
+                        {canEdit && !todo.completed && todo.startedAt != null && (
+                          <div className="flex items-center pl-4">
+                            <button
+                              type="button"
+                              data-testid="calendar-task-timer-running"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleTimer(todo, Date.now());
+                              }}
+                              aria-label="Stop task timer"
+                              title="Timer running — click to stop"
+                              className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 hover:bg-rose-500/15 hover:text-rose-300 hover:border-rose-400/30 transition-all cursor-pointer flex-shrink-0 whitespace-nowrap"
+                            >
+                              {formatElapsedTimerLabel(todo.startedAt, timerNow || todo.startedAt)}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+          </div>
+        </div>
+      </div>
+
+      {/* Side Unscheduled Tasks Panel */}
+      <div className="w-full md:w-[260px] md:min-w-0 flex flex-col min-h-0">
+        
+        {/* Toggle sidebar button (Mobile Only) */}
+        <button
+          onClick={() => setIsUnscheduledOpen(!isUnscheduledOpen)}
+          className="md:hidden w-full flex items-center justify-between bg-themeCard border border-themeBorder p-3 rounded-xl mb-2 text-xs font-bold text-slate-350 cursor-pointer"
+        >
+          <span>📥 Unscheduled Tasks ({unscheduledList.length})</span>
+          <svg
+            className={`w-4 h-4 transition-transform duration-200 ${isUnscheduledOpen ? "rotate-180" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth="2.5"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {isUnscheduledOpen && (
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              setIsDragOverUnscheduled(true);
+            }}
+            onDragLeave={() => setIsDragOverUnscheduled(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragOverUnscheduled(false);
+              const id = e.dataTransfer.getData("text/plain");
+              if (id) handleDropOnUnscheduled(id);
+            }}
+            className={`flex-1 flex flex-col min-h-0 bg-themeCard border border-themeBorder rounded-2xl p-4 shadow-sm transition-all duration-200
+              ${isDragOverUnscheduled ? "bg-themeAccentBg/15 ring-2 ring-themeAccentRing/60" : ""}
+            `}
+          >
+            <h3 className="hidden md:block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-3 px-1">
+              📥 Unscheduled Tasks ({unscheduledList.length})
+            </h3>
+            
+            <p className="text-[10px] text-slate-500 mb-4 px-1 leading-normal">
+              {canSetReminders
+                ? "Drag tasks from here onto calendar days to schedule them, or drag tasks back here to clear dates."
+                : `${GUEST_REMINDER_HINT} or schedule tasks on shared lists.`}
+            </p>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
+              {unscheduledList.length === 0 ? (
+                <div className="text-center py-8 text-slate-650 text-xs border border-dashed border-white/[0.04] rounded-xl bg-slate-900/[0.05]">
+                  No unscheduled tasks.
+                </div>
+              ) : (
+                unscheduledList.map((todo) => {
+                  const cfg = priorityConfig[todo.priority || "none"];
+                  
+                  return (
+                    <div
+                      key={todo.id}
+                      draggable={canSetReminders}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", todo.id);
+                      }}
+                      className="group flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:border-white/[0.08] hover:bg-themeCardHover transition duration-200 cursor-grab active:cursor-grabbing"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span className={`w-1.5 h-4 rounded-full flex-shrink-0 ${cfg.dot}`} />
+                        
+                        <button
+                          type="button"
+                          disabled={pendingCompleteId === todo.id}
+                          aria-busy={pendingCompleteId === todo.id}
+                          onClick={() => handleToggleTodo(todo.id)}
+                          className={`w-4 h-4 rounded border border-slate-700 flex items-center justify-center flex-shrink-0
+                            ${pendingCompleteId === todo.id ? "cursor-default opacity-80" : "cursor-pointer"}
+                            ${todo.completed || flashCompleteId === todo.id ? "bg-themeAccentBg border-themeAccentRing text-themeAccentText" : "hover:border-themeAccentRing"}`}
+                        >
+                          {(todo.completed || flashCompleteId === todo.id) && (
+                            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => canEdit && setEditingTodoId(todo.id)}
+                          className={`text-left text-xs truncate text-slate-350 group-hover:text-white cursor-pointer
+                            ${todo.completed ? "line-through text-slate-600 italic" : ""}`}
+                        >
+                          {todo.text}
+                        </button>
+                      </div>
+                      {canEdit && !todo.completed && (
+                        todo.startedAt != null ? (
+                          <button
+                            type="button"
+                            data-testid="calendar-task-timer-running"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTimer(todo, Date.now());
+                            }}
+                            aria-label="Stop task timer"
+                            title="Timer running — click to stop"
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-400/30 hover:bg-rose-500/15 hover:text-rose-300 hover:border-rose-400/30 transition-all cursor-pointer flex-shrink-0 whitespace-nowrap"
+                          >
+                            {formatElapsedTimerLabel(todo.startedAt, timerNow || todo.startedAt)}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            data-testid="calendar-task-timer-start"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTimer(todo, Date.now());
+                            }}
+                            aria-label="Start task timer"
+                            title="Start task timer"
+                            className="md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 text-[10px] font-semibold px-1.5 py-0.5 rounded text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-all cursor-pointer flex-shrink-0"
+                          >
+                            ▶
+                          </button>
+                        )
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Quick Add Task Modal */}
+      {quickAddDate && (
+        <QuickAddTaskModal
+          date={quickAddDate}
+          activeListId={activeListId}
+          smartQuickAddEnabled={smartQuickAddEnabled}
+          onClose={() => setQuickAddDate(null)}
+        />
+      )}
+
+      {/* Edit Task Modal */}
+      {editingTodo && (
+        <EditTaskModal
+          todo={editingTodo}
+          canEdit={canEdit}
+          completionStats={completionStatsByTodoId?.[editingTodo.id]}
+          timerNow={timerNow}
+          onTimerTick={onTimerTick}
+          onNotify={onNotify}
+          onClose={() => setEditingTodoId(null)}
+        />
+      )}
+    </div>
+  );
+}

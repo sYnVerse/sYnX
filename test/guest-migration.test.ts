@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { remapGuestTodoIds } from "../app/guest-migration";
+import { remapGuestTodoIds } from "../backend/services/guest-migration";
 
 function sequentialIds(): () => string {
   let n = 0;

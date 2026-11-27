@@ -129,19 +129,19 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("react-native", () => mocks.reactNative);
-vi.mock("../mobile/node_modules/react-native", () => mocks.reactNative);
+vi.mock("../node_modules/react-native", () => mocks.reactNative);
 vi.mock("expo-widgets", () => mocks.expoWidgets);
-vi.mock("../mobile/node_modules/expo-widgets", () => mocks.expoWidgets);
+vi.mock("../node_modules/expo-widgets", () => mocks.expoWidgets);
 vi.mock("@expo/ui/jetpack-compose", () => mocks.jetpackCompose);
-vi.mock("../mobile/node_modules/@expo/ui/jetpack-compose", () => mocks.jetpackCompose);
+vi.mock("../node_modules/@expo/ui/jetpack-compose", () => mocks.jetpackCompose);
 vi.mock(
-  "../mobile/node_modules/@expo/ui/build/jetpack-compose/index.js",
+  "../node_modules/@expo/ui/build/jetpack-compose/index.js",
   () => mocks.jetpackCompose
 );
 vi.mock("@expo/ui/jetpack-compose/modifiers", () => mocks.modifiers);
-vi.mock("../mobile/node_modules/@expo/ui/jetpack-compose/modifiers", () => mocks.modifiers);
+vi.mock("../node_modules/@expo/ui/jetpack-compose/modifiers", () => mocks.modifiers);
 vi.mock(
-  "../mobile/node_modules/@expo/ui/build/jetpack-compose/modifiers/index.js",
+  "../node_modules/@expo/ui/build/jetpack-compose/modifiers/index.js",
   () => mocks.modifiers
 );
 

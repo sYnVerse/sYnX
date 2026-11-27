@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { env } from "cloudflare:test";
-import { action as todoAction } from "../app/routes/api.v1.todos.$id";
-import { canEditReminderText } from "../app/reminder-ownership";
+import { action as todoAction } from "../backend/api/v1/todos.$id";
+import { canEditReminderText } from "../shared/reminder-ownership";
 
 // Skip real token verification; each test picks who is signed in.
 const auth = vi.hoisted(() => ({ userId: "owner-user" }));
-vi.mock("../app/auth.server", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../app/auth.server")>();
+vi.mock("../backend/services/auth.server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../backend/services/auth.server")>();
   return {
     ...actual,
     verifyBearerToken: vi.fn(async () => ({

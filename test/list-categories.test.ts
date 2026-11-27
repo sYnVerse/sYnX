@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { env } from "cloudflare:test";
-import { handleCreateList, handleUpdateListCategory } from "../app/features/list/actions/lists.server";
-import { handleMigrateGuestLists } from "../app/features/list/actions/account.server";
-import { serializeListRow, type ListRow } from "../app/api-helpers.server";
-import type { ListActionContext } from "../app/features/list/actions/context";
+import { handleCreateList, handleUpdateListCategory } from "../web/app/features/list/actions/lists.server";
+import { handleMigrateGuestLists } from "../web/app/features/list/actions/account.server";
+import { serializeListRow, type ListRow } from "../backend/services/api-helpers.server";
+import type { ListActionContext } from "../web/app/features/list/actions/context";
 
 const testUserId = "user-category-tester";
 

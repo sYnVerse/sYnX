@@ -76,17 +76,17 @@ const uiMocks = vi.hoisted(() => {
 });
 
 vi.mock("expo-widgets", () => uiMocks.expoWidgets);
-vi.mock("../mobile/node_modules/expo-widgets", () => uiMocks.expoWidgets);
+vi.mock("../node_modules/expo-widgets", () => uiMocks.expoWidgets);
 vi.mock("@expo/ui/jetpack-compose", () => uiMocks.jetpackCompose);
-vi.mock("../mobile/node_modules/@expo/ui/jetpack-compose", () => uiMocks.jetpackCompose);
+vi.mock("../node_modules/@expo/ui/jetpack-compose", () => uiMocks.jetpackCompose);
 vi.mock(
-  "../mobile/node_modules/@expo/ui/build/jetpack-compose/index.js",
+  "../node_modules/@expo/ui/build/jetpack-compose/index.js",
   () => uiMocks.jetpackCompose
 );
 vi.mock("@expo/ui/jetpack-compose/modifiers", () => uiMocks.modifiers);
-vi.mock("../mobile/node_modules/@expo/ui/jetpack-compose/modifiers", () => uiMocks.modifiers);
+vi.mock("../node_modules/@expo/ui/jetpack-compose/modifiers", () => uiMocks.modifiers);
 vi.mock(
-  "../mobile/node_modules/@expo/ui/build/jetpack-compose/modifiers/index.js",
+  "../node_modules/@expo/ui/build/jetpack-compose/modifiers/index.js",
   () => uiMocks.modifiers
 );
 

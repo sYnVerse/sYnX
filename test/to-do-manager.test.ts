@@ -6,12 +6,12 @@ import {
   getTodoCompletions,
   pruneVoidedTaskCompletions,
   MAX_STAT_DURATION_SECONDS,
-} from "../app/to-do-manager";
-import { getDueReminderRecipients } from "../app/due-reminders.server";
-import { cloudflareContext } from "../app/context.server";
-import { action as startTodoRouteAction } from "../app/routes/api.v1.todos.$id.start";
-import { loader as completionsRouteLoader } from "../app/routes/api.v1.todos.$id.completions";
-import { action as completedRouteAction } from "../app/routes/api.v1.todos.$id.completed";
+} from "../backend/services/to-do-manager";
+import { getDueReminderRecipients } from "../backend/services/due-reminders.server";
+import { cloudflareContext } from "../backend/services/context.server";
+import { action as startTodoRouteAction } from "../backend/api/v1/todos.$id.start";
+import { loader as completionsRouteLoader } from "../backend/api/v1/todos.$id.completions";
+import { action as completedRouteAction } from "../backend/api/v1/todos.$id.completed";
 import { env } from "cloudflare:test";
 
 describe("TodoManager", () => {

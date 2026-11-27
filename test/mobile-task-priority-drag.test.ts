@@ -188,29 +188,26 @@ describe("mobile drag-and-drop task priority helpers (#109)", () => {
 
     const reactPaths = [
       "react",
-      "../mobile/node_modules/react",
-      "../mobile/node_modules/react/index.js",
+      "../node_modules/react",
       "../node_modules/react/index.js",
     ];
     const jsxPaths = [
       "react/jsx-runtime",
-      "../mobile/node_modules/react/jsx-runtime",
-      "../mobile/node_modules/react/jsx-runtime.js",
+      "../node_modules/react/jsx-runtime",
       "../node_modules/react/jsx-runtime.js",
       "react/jsx-dev-runtime",
-      "../mobile/node_modules/react/jsx-dev-runtime",
-      "../mobile/node_modules/react/jsx-dev-runtime.js",
+      "../node_modules/react/jsx-dev-runtime",
       "../node_modules/react/jsx-dev-runtime.js",
     ];
     const rnPaths = [
       "react-native",
-      "../mobile/node_modules/react-native",
-      "../mobile/node_modules/react-native/index.js",
+      "../node_modules/react-native",
+      "../node_modules/react-native/index.js",
     ];
     const iconPaths = [
       "lucide-react-native",
-      "../mobile/node_modules/lucide-react-native",
-      "../mobile/node_modules/lucide-react-native/dist/cjs/lucide-react-native.js",
+      "../node_modules/lucide-react-native",
+      "../node_modules/lucide-react-native/dist/cjs/lucide-react-native.js",
     ];
 
     for (const p of reactPaths) vi.doMock(p, () => reactStub);
