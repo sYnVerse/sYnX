@@ -17,6 +17,8 @@ import * as mobileVersion from "./v1/mobile.version";
 import * as settings from "./v1/settings";
 import * as settingsDisplayNameSuggestion from "./v1/settings.display-name-suggestion";
 import * as settingsTimeZone from "./v1/settings.time-zone";
+import * as sessions from "./v1/sessions";
+import * as sessionsRevoke from "./v1/sessions.revoke";
 import * as todos from "./v1/todos";
 import * as todosClearCompleted from "./v1/todos.clear-completed";
 import * as todoById from "./v1/todos.$id";
@@ -127,6 +129,9 @@ const API_ROUTES: RegisteredApiRoute[] = [
   staticRoute("/api/v1/settings/display-name-suggestion", settingsDisplayNameSuggestion),
   staticRoute("/api/v1/settings/time-zone", settingsTimeZone),
   staticRoute("/api/v1/settings", settings),
+
+  staticRoute("/api/v1/sessions/revoke", sessionsRevoke),
+  staticRoute("/api/v1/sessions", sessions),
 
   staticRoute("/api/v1/devices", devices),
   staticRoute("/api/v1/mobile/version", mobileVersion),

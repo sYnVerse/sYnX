@@ -5,6 +5,7 @@
 
 export const MOBILE_ACCESS_TOKEN_KEY = "synx_access_token";
 export const MOBILE_REFRESH_TOKEN_KEY = "synx_refresh_token";
+export const MOBILE_SESSION_ID_KEY = "synx_session_id";
 
 export type TokenSet = {
   accessToken: string;

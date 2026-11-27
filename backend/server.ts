@@ -11,6 +11,7 @@ import { getDueReminderRecipients, type DueReminderRow } from "./services/due-re
 import { deleteExpiredGuestLists } from "./services/guest-access.server";
 import { pruneOldListActivity } from "./services/list-activity.server";
 import { pruneVoidedTaskCompletions } from "./services/to-do-manager";
+import { pruneExpiredAuthSessions } from "./services/auth-sessions.server";
 import { phoneCarrierGatewayDomain } from "@synx/shared/phone-carriers";
 import {
   REMINDER_NOTIFICATION_CATEGORY,
@@ -73,6 +74,16 @@ export default {
         }
       } catch (e) {
         console.error("[Cron] Failed to prune voided task completions:", e);
+      }
+      try {
+        const { sessionsDeleted, tokensDeleted } = await pruneExpiredAuthSessions(db, now);
+        if (sessionsDeleted > 0 || tokensDeleted > 0) {
+          console.log(
+            `[Cron] Pruned ${sessionsDeleted} expired/revoked auth session(s) and ${tokensDeleted} expired token(s).`,
+          );
+        }
+      } catch (e) {
+        console.error("[Cron] Failed to prune auth sessions:", e);
       }
     }
 

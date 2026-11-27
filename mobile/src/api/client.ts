@@ -8,6 +8,7 @@ import { MOBILE_APP_VERSION } from "../shared/mobile-version";
 import {
   MOBILE_ACCESS_TOKEN_KEY,
   MOBILE_REFRESH_TOKEN_KEY,
+  MOBILE_SESSION_ID_KEY,
   createSessionRefreshController,
   shouldSignOutAfterRefreshFailure,
   type SessionTokenStore,
@@ -48,6 +49,7 @@ export const secureSessionStore: SessionTokenStore = {
   clearSessionTokens: async () => {
     await SecureStore.deleteItemAsync(MOBILE_ACCESS_TOKEN_KEY);
     await SecureStore.deleteItemAsync(MOBILE_REFRESH_TOKEN_KEY);
+    await SecureStore.deleteItemAsync(MOBILE_SESSION_ID_KEY);
   },
 };
 
@@ -165,6 +167,7 @@ apiClient.interceptors.response.use(
 
     const refreshed = await sessionRefresh.refresh();
     if (refreshed.ok) {
+      void registerMobileSession(refreshed.tokens.accessToken);
       original.headers = original.headers ?? {};
       original.headers.Authorization = `Bearer ${refreshed.tokens.accessToken}`;
       return apiClient.request(original);
@@ -177,3 +180,69 @@ apiClient.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+/**
+ * Registers or refreshes the mobile app's server-side session row in D1 so
+ * signing out can immediately revoke the active access token. Best-effort and
+ * skipped for local E2E unsigned test tokens.
+ */
+export async function registerMobileSession(accessToken?: string): Promise<string | null> {
+  if (DEV_TEST_AUTH_ENABLED) return null;
+  try {
+    const token = accessToken ?? (await SecureStore.getItemAsync(MOBILE_ACCESS_TOKEN_KEY));
+    if (!token || token.startsWith("e2e_test_session:")) return null;
+
+    const existingSessionId = await SecureStore.getItemAsync(MOBILE_SESSION_ID_KEY);
+    const res = await apiClient.post(
+      "/api/v1/sessions",
+      existingSessionId ? { sessionId: existingSessionId } : {},
+      {
+        skipAuthRefresh: true,
+        timeout: 5000,
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    const sessionId =
+      res.data && typeof res.data.sessionId === "string" && res.data.sessionId
+        ? res.data.sessionId
+        : null;
+    if (sessionId) {
+      await SecureStore.setItemAsync(MOBILE_SESSION_ID_KEY, sessionId);
+    }
+    return sessionId;
+  } catch (err) {
+    const axiosErr = err as AxiosError<{ error?: string }> | undefined;
+    if (
+      axiosErr?.response?.status === 401 &&
+      axiosErr.response.data?.error === "Session revoked"
+    ) {
+      await notifyAuthFailure();
+    }
+    return null;
+  }
+}
+
+/**
+ * Revokes the mobile app's server-side session in D1 while the bearer token
+ * is still available, before local SecureStore tokens are wiped.
+ */
+export async function revokeMobileSession(): Promise<void> {
+  if (DEV_TEST_AUTH_ENABLED) return;
+  try {
+    const token = await SecureStore.getItemAsync(MOBILE_ACCESS_TOKEN_KEY);
+    if (!token || token.startsWith("e2e_test_session:")) return;
+
+    const sessionId = await SecureStore.getItemAsync(MOBILE_SESSION_ID_KEY);
+    await apiClient.post(
+      "/api/v1/sessions/revoke",
+      sessionId ? { sessionId } : {},
+      {
+        skipAuthRefresh: true,
+        timeout: 5000,
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+  } catch {
+    // Best-effort network revocation; local cleanup still clears device credentials.
+  }
+}
